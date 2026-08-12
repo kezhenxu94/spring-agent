@@ -1,4 +1,3 @@
-# 本地有效配置文件参数：local,local-ai,bot
 server:
   shutdown: graceful
 spring:
@@ -27,16 +26,12 @@ spring:
       image:
         enabled: false
       embedding:
-        # Alibaba Bailian embedding model, OpenAI-compatible endpoint. Overrides the
-        # base-url/api-key/model of spring.ai.openai.* (chat) above for embeddings only.
         base-url: ${EMBEDDING_BASE_URL}
         api-key: ${EMBEDDING_API_KEY}
         model: ${EMBEDDING_MODEL}
         dimensions: 1024
       audio:
         transcription:
-          # Overrides the base-url/api-key of spring.ai.openai.* (chat) above for
-          # audio transcription only.
           base-url: ${TRANSCRIPTION_OPENAI_BASE_URL}
           api-key: ${TRANSCRIPTION_OPENAI_API_KEY}
     vectorstore:
@@ -57,10 +52,6 @@ spring:
   data:
     mongodb:
       auto-index-creation: true
-  servlet:
-    multipart:
-      max-file-size: 100MB
-      max-request-size: 100MB
   security:
     oauth2:
       client:
@@ -78,11 +69,6 @@ spring:
             token-uri: https://passport.feishu.cn/suite/passport/oauth/token?client_id=${FEISHU_APP_ID}&client_secret=${FEISHU_APP_SECRET}
             user-info-uri: https://passport.feishu.cn/suite/passport/oauth/userinfo
             user-name-attribute: name
-  jackson:
-    mapper:
-      propagate-transient-marker: true
-    deserialization:
-      fail-on-null-for-primitives: false
 management:
   endpoint:
     health:
