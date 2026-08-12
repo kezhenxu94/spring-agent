@@ -8,14 +8,6 @@ group = 'me.kezhenxu94'
 
 boolean isCiServer = System.getenv().containsKey("CI")
 java {
-  sourceCompatibility = JavaVersion.VERSION_21
-  targetCompatibility = JavaVersion.VERSION_21
-
-  compileJava {
-    options.compilerArgs << '-parameters'
-    options.encoding = 'UTF-8'
-  }
-
   test {
     useJUnitPlatform()
     filter {
@@ -29,6 +21,18 @@ java {
     }
     maxParallelForks = Math.min(Runtime.runtime.availableProcessors(), 8)
   }
+}
+
+// `options.release` rather than source/targetCompatibility: those two only set -source/-target,
+// which pins the bytecode level but still compiles against the build JDK's API surface. The build
+// JDK is a GraalVM 25 (native-image requires it), so without --release a call to an
+// API added after 21 would compile here and fail with a NoSuchMethodError on a 21 runtime.
+// Applied to every JavaCompile so compileTestJava and Spring Boot's generated compileAotJava are
+// covered too, not just compileJava.
+tasks.withType(JavaCompile).configureEach {
+  options.release = 21
+  options.compilerArgs << '-parameters'
+  options.encoding = 'UTF-8'
 }
 
 configurations {
