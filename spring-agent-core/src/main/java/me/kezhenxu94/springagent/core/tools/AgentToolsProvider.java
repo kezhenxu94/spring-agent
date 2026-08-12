@@ -130,14 +130,13 @@ public class AgentToolsProvider {
     final var configs = mcpServerConfigRepo.findAccessibleTo(userId, identifiers);
     final var clients = new ArrayList<McpSyncClient>();
     for (final var config : configs) {
-      if (!config.isEnabled()) {
+      if (!config.enabled()) {
         continue;
       }
       try {
         clients.add(mcpClientFactory.createAndInitialize(config));
       } catch (Exception e) {
-        log.warn(
-            "Skipping MCP server '{}' for user {}: {}", config.getName(), userId, e.getMessage());
+        log.warn("Skipping MCP server '{}' for user {}: {}", config.name(), userId, e.getMessage());
       }
     }
     final var callbacks =

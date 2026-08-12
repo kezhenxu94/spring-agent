@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
@@ -87,7 +88,11 @@ name overwrites its configuration.
 
     final var existing = repo.findByOwnerIdAndName(ownerId, serverName).orElse(null);
     final var config =
-        (existing != null ? existing.toBuilder() : McpServerConfig.builder())
+        (existing != null
+                ? existing.toBuilder()
+                // Same as ScheduledTaskTool#newTaskId: neither backend generates an identifier, so
+                // a new config has to arrive with one.
+                : McpServerConfig.builder().id(UUID.randomUUID().toString().replace("-", "")))
             .ownerId(ownerId)
             .name(serverName)
             .transport(McpServerConfig.Transport.STREAMABLE_HTTP)
@@ -158,7 +163,7 @@ name overwrites its configuration.
     final var identifiers = shareIdentifiers(ownerId, chatId);
     final var shared =
         repo.findBySharedWithIn(identifiers).stream()
-            .filter(s -> !s.getOwnerId().equals(ownerId))
+            .filter(s -> !s.ownerId().equals(ownerId))
             .toList();
 
     if (owned.isEmpty() && shared.isEmpty()) {
@@ -170,16 +175,16 @@ name overwrites its configuration.
       sb.append("Owned by you:\n");
       for (final var s : owned) {
         sb.append("- ")
-            .append(s.getName())
+            .append(s.name())
             .append(" [")
-            .append(s.getTransport())
+            .append(s.transport())
             .append("] ")
-            .append(s.getUrl())
-            .append(s.isEnabled() ? "" : " (disabled)")
+            .append(s.url())
+            .append(s.enabled() ? "" : " (disabled)")
             .append(
-                s.getSharedWith() == null || s.getSharedWith().isEmpty()
+                s.sharedWith() == null || s.sharedWith().isEmpty()
                     ? ""
-                    : " (shared with: " + String.join(", ", s.getSharedWith()) + ")")
+                    : " (shared with: " + String.join(", ", s.sharedWith()) + ")")
             .append("\n");
       }
     }
@@ -187,12 +192,12 @@ name overwrites its configuration.
       sb.append("Shared with you:\n");
       for (final var s : shared) {
         sb.append("- ")
-            .append(s.getName())
+            .append(s.name())
             .append(" [")
-            .append(s.getTransport())
+            .append(s.transport())
             .append("] shared by ")
-            .append(s.getOwnerId())
-            .append(s.isEnabled() ? "" : " (disabled)")
+            .append(s.ownerId())
+            .append(s.enabled() ? "" : " (disabled)")
             .append("\n");
       }
     }
@@ -227,10 +232,10 @@ name overwrites its configuration.
           + serverName
           + "' is registered to you. Only servers you own can be shared.";
     }
-    var sharedWith = config.getSharedWith();
+    var sharedWith = config.sharedWith();
     if (sharedWith == null) {
       sharedWith = new ArrayList<String>();
-      config.setSharedWith(sharedWith);
+      config.sharedWith(sharedWith);
     }
     if (sharedWith.contains(target)) {
       return "'" + serverName + "' is already shared with " + target + ".";
@@ -266,7 +271,7 @@ name overwrites its configuration.
           + serverName
           + "' is registered to you. Only servers you own can be unshared.";
     }
-    if (config.getSharedWith() == null || !config.getSharedWith().remove(target)) {
+    if (config.sharedWith() == null || !config.sharedWith().remove(target)) {
       return "'" + serverName + "' was not shared with " + target + ".";
     }
     repo.save(config);

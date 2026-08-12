@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessage;
 import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessageRepo;
+import me.kezhenxu94.springagent.integration.feishu.handler.FeishuCardListener;
 import me.kezhenxu94.springagent.integration.feishu.handler.FeishuMessageReceiveHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,6 +25,7 @@ public class FeishuEventHandler {
   final FeishuMessageReceiveHandler feishuMessageReceiveHandler;
   final SpringAgent springAgent;
   final FeishuMessageRepo feishuMessageRepo;
+  final FeishuCardListener feishuCardListener;
 
   @Bean
   public EventDispatcher eventDispatcher() {
@@ -43,10 +45,15 @@ public class FeishuEventHandler {
                 log.info("Card action trigger: {}", event.getEvent());
                 final var values = event.getEvent().getAction().getValue();
                 if ("stop".equals(values.get("button"))) {
-                  log.info("Stop command received");
                   final var messageID = event.getEvent().getContext().getOpenMessageId();
+                  // The button only knows the message the card was sent as; the run it belongs to
+                  // is whatever the card listener started under it.
+                  final var runId = feishuCardListener.runIdFor(messageID);
+                  log.info("Stop command received: cardMessageId={}, runId={}", messageID, runId);
                   feishuMessageRepo.updateStatus(messageID, FeishuMessage.Status.CANCELLED);
-                  springAgent.cancel(messageID);
+                  if (runId != null) {
+                    springAgent.cancel(runId);
+                  }
                 }
                 return new P2CardActionTriggerResponse();
               }

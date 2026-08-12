@@ -40,8 +40,8 @@ public class ShareController {
 
     final var resource = publishedResourceRepo.findById(token).orElse(null);
     if (resource == null
-        || resource.getVisibility() != visibility
-        || !resource.getOwnerId().equals(userId)) {
+        || resource.visibility() != visibility
+        || !resource.ownerId().equals(userId)) {
       log.warn(
           "No such published resource: token={} visibility={} userId={}",
           token,
@@ -51,7 +51,7 @@ public class ShareController {
       return $ -> {};
     }
 
-    if (resource.getExpiresAt() != null && resource.getExpiresAt().isBefore(Instant.now())) {
+    if (resource.expiresAt() != null && resource.expiresAt().isBefore(Instant.now())) {
       response.setStatus(HttpServletResponse.SC_GONE);
       return $ -> {};
     }
@@ -63,18 +63,18 @@ public class ShareController {
     final var subPath = uri.startsWith(prefix) ? uri.substring(prefix.length()) : "";
 
     final String filename;
-    if (resource.isDirectory()) {
+    if (resource.directory()) {
       if (Strings.isNullOrEmpty(subPath)) {
-        if (Strings.isNullOrEmpty(resource.getEntryFilename())) {
+        if (Strings.isNullOrEmpty(resource.entryFilename())) {
           response.setStatus(HttpServletResponse.SC_NOT_FOUND);
           return $ -> {};
         }
-        filename = resource.getEntryFilename();
+        filename = resource.entryFilename();
       } else {
         filename = subPath;
       }
     } else {
-      filename = resource.getEntryFilename();
+      filename = resource.entryFilename();
     }
 
     final var storageKey = visibilityDir + "/" + userId + "/" + token + "/" + filename;

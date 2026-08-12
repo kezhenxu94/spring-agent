@@ -53,15 +53,15 @@ class ShareControllerTest {
   private void seed(
       final PublishedResource resource, final String relativePath, final String content)
       throws IOException {
-    when(publishedResourceRepo.findById(resource.getId())).thenReturn(Optional.of(resource));
+    when(publishedResourceRepo.findById(resource.id())).thenReturn(Optional.of(resource));
     try (final var in = new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8))) {
       storageService.store(
           in,
-          resource.getVisibility().name().toLowerCase()
+          resource.visibility().name().toLowerCase()
               + "/"
               + USER_ID
               + "/"
-              + resource.getId()
+              + resource.id()
               + "/"
               + relativePath);
     }

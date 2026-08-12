@@ -3,16 +3,24 @@ package me.kezhenxu94.springagent.core.agent;
 import com.google.common.base.Strings;
 import java.io.InterruptedIOException;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
+import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentComposition;
+import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.McpTools;
+import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.springaicommunity.agent.advisors.AutoMemoryToolsAdvisor;
+import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
@@ -22,18 +30,39 @@ import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
+/**
+ * The one way to run the agent. Integrations describe a run as an {@link AgentRequest} and hand it
+ * over; everything from there — tool composition, prompt and tool-context assembly, subscription,
+ * MCP client lifecycle and listener fan-out — happens here.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class SpringAgent {
+
+  /**
+   * The system prompt is rendered against a fixed variable set (see {@code ai.system-prompt} in the
+   * application config), so core supplies the ones an integration may have nothing to say about.
+   */
+  private static final Map<String, Object> OPTIONAL_PROMPT_VARIABLES =
+      Map.of("threadId", "", "parentId", "", "mentions", "none");
+
   final ChatClient chatClient;
   final ChatMemoryRepository chatMemoryRepository;
   final SpringAgentProperties appConfiguration;
+  final AgentToolsProvider agentToolsProvider;
+
+  /**
+   * The listeners that take part in every run. Resolved lazily rather than injected as a list, so
+   * that a listener bean is free to depend on this one.
+   */
+  final ObjectProvider<AgentResponseListener> declaredListeners;
 
   private final ConcurrentMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
   private final AtomicInteger inFlight = new AtomicInteger(0);
@@ -73,24 +102,64 @@ public class SpringAgent {
     }
   }
 
-  public Flux<ChatResponse> stream(
-      final AgentRequest request, final AgentResponseListener... listeners) {
+  /**
+   * Starts {@code request} and returns immediately. The run reports back through its {@link
+   * AgentResponseListener}s, never to the caller.
+   */
+  public void fire(final AgentRequest request) {
+    final var requestId = request.requestId();
     if (!accepting) {
-      return Flux.error(
-          new IllegalStateException(
-              "Shutting down, rejecting new agent stream: " + request.requestId()));
+      log.warn("Shutting down, dropping agent request {}", requestId);
+      return;
     }
 
-    final var requestId = request.requestId();
+    final var listeners = new ArrayList<>(request.listeners());
+    declaredListeners.forEach(listeners::add);
+
+    // Every listener gets its say on the run before any of it is assembled, so that what a listener
+    // attaches here is indistinguishable from what the request came with.
+    final var registry = new AgentRunRegistry(request);
+    notify(listeners, listener -> listener.onStart(registry));
+    listeners.addAll(registry.responseListeners());
+
+    if (registry.abortReason() != null) {
+      log.warn("Agent request {} aborted before assembly: {}", requestId, registry.abortReason());
+      final var aborted = new IllegalStateException(registry.abortReason());
+      notify(listeners, l -> l.onError(aborted));
+      notify(listeners, l -> l.onFinished(AgentOutcome.FAILED));
+      return;
+    }
+
+    final var todoEventHandlers = new ArrayList<>(request.todoEventHandlers());
+    todoEventHandlers.addAll(registry.todoEventHandlers());
+
     final var cancelFlag = new AtomicBoolean(false);
     if (requestId != null) {
       cancelFlags.put(requestId, cancelFlag);
     }
 
+    // Held so doFinally can release the MCP clients however the run ends, including when assembling
+    // it is what failed.
+    final var mcpTools = new AtomicReference<McpTools>();
     final var contentBuffer = new StringBuilder();
     final var modelNotified = new AtomicBoolean(false);
 
-    return rawStream(request)
+    Flux.defer(
+            () -> {
+              try {
+                final var composition =
+                    agentToolsProvider.compose(
+                        request.userId(),
+                        request.chatId(),
+                        request.chatType(),
+                        request.scenario(),
+                        fanOut(todoEventHandlers));
+                mcpTools.set(composition.agentTools().mcpTools());
+                return rawStream(request, composition, toolContextFor(request, registry));
+              } catch (Exception e) {
+                return Flux.<ChatResponse>error(e);
+              }
+            })
         .doOnSubscribe(
             $ -> {
               final var current = inFlight.incrementAndGet();
@@ -98,9 +167,14 @@ public class SpringAgent {
               notify(listeners, AgentResponseListener::onSubscribe);
             })
         .takeWhile(
-            $ ->
-                !cancelFlag.get()
-                    && Arrays.stream(listeners).allMatch(AgentResponseListener::shouldContinue))
+            $ -> {
+              if (cancelFlag.get()) return false;
+              if (listeners.stream().allMatch(AgentResponseListener::shouldContinue)) return true;
+              // A listener that stops consuming ends the run the same way an explicit cancel does,
+              // so the outcome below reports it as one.
+              cancelFlag.set(true);
+              return false;
+            })
         .doOnNext(
             chatResponse -> {
               final var metadata = chatResponse.getMetadata();
@@ -124,19 +198,56 @@ public class SpringAgent {
               final var contentSoFar = contentBuffer.toString();
               notify(listeners, l -> l.onContent(contentSoFar));
             })
-        .doOnError(error -> notify(listeners, l -> l.onError(error)))
+        .doOnError(
+            error -> {
+              log.error("Agent request {} failed", requestId, error);
+              notify(listeners, l -> l.onError(error));
+            })
         .doFinally(
             signal -> {
               if (requestId != null) {
                 cancelFlags.remove(requestId);
               }
-              inFlight.decrementAndGet();
-              notify(listeners, l -> l.onFinished(signal));
-            });
+              try {
+                // A cancelled run may still surface the aborted read as an error, so the flag
+                // decides before the signal does.
+                final var outcome =
+                    cancelFlag.get()
+                        ? AgentOutcome.CANCELLED
+                        : switch (signal) {
+                          case ON_ERROR -> AgentOutcome.FAILED;
+                          case CANCEL -> AgentOutcome.CANCELLED;
+                          default -> AgentOutcome.COMPLETED;
+                        };
+                log.info(
+                    "Agent request {} finished: signal={}, outcome={}", requestId, signal, outcome);
+                notify(listeners, l -> l.onFinished(outcome));
+              } catch (Throwable t) {
+                // Not even an Error may cost the run its cleanup: a leaked MCP client holds its
+                // connection open, and a missed decrement leaves shutdown waiting out its full
+                // timeout for a stream that has already ended.
+                log.error("Failed to report the end of agent request {}", requestId, t);
+              } finally {
+                try {
+                  final var tools = mcpTools.get();
+                  if (tools != null) {
+                    tools.close();
+                  }
+                } finally {
+                  inFlight.decrementAndGet();
+                }
+              }
+            })
+        .subscribe();
+  }
+
+  /** All handlers as one, fanning each update out to every handler. */
+  private static TodoEventHandler fanOut(final List<TodoEventHandler> handlers) {
+    return todos -> handlers.forEach(handler -> handler.handle(todos));
   }
 
   private static void notify(
-      final AgentResponseListener[] listeners, final Consumer<AgentResponseListener> action) {
+      final List<AgentResponseListener> listeners, final Consumer<AgentResponseListener> action) {
     for (final var listener : listeners) {
       try {
         action.accept(listener);
@@ -153,17 +264,48 @@ public class SpringAgent {
     }
   }
 
-  private Flux<ChatResponse> rawStream(final AgentRequest request) {
+  /**
+   * The request's own identity plus whatever the listeners contributed. Request values win on
+   * conflict, so an integration cannot overwrite the identity the run was started under.
+   */
+  private static Map<String, Object> toolContextFor(
+      final AgentRequest request, final AgentRunRegistry registry) {
+    final var toolContext = new LinkedHashMap<String, Object>(registry.toolContext());
+    toolContext.putAll(request.toolContext());
+    // Emptied rather than left null: ChatClient rejects a tool context with null values outright.
+    toolContext.put(ToolContexts.KEY_USER_ID, Strings.nullToEmpty(request.userId()));
+    toolContext.put(ToolContexts.KEY_CHAT_ID, Strings.nullToEmpty(request.chatId()));
+    toolContext.put(ToolContexts.KEY_CHAT_TYPE, request.chatType());
+    toolContext.put(ToolContexts.KEY_ROOT_MESSAGE_ID, Strings.nullToEmpty(request.rootMessageId()));
+    toolContext.put(
+        ToolContexts.KEY_REPLY_MESSAGE_ID, Strings.nullToEmpty(request.replyMessageId()));
+    return toolContext;
+  }
+
+  /** Same rule as the tool context: core fills the identity variables, the request the rest. */
+  private static Map<String, Object> promptVariablesFor(final AgentRequest request) {
+    final var variables = new LinkedHashMap<String, Object>(OPTIONAL_PROMPT_VARIABLES);
+    variables.putAll(request.promptVariables());
+    variables.put("userId", Strings.nullToEmpty(request.userId()));
+    variables.put("chatId", Strings.nullToEmpty(request.chatId()));
+    variables.put("chatType", request.chatType());
+    return variables;
+  }
+
+  private Flux<ChatResponse> rawStream(
+      final AgentRequest request,
+      final AgentComposition composition,
+      final Map<String, Object> toolContext) {
     final var renderedSystemPrompt =
         new SystemPromptTemplate(appConfiguration.ai().systemPrompt())
-            .render(request.promptVariables());
+            .render(promptVariablesFor(request));
 
     final var advisors = new ArrayList<Advisor>();
     advisors.add(
         AutoMemoryToolsAdvisor.builder()
-            .memoriesRootDirectory(request.memoriesRootDirectory())
+            .memoriesRootDirectory(composition.memoriesRootDirectory())
             .build());
-    if (request.conversationMemory()) {
+    if (request.scenario().conversationMemory()) {
       advisors.add(
           MessageChatMemoryAdvisor.builder(
                   MessageWindowChatMemory.builder()
@@ -178,9 +320,9 @@ public class SpringAgent {
         .prompt()
         .system(renderedSystemPrompt)
         .user(request.userMessage())
-        .tools(request.tools())
-        .tools((Object[]) request.toolCallbacks())
-        .toolContext(request.toolContext())
+        .tools(composition.tools())
+        .tools((Object[]) composition.toolCallbacks())
+        .toolContext(toolContext)
         .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, request.conversationId()))
         .advisors(advisors.toArray(new Advisor[0]))
         .stream()

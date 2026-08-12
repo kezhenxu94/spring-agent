@@ -56,7 +56,7 @@ class McpServerManagementToolsShareTest {
     final var result = tools.shareMcpServer("ops", TARGET_USER_ID, context);
 
     assertThat(result).contains("Successfully shared");
-    assertThat(config.getSharedWith()).contains(TARGET_USER_ID);
+    assertThat(config.sharedWith()).contains(TARGET_USER_ID);
     // Saves the loaded entity in place (not a toBuilder() rebuild), so auditing fields
     // (createdDate/createdBy/etc., inherited from AuditingModel) are preserved.
     verify(repo).save(config);
@@ -66,7 +66,7 @@ class McpServerManagementToolsShareTest {
   @DisplayName("sharing twice with the same target is a no-op")
   void sharingTwiceIsNoOp() {
     final var config = sampleConfig();
-    config.getSharedWith().add(TARGET_USER_ID);
+    config.sharedWith().add(TARGET_USER_ID);
     when(repo.findByOwnerIdAndName(OWNER_ID, "ops")).thenReturn(Optional.of(config));
 
     final var result = tools.shareMcpServer("ops", TARGET_USER_ID, context);
@@ -90,13 +90,13 @@ class McpServerManagementToolsShareTest {
   @DisplayName("unshare removes a previously granted access")
   void unshareRemovesAccess() {
     final var config = sampleConfig();
-    config.getSharedWith().add(TARGET_USER_ID);
+    config.sharedWith().add(TARGET_USER_ID);
     when(repo.findByOwnerIdAndName(OWNER_ID, "ops")).thenReturn(Optional.of(config));
 
     final var result = tools.unshareMcpServer("ops", TARGET_USER_ID, context);
 
     assertThat(result).contains("Successfully revoked");
-    assertThat(config.getSharedWith()).doesNotContain(TARGET_USER_ID);
+    assertThat(config.sharedWith()).doesNotContain(TARGET_USER_ID);
     verify(repo).save(config);
   }
 
@@ -118,7 +118,7 @@ class McpServerManagementToolsShareTest {
           + " without connection details")
   void listingSeparatesOwnedAndShared() {
     final var owned = sampleConfig();
-    owned.getSharedWith().add(TARGET_USER_ID);
+    owned.sharedWith().add(TARGET_USER_ID);
     when(repo.findByOwnerId(OWNER_ID)).thenReturn(List.of(owned));
 
     final var sharedToMe =

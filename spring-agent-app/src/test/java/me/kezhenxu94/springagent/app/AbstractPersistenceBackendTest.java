@@ -45,16 +45,16 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
                 .headers(Map.of("Authorization", "Bearer token", "X-Trace", "on"))
                 .sharedWith(List.of("ou_friend", "oc_group"))
                 .build());
-    assertThat(saved.getId()).isEqualTo(owner() + "-server-1");
+    assertThat(saved.id()).isEqualTo(owner() + "-server-1");
 
     final var found = mcpServerConfigRepo.findByOwnerIdAndName(owner(), "server-1");
     assertThat(found).isPresent();
     // The map goes through a JSON column under JPA and a subdocument under MongoDB.
-    assertThat(found.get().getHeaders())
+    assertThat(found.get().headers())
         .containsExactlyInAnyOrderEntriesOf(
             Map.of("Authorization", "Bearer token", "X-Trace", "on"));
-    assertThat(found.get().getSharedWith()).containsExactlyInAnyOrder("ou_friend", "oc_group");
-    assertThat(found.get().getTransport()).isEqualTo(McpServerConfig.Transport.STREAMABLE_HTTP);
+    assertThat(found.get().sharedWith()).containsExactlyInAnyOrder("ou_friend", "oc_group");
+    assertThat(found.get().transport()).isEqualTo(McpServerConfig.Transport.STREAMABLE_HTTP);
 
     assertThat(mcpServerConfigRepo.existsByOwnerIdAndName(owner(), "server-1")).isTrue();
   }
@@ -74,23 +74,23 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
 
     // Through the ownership half of the query, with an identifier that matches nothing.
     assertThat(mcpServerConfigRepo.findAccessibleTo(owner(), List.of("ou_nobody")))
-        .extracting(McpServerConfig::getName)
+        .extracting(McpServerConfig::name)
         .contains("server-2");
 
     // Through the sharing half, for a user who owns nothing.
     assertThat(
             mcpServerConfigRepo.findAccessibleTo(
                 owner() + "-stranger", List.of(owner() + "-oc_shared")))
-        .extracting(McpServerConfig::getName)
+        .extracting(McpServerConfig::name)
         .contains("server-2");
 
     assertThat(mcpServerConfigRepo.findBySharedWithIn(List.of(owner() + "-oc_shared")))
-        .extracting(McpServerConfig::getName)
+        .extracting(McpServerConfig::name)
         .contains("server-2");
 
     // A server owned by nobody relevant and shared with nobody relevant stays invisible.
     assertThat(mcpServerConfigRepo.findAccessibleTo(owner() + "-stranger", List.of("ou_unrelated")))
-        .extracting(McpServerConfig::getName)
+        .extracting(McpServerConfig::name)
         .doesNotContain("server-2");
   }
 
@@ -111,7 +111,7 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
 
     assertThat(mcpServerConfigRepo.findByOwnerIdAndName(owner(), "server-3")).isEmpty();
     assertThat(mcpServerConfigRepo.findByOwnerId(owner()))
-        .extracting(McpServerConfig::getName)
+        .extracting(McpServerConfig::name)
         .doesNotContain("server-3");
   }
 
@@ -129,19 +129,19 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
             .build());
 
     assertThat(scheduledTaskRepo.findByUserIdAndStatus(owner(), ScheduledTask.Status.ACTIVE))
-        .extracting(ScheduledTask::getId)
+        .extracting(ScheduledTask::id)
         .contains(id);
 
     scheduledTaskRepo.updateStatus(id, ScheduledTask.Status.COMPLETED);
 
     final var reloaded = scheduledTaskRepo.findById(id);
     assertThat(reloaded).isPresent();
-    assertThat(reloaded.get().getStatus()).isEqualTo(ScheduledTask.Status.COMPLETED);
+    assertThat(reloaded.get().status()).isEqualTo(ScheduledTask.Status.COMPLETED);
     // The fields the update did not name must survive it.
-    assertThat(reloaded.get().getTaskText()).isEqualTo("summarise the thread");
-    assertThat(reloaded.get().getCronExpression()).isEqualTo("0 0 9 * * MON");
+    assertThat(reloaded.get().taskText()).isEqualTo("summarise the thread");
+    assertThat(reloaded.get().cronExpression()).isEqualTo("0 0 9 * * MON");
     assertThat(scheduledTaskRepo.findByUserIdAndStatus(owner(), ScheduledTask.Status.ACTIVE))
-        .extracting(ScheduledTask::getId)
+        .extracting(ScheduledTask::id)
         .doesNotContain(id);
   }
 }

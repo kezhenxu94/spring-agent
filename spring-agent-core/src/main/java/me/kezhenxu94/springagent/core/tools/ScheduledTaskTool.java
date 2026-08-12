@@ -4,6 +4,7 @@ import com.google.common.base.Strings;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -91,13 +92,16 @@ cronExpression 与 scheduledAt 只能提供一个。
         resolvedExpiresAt == null ? "永久有效（不过期）。" : "过期时间：" + resolvedExpiresAt + "。";
 
     if (hasCron) {
-      final var validated = validateAndNormalizeCron(cronExpression);
-      if (validated.startsWith("Error:")) {
-        return validated;
+      try {
+        CronExpression.parse(cronExpression);
+      } catch (Exception e) {
+        return "错误：cron 表达式 '" + cronExpression + "' 无效：" + e.getMessage();
       }
+      final var validated = enforceMinimumInterval(cronExpression);
       final var task =
           scheduledTaskRepo.save(
               ScheduledTask.builder()
+                  .id(newTaskId())
                   .userId(userId)
                   .chatId(chatId)
                   .chatType(chatType)
@@ -115,7 +119,7 @@ cronExpression 与 scheduledAt 只能提供一个。
           + "（"
           + validated
           + "），任务 ID "
-          + task.getId()
+          + task.id()
           + "。"
           + expiryNote
           + overrideNote
@@ -133,6 +137,7 @@ cronExpression 与 scheduledAt 只能提供一个。
       final var task =
           scheduledTaskRepo.save(
               ScheduledTask.builder()
+                  .id(newTaskId())
                   .userId(userId)
                   .chatId(chatId)
                   .chatType(chatType)
@@ -148,7 +153,7 @@ cronExpression 与 scheduledAt 只能提供一个。
           + "，触发时间 "
           + fireAt
           + "，任务 ID "
-          + task.getId()
+          + task.id()
           + "。"
           + expiryNote
           + "如需提前取消，请使用 cancelScheduledTask 并提供该 ID。";
@@ -169,11 +174,11 @@ cronExpression 与 scheduledAt 只能提供一个。
         .map(
             t ->
                 "- id="
-                    + t.getId()
+                    + t.id()
                     + " | task="
-                    + t.getTaskText()
+                    + t.taskText()
                     + " | schedule="
-                    + (t.getCronExpression() != null ? t.getCronExpression() : t.getScheduledAt()))
+                    + (t.cronExpression() != null ? t.cronExpression() : t.scheduledAt()))
         .collect(Collectors.joining("\n"));
   }
 
@@ -187,24 +192,24 @@ cronExpression 与 scheduledAt 只能提供一个。
       return "错误：未找到 ID 为 " + taskId + " 的任务。";
     }
     final var task = taskOpt.get();
-    if (!task.getUserId().equals(userId)) {
+    if (!task.userId().equals(userId)) {
       return "错误：只能取消自己创建的任务。";
     }
-    if (task.getStatus() != ScheduledTask.Status.ACTIVE) {
-      return "任务 " + taskId + " 已处于 " + task.getStatus() + " 状态。";
+    if (task.status() != ScheduledTask.Status.ACTIVE) {
+      return "任务 " + taskId + " 已处于 " + task.status() + " 状态。";
     }
     scheduledTaskRepo.save(task.toBuilder().status(ScheduledTask.Status.CANCELLED).build());
     scheduledTaskService.unschedule(taskId);
     return "已取消任务 " + taskId;
   }
 
-  private String validateAndNormalizeCron(final String expr) {
-    try {
-      CronExpression.parse(expr);
-    } catch (Exception e) {
-      return "错误：cron 表达式 '" + expr + "' 无效：" + e.getMessage();
-    }
-    return enforceMinimumInterval(expr);
+  /**
+   * {@code ScheduledTask} declares no id generation strategy on either backend, so every task has
+   * to arrive with one: JPA rejects a null identifier outright, and anything downstream that keys a
+   * task by its id (see {@code ScheduledTaskService#schedule}) would otherwise fail on a null key.
+   */
+  private static String newTaskId() {
+    return UUID.randomUUID().toString().replace("-", "");
   }
 
   private String enforceMinimumInterval(final String expr) {

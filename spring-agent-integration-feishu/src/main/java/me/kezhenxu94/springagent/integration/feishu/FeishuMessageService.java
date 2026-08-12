@@ -40,7 +40,7 @@ public class FeishuMessageService {
             HttpMethod.POST,
             httpEntity,
             new ParameterizedTypeReference<FeishuResponse<SendMessageResponseDTO>>() {},
-            message.getReceiveType());
+            message.receiveType());
     if (response.getBody() == null || response.getBody().code() != 0) {
       log.error("Failed to set sheet values: {}", response);
       throw new IllegalStateException("Failed to set sheet values");

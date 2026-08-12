@@ -56,21 +56,19 @@ public class McpClientFactory {
    * (registration).
    */
   public McpSyncClient createAndInitialize(final McpServerConfig config) {
-    validateRemoteUrl(config.getUrl());
+    validateRemoteUrl(config.url());
     final var transport = buildTransport(config);
     final var version =
-        config.getVersion() == null || config.getVersion().isBlank()
+        config.version() == null || config.version().isBlank()
             ? McpServerConfig.DEFAULT_VERSION
-            : config.getVersion();
+            : config.version();
     final var title =
-        config.getTitle() == null || config.getTitle().isBlank()
-            ? config.getName()
-            : config.getTitle();
+        config.title() == null || config.title().isBlank() ? config.name() : config.title();
     final var clientInfo =
-        McpSchema.Implementation.builder(hashPrefix(config.getName()), version)
+        McpSchema.Implementation.builder(hashPrefix(config.name()), version)
             .title(title)
-            .description(config.getDescription())
-            .websiteUrl(config.getWebsiteUrl())
+            .description(config.description())
+            .websiteUrl(config.websiteUrl())
             .build();
     final var client =
         McpClient.sync(transport).clientInfo(clientInfo).requestTimeout(REQUEST_TIMEOUT).build();
@@ -101,7 +99,7 @@ public class McpClientFactory {
   }
 
   private McpClientTransport buildTransport(final McpServerConfig config) {
-    final var headers = config.getHeaders();
+    final var headers = config.headers();
     final var clientBuilder = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT);
     final McpSyncHttpClientRequestCustomizer headerCustomizer =
         (requestBuilder, method, uri, body, context) -> {
@@ -109,7 +107,7 @@ public class McpClientFactory {
             headers.forEach(requestBuilder::header);
           }
         };
-    return HttpClientStreamableHttpTransport.builder(config.getUrl())
+    return HttpClientStreamableHttpTransport.builder(config.url())
         .clientBuilder(clientBuilder)
         .httpRequestCustomizer(headerCustomizer)
         .build();

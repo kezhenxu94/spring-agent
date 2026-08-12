@@ -187,9 +187,9 @@ public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
    *
    * <p>{@code com.lark.oapi.core.response} is what every outbound call goes through: {@code
    * TokenManager} deserialises a {@code TenantAccessTokenResp} before the first request is even
-   * signed, and each reply comes back as a {@code BaseResponse} with an {@code Error} body. The whole
-   * package is seeded rather than the types a stack trace happened to name, because any call can be
-   * the one that reaches an unregistered one.
+   * signed, and each reply comes back as a {@code BaseResponse} with an {@code Error} body. The
+   * whole package is seeded rather than the types a stack trace happened to name, because any call
+   * can be the one that reaches an unregistered one.
    *
    * <p>{@code com.lark.oapi.core.request} is the other half of that exchange: the credential bodies
    * the token endpoints receive, picked at runtime by {@code Config.isMarketPlaceApp()} and by the
@@ -198,10 +198,9 @@ public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
    * the object itself as the body, which Gson then reads by field as well — an unregistered one has
    * no fields either way, so it serialises to an empty JSON object and comes back as "invalid
    * param" rather than failing anywhere near the missing registration. Only these five, not the
-   * package: {@code
-   * FormData} and {@code FormDataFile} are read through their getters by {@code OkHttpTransport},
-   * {@code RequestOptions} and {@code EventReq} never reach Gson, and {@code RawRequest} holds a
-   * {@code Config}, which would pull the shaded HTTP client into the walk.
+   * package: {@code FormData} and {@code FormDataFile} are read through their getters by {@code
+   * OkHttpTransport}, {@code RequestOptions} and {@code EventReq} never reach Gson, and {@code
+   * RawRequest} holds a {@code Config}, which would pull the shaded HTTP client into the walk.
    */
   private static final List<String> INTERNAL_MODEL_SEEDS =
       List.of(

@@ -56,7 +56,7 @@ class PublishFileToolTest {
         .thenAnswer(
             inv -> {
               final PublishedResource resource = inv.getArgument(0);
-              repoBackingStore.put(resource.getId(), resource);
+              repoBackingStore.put(resource.id(), resource);
               return resource;
             });
     when(publishedResourceRepo.findById(any()))
@@ -100,19 +100,15 @@ class PublishFileToolTest {
     assertThat(result).startsWith("已发布，链接：http://localhost:8080/share/public/" + USER_ID + "/");
     assertThat(repoBackingStore).hasSize(1);
     final var resource = repoBackingStore.values().iterator().next();
-    assertThat(resource.getVisibility()).isEqualTo(PublishedResource.Visibility.PUBLIC);
-    assertThat(resource.isDirectory()).isFalse();
-    assertThat(resource.getEntryFilename()).isEqualTo("report.txt");
-    assertThat(resource.getExpiresAt())
+    assertThat(resource.visibility()).isEqualTo(PublishedResource.Visibility.PUBLIC);
+    assertThat(resource.directory()).isFalse();
+    assertThat(resource.entryFilename()).isEqualTo("report.txt");
+    assertThat(resource.expiresAt())
         .isAfter(Instant.now())
         .isBefore(Instant.now().plus(Duration.ofDays(1)).plusSeconds(10));
 
     final var stored =
-        storageRoot
-            .resolve("public")
-            .resolve(USER_ID)
-            .resolve(resource.getId())
-            .resolve("report.txt");
+        storageRoot.resolve("public").resolve(USER_ID).resolve(resource.id()).resolve("report.txt");
     assertThat(Files.readString(stored)).isEqualTo("hello world");
   }
 
@@ -127,12 +123,11 @@ class PublishFileToolTest {
 
     assertThat(result).contains("永久有效");
     final var resource = repoBackingStore.values().iterator().next();
-    assertThat(resource.isDirectory()).isTrue();
-    assertThat(resource.getEntryFilename()).isEqualTo("index.html");
-    assertThat(resource.getExpiresAt()).isNull();
+    assertThat(resource.directory()).isTrue();
+    assertThat(resource.entryFilename()).isEqualTo("index.html");
+    assertThat(resource.expiresAt()).isNull();
 
-    final var storedDir =
-        storageRoot.resolve("internal").resolve(USER_ID).resolve(resource.getId());
+    final var storedDir = storageRoot.resolve("internal").resolve(USER_ID).resolve(resource.id());
     assertThat(Files.readString(storedDir.resolve("index.html"))).isEqualTo("<html></html>");
     assertThat(Files.readString(storedDir.resolve("style.css"))).isEqualTo("body{}");
   }
@@ -146,7 +141,7 @@ class PublishFileToolTest {
     tool.publishFile(dir.toString(), "internal", null, contextFor(USER_ID));
 
     final var resource = repoBackingStore.values().iterator().next();
-    assertThat(resource.getEntryFilename()).isNull();
+    assertThat(resource.entryFilename()).isNull();
   }
 
   // -------------------- workspace containment / traversal --------------------
@@ -229,7 +224,7 @@ class PublishFileToolTest {
 
     assertThat(result).startsWith("已发布");
     final var resource = repoBackingStore.values().iterator().next();
-    final var storedDir = storageRoot.resolve("public").resolve(USER_ID).resolve(resource.getId());
+    final var storedDir = storageRoot.resolve("public").resolve(USER_ID).resolve(resource.id());
     assertThat(Files.exists(storedDir.resolve("index.html"))).isTrue();
     assertThat(Files.exists(storedDir.resolve("leak.txt"))).isFalse();
   }
@@ -296,7 +291,7 @@ class PublishFileToolTest {
     tool.publishFile(file.toString(), "public", "30m", contextFor(USER_ID));
 
     final var resource = repoBackingStore.values().iterator().next();
-    assertThat(resource.getExpiresAt())
+    assertThat(resource.expiresAt())
         .isAfter(Instant.now().plus(Duration.ofMinutes(29)))
         .isBefore(Instant.now().plus(Duration.ofMinutes(31)));
   }
@@ -309,7 +304,7 @@ class PublishFileToolTest {
 
     tool.publishFile(file.toString(), "internal", null, contextFor(USER_ID));
 
-    assertThat(repoBackingStore.values().iterator().next().getExpiresAt()).isNull();
+    assertThat(repoBackingStore.values().iterator().next().expiresAt()).isNull();
   }
 
   @Test
@@ -376,7 +371,7 @@ class PublishFileToolTest {
     final var result = tool.renewPublishedFile(token, "10d", contextFor(USER_ID));
 
     assertThat(result).contains("已续期");
-    assertThat(repoBackingStore.get(token).getExpiresAt())
+    assertThat(repoBackingStore.get(token).expiresAt())
         .isAfter(Instant.now().plus(Duration.ofDays(9)));
   }
 
@@ -427,7 +422,7 @@ class PublishFileToolTest {
         tool.publishFile(file.toString(), "public", "10d", contextFor(USER_ID));
     final var token = repoBackingStore.keySet().iterator().next();
     final var originalUrl = publishResult.split("链接：")[1].split(" ")[0];
-    final var originalExpiresAt = repoBackingStore.get(token).getExpiresAt();
+    final var originalExpiresAt = repoBackingStore.get(token).expiresAt();
 
     // Even though the new source file has a different name, the stored filename (and therefore
     // the URL, which embeds it as the last path segment) must stay exactly as it was.
@@ -439,8 +434,8 @@ class PublishFileToolTest {
     assertThat(result)
         .isEqualTo("已更新，链接保持不变：" + originalUrl + " " + "过期时间：" + originalExpiresAt + "。");
     final var resource = repoBackingStore.get(token);
-    assertThat(resource.getEntryFilename()).isEqualTo("a.txt");
-    assertThat(resource.getExpiresAt()).isEqualTo(originalExpiresAt);
+    assertThat(resource.entryFilename()).isEqualTo("a.txt");
+    assertThat(resource.expiresAt()).isEqualTo(originalExpiresAt);
 
     final var stored =
         storageRoot.resolve("public").resolve(USER_ID).resolve(token).resolve("a.txt");
@@ -507,7 +502,7 @@ class PublishFileToolTest {
 
     assertThat(result).contains("mode=update 时，新内容的类型");
     // the original content must be untouched after a rejected update
-    assertThat(repoBackingStore.get(token).isDirectory()).isTrue();
+    assertThat(repoBackingStore.get(token).directory()).isTrue();
   }
 
   @Test
@@ -525,8 +520,8 @@ class PublishFileToolTest {
 
     assertThat(result).startsWith("已更新");
     final var resource = repoBackingStore.get(token);
-    assertThat(resource.isDirectory()).isFalse();
-    assertThat(resource.getEntryFilename()).isEqualTo("single.txt");
+    assertThat(resource.directory()).isFalse();
+    assertThat(resource.entryFilename()).isEqualTo("single.txt");
   }
 
   @Test
@@ -554,7 +549,7 @@ class PublishFileToolTest {
 
     tool.updatePublishedFile(token, file.toString(), null, "10d", contextFor(USER_ID));
 
-    assertThat(repoBackingStore.get(token).getExpiresAt())
+    assertThat(repoBackingStore.get(token).expiresAt())
         .isAfter(Instant.now().plus(Duration.ofDays(9)));
   }
 
@@ -610,7 +605,7 @@ class PublishFileToolTest {
     Files.writeString(file, "v1");
     tool.publishFile(file.toString(), "public", "10d", contextFor(USER_ID));
     final var token = repoBackingStore.keySet().iterator().next();
-    final var originalExpiresAt = repoBackingStore.get(token).getExpiresAt();
+    final var originalExpiresAt = repoBackingStore.get(token).expiresAt();
 
     final var updated = workspaceOf(USER_ID).resolve("b.txt");
     Files.writeString(updated, "v2");
@@ -618,7 +613,7 @@ class PublishFileToolTest {
         tool.updatePublishedFile(token, updated.toString(), null, "60d", contextFor(USER_ID));
 
     assertThat(result).contains("public 的 ttl 必须大于 0 且不超过 30d");
-    assertThat(repoBackingStore.get(token).getExpiresAt()).isEqualTo(originalExpiresAt);
-    assertThat(repoBackingStore.get(token).getEntryFilename()).isEqualTo("a.txt");
+    assertThat(repoBackingStore.get(token).expiresAt()).isEqualTo(originalExpiresAt);
+    assertThat(repoBackingStore.get(token).entryFilename()).isEqualTo("a.txt");
   }
 }

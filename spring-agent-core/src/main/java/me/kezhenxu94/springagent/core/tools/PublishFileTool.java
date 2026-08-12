@@ -147,7 +147,7 @@ public class PublishFileTool {
     if (resource == null) {
       return "错误：未找到该发布记录：" + token;
     }
-    if (!resource.getOwnerId().equals(userId)) {
+    if (!resource.ownerId().equals(userId)) {
       return "错误：只能更新自己发布的内容。";
     }
 
@@ -163,28 +163,27 @@ public class PublishFileTool {
       return "错误：" + e.getMessage();
     }
 
-    if (updateMode == UpdateMode.UPDATE
-        && resource.isDirectory() != Files.isDirectory(sourcePath)) {
+    if (updateMode == UpdateMode.UPDATE && resource.directory() != Files.isDirectory(sourcePath)) {
       return "错误：mode=update 时，新内容的类型（文件/文件夹）必须与已发布内容一致；" + "如需更换类型，请使用 mode=replace。";
     }
 
     final Instant expiresAt;
     if (Strings.isNullOrEmpty(ttl)) {
-      expiresAt = resource.getExpiresAt();
+      expiresAt = resource.expiresAt();
     } else {
       try {
-        expiresAt = resolveExpiresAt(resource.getVisibility(), ttl);
+        expiresAt = resolveExpiresAt(resource.visibility(), ttl);
       } catch (IllegalArgumentException e) {
         return "错误：" + e.getMessage();
       }
     }
 
-    final var visibilityDir = resource.getVisibility().name().toLowerCase();
+    final var visibilityDir = resource.visibility().name().toLowerCase();
     final var basePrefix = visibilityDir + "/" + userId + "/" + token;
 
     // Keep the original filename for a file-to-file update so the share URL, which embeds the
     // entry filename as its last path segment, never changes.
-    final var forcedSingleFileName = resource.isDirectory() ? null : resource.getEntryFilename();
+    final var forcedSingleFileName = resource.directory() ? null : resource.entryFilename();
 
     final StoredContent stored;
     try {
@@ -192,7 +191,7 @@ public class PublishFileTool {
         deletePublishedFiles(resource, userId);
         stored = storeContent(sourcePath, basePrefix, forcedSingleFileName);
       } else {
-        stored = mergeContent(sourcePath, basePrefix, resource.isDirectory(), forcedSingleFileName);
+        stored = mergeContent(sourcePath, basePrefix, resource.directory(), forcedSingleFileName);
       }
     } catch (IOException | UncheckedIOException e) {
       log.error("Failed to update published resource {} for user {}", token, userId, e);
@@ -234,7 +233,7 @@ public class PublishFileTool {
     if (resource == null) {
       return "错误：未找到该发布记录：" + token;
     }
-    if (!resource.getOwnerId().equals(userId)) {
+    if (!resource.ownerId().equals(userId)) {
       return "错误：只能取消自己发布的内容。";
     }
 
@@ -265,13 +264,13 @@ public class PublishFileTool {
     if (resource == null) {
       return "错误：未找到该发布记录：" + token;
     }
-    if (!resource.getOwnerId().equals(userId)) {
+    if (!resource.ownerId().equals(userId)) {
       return "错误：只能续期自己发布的内容。";
     }
 
     final Instant expiresAt;
     try {
-      expiresAt = resolveExpiresAt(resource.getVisibility(), ttl);
+      expiresAt = resolveExpiresAt(resource.visibility(), ttl);
     } catch (IllegalArgumentException e) {
       return "错误：" + e.getMessage();
     }
@@ -417,8 +416,8 @@ public class PublishFileTool {
   }
 
   private void deletePublishedFiles(final PublishedResource resource, final String userId) {
-    final var visibilityDir = resource.getVisibility().name().toLowerCase();
-    final var dir = storageService.resolve(visibilityDir + "/" + userId + "/" + resource.getId());
+    final var visibilityDir = resource.visibility().name().toLowerCase();
+    final var dir = storageService.resolve(visibilityDir + "/" + userId + "/" + resource.id());
     try {
       if (!FileSystemUtils.deleteRecursively(dir)) {
         log.warn("Failed to delete published files at {}", dir);

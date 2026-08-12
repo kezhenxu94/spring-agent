@@ -149,33 +149,33 @@ public record ValueRange(Range range, List<List<CellValue>> values) {
             final var vs = ctx.readTreeAsValue(node, FormattedValues.class);
             final var unformatted =
                 vs.stream()
-                    .map(FormattedValue::getText)
+                    .map(FormattedValue::text)
                     .filter(not(Strings::isNullOrEmpty))
                     .collect(joining());
             vs.stream()
                 .forEach(
                     v -> {
-                      final var style = v.getSegmentStyle();
-                      final var text = v.getText();
-                      if (style == null || Strings.isNullOrEmpty(style.getForeColor())) {
+                      final var style = v.segmentStyle();
+                      final var text = v.text();
+                      if (style == null || Strings.isNullOrEmpty(style.foreColor())) {
                         return;
                       }
                       if (text.contains("<color") || text.contains("</color>")) {
                         return;
                       }
-                      if ("#000000".equals(style.getForeColor())) {
+                      if ("#000000".equals(style.foreColor())) {
                         return;
                       }
-                      v.setText(
+                      v.text(
                           String.format(
-                              "<color=%s>%s</color>", style.getForeColor().toUpperCase(), text));
-                      v.getSegmentStyle().setForeColor("#73F545");
-                      v.getSegmentStyle().setBold(true);
+                              "<color=%s>%s</color>", style.foreColor().toUpperCase(), text));
+                      v.segmentStyle().foreColor("#73F545");
+                      v.segmentStyle().bold(true);
                       return;
                     });
             final var value =
                 vs.stream()
-                    .map(FormattedValue::getText)
+                    .map(FormattedValue::text)
                     .filter(not(Strings::isNullOrEmpty))
                     .collect(joining());
             return new CellValue(vs, value, unformatted);

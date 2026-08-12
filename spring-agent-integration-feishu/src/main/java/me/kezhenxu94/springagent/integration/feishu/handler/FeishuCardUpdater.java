@@ -27,6 +27,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.ToolContextKey;
@@ -37,7 +38,6 @@ import org.springaicommunity.agent.tools.TodoWriteTool.Todos;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.web.client.RestTemplate;
-import reactor.core.publisher.SignalType;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -393,7 +393,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   }
 
   @Override
-  public void onFinished(SignalType signal) {
+  public void onFinished(AgentOutcome outcome) {
     finalizeCard();
   }
 

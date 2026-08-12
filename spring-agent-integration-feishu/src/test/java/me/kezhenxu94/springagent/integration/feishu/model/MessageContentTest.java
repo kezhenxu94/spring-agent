@@ -129,9 +129,8 @@ class MessageContentTest {
     final var content = objectMapper.readValue(json, MessageContent.class);
     assertTrue(content instanceof FileMessageContent);
     assertEquals("file", content.getType());
-    assertEquals(
-        "75235e0c-4f92-430a-a99b-8446610223cg", ((FileMessageContent) content).getFileKey());
-    assertEquals("test.txt", ((FileMessageContent) content).getFileName());
+    assertEquals("75235e0c-4f92-430a-a99b-8446610223cg", ((FileMessageContent) content).fileKey());
+    assertEquals("test.txt", ((FileMessageContent) content).fileName());
   }
 
   @Test
@@ -164,10 +163,9 @@ class MessageContentTest {
     final var content = objectMapper.readValue(json, MessageContent.class);
     assertTrue(content instanceof MediaMessageContent);
     assertEquals("media", content.getType());
+    assertEquals("75235e0c-4f92-430a-a99b-8446610223cg", ((MediaMessageContent) content).fileKey());
     assertEquals(
-        "75235e0c-4f92-430a-a99b-8446610223cg", ((MediaMessageContent) content).getFileKey());
-    assertEquals(
-        "img_7ea74629-9191-4176-998c-2e603c9c5e8g", ((MediaMessageContent) content).getImageKey());
+        "img_7ea74629-9191-4176-998c-2e603c9c5e8g", ((MediaMessageContent) content).imageKey());
   }
 
   @Test
@@ -182,9 +180,8 @@ class MessageContentTest {
     final var content = objectMapper.readValue(json, MessageContent.class);
     assertTrue(content instanceof FileMessageContent);
     assertEquals("file", content.getType());
-    assertEquals(
-        "75235e0c-4f92-430a-a99b-8446610223cg", ((FileMessageContent) content).getFileKey());
-    assertNull(((FileMessageContent) content).getFileName());
+    assertEquals("75235e0c-4f92-430a-a99b-8446610223cg", ((FileMessageContent) content).fileKey());
+    assertNull(((FileMessageContent) content).fileName());
   }
 
   @Test
