@@ -1,0 +1,55 @@
+plugins {
+  id "java"
+  id "com.diffplug.spotless"
+  id "org.gradle.test-retry"
+}
+
+group = 'me.kezhenxu94'
+
+boolean isCiServer = System.getenv().containsKey("CI")
+java {
+  sourceCompatibility = JavaVersion.VERSION_21
+  targetCompatibility = JavaVersion.VERSION_21
+
+  compileJava {
+    options.compilerArgs << '-parameters'
+    options.encoding = 'UTF-8'
+  }
+
+  test {
+    useJUnitPlatform()
+    filter {
+      failOnNoMatchingTests = false
+    }
+    if (isCiServer) {
+      retry {
+        maxRetries = 2
+      }
+      maxHeapSize = '1200m'
+    }
+    maxParallelForks = Math.min(Runtime.runtime.availableProcessors(), 8)
+  }
+}
+
+configurations {
+  compileOnly {
+    extendsFrom annotationProcessor
+  }
+}
+
+dependencies {
+  compileOnly 'org.projectlombok:lombok'
+  testCompileOnly 'org.projectlombok:lombok'
+  testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+  annotationProcessor 'org.projectlombok:lombok'
+  testAnnotationProcessor 'org.projectlombok:lombok'
+}
+
+spotless {
+  java {
+    googleJavaFormat('1.35.0').reflowLongStrings()
+  }
+}
+tasks.withType(Test).configureEach {
+  useJUnitPlatform()
+}

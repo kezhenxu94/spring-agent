@@ -1,0 +1,12 @@
+server:
+  port: 8082
+spring:
+  mongodb.uri: mongodb://admin:password@localhost:27017/spring-agent?authSource=admin
+  ai:
+    vectorstore:
+      milvus:
+        client:
+          host: localhost
+logging:
+  level:
+    me.kezhenxu94: DEBUG

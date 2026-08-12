@@ -1,0 +1,88 @@
+{
+  "schema": "2.0",
+  "config": {
+    "update_multi": true,
+    "streaming_mode": true,
+    "streaming_config": {
+      "print_step": {
+        "default": 1
+      },
+      "print_frequency_ms": {
+        "default": 70
+      },
+      "print_strategy": "fast"
+    },
+    "style": {
+      "text_size": {
+        "normal_v2": {
+          "default": "normal"
+        }
+      }
+    }
+  },
+  "body": {
+    "direction": "vertical",
+    "horizontal_spacing": "8px",
+    "vertical_spacing": "8px",
+    "horizontal_align": "left",
+    "vertical_align": "top",
+    "padding": "12px 12px 12px 12px",
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "生成中...",
+        "text_align": "left",
+        "text_size": "normal_v2",
+        "element_id": "message"
+      },
+      {
+        "tag": "markdown",
+        "content": "",
+        "text_align": "left",
+        "text_size": "normal_v2",
+        "element_id": "todo"
+      },
+      {
+        "tag": "button",
+        "text": {
+          "tag": "plain_text",
+          "content": "停止"
+        },
+        "type": "danger_filled",
+        "width": "default",
+        "size": "tiny",
+        "icon": {
+          "tag": "standard_icon",
+          "token": "w1-h1_outlined"
+        },
+        "behaviors": [
+          {
+            "type": "callback",
+            "value": {
+              "button": "stop"
+            }
+          }
+        ],
+        "element_id": "stop"
+      },
+      {
+        "tag": "hr",
+        "element_id": "guide_divider"
+      },
+      {
+        "tag": "markdown",
+        "content": "",
+        "text_align": "left",
+        "text_size": "notation",
+        "element_id": "usage"
+      },
+      {
+        "tag": "markdown",
+        "content": "点击「回复」按钮可继续当前对话；直接发送新消息将开启新的对话",
+        "text_align": "left",
+        "text_size": "notation",
+        "element_id": "guide"
+      }
+    ]
+  }
+}

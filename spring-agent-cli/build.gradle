@@ -1,0 +1,63 @@
+plugins {
+  alias(libs.plugins.spring.boot)
+  alias(libs.plugins.spring.dependency.management)
+  id 'springagent.java-common-conventions'
+  id 'springagent.docker'
+  id 'application'
+}
+
+def patchJvmArgs = [
+  "--add-opens=java.base/java.io=ALL-UNNAMED",
+  "--add-opens=java.base/java.lang=ALL-UNNAMED",
+  "--add-opens=java.base/java.time=ALL-UNNAMED",
+  "--add-opens=java.base/java.util=ALL-UNNAMED",
+  "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED"
+]
+
+dependencies {
+  implementation 'org.springframework.boot:spring-boot-starter-actuator'
+  implementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
+  implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'
+  implementation "org.springframework.boot:spring-boot-starter-restclient"
+  implementation 'org.springframework.boot:spring-boot-starter-security'
+  implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+  implementation 'org.springframework.boot:spring-boot-starter-validation'
+  implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+  implementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-mongodb'
+  implementation 'org.springframework.ai:spring-ai-starter-mcp-client'
+  implementation 'org.springframework.ai:spring-ai-starter-tool-search-advisor'
+  implementation 'org.springframework.ai:spring-ai-starter-vector-store-milvus'
+  implementation 'io.fabric8:kubernetes-httpclient-jdk'
+  implementation 'io.micrometer:micrometer-registry-prometheus'
+
+  implementation platform(libs.spring.ai.bom)
+  implementation platform(libs.spring.ai.agent.utils.bom)
+  implementation platform(libs.fabric8.kubernetes.client.bom)
+
+  implementation(libs.fabric8.kubernetes.client) {
+    exclude group: 'io.fabric8', module: 'kubernetes-httpclient-okhttp'
+  }
+  implementation libs.jjwt
+  implementation libs.jakarta.annotation.api
+  implementation libs.guava
+  implementation libs.jackson.csv
+  implementation libs.bundles.logback.json
+  implementation libs.spring.ai.agent.utils
+  implementation libs.larksuite.oapi
+
+  annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+  testImplementation libs.testcontainers.core
+  testImplementation libs.testcontainers.mongodb
+  testImplementation libs.testcontainers.junit.jupiter
+
+  testImplementation 'org.springframework.boot:spring-boot-starter-test'
+  testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
+  testImplementation 'org.springframework.restdocs:spring-restdocs-mockmvc'
+}
+
+application { applicationDefaultJvmArgs += patchJvmArgs }
+
+bootJar {
+  from('Aptfile')
+}

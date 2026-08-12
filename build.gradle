@@ -1,0 +1,27 @@
+allprojects {
+  ext {
+    // Only used to tag container images (see springagent.docker.gradle). Tolerate a
+    // repository with no commits yet (fresh `git init`), where `rev-parse HEAD` exits
+    // 128 — otherwise every task, including plain `compileJava`, fails at configuration
+    // time.
+    gitSha = providers.exec {
+      commandLine 'git', 'rev-parse', '--verify', 'HEAD'
+      ignoreExitValue = true
+    }.with { output ->
+      output.result.get().exitValue == 0 ? output.standardOutput.asText.get().trim() : 'unknown'
+    }
+  }
+
+  configurations.all {
+    resolutionStrategy.eachDependency { details ->
+      // spring-ai-bom's own <dependencyManagement> declares spring-ai-client-chat as
+      // <version>${project.version}</version>, which is always the literal "2.0.1-SNAPSHOT"
+      // moving target. Force that artifact to the same exact pinned build here instead.
+      if (details.requested.group == 'org.springframework.ai' && details.requested.name == 'spring-ai-client-chat'
+      && details.requested.version == '2.0.1-SNAPSHOT') {
+        details.useVersion(libs.versions.spring.ai.asProvider().get())
+        details.because 'spring-ai-bom cannot pin its own managed dependency versions (see comment above)'
+      }
+    }
+  }
+}

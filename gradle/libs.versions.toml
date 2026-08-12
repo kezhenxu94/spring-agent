@@ -1,0 +1,36 @@
+[versions]
+guava = "33.6.0-jre"
+jjwt = "0.9.1"
+jakarta-annotation = "2.1.1"
+logback-json = "0.1.5"
+larksuite-oapi = "2.6.1"
+spring-ai-agent-utils = "0.10.0"
+spring-ai = "2.0.1-SNAPSHOT"
+spring-dependency-management = "1.1.7"
+fabric8 = "6.13.4"
+springboot = "4.0.7"
+testcontainers = "2.0.3"
+
+[libraries]
+guava = { module = "com.google.guava:guava", version.ref = "guava" }
+jakarta-annotation-api = { module = "jakarta.annotation:jakarta.annotation-api", version.ref = "jakarta-annotation" }
+jackson-csv = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-csv" }
+jjwt = { module = "io.jsonwebtoken:jjwt", version.ref = "jjwt" }
+logback-jackson = { module = "ch.qos.logback.contrib:logback-jackson", version.ref = "logback-json" }
+logback-json-classic = { module = "ch.qos.logback.contrib:logback-json-classic", version.ref = "logback-json" }
+spring-ai-bom = { module = "org.springframework.ai:spring-ai-bom", version.ref = "spring-ai" }
+larksuite-oapi = { module = "com.larksuite.oapi:oapi-sdk", version.ref = "larksuite-oapi" }
+testcontainers-core = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
+testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }
+testcontainers-mongodb = { module = "org.testcontainers:testcontainers-mongodb", version.ref = "testcontainers" }
+spring-ai-agent-utils-bom = { module = "org.springaicommunity:spring-ai-agent-utils-bom", version.ref = "spring-ai-agent-utils" }
+spring-ai-agent-utils = { module = "org.springaicommunity:spring-ai-agent-utils", version.ref = "spring-ai-agent-utils" }
+fabric8-kubernetes-client-bom = { module = "io.fabric8:kubernetes-client-bom", version.ref = "fabric8" }
+fabric8-kubernetes-client = { module = "io.fabric8:kubernetes-client" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "springboot" }
+spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "spring-dependency-management" }
+
+[bundles]
+logback-json = ['logback-json-classic', 'logback-jackson']

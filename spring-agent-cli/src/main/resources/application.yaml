@@ -1,0 +1,218 @@
+# 本地有效配置文件参数：local,local-ai,bot
+server:
+  shutdown: graceful
+spring:
+  main:
+    banner-mode: off
+  ai:
+    chat:
+      memory:
+        repository:
+          mongo:
+            create-indices: true
+      client:
+        tool-search-advisor:
+          enabled: true
+          tool-index-type: vector
+          max-results: 5
+    openai:
+      base-url: ${BOT_OPENAI_BASE_URL}
+      api-key: ${BOT_OPENAI_API_KEY}
+      chat:
+        model: ${BOT_OPENAI_MODEL}
+        temperature: 0
+        timeout: 5m
+        stream-options:
+          include-usage: true
+      image:
+        enabled: false
+      embedding:
+        # Alibaba Bailian embedding model, OpenAI-compatible endpoint. Overrides the
+        # base-url/api-key/model of spring.ai.openai.* (chat) above for embeddings only.
+        base-url: ${BOT_EMBEDDING_BASE_URL:https://ws-x1m3p2roqbf7dij1.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
+        api-key: ${BOT_EMBEDDING_API_KEY}
+        model: ${BOT_EMBEDDING_MODEL:qwen3.7-text-embedding}
+        dimensions: 1024
+      audio:
+        transcription:
+          # Overrides the base-url/api-key of spring.ai.openai.* (chat) above for
+          # audio transcription only.
+          base-url: ${TRANSCRIPTION_OPENAI_BASE_URL}
+          api-key: ${TRANSCRIPTION_OPENAI_API_KEY}
+    vectorstore:
+      milvus:
+        client:
+          host: ${MILVUS_HOST:spring-agent-milvus-milvus.milvus}
+          port: ${MILVUS_PORT:19530}
+        collection-name: spring_agent_bot_tool_index
+        embedding-dimension: 1024
+        initialize-schema: true
+  data:
+    mongodb:
+      auto-index-creation: true
+    redis:
+      repositories:
+        enabled: false
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+  security:
+    oauth2:
+      client:
+        registration:
+          feishu:
+            client-id: ${FEISHU_APP_ID}
+            client-secret: ${FEISHU_APP_SECRET}
+            authorization-grant-type: authorization_code
+            redirect-uri: '{baseUrl}/{action}/oauth2/code/{registrationId}'
+            client-authentication-method: client_secret_basic
+            client-name: feishu
+        provider:
+          feishu:
+            authorization-uri: https://passport.feishu.cn/suite/passport/oauth/authorize
+            token-uri: https://passport.feishu.cn/suite/passport/oauth/token?client_id=${FEISHU_APP_ID}&client_secret=${FEISHU_APP_SECRET}
+            user-info-uri: https://passport.feishu.cn/suite/passport/oauth/userinfo
+            user-name-attribute: name
+  jackson:
+    mapper:
+      propagate-transient-marker: true
+    deserialization:
+      fail-on-null-for-primitives: false
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+storage:
+  location: /tmp/upload-dir
+  base-url: http://localhost:8080/files/%s
+  cdn-url: http://localhost:8080/files/%s
+share:
+  base-url: http://localhost:8080
+app:
+  ai:
+    # The agent's system prompt. Rendered per request with these variables:
+    # {userId} {chatId} {chatType} {threadId} {parentId} {mentions} — referencing any
+    # other name will fail the render. Override this to give the agent its own
+    # persona, house rules, or domain knowledge.
+    system-prompt: |
+      You are a helpful AI assistant that works alongside people in their chat
+      workspace. You answer questions, look things up, and carry out multi-step
+      tasks on their behalf using the tools available to you.
+
+      # Current conversation
+      - Sender user ID: {userId}
+      - Chat ID: {chatId}
+      - Chat type: {chatType} (whether this is a direct message or a group chat)
+      - Thread ID: {threadId} (empty unless the message belongs to a thread)
+      - Parent message ID: {parentId} (set when the user replies to or quotes a message)
+      - Mentioned users: {mentions}
+
+      # Working rules
+      - Before replying, call MemoryView("MEMORY.md") to read what you already know
+        about this user, and keep it in mind.
+      - If {parentId} is not empty, the user is replying to or quoting an earlier
+        message. Read that message before you answer, using whichever message-reading
+        tool is available to you.
+      - In group chats and threads, if you lack the context behind a question, read the
+        recent messages before answering. Scope that read to {threadId} when it is set,
+        otherwise to {chatId}.
+      - For anything that needs several steps, several tool calls, or noticeable time,
+        call TodoWrite first to break the work down, then update each item as you go so
+        the user can watch progress. Skip TodoWrite for simple one-shot answers.
+      - Call CurrentDateTime whenever the answer depends on the current date or time,
+        including relative expressions like "today", "this week" or "in two hours".
+        Never guess the current time or the user's timezone.
+
+      # Style
+      - Reply in the language the user wrote in.
+      - Be concise, warm and direct. Skip filler and ceremony.
+      - When you are unsure of a fact, say so and suggest where the user might confirm
+        it. Never invent details.
+    admins: ${BOT_ADMINS:}
+    tools:
+      shell-pod:
+        # The bot's ServiceAccount needs get/list/create/update/patch/delete on
+        # `secrets` in the shell-pod namespace (used by SetCredential / ListCredentials /
+        # DeleteCredential to manage per-user credential Secrets).
+        enabled: ${TOOLS_SHELL_POD_ENABLED:false}
+        # namespace: spring-agent-assistant     # optional; auto-detected from the bot's own ServiceAccount
+        image: ${TOOLS_SHELL_POD_IMAGE:}
+        # Comma-separated list of imagePullSecret names to attach to each shell sandbox Pod.
+        # Required when `image` lives in a private registry (the Pod does not inherit the bot's secrets).
+        image-pull-secrets: ${TOOLS_SHELL_POD_IMAGE_PULL_SECRETS:}
+        idle-timeout: 30m
+        hard-deadline: 4h
+        startup-timeout: 60s
+        max-output-bytes: 30000
+        default-timeout-ms: 120000
+        max-timeout-ms: 600000
+        storage:
+          pvc-name: ${TOOLS_SHELL_POD_STORAGE_PVC_NAME:}
+          pvc-mount-path: ${TOOLS_SHELL_POD_STORAGE_PVC_MOUNT_PATH:/data/spring-agent}
+        resources:
+          cpu-request: 100m
+          memory-request: 256Mi
+          cpu-limit: 1000m
+          memory-limit: 1Gi
+        credentials:
+          mount-path: /run/secrets/credentials
+      mcp:
+        # Hostnames allowed to bypass the SSRF guard's https-only and private-address checks
+        # (spring-agent-cli/src/main/java/me/kezhenxu94/springagent/tools/McpClientFactory.java).
+        # Keep this narrow — every entry is reachable by any bot user who registers an MCP server.
+        trusted-hosts:
+          - monitoring-mcp.monitoring
+    bot-interceptor:
+      guide-threshold: 30000
+    model-pricing:
+      '[qwen3.7-plus]':
+        non-thinking-input-per-million: 2.0
+        thinking-input-per-million: 8.0
+        output-per-million: 8.0
+        currency: CNY
+      '[qwen3.7-max]':
+        non-thinking-input-per-million: 12.0
+        thinking-input-per-million: 12.0
+        output-per-million: 36.0
+        currency: CNY
+      '[qwen3.8-max]':
+        non-thinking-input-per-million: 12.0
+        thinking-input-per-million: 12.0
+        output-per-million: 36.0
+        currency: CNY
+      '[gpt-5.6-luna]':
+        non-thinking-input-per-million: 1.0
+        thinking-input-per-million: 1.0
+        output-per-million: 6.0
+        currency: USD
+  dashscope:
+    image:
+      api-key: ${BOT_DASHSCOPE_API_KEY}
+      base-url: ${BOT_DASHSCOPE_IMAGE_BASE_URL:https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation}
+      model: ${BOT_DASHSCOPE_IMAGE_MODEL:wan2.7-image-pro}
+    vision:
+      api-key: ${BOT_IMAGE_API_KEY}
+      base-url: ${BOT_IMAGE_BASE_URL:https://ws-x1m3p2roqbf7dij1.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
+      model: ${BOT_IMAGE_MODEL:qwen3-vl-plus}
+  feishu:
+    appId: ${FEISHU_APP_ID}
+    appSecret: ${FEISHU_APP_SECRET}
+    encrypt-key: ${FEISHU_ENCRYPT_KEY}
+    tenant-id: ${FEISHU_TENANT_ID}
+    tenant-domain: ${FEISHU_TENANT_DOMAIN}
+    bot-open-id: ${FEISHU_BOT_OPEN_ID}

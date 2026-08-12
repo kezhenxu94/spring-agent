@@ -1,0 +1,14 @@
+bootBuildImage {
+  imageName = "ghcr.io/kezhenxu94/spring-agent"
+  tags = ["latest", project.ext.gitSha].collect { "${imageName}:${it}" }
+
+  environment["BPE_APPEND_JAVA_TOOL_OPTIONS"] = "\
+    --add-opens=java.base/java.io=ALL-UNNAMED \
+    --add-opens=java.base/java.lang=ALL-UNNAMED \
+    --add-opens=java.base/java.time=ALL-UNNAMED \
+    --add-opens=java.base/java.util=ALL-UNNAMED \
+    --add-opens=java.base/sun.nio.ch=ALL-UNNAMED"
+
+  builder = "paketobuildpacks/builder-jammy-full:latest"
+  runImage = "paketobuildpacks/run-jammy-full:latest"
+}
