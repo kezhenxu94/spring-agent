@@ -1,0 +1,309 @@
+package me.kezhenxu94.springagent.core.tools;
+
+import io.modelcontextprotocol.client.McpSyncClient;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
+import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
+import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.stereotype.Component;
+
+/**
+ * MCP server registry, exposed to the agent as tools. The owner (and the chat the request came
+ * from) is resolved per call from {@link ToolContext}; every mutating operation
+ * (add/remove/share/unshare) is scoped to that owner — sharing a server does not grant the
+ * recipient the ability to manage it.
+ *
+ * <p>Only remote streamable HTTP servers are supported; stdio and SSE are rejected.
+ */
+@Slf4j
+@AgentTool
+@Component
+@RequiredArgsConstructor
+public class McpServerManagementTools {
+  private final McpServerConfigRepo repo;
+  private final McpClientFactory clientFactory;
+
+  @Tool(
+      name = "AddMcpServer",
+      description =
+"""
+Register a remote MCP (Model Context Protocol) server for this user, so its tools become available to
+the agent. Only remote streamable HTTP servers are supported. Local/stdio servers (anything launched
+via a command) and SSE servers are NOT supported.
+
+The URL and connection are validated before saving: if the URL is disallowed, the server cannot be
+reached, or it points at a private/loopback address, nothing is stored and an error is returned. Always
+attempt the call with the URL you were given rather than refusing on sight — the error message will
+explain why a URL is invalid. On success the server's tool names are returned. Re-adding an existing
+name overwrites its configuration.
+""")
+  public String addMcpServer(
+      @ToolParam(
+              description = "Unique name for this MCP server (used to reference/remove it later)")
+          final String name,
+      @ToolParam(description = "The MCP server endpoint URL") final String url,
+      @ToolParam(
+              required = false,
+              description =
+                  "Optional HTTP headers for authentication, e.g. {\"Authorization\": \"Bearer"
+                      + " <token>\"}")
+          final Map<String, String> headers,
+      @ToolParam(
+              required = false,
+              description = "Optional display title reported to the server; defaults to name")
+          final String title,
+      @ToolParam(
+              required = false,
+              description = "Optional client version reported to the server; defaults to 1.0.0")
+          final String version,
+      @ToolParam(required = false, description = "Optional human-readable description")
+          final String description,
+      @ToolParam(required = false, description = "Optional website URL for this integration")
+          final String websiteUrl,
+      final ToolContext context) {
+    final var ownerId = ToolContexts.require(context, ToolContexts.USER_ID);
+
+    if (name == null || name.isBlank()) {
+      return "Error: a non-empty server name is required.";
+    }
+    if (url == null || url.isBlank()) {
+      return "Error: a server URL is required.";
+    }
+    final var serverName = name.trim();
+    final var serverUrl = url.trim();
+
+    try {
+      clientFactory.validateRemoteUrl(serverUrl);
+    } catch (IllegalArgumentException e) {
+      return "Error: " + e.getMessage();
+    }
+
+    final var existing = repo.findByOwnerIdAndName(ownerId, serverName).orElse(null);
+    final var config =
+        (existing != null ? existing.toBuilder() : McpServerConfig.builder())
+            .ownerId(ownerId)
+            .name(serverName)
+            .transport(McpServerConfig.Transport.STREAMABLE_HTTP)
+            .url(serverUrl)
+            .headers(headers == null ? null : new LinkedHashMap<>(headers))
+            .title(blankToNull(title))
+            .version(blankToNull(version))
+            .description(blankToNull(description))
+            .websiteUrl(blankToNull(websiteUrl))
+            .enabled(true)
+            .build();
+
+    final List<String> toolNames;
+    McpSyncClient client = null;
+    try {
+      client = clientFactory.createAndInitialize(config);
+      toolNames = client.listTools().tools().stream().map(t -> t.name()).toList();
+    } catch (IllegalArgumentException e) {
+      return "Error: " + e.getMessage();
+    } catch (Exception e) {
+      log.warn(
+          "Failed to connect to MCP server '{}' at {} for user {}",
+          serverName,
+          serverUrl,
+          ownerId,
+          e);
+      return "Error: could not connect to MCP server '" + serverName + "': " + e.getMessage();
+    } finally {
+      if (client != null) {
+        try {
+          client.close();
+        } catch (Exception e) {
+          log.warn("Failed to close validation MCP client for '{}'", serverName, e);
+        }
+      }
+    }
+
+    try {
+      repo.save(config);
+    } catch (Exception e) {
+      log.error("Failed to persist MCP server '{}' for user {}", serverName, ownerId, e);
+      return "Error: failed to save MCP server '" + serverName + "': " + e.getMessage();
+    }
+    log.info(
+        "Registered MCP server '{}' ({}) for user {}",
+        serverName,
+        McpServerConfig.Transport.STREAMABLE_HTTP,
+        ownerId);
+    return "Successfully registered MCP server '"
+        + serverName
+        + "' ("
+        + McpServerConfig.Transport.STREAMABLE_HTTP
+        + "). Available tools: "
+        + (toolNames.isEmpty() ? "(none)" : String.join(", ", toolNames));
+  }
+
+  @Tool(
+      name = "ListMcpServers",
+      description =
+          "List the MCP servers registered by this user (name, transport, URL, enabled, who it's"
+              + " shared with), plus any servers others have shared with this user or the current"
+              + " chat (name and transport only — connection details stay private to the owner).")
+  public String listMcpServers(final ToolContext context) {
+    final var ownerId = ToolContexts.require(context, ToolContexts.USER_ID);
+    final var chatId = ToolContexts.get(context, ToolContexts.CHAT_ID);
+
+    final var owned = repo.findByOwnerId(ownerId);
+    final var identifiers = shareIdentifiers(ownerId, chatId);
+    final var shared =
+        repo.findBySharedWithIn(identifiers).stream()
+            .filter(s -> !s.getOwnerId().equals(ownerId))
+            .toList();
+
+    if (owned.isEmpty() && shared.isEmpty()) {
+      return "No MCP servers registered or shared with you.";
+    }
+
+    final var sb = new StringBuilder();
+    if (!owned.isEmpty()) {
+      sb.append("Owned by you:\n");
+      for (final var s : owned) {
+        sb.append("- ")
+            .append(s.getName())
+            .append(" [")
+            .append(s.getTransport())
+            .append("] ")
+            .append(s.getUrl())
+            .append(s.isEnabled() ? "" : " (disabled)")
+            .append(
+                s.getSharedWith() == null || s.getSharedWith().isEmpty()
+                    ? ""
+                    : " (shared with: " + String.join(", ", s.getSharedWith()) + ")")
+            .append("\n");
+      }
+    }
+    if (!shared.isEmpty()) {
+      sb.append("Shared with you:\n");
+      for (final var s : shared) {
+        sb.append("- ")
+            .append(s.getName())
+            .append(" [")
+            .append(s.getTransport())
+            .append("] shared by ")
+            .append(s.getOwnerId())
+            .append(s.isEnabled() ? "" : " (disabled)")
+            .append("\n");
+      }
+    }
+    return sb.toString();
+  }
+
+  @Tool(
+      name = "ShareMcpServer",
+      description =
+          "Share a server you own with another Feishu user or group chat, identified by their"
+              + " open_id or chat_id. The recipient gains use of the server's tools; ownership"
+              + " (editing or removing the server, or sharing it further) stays with you.")
+  public String shareMcpServer(
+      @ToolParam(description = "Name of the MCP server to share") final String name,
+      @ToolParam(description = "Feishu open_id (user) or chat_id (group) to share with")
+          final String targetId,
+      final ToolContext context) {
+    final var ownerId = ToolContexts.require(context, ToolContexts.USER_ID);
+
+    if (name == null || name.isBlank()) {
+      return "Error: a server name is required.";
+    }
+    if (targetId == null || targetId.isBlank()) {
+      return "Error: a target open_id or chat_id is required.";
+    }
+    final var serverName = name.trim();
+    final var target = targetId.trim();
+
+    final var config = repo.findByOwnerIdAndName(ownerId, serverName).orElse(null);
+    if (config == null) {
+      return "Error: no MCP server named '"
+          + serverName
+          + "' is registered to you. Only servers you own can be shared.";
+    }
+    var sharedWith = config.getSharedWith();
+    if (sharedWith == null) {
+      sharedWith = new ArrayList<String>();
+      config.setSharedWith(sharedWith);
+    }
+    if (sharedWith.contains(target)) {
+      return "'" + serverName + "' is already shared with " + target + ".";
+    }
+    sharedWith.add(target);
+    repo.save(config);
+    log.info("Shared MCP server '{}' with {} by owner {}", serverName, target, ownerId);
+    return "Successfully shared '" + serverName + "' with " + target + ".";
+  }
+
+  @Tool(
+      name = "UnshareMcpServer",
+      description = "Revoke a previously granted share of a server you own.")
+  public String unshareMcpServer(
+      @ToolParam(description = "Name of the MCP server") final String name,
+      @ToolParam(description = "Feishu open_id or chat_id to revoke access from")
+          final String targetId,
+      final ToolContext context) {
+    final var ownerId = ToolContexts.require(context, ToolContexts.USER_ID);
+
+    if (name == null || name.isBlank()) {
+      return "Error: a server name is required.";
+    }
+    if (targetId == null || targetId.isBlank()) {
+      return "Error: a target open_id or chat_id is required.";
+    }
+    final var serverName = name.trim();
+    final var target = targetId.trim();
+
+    final var config = repo.findByOwnerIdAndName(ownerId, serverName).orElse(null);
+    if (config == null) {
+      return "Error: no MCP server named '"
+          + serverName
+          + "' is registered to you. Only servers you own can be unshared.";
+    }
+    if (config.getSharedWith() == null || !config.getSharedWith().remove(target)) {
+      return "'" + serverName + "' was not shared with " + target + ".";
+    }
+    repo.save(config);
+    log.info("Unshared MCP server '{}' from {} by owner {}", serverName, target, ownerId);
+    return "Successfully revoked access to '" + serverName + "' from " + target + ".";
+  }
+
+  private static String blankToNull(final String value) {
+    return value == null || value.isBlank() ? null : value.trim();
+  }
+
+  private List<String> shareIdentifiers(final String ownerId, final String chatId) {
+    final var identifiers = new ArrayList<String>();
+    identifiers.add(ownerId);
+    if (chatId != null && !chatId.isBlank()) {
+      identifiers.add(chatId);
+    }
+    return identifiers;
+  }
+
+  @Tool(
+      name = "RemoveMcpServer",
+      description = "Remove a previously registered MCP server by name.")
+  public String removeMcpServer(
+      @ToolParam(description = "Name of the MCP server to remove") final String name,
+      final ToolContext context) {
+    final var ownerId = ToolContexts.require(context, ToolContexts.USER_ID);
+
+    if (name == null || name.isBlank()) {
+      return "Error: a server name is required.";
+    }
+    final var serverName = name.trim();
+    if (!repo.existsByOwnerIdAndName(ownerId, serverName)) {
+      return "Error: no MCP server named '" + serverName + "' is registered.";
+    }
+    repo.deleteByOwnerIdAndName(ownerId, serverName);
+    log.info("Removed MCP server '{}' for user {}", serverName, ownerId);
+    return "Successfully removed MCP server '" + serverName + "'.";
+  }
+}

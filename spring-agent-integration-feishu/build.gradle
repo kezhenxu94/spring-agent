@@ -1,0 +1,17 @@
+plugins {
+  id 'springagent.java-library-conventions'
+}
+
+dependencies {
+  implementation project(':spring-agent-core')
+  implementation libs.larksuite.oapi
+
+  implementation 'org.springframework.boot:spring-boot-starter'
+  implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+  implementation 'org.springframework.boot:spring-boot-starter-restclient'
+  implementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
+  implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'
+  implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+  implementation libs.spring.ai.agent.utils
+  implementation libs.guava
+}

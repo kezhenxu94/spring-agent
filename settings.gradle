@@ -20,4 +20,6 @@ dependencyResolutionManagement {
 
 rootProject.name = 'spring-agent'
 
-include 'spring-agent-cli'
+include 'spring-agent-core'
+include 'spring-agent-integration-feishu'
+include 'spring-agent-app'
