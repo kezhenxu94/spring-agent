@@ -233,8 +233,8 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
             .toolCallbacks(composition.toolCallbacks())
             .toolContext(
                 Map.of(
-                    ToolContexts.KEY_MESSAGE,
-                    message,
+                    ToolContexts.KEY_ROOT_MESSAGE_ID,
+                    rootId,
                     ToolContexts.KEY_USER_ID,
                     userOpenId,
                     ToolContexts.KEY_CHAT_ID,

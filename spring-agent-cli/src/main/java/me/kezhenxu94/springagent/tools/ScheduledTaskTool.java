@@ -52,11 +52,10 @@ cronExpression 与 scheduledAt 只能提供一个。
           final String expiresAt,
       final ToolContext context) {
 
-    final var message = ToolContexts.require(context, ToolContexts.MESSAGE);
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
-
-    final var rootMessageId =
-        !Strings.isNullOrEmpty(message.getRootId()) ? message.getRootId() : message.getMessageId();
+    final var rootMessageId = ToolContexts.require(context, ToolContexts.ROOT_MESSAGE_ID);
+    final var chatId = ToolContexts.get(context, ToolContexts.CHAT_ID);
+    final var chatType = ToolContexts.get(context, ToolContexts.CHAT_TYPE);
 
     final var hasCron = !Strings.isNullOrEmpty(cronExpression);
     final var hasScheduledAt = !Strings.isNullOrEmpty(scheduledAt);
@@ -98,8 +97,8 @@ cronExpression 与 scheduledAt 只能提供一个。
           scheduledTaskRepo.save(
               ScheduledTask.builder()
                   .userId(userId)
-                  .chatId(message.getChatId())
-                  .chatType(message.getChatType())
+                  .chatId(chatId)
+                  .chatType(chatType)
                   .rootMessageId(rootMessageId)
                   .taskText(taskText)
                   .cronExpression(validated)
@@ -132,8 +131,8 @@ cronExpression 与 scheduledAt 只能提供一个。
           scheduledTaskRepo.save(
               ScheduledTask.builder()
                   .userId(userId)
-                  .chatId(message.getChatId())
-                  .chatType(message.getChatType())
+                  .chatId(chatId)
+                  .chatType(chatType)
                   .rootMessageId(rootMessageId)
                   .taskText(taskText)
                   .scheduledAt(fireAt)

@@ -1,7 +1,6 @@
 package me.kezhenxu94.springagent.tools;
 
 import com.google.common.base.Strings;
-import com.lark.oapi.service.im.v1.model.EventMessage;
 import lombok.experimental.UtilityClass;
 import org.springframework.ai.chat.model.ToolContext;
 
@@ -12,15 +11,20 @@ public class ToolContexts {
   public static final String KEY_USER_ID = "userId";
   public static final String KEY_CHAT_ID = "chatId";
   public static final String KEY_CHAT_TYPE = "chatType";
-  public static final String KEY_MESSAGE = "message";
+  public static final String KEY_ROOT_MESSAGE_ID = "rootMessageId";
   public static final String KEY_REPLY_MESSAGE_ID = "replyMessageId";
 
   public static final ToolContextKey<String> USER_ID = new Key<>(KEY_USER_ID, String.class);
   public static final ToolContextKey<String> CHAT_ID = new Key<>(KEY_CHAT_ID, String.class);
   public static final ToolContextKey<String> CHAT_TYPE = new Key<>(KEY_CHAT_TYPE, String.class);
-  // TODO move to Feishu integration module later
-  public static final ToolContextKey<EventMessage> MESSAGE =
-      new Key<>(KEY_MESSAGE, EventMessage.class);
+
+  /**
+   * Identifies the conversation thread the request belongs to, as an opaque string minted by
+   * whichever integration received it. Core never interprets its contents.
+   */
+  public static final ToolContextKey<String> ROOT_MESSAGE_ID =
+      new Key<>(KEY_ROOT_MESSAGE_ID, String.class);
+
   public static final ToolContextKey<String> REPLY_MESSAGE_ID =
       new Key<>(KEY_REPLY_MESSAGE_ID, String.class);
 
