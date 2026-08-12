@@ -37,6 +37,9 @@ dependencies {
   testImplementation('org.springframework.ai:spring-ai-model-chat-memory-repository-jdbc') {
     exclude group: 'com.zaxxer', module: 'HikariCP'
   }
+  // Likewise for the vector store tests, which assert which store got wired.
+  testImplementation 'org.springframework.ai:spring-ai-vector-store'
+  testImplementation 'org.springframework.ai:spring-ai-milvus-store'
 
   testImplementation libs.testcontainers.core
   testImplementation libs.testcontainers.mongodb

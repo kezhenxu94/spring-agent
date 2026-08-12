@@ -1,2 +1,3 @@
 me.kezhenxu94.springagent.core.config.SpringAgentCoreAutoConfiguration
 me.kezhenxu94.springagent.core.config.ChatMemoryConfiguration
+me.kezhenxu94.springagent.core.config.VectorStoreConfiguration

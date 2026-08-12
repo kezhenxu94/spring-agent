@@ -10,15 +10,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 
-/** Chat memory stays on MongoDB unless app.ai.chat-memory.type says otherwise. */
-@SpringBootTest
-class ChatMemoryDefaultsTest extends AbstractIntegrationTest {
+/**
+ * Selecting mongodb swaps the whole conversation store, leaving the JDBC one out of the context.
+ */
+@SpringBootTest(properties = "app.ai.chat-memory.type=mongodb")
+class ChatMemoryMongoTest extends AbstractIntegrationTest {
 
   @Autowired ApplicationContext context;
 
   @Test
   @DisplayName("exactly one chat memory repository is registered, backed by MongoDB")
-  void mongoIsTheDefault() {
+  void mongoBacksTheChatMemory() {
     assertThat(context.getBeansOfType(ChatMemoryRepository.class))
         .hasSize(1)
         .allSatisfy(

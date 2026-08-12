@@ -40,7 +40,14 @@ spring:
           base-url: ${TRANSCRIPTION_OPENAI_BASE_URL}
           api-key: ${TRANSCRIPTION_OPENAI_API_KEY}
     vectorstore:
+      # Which vector store backs the tool search index. `simple` keeps that index in the heap and
+      # mirrors it to a local JSON file (app.ai.vector-store.file) — no server to run, at the cost
+      # of a linear scan per search and an index private to each replica. `milvus` needs a reachable
+      # Milvus and is what a multi-replica deployment wants. Spring AI reads this property itself;
+      # each vector store auto-configuration backs off unless it names the one selected here.
+      type: ${VECTORSTORE_TYPE:simple}
       milvus:
+        # Only read when type is milvus.
         client:
           host: ${MILVUS_HOST:spring-agent-milvus-milvus.milvus}
           port: ${MILVUS_PORT:19530}
@@ -153,6 +160,11 @@ app:
         username: ${CHAT_MEMORY_JDBC_USERNAME:}
         password: ${CHAT_MEMORY_JDBC_PASSWORD:}
         initialize-schema: true
+    vectorstore:
+      # Only read when spring.ai.vectorstore.type is simple. Written on a graceful shutdown and
+      # reloaded on startup; if it is missing or unreadable the index is simply rebuilt, at the
+      # cost of re-embedding the tool descriptions.
+      file: ${VECTORSTORE_FILE:data/vectorstore.json}
     tools:
       shell-pod:
         # The bot's ServiceAccount needs get/list/create/update/patch/delete on

@@ -27,7 +27,11 @@ dependencies {
   implementation libs.sqlite.jdbc
   implementation 'org.springframework.ai:spring-ai-starter-mcp-client'
   implementation 'org.springframework.ai:spring-ai-starter-tool-search-advisor'
+  // Vector store backends, selected at runtime by spring.ai.vectorstore.type. Milvus keeps Spring
+  // AI's own auto-configuration, which already backs off when the property names another store;
+  // the simple one is wired by VectorStoreConfiguration.
   implementation 'org.springframework.ai:spring-ai-starter-vector-store-milvus'
+  implementation 'org.springframework.ai:spring-ai-vector-store'
   implementation 'io.fabric8:kubernetes-httpclient-jdk'
   implementation(libs.fabric8.kubernetes.client) {
     exclude group: 'io.fabric8', module: 'kubernetes-httpclient-okhttp'

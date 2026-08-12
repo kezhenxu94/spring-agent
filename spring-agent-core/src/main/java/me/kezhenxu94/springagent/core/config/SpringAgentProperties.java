@@ -15,6 +15,7 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
       Set<String> admins,
       Map<String, ModelPricing> modelPricing,
       ChatMemory chatMemory,
+      VectorStore vectorstore,
       String systemPrompt) {
     public Ai {
       if (systemPrompt == null || systemPrompt.isBlank()) {
@@ -29,6 +30,9 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
       if (chatMemory == null) {
         chatMemory = new ChatMemory(null, 0, null);
       }
+      if (vectorstore == null) {
+        vectorstore = new VectorStore(null);
+      }
     }
 
     public record BotInterceptor(int guideThreshold) {}
@@ -38,7 +42,7 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
      *
      * @param type which backend stores the conversations
      * @param maxMessages size of the message window replayed on each turn
-     * @param sqlite settings for {@link Type#SQLITE}, ignored for the other types
+     * @param jdbc settings for {@link Type#JDBC}, ignored for the other types
      */
     public record ChatMemory(Type type, int maxMessages, Jdbc jdbc) {
       public ChatMemory {
@@ -76,6 +80,26 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
           if (initializeSchema == null) {
             initializeSchema = true;
           }
+        }
+      }
+    }
+
+    /**
+     * Settings for the vector store backing the tool search index.
+     *
+     * <p>Which store that is comes from Spring AI's own {@code spring.ai.vectorstore.type}, not
+     * from here: its vector store auto-configurations already condition on that property, so a
+     * second selector of ours would only have to be kept in sync with it. What is left is the one
+     * setting Spring AI has no property for, because it has no auto-configuration for the simple
+     * store.
+     *
+     * @param file where {@code VectorStoreConfiguration} mirrors the in-memory index; ignored by
+     *     the other backends, which keep their own storage
+     */
+    public record VectorStore(String file) {
+      public VectorStore {
+        if (file == null || file.isBlank()) {
+          file = "data/vectorstore.json";
         }
       }
     }
