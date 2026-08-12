@@ -9,6 +9,7 @@ import com.lark.oapi.service.im.v1.model.P2MessageReadV1;
 import com.lark.oapi.ws.Client;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessage;
 import me.kezhenxu94.springagent.integration.feishu.handler.FeishuMessageReceiveHandler;
 import org.springframework.context.annotation.Bean;
@@ -25,6 +26,7 @@ public class FeishuEventHandler {
   final FeishuProperties feishuProperties;
   final FeishuMessageReceiveHandler feishuMessageReceiveHandler;
   final MongoTemplate mongoTemplate;
+  final SpringAgent springAgent;
 
   @Bean
   public EventDispatcher eventDispatcher() {
@@ -50,6 +52,7 @@ public class FeishuEventHandler {
                       new Query(Criteria.where("id").is(messageID)),
                       new Update().set("status", FeishuMessage.Status.CANCELLED),
                       FeishuMessage.class);
+                  springAgent.cancel(messageID);
                 }
                 return new P2CardActionTriggerResponse();
               }

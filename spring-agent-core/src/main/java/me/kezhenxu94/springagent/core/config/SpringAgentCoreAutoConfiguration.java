@@ -32,9 +32,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.data.mongodb.config.EnableMongoAuditing;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.messaging.DefaultMessageListenerContainer;
-import org.springframework.data.mongodb.core.messaging.MessageListenerContainer;
 import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.validation.annotation.Validated;
@@ -164,17 +161,6 @@ public class SpringAgentCoreAutoConfiguration {
     scheduler.setPoolSize(4);
     scheduler.setThreadNamePrefix("scheduled-task-");
     return scheduler;
-  }
-
-  @Bean
-  @ConditionalOnMissingBean
-  MessageListenerContainer mlc(final MongoTemplate template) {
-    return new DefaultMessageListenerContainer(template) {
-      @Override
-      public boolean isAutoStartup() {
-        return true;
-      }
-    };
   }
 
   @Bean(destroyMethod = "close")

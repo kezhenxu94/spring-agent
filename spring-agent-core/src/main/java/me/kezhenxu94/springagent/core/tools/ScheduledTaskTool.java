@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
+import me.kezhenxu94.springagent.core.scheduling.ScheduledTaskService;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -23,6 +24,7 @@ import org.springframework.stereotype.Component;
 public class ScheduledTaskTool {
 
   final ScheduledTaskRepo scheduledTaskRepo;
+  final ScheduledTaskService scheduledTaskService;
 
   @Tool(
       name = "CreateScheduledTask",
@@ -105,6 +107,7 @@ cronExpression 与 scheduledAt 只能提供一个。
                   .expiresAt(resolvedExpiresAt)
                   .status(ScheduledTask.Status.ACTIVE)
                   .build());
+      scheduledTaskService.schedule(task);
       final var overrideNote =
           validated.equals(cronExpression) ? "" : "（注意：触发间隔已调整为最小允许值 " + validated + "）";
       return "已创建循环任务："
@@ -139,6 +142,7 @@ cronExpression 与 scheduledAt 只能提供一个。
                   .expiresAt(resolvedExpiresAt)
                   .status(ScheduledTask.Status.ACTIVE)
                   .build());
+      scheduledTaskService.schedule(task);
       return "已创建一次性任务："
           + taskText
           + "，触发时间 "
@@ -190,6 +194,7 @@ cronExpression 与 scheduledAt 只能提供一个。
       return "任务 " + taskId + " 已处于 " + task.getStatus() + " 状态。";
     }
     scheduledTaskRepo.save(task.toBuilder().status(ScheduledTask.Status.CANCELLED).build());
+    scheduledTaskService.unschedule(taskId);
     return "已取消任务 " + taskId;
   }
 

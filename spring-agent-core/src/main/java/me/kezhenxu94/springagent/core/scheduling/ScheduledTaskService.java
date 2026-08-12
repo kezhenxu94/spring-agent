@@ -1,7 +1,5 @@
 package me.kezhenxu94.springagent.core.scheduling;
 
-import com.mongodb.client.model.changestream.ChangeStreamDocument;
-import com.mongodb.client.model.changestream.FullDocument;
 import jakarta.annotation.PostConstruct;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,11 +21,6 @@ import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.aggregation.Aggregation;
-import org.springframework.data.mongodb.core.mapping.Document;
-import org.springframework.data.mongodb.core.messaging.ChangeStreamRequest;
-import org.springframework.data.mongodb.core.messaging.MessageListener;
-import org.springframework.data.mongodb.core.messaging.MessageListenerContainer;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
@@ -46,14 +39,12 @@ public class ScheduledTaskService {
   final SpringAgent springAgent;
   final ScheduledTaskRepo scheduledTaskRepo;
   final MongoTemplate mongoTemplate;
-  final MessageListenerContainer mongoListenerContainer;
   final AgentToolsProvider agentToolsProvider;
   final ApplicationEventPublisher eventPublisher;
 
   final ConcurrentMap<String, ScheduledFuture<?>> scheduledFutures = new ConcurrentHashMap<>();
 
   @PostConstruct
-  @SuppressWarnings("unchecked")
   public void init() {
     final var now = java.time.Instant.now();
     final var activeTasks = scheduledTaskRepo.findByStatus(ScheduledTask.Status.ACTIVE);
@@ -70,50 +61,15 @@ public class ScheduledTaskService {
             schedule(task);
           }
         });
+  }
 
-    final var newTaskListener =
-        (MessageListener<ChangeStreamDocument<Document>, ? super ScheduledTask>)
-            event -> {
-              final var task = event.getBody();
-              if (task != null && !scheduledFutures.containsKey(task.getId())) {
-                log.info("New scheduled task detected via change stream: {}", task.getId());
-                schedule(task);
-              }
-            };
-    mongoListenerContainer.register(
-        ChangeStreamRequest.builder()
-            .collection(ScheduledTask.COLLECTION_NAME)
-            .publishTo(newTaskListener)
-            .filter(
-                Aggregation.newAggregation(
-                    Aggregation.match(Criteria.where("status").is(ScheduledTask.Status.ACTIVE))))
-            .fullDocumentLookup(FullDocument.UPDATE_LOOKUP)
-            .build(),
-        ScheduledTask.class);
-
-    final var cancelListener =
-        (MessageListener<ChangeStreamDocument<Document>, ? super ScheduledTask>)
-            event -> {
-              final var task = event.getBody();
-              if (task != null) {
-                log.info("Scheduled task {} cancelled via change stream", task.getId());
-                final var future = scheduledFutures.remove(task.getId());
-                if (future != null) {
-                  future.cancel(false);
-                }
-                springAgent.cancel(task.getId());
-              }
-            };
-    mongoListenerContainer.register(
-        ChangeStreamRequest.builder()
-            .collection(ScheduledTask.COLLECTION_NAME)
-            .publishTo(cancelListener)
-            .filter(
-                Aggregation.newAggregation(
-                    Aggregation.match(Criteria.where("status").is(ScheduledTask.Status.CANCELLED))))
-            .fullDocumentLookup(FullDocument.UPDATE_LOOKUP)
-            .build(),
-        ScheduledTask.class);
+  /** Drops the task's schedule and aborts its run if it is currently firing. */
+  public void unschedule(final String taskId) {
+    final var future = scheduledFutures.remove(taskId);
+    if (future != null) {
+      future.cancel(false);
+    }
+    springAgent.cancel(taskId);
   }
 
   public void schedule(final ScheduledTask task) {
@@ -150,6 +106,7 @@ public class ScheduledTaskService {
           new Query(Criteria.where("id").is(task.getId())),
           new Update().set("status", ScheduledTask.Status.CANCELLED),
           ScheduledTask.class);
+      unschedule(task.getId());
       return;
     }
     log.info("Firing scheduled task {}: {}", task.getId(), task.getTaskText());

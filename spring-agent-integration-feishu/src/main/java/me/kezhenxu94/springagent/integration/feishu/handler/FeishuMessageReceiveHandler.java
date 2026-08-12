@@ -10,9 +10,6 @@ import com.lark.oapi.service.im.v1.model.GetMessageResourceReq;
 import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1;
 import com.lark.oapi.service.im.v1.model.ReplyMessageReq;
 import com.lark.oapi.service.im.v1.model.ReplyMessageReqBody;
-import com.mongodb.client.model.changestream.ChangeStreamDocument;
-import com.mongodb.client.model.changestream.FullDocument;
-import jakarta.annotation.PostConstruct;
 import java.io.InterruptedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -49,11 +46,6 @@ import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.aggregation.Aggregation;
-import org.springframework.data.mongodb.core.mapping.Document;
-import org.springframework.data.mongodb.core.messaging.ChangeStreamRequest;
-import org.springframework.data.mongodb.core.messaging.MessageListener;
-import org.springframework.data.mongodb.core.messaging.MessageListenerContainer;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
@@ -74,7 +66,6 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
 
   final SpringAgent springAgent;
   final RestTemplate restTemplate;
-  final MessageListenerContainer mongoListenerContainer;
   final MongoTemplate mongoTemplate;
   final AgentToolsProvider agentToolsProvider;
   final UserWorkspaceFactory userWorkspaceFactory;
@@ -82,29 +73,6 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
 
   @Value("classpath:/feishu/reply-card.json")
   final Resource feishuReplyCard;
-
-  @PostConstruct
-  @SuppressWarnings("unchecked")
-  public void init() {
-    final var listener =
-        (MessageListener<ChangeStreamDocument<Document>, ? super FeishuMessage>)
-            (event) -> {
-              final var message = event.getBody();
-              log.info("Message {} is cancelled, removing from processing", message.getId());
-              springAgent.cancel(message.getId());
-            };
-
-    final var request =
-        ChangeStreamRequest.builder()
-            .collection(FeishuMessage.COLLECTION_NAME)
-            .publishTo(listener)
-            .filter(
-                Aggregation.newAggregation(
-                    Aggregation.match(Criteria.where("status").is(FeishuMessage.Status.CANCELLED))))
-            .fullDocumentLookup(FullDocument.UPDATE_LOOKUP)
-            .build();
-    mongoListenerContainer.register(request, FeishuMessage.class);
-  }
 
   @Override
   public void handle(final P2MessageReceiveV1 event) throws Exception {
