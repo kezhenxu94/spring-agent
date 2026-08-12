@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.core.config;
 
+import me.kezhenxu94.springagent.core.aot.PersistenceRuntimeHints;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.core.dao.repo.jpa.JpaScheduledTaskRepo;
 import me.kezhenxu94.springagent.core.dao.repo.mongo.MongoScheduledTaskRepo;
@@ -7,6 +8,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
+import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.data.mongodb.config.EnableMongoAuditing;
 import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
@@ -45,6 +47,7 @@ public class PersistenceConfiguration {
       name = "type",
       havingValue = "jdbc",
       matchIfMissing = true)
+  @ImportRuntimeHints(PersistenceRuntimeHints.class)
   @EnableJpaRepositories(basePackageClasses = JpaScheduledTaskRepo.class)
   @EntityScan(basePackageClasses = McpServerConfig.class)
   public static class Jdbc {}

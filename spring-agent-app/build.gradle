@@ -2,7 +2,6 @@ plugins {
   alias(libs.plugins.spring.boot)
   alias(libs.plugins.spring.dependency.management)
   id 'springagent.java-common-conventions'
-  // Before springagent.native, whose bootBuildImage block overrides parts of this one.
   id 'springagent.docker'
   id 'springagent.native'
   id 'application'

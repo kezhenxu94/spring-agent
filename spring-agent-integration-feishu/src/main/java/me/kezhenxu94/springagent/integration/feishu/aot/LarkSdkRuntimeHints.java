@@ -184,6 +184,12 @@ public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
    * <p>{@code com.lark.oapi.event.model} is the event envelope {@code
    * EventDispatcher.doWithoutValidation} unwraps before dispatching to a handler. Failing that, the
    * websocket connects and then drops every inbound event with "handle message failed".
+   *
+   * <p>{@code com.lark.oapi.core.response} is what every outbound call goes through: {@code
+   * TokenManager} deserialises a {@code TenantAccessTokenResp} before the first request is even
+   * signed, and each reply comes back as a {@code BaseResponse} with an {@code Error} body. The whole
+   * package is seeded rather than the types a stack trace happened to name, because any call can be
+   * the one that reaches an unregistered one.
    */
   private static final List<String> INTERNAL_MODEL_SEEDS =
       List.of(
@@ -198,7 +204,19 @@ public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
           "com.lark.oapi.event.model.Header",
           "com.lark.oapi.event.model.Fuzzy",
           "com.lark.oapi.event.model.AppTicketEvent",
-          "com.lark.oapi.event.model.AppTicketEvent$AppTicketEventData");
+          "com.lark.oapi.event.model.AppTicketEvent$AppTicketEventData",
+          "com.lark.oapi.core.response.BaseResponse",
+          "com.lark.oapi.core.response.RawResponse",
+          "com.lark.oapi.core.response.Body",
+          "com.lark.oapi.core.response.EmptyData",
+          "com.lark.oapi.core.response.EventResp",
+          "com.lark.oapi.core.response.TenantAccessTokenResp",
+          "com.lark.oapi.core.response.AppAccessTokenResp",
+          "com.lark.oapi.core.response.error.Error",
+          "com.lark.oapi.core.response.error.ErrorDetail",
+          "com.lark.oapi.core.response.error.ErrorHelp",
+          "com.lark.oapi.core.response.error.ErrorFieldViolation",
+          "com.lark.oapi.core.response.error.ErrorPermissionViolation");
 
   /**
    * The websocket long-connection transport. Only two protobuf messages are generated; the rest of

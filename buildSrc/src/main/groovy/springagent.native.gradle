@@ -78,25 +78,14 @@ pluginManager.withPlugin('org.graalvm.buildtools.native') {
         buildArgs.add('-H:+AddAllCharsets')
         // sqlite-jdbc loads its bundled native library through System::load, which warns on every
         // startup otherwise. A build argument rather than a runtime flag, because a native binary is
-        // not a JVM launcher and has nowhere to accept --enable-native-access.
-        buildArgs.add('-H:EnableNativeAccess=ALL-UNNAMED')
+        // not a JVM launcher and has nowhere to accept this at startup.
+        //
+        // The stable spelling, not -H:EnableNativeAccess: the -H: form is experimental and makes
+        // native-image warn that it will need -H:+UnlockExperimentalVMOptions in future. The
+        // remaining experimental-option warnings in a build come from dependencies' own
+        // native-image.properties, not from here.
+        buildArgs.add('--enable-native-access=ALL-UNNAMED')
       }
     }
-  }
-
-  bootBuildImage {
-    // Reuses the builder from springagent.docker.gradle, which already carries the
-    // paketo-buildpacks/java-native-image buildpack; BP_NATIVE_IMAGE is deliberately not set,
-    // because the Spring-Boot-Native-Processed manifest attribute that the Boot plugin adds is
-    // what puts the buildpack into native mode.
-
-    // JAVA_TOOL_OPTIONS is a JVM launcher mechanism and module --add-opens has no meaning in a
-    // closed-world image, so the JVM image's flags are dropped rather than carried over. Filtered
-    // and re-set because `environment` is a MapProperty, which has no remove(); this is why
-    // springagent.docker must be applied before springagent.native.
-    environment.set(environment.get().findAll { it.key != "BPE_APPEND_JAVA_TOOL_OPTIONS" })
-
-    // Distinct tags so a native build never overwrites the JVM image's :latest.
-    tags = ["native", "${project.ext.gitSha}-native"].collect { "${imageName}:${it}" }
   }
 }
