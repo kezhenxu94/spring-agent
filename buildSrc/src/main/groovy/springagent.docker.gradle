@@ -2,9 +2,8 @@ bootBuildImage {
   imageName = "ghcr.io/kezhenxu94/spring-agent"
   tags = ["latest", project.ext.gitSha].collect { "${imageName}:${it}" }
 
-  // No --sun-misc-unsafe-memory-access here either: the option is JDK 24+, and this image runs on
-  // the Java 21 pinned below, where it is a fatal "Unrecognized option".
   environment["BPE_APPEND_JAVA_TOOL_OPTIONS"] = "\
+    --sun-misc-unsafe-memory-access=allow \
     --enable-native-access=ALL-UNNAMED \
     --add-opens=java.base/java.io=ALL-UNNAMED \
     --add-opens=java.base/java.lang=ALL-UNNAMED \
@@ -12,10 +11,12 @@ bootBuildImage {
     --add-opens=java.base/java.util=ALL-UNNAMED \
     --add-opens=java.base/sun.nio.ch=ALL-UNNAMED"
 
-  // Pinned rather than left to the buildpack's inference: the build JDK is a GraalVM 25 so that
-  // native-image is available, and this image must keep running on 21 regardless of what the build
-  // ran on.
-  environment["BP_JVM_VERSION"] = "21"
+  // Pinned rather than left to the buildpack's inference, which reads Build-Jdk-Spec from the jar
+  // and so would follow whatever the build happened to run on. 25 to match the build JDK and the
+  // native image, and because --sun-misc-unsafe-memory-access above only exists on JDK 24 and later.
+  // The bytecode stays at 21 (see options.release in springagent.java-common-conventions), so the
+  // artifact still runs on an older JVM — just not with these options.
+  environment["BP_JVM_VERSION"] = "25"
 
   builder = "paketobuildpacks/builder-jammy-full:latest"
   runImage = "paketobuildpacks/run-jammy-full:latest"

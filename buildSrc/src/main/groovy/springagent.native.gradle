@@ -96,10 +96,6 @@ pluginManager.withPlugin('org.graalvm.buildtools.native') {
     // springagent.docker must be applied before springagent.native.
     environment.set(environment.get().findAll { it.key != "BPE_APPEND_JAVA_TOOL_OPTIONS" })
 
-    // Overrides the JVM image's pin: the native buildpack uses the JDK's matching native-image,
-    // and Spring Boot 4 requires at least 25 for that.
-    environment["BP_JVM_VERSION"] = "25"
-
     // Distinct tags so a native build never overwrites the JVM image's :latest.
     tags = ["native", "${project.ext.gitSha}-native"].collect { "${imageName}:${it}" }
   }
