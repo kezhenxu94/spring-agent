@@ -1,14 +1,10 @@
 package me.kezhenxu94.springagent.service;
 
-import com.lark.oapi.Client;
-import com.lark.oapi.service.cardkit.v1.model.CreateCardReq;
-import com.lark.oapi.service.cardkit.v1.model.CreateCardReqBody;
-import com.lark.oapi.service.im.v1.model.ReplyMessageReq;
-import com.lark.oapi.service.im.v1.model.ReplyMessageReqBody;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.FullDocument;
 import jakarta.annotation.PostConstruct;
-import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -20,15 +16,12 @@ import me.kezhenxu94.springagent.agent.AgentRequest;
 import me.kezhenxu94.springagent.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.agent.AgentScenario;
 import me.kezhenxu94.springagent.agent.SpringAgent;
-import me.kezhenxu94.springagent.bot.configuration.SpringAgentProperties;
 import me.kezhenxu94.springagent.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.dao.repo.ScheduledTaskRepo;
-import me.kezhenxu94.springagent.handlers.FeishuCardUpdater;
 import me.kezhenxu94.springagent.tools.AgentToolsProvider;
 import me.kezhenxu94.springagent.tools.ToolContexts;
 import org.springframework.ai.chat.metadata.Usage;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.Resource;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -42,7 +35,6 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.SignalType;
-import tools.jackson.databind.json.JsonMapper;
 
 @Slf4j
 @Service
@@ -52,16 +44,11 @@ public class ScheduledTaskService {
   final ThreadPoolTaskScheduler taskScheduler;
 
   final SpringAgent springAgent;
-  final Client feishu;
   final ScheduledTaskRepo scheduledTaskRepo;
-  final JsonMapper om;
-  final SpringAgentProperties appConfiguration;
   final MongoTemplate mongoTemplate;
   final MessageListenerContainer mongoListenerContainer;
   final AgentToolsProvider agentToolsProvider;
-
-  @Value("classpath:/feishu/reply-card.json")
-  final Resource feishuReplyCard;
+  final ApplicationEventPublisher eventPublisher;
 
   final ConcurrentMap<String, ScheduledFuture<?>> scheduledFutures = new ConcurrentHashMap<>();
 
@@ -167,70 +154,18 @@ public class ScheduledTaskService {
     }
     log.info("Firing scheduled task {}: {}", task.getId(), task.getTaskText());
     try {
-      final var cardJson = feishuReplyCard.getContentAsString(StandardCharsets.UTF_8);
-      final var createCardResponse =
-          feishu
-              .cardkit()
-              .v1()
-              .card()
-              .create(
-                  CreateCardReq.newBuilder()
-                      .createCardReqBody(
-                          CreateCardReqBody.newBuilder().type("card_json").data(cardJson).build())
-                      .build());
+      // Synchronous by design: integrations attach their response listeners, todo handlers and
+      // tool-context entries to the event, and they are read back immediately below.
+      final var firingEvent = new ScheduledTaskFiringEvent(task);
+      eventPublisher.publishEvent(firingEvent);
 
-      if (createCardResponse.getCode() != 0) {
-        log.error(
-            "Failed to create card for scheduled task {}: {}",
-            task.getId(),
-            om.writeValueAsString(createCardResponse));
-        return;
-      }
-
-      final var cardId = createCardResponse.getData().getCardId();
-
-      final var sendCardResponse =
-          feishu
-              .im()
-              .v1()
-              .message()
-              .reply(
-                  ReplyMessageReq.newBuilder()
-                      .messageId(task.getRootMessageId())
-                      .replyMessageReqBody(
-                          ReplyMessageReqBody.newBuilder()
-                              .msgType("interactive")
-                              .content(
-                                  String.format(
-                                      """
-                                      {
-                                        "type": "card",
-                                        "data": {
-                                          "card_id": "%s"
-                                        }
-                                      }
-                                      """,
-                                      cardId))
-                              .build())
-                      .build());
-
-      if (sendCardResponse.getCode() != 0) {
-        log.error(
-            "Failed to send card for scheduled task {}: {}",
-            task.getId(),
-            om.writeValueAsString(sendCardResponse));
-        return;
-      }
-
-      final var cardUpdater =
-          new FeishuCardUpdater(feishu, om, cardId, appConfiguration.ai().modelPricing());
       final var composition =
           agentToolsProvider.compose(
               task.getUserId(),
               task.getChatId(),
               Objects.toString(task.getChatType(), "p2p"),
               AgentScenario.SCHEDULED_TASK,
-              cardUpdater);
+              firingEvent.todoEventHandler());
       final var promptVariables =
           Map.<String, Object>of(
               "chatId",
@@ -258,31 +193,35 @@ public class ScheduledTaskService {
                   spec -> spec.text("【定时任务触发】请直接执行以下任务，不要创建新的定时任务：\n" + task.getTaskText()))
               .tools(composition.tools())
               .toolCallbacks(composition.toolCallbacks())
-              .toolContext(
-                  Map.of(
-                      ToolContexts.KEY_USER_ID,
-                      task.getUserId(),
-                      ToolContexts.KEY_CHAT_ID,
-                      Objects.toString(task.getChatId(), ""),
-                      ToolContexts.KEY_CHAT_TYPE,
-                      Objects.toString(task.getChatType(), "p2p"),
-                      ToolContexts.KEY_REPLY_MESSAGE_ID,
-                      task.getRootMessageId(),
-                      FeishuCardUpdater.TOOL_CONTEXT_KEY.key(),
-                      cardUpdater))
+              .toolContext(toolContextFor(task, firingEvent))
               .conversationId(task.getRootMessageId())
               .memoriesRootDirectory(composition.memoriesRootDirectory())
               .conversationMemory(AgentScenario.SCHEDULED_TASK.isConversationMemory())
               .requestId(task.getId())
               .build();
 
-      final var lifecycleListener =
-          new TaskLifecycleListener(task, isCron, composition.agentTools());
-      springAgent.stream(agentRequest, cardUpdater, lifecycleListener).subscribe();
+      final var listeners = new ArrayList<>(firingEvent.responseListeners());
+      listeners.add(new TaskLifecycleListener(task, isCron, composition.agentTools()));
+      springAgent.stream(agentRequest, listeners.toArray(new AgentResponseListener[0])).subscribe();
 
     } catch (Exception e) {
       log.error("Failed to fire scheduled task {}", task.getId(), e);
     }
+  }
+
+  /**
+   * The task's own identity plus whatever the firing event's listeners contributed. Task values win
+   * on conflict, so an integration cannot overwrite the identity core scheduled the run under.
+   */
+  private static Map<String, Object> toolContextFor(
+      final ScheduledTask task, final ScheduledTaskFiringEvent firingEvent) {
+    final var toolContext = new LinkedHashMap<String, Object>(firingEvent.toolContext());
+    toolContext.put(ToolContexts.KEY_USER_ID, task.getUserId());
+    toolContext.put(ToolContexts.KEY_CHAT_ID, Objects.toString(task.getChatId(), ""));
+    toolContext.put(ToolContexts.KEY_CHAT_TYPE, Objects.toString(task.getChatType(), "p2p"));
+    toolContext.put(ToolContexts.KEY_ROOT_MESSAGE_ID, task.getRootMessageId());
+    toolContext.put(ToolContexts.KEY_REPLY_MESSAGE_ID, task.getRootMessageId());
+    return toolContext;
   }
 
   @RequiredArgsConstructor
