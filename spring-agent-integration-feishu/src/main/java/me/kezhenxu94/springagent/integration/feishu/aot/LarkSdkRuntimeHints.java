@@ -190,6 +190,18 @@ public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
    * signed, and each reply comes back as a {@code BaseResponse} with an {@code Error} body. The whole
    * package is seeded rather than the types a stack trace happened to name, because any call can be
    * the one that reaches an unregistered one.
+   *
+   * <p>{@code com.lark.oapi.core.request} is the other half of that exchange: the credential bodies
+   * the token endpoints receive, picked at runtime by {@code Config.isMarketPlaceApp()} and by the
+   * app-ticket resend, so nothing here names them. {@code ReqTranslator} decides from {@code
+   * getDeclaredFields()} that they carry no {@code @Body}/{@code @Path}/{@code @Query} and passes
+   * the object itself as the body, which Gson then reads by field as well — an unregistered one has
+   * no fields either way, so it serialises to an empty JSON object and comes back as "invalid
+   * param" rather than failing anywhere near the missing registration. Only these five, not the
+   * package: {@code
+   * FormData} and {@code FormDataFile} are read through their getters by {@code OkHttpTransport},
+   * {@code RequestOptions} and {@code EventReq} never reach Gson, and {@code RawRequest} holds a
+   * {@code Config}, which would pull the shaded HTTP client into the walk.
    */
   private static final List<String> INTERNAL_MODEL_SEEDS =
       List.of(
@@ -216,7 +228,12 @@ public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
           "com.lark.oapi.core.response.error.ErrorDetail",
           "com.lark.oapi.core.response.error.ErrorHelp",
           "com.lark.oapi.core.response.error.ErrorFieldViolation",
-          "com.lark.oapi.core.response.error.ErrorPermissionViolation");
+          "com.lark.oapi.core.response.error.ErrorPermissionViolation",
+          "com.lark.oapi.core.request.SelfBuiltAppAccessTokenReq",
+          "com.lark.oapi.core.request.SelfBuiltTenantAccessTokenReq",
+          "com.lark.oapi.core.request.MarketplaceAppAccessTokenReq",
+          "com.lark.oapi.core.request.MarketplaceTenantAccessTokenReq",
+          "com.lark.oapi.core.request.ResendAppTicketReq");
 
   /**
    * The websocket long-connection transport. Only two protobuf messages are generated; the rest of
