@@ -30,8 +30,11 @@ public class FeishuScheduledTaskListener {
   final JsonMapper om;
   final SpringAgentProperties appConfiguration;
 
+  // Not final, matching FeishuTools#feishuReplyCard: @Value on a field is an injection point in its
+  // own right, and AOT generates a plain field assignment for it, which cannot target a final field
+  // the way the JVM's reflective injection can.
   @Value("classpath:/feishu/reply-card.json")
-  final Resource feishuReplyCard;
+  Resource feishuReplyCard;
 
   @EventListener
   public void onScheduledTaskFiring(final ScheduledTaskFiringEvent event) {

@@ -36,8 +36,11 @@ public class PublishFileTool {
   private final UserWorkspaceFactory userWorkspaceFactory;
   private final PublishedResourceRepo publishedResourceRepo;
 
+  // Not final, matching FeishuTools#feishuReplyCard: @Value on a field is an injection point in its
+  // own right, and AOT generates a plain field assignment for it, which cannot target a final field
+  // the way the JVM's reflective injection can.
   @Value("${share.base-url}")
-  final String shareBaseUrl;
+  String shareBaseUrl;
 
   @Tool(
       name = "PublishFile",

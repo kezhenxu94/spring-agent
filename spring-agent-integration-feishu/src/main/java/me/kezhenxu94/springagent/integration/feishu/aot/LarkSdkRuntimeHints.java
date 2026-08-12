@@ -1,0 +1,327 @@
+package me.kezhenxu94.springagent.integration.feishu.aot;
+
+import com.google.gson.annotations.JsonAdapter;
+import com.lark.oapi.event.cardcallback.model.P2CardActionTrigger;
+import com.lark.oapi.event.cardcallback.model.P2CardActionTriggerResponse;
+import com.lark.oapi.service.cardkit.v1.model.ContentCardElementReq;
+import com.lark.oapi.service.cardkit.v1.model.ContentCardElementReqBody;
+import com.lark.oapi.service.cardkit.v1.model.CreateCardReq;
+import com.lark.oapi.service.cardkit.v1.model.CreateCardReqBody;
+import com.lark.oapi.service.cardkit.v1.model.DeleteCardElementReq;
+import com.lark.oapi.service.cardkit.v1.model.DeleteCardElementReqBody;
+import com.lark.oapi.service.cardkit.v1.model.SettingsCardReq;
+import com.lark.oapi.service.cardkit.v1.model.SettingsCardReqBody;
+import com.lark.oapi.service.docx.v1.model.BatchDeleteDocumentBlockChildrenReq;
+import com.lark.oapi.service.docx.v1.model.BatchDeleteDocumentBlockChildrenReqBody;
+import com.lark.oapi.service.docx.v1.model.BatchUpdateDocumentBlockReq;
+import com.lark.oapi.service.docx.v1.model.BatchUpdateDocumentBlockReqBody;
+import com.lark.oapi.service.docx.v1.model.Block;
+import com.lark.oapi.service.docx.v1.model.ConvertDocumentReq;
+import com.lark.oapi.service.docx.v1.model.ConvertDocumentReqBody;
+import com.lark.oapi.service.docx.v1.model.CreateDocumentBlockChildrenReq;
+import com.lark.oapi.service.docx.v1.model.CreateDocumentBlockChildrenReqBody;
+import com.lark.oapi.service.docx.v1.model.CreateDocumentBlockDescendantReq;
+import com.lark.oapi.service.docx.v1.model.CreateDocumentBlockDescendantReqBody;
+import com.lark.oapi.service.docx.v1.model.CreateDocumentReq;
+import com.lark.oapi.service.docx.v1.model.CreateDocumentReqBody;
+import com.lark.oapi.service.docx.v1.model.Document;
+import com.lark.oapi.service.docx.v1.model.GetDocumentBlockChildrenReq;
+import com.lark.oapi.service.docx.v1.model.GetDocumentBlockReq;
+import com.lark.oapi.service.docx.v1.model.GetDocumentReq;
+import com.lark.oapi.service.docx.v1.model.ListDocumentBlockReq;
+import com.lark.oapi.service.docx.v1.model.PatchDocumentBlockReq;
+import com.lark.oapi.service.docx.v1.model.RawContentDocumentReq;
+import com.lark.oapi.service.docx.v1.model.UpdateBlockRequest;
+import com.lark.oapi.service.drive.v1.model.BaseMember;
+import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberReq;
+import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberReqBody;
+import com.lark.oapi.service.drive.v1.model.DownloadFileReq;
+import com.lark.oapi.service.drive.v1.model.ListFileReq;
+import com.lark.oapi.service.drive.v1.model.ListFileResp;
+import com.lark.oapi.service.drive.v1.model.UploadAllMediaReq;
+import com.lark.oapi.service.drive.v1.model.UploadAllMediaReqBody;
+import com.lark.oapi.service.im.v1.model.CreateFileReq;
+import com.lark.oapi.service.im.v1.model.CreateFileReqBody;
+import com.lark.oapi.service.im.v1.model.CreateImageReq;
+import com.lark.oapi.service.im.v1.model.CreateImageReqBody;
+import com.lark.oapi.service.im.v1.model.CreateMessageReq;
+import com.lark.oapi.service.im.v1.model.CreateMessageReqBody;
+import com.lark.oapi.service.im.v1.model.EventMessage;
+import com.lark.oapi.service.im.v1.model.GetMessageResourceReq;
+import com.lark.oapi.service.im.v1.model.GetMessageResp;
+import com.lark.oapi.service.im.v1.model.ListMessageResp;
+import com.lark.oapi.service.im.v1.model.P2MessageReadV1;
+import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1;
+import com.lark.oapi.service.im.v1.model.ReplyMessageReq;
+import com.lark.oapi.service.im.v1.model.ReplyMessageReqBody;
+import com.lark.oapi.service.sheets.v3.model.CreateSpreadsheetReq;
+import com.lark.oapi.service.sheets.v3.model.QuerySpreadsheetSheetReq;
+import com.lark.oapi.service.sheets.v3.model.Spreadsheet;
+import com.lark.oapi.service.wiki.v2.model.GetNodeSpaceReq;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.util.ArrayDeque;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import org.springframework.aot.hint.MemberCategory;
+import org.springframework.aot.hint.RuntimeHints;
+import org.springframework.aot.hint.RuntimeHintsRegistrar;
+
+/**
+ * Reflection hints for the Feishu SDK, which binds its whole model layer with Gson and ships no
+ * reachability metadata of its own.
+ *
+ * <p>The SDK jar holds some 19,000 classes, 15,000 of them models for services this application
+ * never calls, so registering by package would bloat the image and its build for no benefit.
+ * Instead this seeds from the model types this module names directly and walks their field types
+ * transitively, bounded to the SDK's own package, which is exactly the set Gson can reach. Adding a
+ * new endpoint extends the closure automatically as soon as its request or response type is
+ * referenced here — no generated metadata to regenerate.
+ *
+ * <p>Imported from {@code FeishuAutoConfiguration} rather than registered globally, so an
+ * application that switches the Feishu integration off at build time does not carry the closure.
+ */
+public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
+
+  private static final String SDK_PACKAGE = "com.lark.oapi.";
+
+  /** Mechanically the {@code com.lark.oapi.**.model} types imported across this module. */
+  private static final List<Class<?>> ROOTS =
+      List.of(
+          P2CardActionTrigger.class,
+          P2CardActionTriggerResponse.class,
+          ContentCardElementReq.class,
+          ContentCardElementReqBody.class,
+          CreateCardReq.class,
+          CreateCardReqBody.class,
+          DeleteCardElementReq.class,
+          DeleteCardElementReqBody.class,
+          SettingsCardReq.class,
+          SettingsCardReqBody.class,
+          BatchDeleteDocumentBlockChildrenReq.class,
+          BatchDeleteDocumentBlockChildrenReqBody.class,
+          BatchUpdateDocumentBlockReq.class,
+          BatchUpdateDocumentBlockReqBody.class,
+          Block.class,
+          ConvertDocumentReq.class,
+          ConvertDocumentReqBody.class,
+          CreateDocumentBlockChildrenReq.class,
+          CreateDocumentBlockChildrenReqBody.class,
+          CreateDocumentBlockDescendantReq.class,
+          CreateDocumentBlockDescendantReqBody.class,
+          CreateDocumentReq.class,
+          CreateDocumentReqBody.class,
+          Document.class,
+          GetDocumentBlockChildrenReq.class,
+          GetDocumentBlockReq.class,
+          GetDocumentReq.class,
+          ListDocumentBlockReq.class,
+          PatchDocumentBlockReq.class,
+          RawContentDocumentReq.class,
+          UpdateBlockRequest.class,
+          BaseMember.class,
+          BatchCreatePermissionMemberReq.class,
+          BatchCreatePermissionMemberReqBody.class,
+          DownloadFileReq.class,
+          ListFileReq.class,
+          ListFileResp.class,
+          UploadAllMediaReq.class,
+          UploadAllMediaReqBody.class,
+          CreateFileReq.class,
+          CreateFileReqBody.class,
+          CreateImageReq.class,
+          CreateImageReqBody.class,
+          CreateMessageReq.class,
+          CreateMessageReqBody.class,
+          EventMessage.class,
+          GetMessageResourceReq.class,
+          GetMessageResp.class,
+          ListMessageResp.class,
+          P2MessageReadV1.class,
+          P2MessageReceiveV1.class,
+          ReplyMessageReq.class,
+          ReplyMessageReqBody.class,
+          CreateSpreadsheetReq.class,
+          QuerySpreadsheetSheetReq.class,
+          Spreadsheet.class,
+          GetNodeSpaceReq.class);
+
+  /**
+   * Our own {@code @Query} holders, registered by name because they are package-private to {@code
+   * ..feishu.tools}. The SDK's {@code ReqTranslator} reads their query parameters with {@code
+   * getClass().getDeclaredFields()}, so without field access it finds none and silently sends a
+   * request with no query string.
+   */
+  private static final List<String> QUERY_HOLDERS =
+      List.of(
+          "me.kezhenxu94.springagent.integration.feishu.tools.ListMessageQuery",
+          "me.kezhenxu94.springagent.integration.feishu.tools.GetMessageQuery");
+
+  /**
+   * Fields because Gson reads and writes them directly and {@code ReqTranslator} enumerates them;
+   * constructors and methods for the SDK's builders; {@code UNSAFE_ALLOCATED} because Gson falls
+   * back to unsafe allocation for a model with no usable no-arg constructor.
+   */
+  private static final MemberCategory[] GSON_MODEL = {
+    MemberCategory.ACCESS_DECLARED_FIELDS,
+    MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
+    MemberCategory.INVOKE_DECLARED_METHODS,
+    MemberCategory.UNSAFE_ALLOCATED,
+  };
+
+  /**
+   * SDK-internal models that Gson binds without this module ever naming them, so they cannot be
+   * reached from {@link #ROOTS}. Seeded by name and then walked like any other root.
+   *
+   * <p>{@code com.lark.oapi.ws.model} is the long-connection handshake: {@code
+   * com.lark.oapi.ws.Client} deserialises {@code EndpointResp} to learn where to connect, and
+   * failing that it retries forever, so the context never finishes refreshing and the application
+   * appears to hang rather than fail.
+   *
+   * <p>{@code com.lark.oapi.event.model} is the event envelope {@code
+   * EventDispatcher.doWithoutValidation} unwraps before dispatching to a handler. Failing that, the
+   * websocket connects and then drops every inbound event with "handle message failed".
+   */
+  private static final List<String> INTERNAL_MODEL_SEEDS =
+      List.of(
+          "com.lark.oapi.ws.model.EndpointResp",
+          "com.lark.oapi.ws.model.Endpoint",
+          "com.lark.oapi.ws.model.ClientConfig",
+          "com.lark.oapi.ws.model.Response",
+          "com.lark.oapi.event.model.Event",
+          "com.lark.oapi.event.model.BaseEvent",
+          "com.lark.oapi.event.model.BaseEventV2",
+          "com.lark.oapi.event.model.BaseEventData",
+          "com.lark.oapi.event.model.Header",
+          "com.lark.oapi.event.model.Fuzzy",
+          "com.lark.oapi.event.model.AppTicketEvent",
+          "com.lark.oapi.event.model.AppTicketEvent$AppTicketEventData");
+
+  /**
+   * The websocket long-connection transport. Only two protobuf messages are generated; the rest of
+   * the shaded protobuf jar is runtime plumbing that needs nothing.
+   */
+  private static final List<String> WEBSOCKET_TRANSPORT =
+      List.of(
+          "com.lark.oapi.ws.pb.Pbbp2",
+          "com.lark.oapi.ws.pb.Pbbp2$Frame",
+          "com.lark.oapi.ws.pb.Pbbp2$Frame$Builder",
+          "com.lark.oapi.ws.pb.Pbbp2$Header",
+          "com.lark.oapi.ws.pb.Pbbp2$Header$Builder",
+          "com.lark.oapi.ws.pb.GoGoProtos");
+
+  /**
+   * The SDK shades OkHttp, so the upstream OkHttp metadata in the shared reachability repository
+   * cannot match these names. OkHttp picks its TLS platform reflectively at startup.
+   */
+  private static final List<String> SHADED_OKHTTP_PLATFORMS =
+      List.of(
+          "com.lark.oapi.okhttp.internal.platform.Jdk9Platform",
+          "com.lark.oapi.okhttp.internal.platform.Jdk8WithJettyBootPlatform",
+          "com.lark.oapi.okhttp.internal.platform.Jdk8WithJettyBootPlatform$AlpnProvider",
+          "com.lark.oapi.okhttp.internal.platform.ConscryptPlatform",
+          "com.lark.oapi.okhttp.internal.platform.Platform");
+
+  @Override
+  public void registerHints(final RuntimeHints hints, final ClassLoader classLoader) {
+    final Set<Class<?>> visited = new HashSet<>();
+    final var pending = new ArrayDeque<>(ROOTS);
+    // Seeded into the same walk as ROOTS so their own field types are covered as well; they are
+    // named as strings only because this module has no compile dependency on the SDK's internals.
+    for (final String name : INTERNAL_MODEL_SEEDS) {
+      try {
+        pending.add(Class.forName(name, false, classLoader));
+      } catch (ClassNotFoundException e) {
+        // A newer SDK renamed or dropped it; the handshake failure that follows is self-describing.
+      }
+    }
+    while (!pending.isEmpty()) {
+      final var type = pending.poll();
+      if (!visited.add(type)) {
+        continue;
+      }
+      hints.reflection().registerType(type, GSON_MODEL);
+      registerJsonAdapter(hints, type.getAnnotation(JsonAdapter.class));
+
+      for (final Field field : type.getDeclaredFields()) {
+        // A @JsonAdapter names its adapter as a class literal, which Gson then instantiates
+        // reflectively — nothing calls its constructor, so the analysis cannot see it. Missing this
+        // fails the whole enclosing object, not just the annotated field.
+        registerJsonAdapter(hints, field.getAnnotation(JsonAdapter.class));
+
+        // Every instance field, not only the @SerializedName-annotated ones: Gson falls back to the
+        // plain field name when the annotation is absent, and the SDK's internal models carry no
+        // annotations at all. Filtering on the annotation silently truncated the closure there.
+        if (!Modifier.isStatic(field.getModifiers())) {
+          enqueue(field.getGenericType(), pending);
+        }
+      }
+      // Request bodies and responses share abstract bases that carry wire fields of their own.
+      final var superclass = type.getSuperclass();
+      if (superclass != null && isSdkModel(superclass)) {
+        pending.add(superclass);
+      }
+    }
+
+    for (final String name : QUERY_HOLDERS) {
+      hints.reflection().registerTypeIfPresent(classLoader, name, GSON_MODEL);
+    }
+    for (final String name : WEBSOCKET_TRANSPORT) {
+      hints
+          .reflection()
+          .registerTypeIfPresent(
+              classLoader,
+              name,
+              MemberCategory.ACCESS_DECLARED_FIELDS,
+              MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
+              MemberCategory.INVOKE_DECLARED_METHODS);
+    }
+    for (final String name : SHADED_OKHTTP_PLATFORMS) {
+      hints
+          .reflection()
+          .registerTypeIfPresent(
+              classLoader,
+              name,
+              MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
+              MemberCategory.INVOKE_DECLARED_METHODS);
+    }
+  }
+
+  /**
+   * Registers the adapter a {@code @JsonAdapter} points at. Not restricted to the SDK's package: an
+   * adapter may live anywhere, and registering one is cheap.
+   */
+  private static void registerJsonAdapter(final RuntimeHints hints, final JsonAdapter annotation) {
+    if (annotation == null) {
+      return;
+    }
+    hints
+        .reflection()
+        .registerType(
+            annotation.value(),
+            MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
+            MemberCategory.UNSAFE_ALLOCATED);
+  }
+
+  /** Follows arrays and generic type arguments, since Gson binds through both. */
+  private static void enqueue(final Type type, final ArrayDeque<Class<?>> pending) {
+    if (type instanceof Class<?> clazz) {
+      final var element = clazz.isArray() ? clazz.getComponentType() : clazz;
+      if (isSdkModel(element)) {
+        pending.add(element);
+      }
+    } else if (type instanceof ParameterizedType parameterized) {
+      enqueue(parameterized.getRawType(), pending);
+      for (final Type argument : parameterized.getActualTypeArguments()) {
+        enqueue(argument, pending);
+      }
+    }
+  }
+
+  private static boolean isSdkModel(final Class<?> type) {
+    return type.getName().startsWith(SDK_PACKAGE) && !type.isInterface();
+  }
+}

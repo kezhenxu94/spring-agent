@@ -7,5 +7,6 @@ bin/
 .settings/
 *.DS_Store
 .env
-# Local chat memory and vector store files, written when the app runs from the module directory.
-spring-agent-app/data/
+# Local chat memory and vector store files. Unanchored, so it covers both the module directory the
+# tests run in and the repository root, which is where the native binary writes them.
+data/

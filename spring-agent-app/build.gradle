@@ -2,11 +2,34 @@ plugins {
   alias(libs.plugins.spring.boot)
   alias(libs.plugins.spring.dependency.management)
   id 'springagent.java-common-conventions'
+  // Before springagent.native, whose bootBuildImage block overrides parts of this one.
   id 'springagent.docker'
+  id 'springagent.native'
   id 'application'
+  // Applied below instead of here, see the conditional. Note `apply false` still makes the plugin
+  // resolvable by id, which is what pluginManager.apply needs.
+  alias(libs.plugins.graalvm) apply false
+}
+
+// Gated rather than applied unconditionally: Spring Boot's NativeImagePluginAction stamps
+// `Spring-Boot-Native-Processed: true` into the bootJar manifest as soon as the GraalVM plugin is
+// applied, and the Paketo spring-boot buildpack switches to a native build on that attribute. There
+// is only one bootJar, so this cannot be scoped per task — applying it unconditionally would turn a
+// plain `./gradlew bootBuildImage` native as a side effect. The cost of the gate is that native
+// tasks are invisible to `./gradlew tasks` and to the IDE unless -Pnative is passed.
+if (providers.gradleProperty('native').present) {
+  pluginManager.apply('org.graalvm.buildtools.native')
 }
 
 def patchJvmArgs = [
+  // The Feishu SDK's shaded protobuf reads arrays through sun.misc.Unsafe, which JDK 25 warns about
+  // on every startup. Nothing here can fix it: larksuite-oapi-shaded-protobuf 2.4.6 is the newest
+  // published version, so even upgrading oapi-sdk keeps the same call. This silences the warning
+  // without changing behaviour — but the method is slated for removal, so the SDK will eventually
+  // need an upstream fix rather than this flag.
+  "--sun-misc-unsafe-memory-access=allow",
+  // sqlite-jdbc loads its bundled native library through System::load.
+  "--enable-native-access=ALL-UNNAMED",
   "--add-opens=java.base/java.io=ALL-UNNAMED",
   "--add-opens=java.base/java.lang=ALL-UNNAMED",
   "--add-opens=java.base/java.time=ALL-UNNAMED",

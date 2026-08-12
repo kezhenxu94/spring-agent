@@ -7,6 +7,10 @@ spring-ai-agent-utils = "0.10.0"
 spring-ai = "2.0.1-SNAPSHOT"
 spring-dependency-management = "1.1.7"
 fabric8 = "6.13.4"
+# Deliberately not spring-boot-dependencies' native-build-tools-plugin.version (0.11.5): that
+# property only manages the Maven plugin, Gradle plugin versions are never BOM-managed, and 0.11.5
+# predates Gradle 9. 1.1.4+ is tested against Gradle 9.6.1, which is what the wrapper pins.
+graalvm-buildtools = "1.1.8"
 springboot = "4.0.7"
 sqlite-jdbc = "3.53.2.1"
 testcontainers = "2.0.3"
@@ -29,6 +33,9 @@ fabric8-kubernetes-client-bom = { module = "io.fabric8:kubernetes-client-bom", v
 fabric8-kubernetes-client = { module = "io.fabric8:kubernetes-client" }
 
 [plugins]
+# Keyed `graalvm`, not `graalvm-native`: `native` is a Java keyword, so the generated accessor
+# `libs.plugins.graalvm.native` would not be referenceable.
+graalvm = { id = "org.graalvm.buildtools.native", version.ref = "graalvm-buildtools" }
 spring-boot = { id = "org.springframework.boot", version.ref = "springboot" }
 spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "spring-dependency-management" }
 

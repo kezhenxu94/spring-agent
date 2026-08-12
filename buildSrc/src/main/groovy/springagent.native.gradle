@@ -1,0 +1,104 @@
+// Native image build configuration.
+//
+// The whole body is scoped to `pluginManager.withPlugin`, so applying this convention is a no-op
+// unless spring-agent-app was invoked with -Pnative (see the comment on the conditional apply in
+// spring-agent-app/build.gradle). Like springagent.docker.gradle, this configures tasks owned by a
+// plugin buildSrc itself does not apply, hence the dynamic Groovy rather than typed references.
+pluginManager.withPlugin('org.graalvm.buildtools.native') {
+
+  // No placeholder environment is set for processAot, deliberately: application.yaml's
+  // ${OPENAI_API_KEY}-style placeholders have no defaults, but the AOT refresh only evaluates
+  // conditions and never instantiates the beans that bind them, so they are never resolved.
+  // Verified by running processAot with a clean environment. If a future eagerly created bean does
+  // bind one, the failure is an unresolvable-placeholder error at build time, and the fix is to add
+  // the specific variable here as a `environment` entry on the task below.
+
+  // AOT evaluates @Conditional at build time, so the backends this project selects by property
+  // become build-time decisions and the matching env vars become inert at runtime. The defaults
+  // below bake the same combination application.yaml defaults to, which is what makes the default
+  // native binary need no extra configuration. Pass -PnativeBackends=mongodb,milvus for the
+  // server-backed variant — that image must then be *run* with PERSISTENCE_TYPE=mongodb and
+  // VECTORSTORE_TYPE=milvus so the live environment agrees with the baked context.
+  def backends = providers.gradleProperty('nativeBackends').getOrElse('')
+      .split(',').collect { it.trim().toLowerCase() }.findAll { it }
+  def persistenceType = backends.contains('mongodb') ? 'mongodb' : 'jdbc'
+  def vectorStoreType = backends.contains('milvus') ? 'milvus' : 'simple'
+
+  // Matched by name rather than by ProcessAot type: buildSrc has no Spring Boot plugin on its
+  // compile classpath, so the type cannot be imported, and a fully qualified reference inside this
+  // closure resolves against the closure delegate instead of as a class name. Matching also stays
+  // lazy, so it does not depend on whether the AOT plugin has been applied yet.
+  tasks.matching { it.name == 'processAot' }.configureEach {
+    // ProcessAot extends JavaExec and appends the task's `args` after its own positional
+    // arguments, so these arrive as application arguments — the highest-precedence property source
+    // for the build-time context refresh.
+    args "--app.persistence.type=${persistenceType}"
+    args "--spring.ai.vectorstore.type=${vectorStoreType}"
+  }
+
+  graalvmNative {
+    // Not setting toolchainDetection: Spring Boot's NativeImagePluginAction already sets it to
+    // false, which is what we want — native-image then comes from GRAALVM_HOME, falling back to
+    // JAVA_HOME, both of which the environment is expected to already point at a GraalVM.
+    metadataRepository {
+      enabled = true
+
+      // The shared reachability repository keys on the exact coordinate version. Spring AI is
+      // pinned to a 2.0.1-SNAPSHOT that matches nothing, and victools resolves 5.0.0 while the
+      // repository stops at 4.38.0, so both are pointed at the newest metadata that exists. If a
+      // missing-reflection failure traces back to one of these, the override is the first suspect.
+      moduleToConfigVersion.put('org.springframework.ai:spring-ai-model', '2.0.0')
+      moduleToConfigVersion.put('org.springframework.ai:spring-ai-commons', '2.0.0')
+      moduleToConfigVersion.put('org.springframework.ai:spring-ai-client-chat', '2.0.0')
+      moduleToConfigVersion.put('org.springframework.ai:spring-ai-template-st', '2.0.0')
+      moduleToConfigVersion.put('org.springframework.ai:spring-ai-autoconfigure-model-openai', '2.0.0')
+      moduleToConfigVersion.put('com.github.victools:jsonschema-generator', '4.38.0')
+      moduleToConfigVersion.put('com.github.victools:jsonschema-module-swagger-2', '4.38.0')
+    }
+
+    // processTestAot cannot refresh the test contexts: AbstractIntegrationTest starts a MongoDB
+    // container and VectorStoreMilvusTest a Milvus one, neither of which exists at build time.
+    // Turning test support off removes nativeTest/processTestAot instead of leaving tasks that can
+    // only ever fail.
+    testSupport = false
+
+    binaries {
+      main {
+        imageName = 'spring-agent'
+        // Reachability analysis over this dependency graph needs more than the default heap.
+        buildArgs.add('-J-Xmx10g')
+        // Turns a native-image failure into something diagnosable instead of a one-line message.
+        buildArgs.add('-H:+ReportExceptionStackTraces')
+        // A native image bundles only the charsets it can prove it needs, and the OkHttp the Feishu
+        // SDK shades resolves UTF-32BE/LE in a static initialiser for BOM sniffing. Without this the
+        // Lark client bean dies with UnsupportedCharsetException at startup. There is no narrower
+        // option than all-or-nothing here, and the size cost is a fraction of a percent.
+        buildArgs.add('-H:+AddAllCharsets')
+        // sqlite-jdbc loads its bundled native library through System::load, which warns on every
+        // startup otherwise. A build argument rather than a runtime flag, because a native binary is
+        // not a JVM launcher and has nowhere to accept --enable-native-access.
+        buildArgs.add('-H:EnableNativeAccess=ALL-UNNAMED')
+      }
+    }
+  }
+
+  bootBuildImage {
+    // Reuses the builder from springagent.docker.gradle, which already carries the
+    // paketo-buildpacks/java-native-image buildpack; BP_NATIVE_IMAGE is deliberately not set,
+    // because the Spring-Boot-Native-Processed manifest attribute that the Boot plugin adds is
+    // what puts the buildpack into native mode.
+
+    // JAVA_TOOL_OPTIONS is a JVM launcher mechanism and module --add-opens has no meaning in a
+    // closed-world image, so the JVM image's flags are dropped rather than carried over. Filtered
+    // and re-set because `environment` is a MapProperty, which has no remove(); this is why
+    // springagent.docker must be applied before springagent.native.
+    environment.set(environment.get().findAll { it.key != "BPE_APPEND_JAVA_TOOL_OPTIONS" })
+
+    // Overrides the JVM image's pin: the native buildpack uses the JDK's matching native-image,
+    // and Spring Boot 4 requires at least 25 for that.
+    environment["BP_JVM_VERSION"] = "25"
+
+    // Distinct tags so a native build never overwrites the JVM image's :latest.
+    tags = ["native", "${project.ext.gitSha}-native"].collect { "${imageName}:${it}" }
+  }
+}
