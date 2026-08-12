@@ -4,7 +4,7 @@ import static java.util.stream.Collectors.toList;
 
 import java.util.Collection;
 import lombok.RequiredArgsConstructor;
-import me.kezhenxu94.springagent.bot.configuration.SpringAgentProperties;
+import me.kezhenxu94.springagent.bot.feishu.FeishuProperties;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.authority.mapping.GrantedAuthoritiesMapper;
@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class FeishuAuthoritiesMapper implements GrantedAuthoritiesMapper {
-  final SpringAgentProperties appConfiguration;
+  final FeishuProperties feishuProperties;
 
   @Override
   public Collection<? extends GrantedAuthority> mapAuthorities(
@@ -27,7 +27,7 @@ public class FeishuAuthoritiesMapper implements GrantedAuthoritiesMapper {
 
                 if (attributes.containsKey("tenant_key")) {
                   final var tenant = (String) attributes.get("tenant_key");
-                  if (appConfiguration.feishu().tenantId().equals(tenant)) {
+                  if (feishuProperties.tenantId().equals(tenant)) {
                     return new SimpleGrantedAuthority("ROLE_SEAMAN");
                   }
                 }

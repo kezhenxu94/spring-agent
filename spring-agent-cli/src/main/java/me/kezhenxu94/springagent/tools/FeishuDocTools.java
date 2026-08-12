@@ -7,7 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.jackson.Jacksonized;
 import lombok.extern.slf4j.Slf4j;
-import me.kezhenxu94.springagent.bot.configuration.SpringAgentProperties;
+import me.kezhenxu94.springagent.bot.feishu.FeishuProperties;
 import me.kezhenxu94.springagent.bot.feishu.docx.FeishuDocxService;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
@@ -23,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
 public class FeishuDocTools {
   final FeishuDocxService feishuDocxService;
   final JsonMapper objectMapper;
-  final SpringAgentProperties appConfiguration;
+  final FeishuProperties feishuProperties;
   final FeishuPermissionTools feishuPermissionTools;
 
   @Builder
@@ -162,11 +162,7 @@ SourceSynced/ReferenceSynced 同步块——这些块只能通过 FeishuGetDocBl
         .documentId(document.getDocumentId())
         .revisionId(document.getRevisionId())
         .title(document.getTitle())
-        .url(
-            "https://"
-                + appConfiguration.feishu().tenantDomain()
-                + "/docx/"
-                + document.getDocumentId())
+        .url("https://" + feishuProperties.tenantDomain() + "/docx/" + document.getDocumentId())
         .build();
   }
 

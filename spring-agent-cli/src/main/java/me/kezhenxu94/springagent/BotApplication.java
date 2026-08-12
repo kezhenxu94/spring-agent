@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import me.kezhenxu94.springagent.bot.configuration.SpringAgentProperties;
+import me.kezhenxu94.springagent.bot.feishu.FeishuProperties;
 import me.kezhenxu94.springagent.bot.storage.FileSystemStorageProperties;
 import me.kezhenxu94.springagent.bot.storage.FileSystemStorageService;
 import me.kezhenxu94.springagent.bot.storage.StorageProperties;
@@ -47,6 +48,7 @@ import org.springframework.web.client.RestTemplate;
 @SpringBootApplication
 @EnableConfigurationProperties({
   SpringAgentProperties.class,
+  FeishuProperties.class,
   ShellPodProperties.class,
   McpProperties.class
 })
@@ -144,10 +146,8 @@ public class BotApplication {
   }
 
   @Bean
-  Client feishuClient(final SpringAgentProperties appConfiguration) {
-    return new Client.Builder(
-            appConfiguration.feishu().appId(), appConfiguration.feishu().appSecret())
-        .build();
+  Client feishuClient(final FeishuProperties feishuProperties) {
+    return new Client.Builder(feishuProperties.appId(), feishuProperties.appSecret()).build();
   }
 
   @Bean

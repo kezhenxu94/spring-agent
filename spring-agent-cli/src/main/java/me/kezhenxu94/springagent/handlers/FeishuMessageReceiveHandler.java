@@ -29,6 +29,7 @@ import me.kezhenxu94.springagent.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.agent.AgentScenario;
 import me.kezhenxu94.springagent.agent.SpringAgent;
 import me.kezhenxu94.springagent.bot.configuration.SpringAgentProperties;
+import me.kezhenxu94.springagent.bot.feishu.FeishuProperties;
 import me.kezhenxu94.springagent.dao.models.FeishuMessage;
 import me.kezhenxu94.springagent.dao.models.FeishuMessage.Status;
 import me.kezhenxu94.springagent.dao.repo.FeishuMessageRepo;
@@ -67,6 +68,7 @@ import tools.jackson.databind.json.JsonMapper;
 public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Handler {
   final JsonMapper om;
   final SpringAgentProperties appConfiguration;
+  final FeishuProperties feishuProperties;
   final FeishuMessageRepo feishuMessageRepo;
   final Client feishu;
 
@@ -361,9 +363,7 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
   boolean isBotMentioned(EventMessage message) {
     return message.getMentions() != null
         && Stream.of(message.getMentions())
-            .anyMatch(
-                mention ->
-                    appConfiguration.feishu().botOpenId().equals(mention.getId().getOpenId()));
+            .anyMatch(mention -> feishuProperties.botOpenId().equals(mention.getId().getOpenId()));
   }
 
   @SneakyThrows

@@ -14,7 +14,7 @@ import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberReq;
 import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberResp;
 import com.lark.oapi.service.drive.v1.resource.PermissionMember;
 import java.util.Map;
-import me.kezhenxu94.springagent.bot.configuration.SpringAgentProperties;
+import me.kezhenxu94.springagent.bot.feishu.FeishuProperties;
 import me.kezhenxu94.springagent.bot.feishu.docx.FeishuDocxService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -34,7 +34,6 @@ class FeishuDocToolsTest {
   @Mock private DriveService driveService;
   @Mock private V1 driveV1;
   @Mock private PermissionMember permissionMember;
-  @Mock private SpringAgentProperties appConfiguration;
 
   private FeishuDocTools tools;
 
@@ -56,17 +55,11 @@ class FeishuDocToolsTest {
     lenient()
         .when(permissionMember.batchCreate(org.mockito.ArgumentMatchers.any()))
         .thenReturn(new BatchCreatePermissionMemberResp());
-    lenient()
-        .when(appConfiguration.feishu())
-        .thenReturn(
-            new SpringAgentProperties.Feishu(
-                null, null, "lv3wgjcyixc.feishu.cn", null, null, null, null));
-
     tools =
         new FeishuDocTools(
             feishuDocxService,
             new JsonMapper(),
-            appConfiguration,
+            new FeishuProperties(null, null, "lv3wgjcyixc.feishu.cn", null, null, null, null),
             new FeishuPermissionTools(feishu));
   }
 

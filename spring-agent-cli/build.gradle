@@ -49,9 +49,13 @@ dependencies {
 
   testImplementation libs.testcontainers.core
   testImplementation libs.testcontainers.mongodb
+  testImplementation libs.testcontainers.milvus
   testImplementation libs.testcontainers.junit.jupiter
 
   testImplementation 'org.springframework.boot:spring-boot-starter-test'
+  // @ServiceConnection support: Boot ships the MongoDB factory, Spring AI the Milvus one.
+  testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+  testImplementation 'org.springframework.ai:spring-ai-spring-boot-testcontainers'
   testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
   testImplementation 'org.springframework.restdocs:spring-restdocs-mockmvc'
 }

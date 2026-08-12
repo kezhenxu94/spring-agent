@@ -3,7 +3,6 @@ package me.kezhenxu94.springagent.bot.feishu;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import me.kezhenxu94.springagent.bot.configuration.SpringAgentProperties;
 import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -24,7 +23,7 @@ public class FeishuTenantAccessTokenService {
       "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal/";
 
   private final RestTemplate restTemplate;
-  private final SpringAgentProperties appConfiguration;
+  private final FeishuProperties feishuProperties;
 
   public TenantAccessToken tenantAccessToken() {
     final var headers = new HttpHeaders();
@@ -32,8 +31,8 @@ public class FeishuTenantAccessTokenService {
     final var httpEntity =
         new HttpEntity<>(
             Map.of(
-                "app_id", appConfiguration.feishu().appId(),
-                "app_secret", appConfiguration.feishu().appSecret()),
+                "app_id", feishuProperties.appId(),
+                "app_secret", feishuProperties.appSecret()),
             headers);
 
     final var response =

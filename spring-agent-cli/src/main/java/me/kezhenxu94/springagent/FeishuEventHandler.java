@@ -9,7 +9,7 @@ import com.lark.oapi.service.im.v1.model.P2MessageReadV1;
 import com.lark.oapi.ws.Client;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import me.kezhenxu94.springagent.bot.configuration.SpringAgentProperties;
+import me.kezhenxu94.springagent.bot.feishu.FeishuProperties;
 import me.kezhenxu94.springagent.dao.models.FeishuMessage;
 import me.kezhenxu94.springagent.handlers.FeishuMessageReceiveHandler;
 import org.springframework.context.annotation.Bean;
@@ -23,14 +23,14 @@ import org.springframework.data.mongodb.core.query.Update;
 @Configuration
 @RequiredArgsConstructor
 public class FeishuEventHandler {
-  final SpringAgentProperties appConfiguration;
+  final FeishuProperties feishuProperties;
   final FeishuMessageReceiveHandler feishuMessageReceiveHandler;
   final MongoTemplate mongoTemplate;
 
   @Bean
   public EventDispatcher eventDispatcher() {
     return EventDispatcher.newBuilder(
-            appConfiguration.feishu().verificationToken(), appConfiguration.feishu().encryptKey())
+            feishuProperties.verificationToken(), feishuProperties.encryptKey())
         .onP2MessageReceiveV1(feishuMessageReceiveHandler)
         .onP2MessageReadV1(
             new ImService.P2MessageReadV1Handler() {
@@ -60,8 +60,7 @@ public class FeishuEventHandler {
 
   @Bean(initMethod = "start", destroyMethod = "disconnect")
   public Client client() {
-    return new Client.Builder(
-            appConfiguration.feishu().appId(), appConfiguration.feishu().appSecret())
+    return new Client.Builder(feishuProperties.appId(), feishuProperties.appSecret())
         .eventHandler(eventDispatcher())
         .build();
   }
