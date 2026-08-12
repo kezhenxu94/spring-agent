@@ -1,180 +1,21 @@
 package me.kezhenxu94.springagent.app;
 
-import com.lark.oapi.Client;
-import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.KubernetesClientBuilder;
-import java.time.Clock;
-import java.util.ArrayList;
-import java.util.List;
-import lombok.RequiredArgsConstructor;
-import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
-import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
-import me.kezhenxu94.springagent.core.storage.FileSystemStorageService;
-import me.kezhenxu94.springagent.core.storage.StorageProperties;
-import me.kezhenxu94.springagent.core.tools.InterceptingToolCallbackResolver;
-import me.kezhenxu94.springagent.core.tools.InterceptingToolCallingManager;
-import me.kezhenxu94.springagent.core.tools.McpProperties;
-import me.kezhenxu94.springagent.core.tools.ShellPodProperties;
-import me.kezhenxu94.springagent.core.tools.ToolCallInterceptor;
-import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.document.Document;
-import org.springframework.ai.embedding.BatchingStrategy;
-import org.springframework.ai.model.tool.DefaultToolCallingManager;
-import org.springframework.ai.model.tool.ToolCallingManager;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.ai.tool.resolution.ToolCallbackResolver;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.annotation.Bean;
-import org.springframework.data.mongodb.config.EnableMongoAuditing;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.messaging.DefaultMessageListenerContainer;
-import org.springframework.data.mongodb.core.messaging.MessageListenerContainer;
-import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
-import org.springframework.validation.annotation.Validated;
-import org.springframework.web.client.RestTemplate;
 
+/**
+ * Assembles the deployable. Everything it runs on — the agent runtime and the Feishu integration —
+ * is contributed by auto-configuration, so this package holds only the entry point and the
+ * deployment's own security policy.
+ */
 @EnableAsync
 @EnableScheduling
-@EnableMongoAuditing
-// Temporary: the libraries still live under me.kezhenxu94.springagent but outside this package.
-// Replaced by per-module auto-configuration in the next commit.
-@SpringBootApplication(scanBasePackages = "me.kezhenxu94.springagent")
-@EnableMongoRepositories("me.kezhenxu94.springagent")
-@EnableConfigurationProperties({
-  SpringAgentProperties.class,
-  FeishuProperties.class,
-  ShellPodProperties.class,
-  McpProperties.class
-})
+@SpringBootApplication
 public class SpringAgentApplication {
 
   public static void main(String[] args) {
     SpringApplication.run(SpringAgentApplication.class, args);
-  }
-
-  @Bean
-  RestTemplate restTemplate() {
-    return new RestTemplate();
-  }
-
-  @Bean
-  Clock clock() {
-    return Clock.systemUTC();
-  }
-
-  @Bean
-  @ConfigurationProperties("storage")
-  @Validated
-  public StorageProperties storageProperties() {
-    return FileSystemStorageProperties.builder().build();
-  }
-
-  @Bean
-  public FileSystemStorageService storageService() {
-    final var b = new FileSystemStorageService(storageProperties());
-    b.init();
-    return b;
-  }
-
-  @Bean
-  BatchingStrategy embeddingBatchingStrategy() {
-    // Spring AI's default TokenCountBatchingStrategy only limits batches by token count
-    // (8191), so dozens of short tool descriptions fit in a single embeddings.create
-    // call; DashScope's OpenAI-compatible endpoint rejects batches over ~20 rows
-    // regardless of token count ("batch size is invalid, it should not be larger than
-    // 20"). Cap by row count instead, well under that limit.
-    return new FixedSizeBatchingStrategy(10);
-  }
-
-  @RequiredArgsConstructor
-  static class FixedSizeBatchingStrategy implements BatchingStrategy {
-    private final int maxBatchSize;
-
-    @Override
-    public List<List<Document>> batch(final List<Document> documents) {
-      final var batches = new ArrayList<List<Document>>();
-      for (int i = 0; i < documents.size(); i += maxBatchSize) {
-        batches.add(documents.subList(i, Math.min(i + maxBatchSize, documents.size())));
-      }
-      return batches;
-    }
-  }
-
-  @Bean
-  ToolCallingManager toolCallingManager(
-      final ToolCallbackResolver toolCallbackResolver,
-      final List<ToolCallInterceptor> interceptors) {
-    final var defaultManager =
-        DefaultToolCallingManager.builder()
-            .toolCallbackResolver(
-                new InterceptingToolCallbackResolver(toolCallbackResolver, interceptors))
-            .build();
-    return new InterceptingToolCallingManager(defaultManager, interceptors);
-  }
-
-  @Bean
-  ChatClient chatClient(final ChatClient.Builder builder) {
-    // spring-ai 2.0.1-SNAPSHOT always sends a "strict" field on tool function definitions; when
-    // unset it serializes as an explicit `"strict": null`, which OpenAI treats as opting into
-    // strict schema validation (requiring `required` to list every property). Force false to
-    // keep the lenient validation our @ToolParam(required = false) tools rely on.
-    // TODO: remove once spring-ai fixes strict defaulting for optional @ToolParam and we're back
-    // on a released (non-SNAPSHOT) version.
-    return builder.defaultOptions(OpenAiChatOptions.builder().strict(false)).build();
-  }
-
-  @Bean
-  @Qualifier("vision")
-  ChatClient visionChatClient(final SpringAgentProperties appConfiguration) {
-    final var vision = appConfiguration.dashscope().vision();
-    final var chatModel =
-        OpenAiChatModel.builder()
-            .options(
-                OpenAiChatOptions.builder()
-                    .baseUrl(vision.baseUrl())
-                    .apiKey(vision.apiKey())
-                    .model(vision.model())
-                    .build())
-            .build();
-    return ChatClient.builder(chatModel).build();
-  }
-
-  @Bean
-  Client feishuClient(final FeishuProperties feishuProperties) {
-    return new Client.Builder(feishuProperties.appId(), feishuProperties.appSecret()).build();
-  }
-
-  @Bean
-  ThreadPoolTaskScheduler taskScheduler() {
-    final var scheduler = new ThreadPoolTaskScheduler();
-    scheduler.setPoolSize(4);
-    scheduler.setThreadNamePrefix("scheduled-task-");
-    return scheduler;
-  }
-
-  @Bean
-  MessageListenerContainer mlc(final MongoTemplate template) {
-    return new DefaultMessageListenerContainer(template) {
-      @Override
-      public boolean isAutoStartup() {
-        return true;
-      }
-    };
-  }
-
-  @Bean(destroyMethod = "close")
-  @ConditionalOnProperty(prefix = "app.ai.tools.shell-pod", name = "enabled", havingValue = "true")
-  KubernetesClient kubernetesClient() {
-    return new KubernetesClientBuilder().build();
   }
 }

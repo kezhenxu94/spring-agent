@@ -1,0 +1,2 @@
+me.kezhenxu94.springagent.core.config.SpringAgentCoreAutoConfiguration
+me.kezhenxu94.springagent.integration.feishu.config.FeishuAutoConfiguration
