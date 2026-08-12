@@ -437,7 +437,7 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
           final var localPath = downloadFeishuImageToLocal(messageID, image.imageKey(), userOpenId);
           text.accept(
               localPath != null
-                  ? "图片已保存到: " + localPath + "，如需查看图片内容请使用 RecognizeImage 工具"
+                  ? "图片已保存到: " + localPath + "，如需查看图片内容请使用 recognizeImage 工具"
                   : image.imageKey());
         }
         case MediaMessageContent mediaContent -> {}
