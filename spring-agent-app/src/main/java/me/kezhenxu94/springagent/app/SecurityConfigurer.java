@@ -19,10 +19,7 @@ import org.springframework.security.web.SecurityFilterChain;
 @EnableMethodSecurity
 public class SecurityConfigurer {
 
-  /**
-   * Contributed by whichever integration owns identity — Feishu today. Absent when no integration
-   * is on the classpath, in which case OAuth2 login maps no authorities of its own.
-   */
+  /** Contributed by whichever integration owns identity — Feishu today. */
   final ObjectProvider<GrantedAuthoritiesMapper> authoritiesMapper;
 
   @Bean

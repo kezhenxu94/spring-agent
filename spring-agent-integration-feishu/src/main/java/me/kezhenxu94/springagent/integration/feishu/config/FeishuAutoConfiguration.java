@@ -24,8 +24,7 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
 @AutoConfiguration
 @ComponentScan(
     basePackages = "me.kezhenxu94.springagent.integration.feishu",
-    // This class lives inside the scanned package; without the exclude it would be registered
-    // both as a scanned @Configuration and as an imported auto-configuration.
+    // Without this, the scan would also register this class, which is already imported.
     excludeFilters =
         @ComponentScan.Filter(
             type = FilterType.ASSIGNABLE_TYPE,

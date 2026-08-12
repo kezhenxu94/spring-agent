@@ -41,18 +41,16 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.client.RestTemplate;
 
 /**
- * Wires the agent runtime: its infrastructure beans plus every {@code @Component} under {@code
- * me.kezhenxu94.springagent.core}.
+ * Wires the agent runtime: infrastructure beans plus every {@code @Component} in this module.
  *
- * <p>The component scan is unusual in an auto-configuration, but the alternative is declaring some
- * fifty tool and service beans by hand. It is safe here because this module owns that package
- * exclusively — nothing else contributes to it.
+ * <p>Component scanning from an auto-configuration is unusual, but the alternative is declaring
+ * some fifty tool and service beans by hand. It is safe because this module owns that package
+ * exclusively.
  */
 @AutoConfiguration
 @ComponentScan(
     basePackages = "me.kezhenxu94.springagent.core",
-    // This class lives inside the scanned package; without the exclude it would be registered
-    // both as a scanned @Configuration and as an imported auto-configuration.
+    // Without this, the scan would also register this class, which is already imported.
     excludeFilters =
         @ComponentScan.Filter(
             type = FilterType.ASSIGNABLE_TYPE,
@@ -80,8 +78,8 @@ public class SpringAgentCoreAutoConfiguration {
     return FileSystemStorageProperties.builder().build();
   }
 
-  // Injected rather than calling storageProperties() directly: @AutoConfiguration implies
-  // proxyBeanMethods = false, so a direct call would return an unbound instance.
+  // Injected, not calling storageProperties(): @AutoConfiguration implies proxyBeanMethods =
+  // false, so a direct call would return an unbound instance.
   @Bean
   @ConditionalOnMissingBean
   public FileSystemStorageService storageService(final StorageProperties storageProperties) {
@@ -128,8 +126,8 @@ public class SpringAgentCoreAutoConfiguration {
     return new InterceptingToolCallingManager(defaultManager, interceptors);
   }
 
-  // Name-based: this class defines two ChatClient beans, so a type-based condition would let
-  // whichever is processed first suppress the other.
+  // Name-based: two ChatClient beans here, so a type-based condition would have the first
+  // suppress the second.
   @Bean
   @ConditionalOnMissingBean(name = "chatClient")
   ChatClient chatClient(final ChatClient.Builder builder) {

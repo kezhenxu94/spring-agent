@@ -32,17 +32,17 @@ public final class ScheduledTaskFiringEvent {
   private final List<TodoEventHandler> todoEventHandlers = new ArrayList<>();
   private final Map<String, Object> toolContext = new LinkedHashMap<>();
 
-  /** Registers a listener to receive the agent's streamed response for this firing. */
+  /** Registers a listener for the agent's streamed response. */
   public void addResponseListener(final AgentResponseListener listener) {
     responseListeners.add(listener);
   }
 
-  /** Registers a handler to receive todo-list updates the agent makes during this firing. */
+  /** Registers a handler for todo-list updates the agent makes. */
   public void addTodoEventHandler(final TodoEventHandler handler) {
     todoEventHandlers.add(handler);
   }
 
-  /** Contributes an entry to the tool context the agent's tools will see for this firing. */
+  /** Contributes an entry to the tool context the agent's tools will see. */
   public void addToolContext(final String key, final Object value) {
     toolContext.put(key, value);
   }

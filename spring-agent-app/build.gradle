@@ -25,8 +25,7 @@ dependencies {
 
   implementation platform(libs.spring.ai.bom)
 
-  // Both are internals of the library modules; the assembly test replaces them with mocks so
-  // it never talks to Feishu or a cluster.
+  // Internals of the library modules; the assembly test mocks these beans.
   testImplementation platform(libs.fabric8.kubernetes.client.bom)
   testImplementation libs.larksuite.oapi
   testImplementation libs.fabric8.kubernetes.client
@@ -37,7 +36,6 @@ dependencies {
   testImplementation libs.testcontainers.junit.jupiter
 
   testImplementation 'org.springframework.boot:spring-boot-starter-test'
-  // @ServiceConnection support: Boot ships the MongoDB factory, Spring AI the Milvus one.
   testImplementation 'org.springframework.boot:spring-boot-testcontainers'
   testImplementation 'org.springframework.ai:spring-ai-spring-boot-testcontainers'
 }

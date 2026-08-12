@@ -15,7 +15,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
-import me.kezhenxu94.springagent.core.tools.VisionTools;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.http.HttpEntity;
@@ -25,9 +24,9 @@ import org.springframework.web.client.RestTemplate;
 
 /**
  * Generates images with DashScope and uploads them to Feishu, returning {@code
- * https://image-key/<key>} URLs. That scheme is a private contract with {@code FeishuCardUpdater},
- * which resolves the keys back when rendering a card — which is why generation lives with the
- * Feishu integration rather than beside {@link VisionTools}.
+ * https://image-key/<key>} URLs — a private contract with {@code FeishuCardUpdater}, which resolves
+ * the keys when rendering a card. That contract is why this lives here rather than in core beside
+ * {@code VisionTools}.
  */
 @Slf4j
 @AgentTool

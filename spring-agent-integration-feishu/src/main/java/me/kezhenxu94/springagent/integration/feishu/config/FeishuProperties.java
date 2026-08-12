@@ -5,11 +5,7 @@ import java.security.MessageDigest;
 import lombok.SneakyThrows;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-/**
- * Feishu tenant and application credentials. Bound from {@code app.feishu.*}, which is the same
- * subtree these settings occupied when they were a nested record inside {@code
- * SpringAgentProperties}, so no configuration key changes.
- */
+/** Feishu tenant and application credentials. */
 @ConfigurationProperties(prefix = "app.feishu")
 public record FeishuProperties(
     String encryptKey,
