@@ -20,10 +20,6 @@ import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Service;
@@ -38,7 +34,6 @@ public class ScheduledTaskService {
 
   final SpringAgent springAgent;
   final ScheduledTaskRepo scheduledTaskRepo;
-  final MongoTemplate mongoTemplate;
   final AgentToolsProvider agentToolsProvider;
   final ApplicationEventPublisher eventPublisher;
 
@@ -53,10 +48,7 @@ public class ScheduledTaskService {
         task -> {
           if (task.getExpiresAt() != null && task.getExpiresAt().isBefore(now)) {
             log.info("Scheduled task {} has expired, marking as CANCELLED", task.getId());
-            mongoTemplate.updateFirst(
-                new Query(Criteria.where("id").is(task.getId())),
-                new Update().set("status", ScheduledTask.Status.CANCELLED),
-                ScheduledTask.class);
+            scheduledTaskRepo.updateStatus(task.getId(), ScheduledTask.Status.CANCELLED);
           } else {
             schedule(task);
           }
@@ -102,10 +94,7 @@ public class ScheduledTaskService {
     }
     if (task.getExpiresAt() != null && task.getExpiresAt().isBefore(java.time.Instant.now())) {
       log.info("Scheduled task {} has expired, cancelling", task.getId());
-      mongoTemplate.updateFirst(
-          new Query(Criteria.where("id").is(task.getId())),
-          new Update().set("status", ScheduledTask.Status.CANCELLED),
-          ScheduledTask.class);
+      scheduledTaskRepo.updateStatus(task.getId(), ScheduledTask.Status.CANCELLED);
       unschedule(task.getId());
       return;
     }
@@ -209,10 +198,7 @@ public class ScheduledTaskService {
               default -> null;
             };
         if (terminalStatus != null) {
-          mongoTemplate.updateFirst(
-              new Query(Criteria.where("id").is(task.getId())),
-              new Update().set("status", terminalStatus),
-              ScheduledTask.class);
+          scheduledTaskRepo.updateStatus(task.getId(), terminalStatus);
         }
         scheduledFutures.remove(task.getId());
       }

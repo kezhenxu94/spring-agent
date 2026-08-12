@@ -28,7 +28,7 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
         modelPricing = Map.of();
       }
       if (chatMemory == null) {
-        chatMemory = new ChatMemory(null, 0, null);
+        chatMemory = new ChatMemory(0, null);
       }
       if (vectorstore == null) {
         vectorstore = new VectorStore(null);
@@ -38,28 +38,20 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
     public record BotInterceptor(int guideThreshold) {}
 
     /**
-     * Where the agent keeps its conversation history, and how much of it is replayed to the model.
+     * How much conversation history is replayed to the model, and where it is kept when {@code
+     * app.persistence.type} selects a relational database.
      *
-     * @param type which backend stores the conversations
      * @param maxMessages size of the message window replayed on each turn
-     * @param jdbc settings for {@link Type#JDBC}, ignored for the other types
+     * @param jdbc settings for the JDBC backend, ignored when MongoDB is selected
      */
-    public record ChatMemory(Type type, int maxMessages, Jdbc jdbc) {
+    public record ChatMemory(int maxMessages, Jdbc jdbc) {
       public ChatMemory {
-        if (type == null) {
-          type = Type.MONGODB;
-        }
         if (maxMessages <= 0) {
           maxMessages = 100;
         }
         if (jdbc == null) {
           jdbc = new Jdbc(null, null, null, null);
         }
-      }
-
-      public enum Type {
-        MONGODB,
-        JDBC
       }
 
       /**

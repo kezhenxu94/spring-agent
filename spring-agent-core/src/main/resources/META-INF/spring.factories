@@ -1,2 +1,2 @@
 org.springframework.boot.autoconfigure.AutoConfigurationImportFilter=\
-me.kezhenxu94.springagent.core.config.MongoChatMemoryAutoConfigurationFilter
+me.kezhenxu94.springagent.core.config.PersistenceAutoConfigurationFilter

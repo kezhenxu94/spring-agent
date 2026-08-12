@@ -26,8 +26,8 @@ import org.springframework.core.io.Resource;
  * <p>Milvus stays with Spring AI's own auto-configuration, which already conditions on {@code
  * spring.ai.vectorstore.type} being {@code milvus} (matching when the property is missing) and so
  * backs off on its own — no import filter is needed here, unlike the MongoDB chat memory in {@link
- * MongoChatMemoryAutoConfigurationFilter}. Reusing Spring AI's property rather than adding one of
- * ours is what buys that.
+ * PersistenceAutoConfigurationFilter}. Reusing Spring AI's property rather than adding one of ours
+ * is what buys that.
  *
  * <p>What this store is asked to hold is the tool search index: Spring AI's {@code VectorToolIndex}
  * keyed by conversation, evicted by LRU and TTL. That is a cache of tool-description embeddings,

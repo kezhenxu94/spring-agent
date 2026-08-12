@@ -5,7 +5,7 @@ import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
+import me.kezhenxu94.springagent.core.aot.StoragePropertiesRuntimeHints;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageService;
 import me.kezhenxu94.springagent.core.storage.StorageProperties;
@@ -31,8 +31,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
-import org.springframework.data.mongodb.config.EnableMongoAuditing;
-import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
+import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.client.RestTemplate;
@@ -43,6 +42,9 @@ import org.springframework.web.client.RestTemplate;
  * <p>Component scanning from an auto-configuration is unusual, but the alternative is declaring
  * some fifty tool and service beans by hand. It is safe because this module owns that package
  * exclusively.
+ *
+ * <p>Repository registration lives in {@link PersistenceConfiguration} instead, because which
+ * repositories exist depends on {@code app.persistence.type}.
  */
 @AutoConfiguration
 @ComponentScan(
@@ -52,13 +54,12 @@ import org.springframework.web.client.RestTemplate;
         @ComponentScan.Filter(
             type = FilterType.ASSIGNABLE_TYPE,
             classes = SpringAgentCoreAutoConfiguration.class))
-@EnableMongoAuditing
-@EnableMongoRepositories(basePackageClasses = ScheduledTaskRepo.class)
 @EnableConfigurationProperties({
   SpringAgentProperties.class,
   ShellPodProperties.class,
   McpProperties.class
 })
+@ImportRuntimeHints(StoragePropertiesRuntimeHints.class)
 public class SpringAgentCoreAutoConfiguration {
 
   @Bean

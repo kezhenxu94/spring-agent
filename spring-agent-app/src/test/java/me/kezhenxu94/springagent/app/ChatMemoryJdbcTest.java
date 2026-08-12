@@ -20,8 +20,8 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
-/** Selecting JDBC swaps the whole conversation store, here for the default local SQLite file. */
-@SpringBootTest(properties = "app.ai.chat-memory.type=jdbc")
+/** Selecting jdbc swaps the whole conversation store, here for the default local SQLite file. */
+@SpringBootTest(properties = "app.persistence.type=jdbc")
 class ChatMemoryJdbcTest extends AbstractIntegrationTest {
 
   static final Path databaseFile = tempDatabaseFile();

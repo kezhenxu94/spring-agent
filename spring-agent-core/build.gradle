@@ -5,14 +5,25 @@ plugins {
 dependencies {
   // api: types that appear in signatures integration modules compile against.
   api 'org.springframework.boot:spring-boot-starter'
+  // Both persistence backends are on the classpath and selected at runtime by app.persistence.type;
+  // api because the shared domain models carry the mapping annotations of both, so the integration
+  // modules compile against them. PersistenceAutoConfigurationFilter is what keeps the unselected
+  // backend's auto-configuration out of the context — in particular it keeps
+  // DataSourceAutoConfiguration off a MongoDB deployment, which has no spring.datasource.url. That
+  // used to be achieved by keeping every connection pool off the classpath; the JPA starter brings
+  // HikariCP with it, so the filter is now the only thing enforcing it.
   api 'org.springframework.boot:spring-boot-starter-data-mongodb'
+  api 'org.springframework.boot:spring-boot-starter-data-jpa'
+  // Hibernate keeps SQLite out of core; without this the default JDBC backend has no dialect for
+  // the database it defaults to.
+  implementation 'org.hibernate.orm:hibernate-community-dialects'
   api 'org.springframework.ai:spring-ai-starter-model-openai'
   api libs.spring.ai.agent.utils
 
   implementation 'org.springframework.boot:spring-boot-starter-webmvc'
   implementation 'org.springframework.boot:spring-boot-starter-validation'
   implementation 'org.springframework.boot:spring-boot-starter-restclient'
-  // Chat memory backends, selected at runtime by app.ai.chat-memory.type. MongoDB keeps Spring
+  // Chat memory backends, selected at runtime by app.persistence.type. MongoDB keeps Spring
   // AI's own auto-configuration; the JDBC one is deliberately the plain module, since the starter
   // would wire a repository off any DataSource without asking which backend was selected.
   implementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-mongodb'

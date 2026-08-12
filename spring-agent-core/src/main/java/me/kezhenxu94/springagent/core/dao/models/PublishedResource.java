@@ -1,5 +1,9 @@
 package me.kezhenxu94.springagent.core.dao.models;
 
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Table;
 import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -8,17 +12,24 @@ import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+/** Dual-mapped for both persistence backends; see {@link ScheduledTask} for why. */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder(toBuilder = true)
 @Document(collection = PublishedResource.COLLECTION_NAME)
+@Entity
+@Table(name = PublishedResource.COLLECTION_NAME)
 public class PublishedResource {
   public static final String COLLECTION_NAME = "bot_published_resources";
 
-  @Id private String id;
+  @Id @jakarta.persistence.Id private String id;
+
   private String ownerId;
+
+  @Enumerated(EnumType.STRING)
   private Visibility visibility;
+
   private boolean directory;
   private String entryFilename;
   private Instant expiresAt;

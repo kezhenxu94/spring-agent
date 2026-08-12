@@ -1,14 +1,23 @@
 package me.kezhenxu94.springagent.integration.feishu.config;
 
 import com.lark.oapi.Client;
-import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessageRepo;
+import me.kezhenxu94.springagent.integration.feishu.aot.FeishuRuntimeHints;
+import me.kezhenxu94.springagent.integration.feishu.aot.LarkSdkRuntimeHints;
+import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessage;
+import me.kezhenxu94.springagent.integration.feishu.dao.jpa.JpaFeishuMessageRepo;
+import me.kezhenxu94.springagent.integration.feishu.dao.mongo.MongoFeishuMessageRepo;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.ImportRuntimeHints;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
 
 /**
@@ -29,14 +38,38 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
         @ComponentScan.Filter(
             type = FilterType.ASSIGNABLE_TYPE,
             classes = FeishuAutoConfiguration.class))
-@EnableMongoRepositories(basePackageClasses = FeishuMessageRepo.class)
 @EnableConfigurationProperties(FeishuProperties.class)
+@ImportRuntimeHints({FeishuRuntimeHints.class, LarkSdkRuntimeHints.class})
+@Import({FeishuAutoConfiguration.Mongo.class, FeishuAutoConfiguration.Jdbc.class})
 @ConditionalOnProperty(
     prefix = "app.feishu",
     name = "enabled",
     havingValue = "true",
     matchIfMissing = true)
 public class FeishuAutoConfiguration {
+
+  /**
+   * The Feishu message repository, registered for whichever backend {@code app.persistence.type}
+   * names. Nested rather than folded into the core module's PersistenceConfiguration because this
+   * repository belongs to this module and must disappear with it when Feishu is switched off —
+   * which is why these are {@code @Import}ed from the enclosing class rather than listed as
+   * auto-configurations of their own: an entry in {@code AutoConfiguration.imports} is evaluated
+   * independently and would survive {@code app.feishu.enabled=false}.
+   */
+  @Configuration(proxyBeanMethods = false)
+  @ConditionalOnProperty(prefix = "app.persistence", name = "type", havingValue = "mongodb")
+  @EnableMongoRepositories(basePackageClasses = MongoFeishuMessageRepo.class)
+  public static class Mongo {}
+
+  @Configuration(proxyBeanMethods = false)
+  @ConditionalOnProperty(
+      prefix = "app.persistence",
+      name = "type",
+      havingValue = "jdbc",
+      matchIfMissing = true)
+  @EnableJpaRepositories(basePackageClasses = JpaFeishuMessageRepo.class)
+  @EntityScan(basePackageClasses = FeishuMessage.class)
+  public static class Jdbc {}
 
   @Bean
   @ConditionalOnMissingBean

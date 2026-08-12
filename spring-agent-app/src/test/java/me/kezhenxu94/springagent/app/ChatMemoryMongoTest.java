@@ -13,7 +13,7 @@ import org.springframework.context.ApplicationContext;
 /**
  * Selecting mongodb swaps the whole conversation store, leaving the JDBC one out of the context.
  */
-@SpringBootTest(properties = "app.ai.chat-memory.type=mongodb")
+@SpringBootTest(properties = "app.persistence.type=mongodb")
 class ChatMemoryMongoTest extends AbstractIntegrationTest {
 
   @Autowired ApplicationContext context;

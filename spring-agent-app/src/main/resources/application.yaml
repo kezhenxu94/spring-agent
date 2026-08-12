@@ -49,6 +49,22 @@ spring:
         collection-name: spring_agent_bot_tool_index
         embedding-dimension: 1024
         initialize-schema: true
+  datasource:
+    # WAL and a busy timeout because concurrent agent streams write to it and SQLite serialises
+    # writers: without them a second writer fails immediately with SQLITE_BUSY.
+    url: ${DATASOURCE_URL:jdbc:sqlite:data/spring-agent.db?journal_mode=WAL&busy_timeout=5000}
+    username: ${DATASOURCE_USERNAME:}
+    password: ${DATASOURCE_PASSWORD:}
+  jpa:
+    hibernate:
+      # The schema is owned by the application: these are the agent's own tables and there is no
+      # migration tool in the picture. `update` adds tables and columns as the models gain them and
+      # never drops anything, which is the safe half of Hibernate's DDL generation.
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    # SQLite lives in hibernate-community-dialects rather than core, so Hibernate cannot infer it
+    # from the JDBC metadata the way it does for the databases it ships.
+    database-platform: ${JPA_DIALECT:org.hibernate.community.dialect.SQLiteDialect}
+    open-in-view: false
   data:
     mongodb:
       auto-index-creation: true
@@ -90,6 +106,14 @@ storage:
 share:
   base-url: http://localhost:8080
 app:
+  persistence:
+    # Where the agent's own records live — MCP server configs, scheduled tasks, published resources
+    # and Feishu message state. `jdbc` uses spring.datasource, so the default deployment needs no
+    # server at all; `mongodb` is for a deployment that already runs one.
+    #
+    # This selects which repositories exist, so it is a build-time decision in a native image: see
+    # -PnativeBackends in springagent.native.gradle. Changing it does not migrate existing data.
+    type: ${PERSISTENCE_TYPE:jdbc}
   ai:
     # The agent's system prompt. Rendered per request with these variables:
     # {userId} {chatId} {chatType} {threadId} {parentId} {mentions} — referencing any
@@ -131,15 +155,12 @@ app:
         it. Never invent details.
     admins: ${ADMINS:}
     chat-memory:
-      # Where conversation history lives. `mongodb` reuses the MongoDB the rest of the app needs
-      # anyway; `jdbc` stores it in a relational database — by default a local SQLite file, for
-      # single-node or offline setups. Note that the JDBC repository drops tool-call messages from
-      # the history it stores.
-      type: ${CHAT_MEMORY_TYPE:jdbc}
+      # Which backend stores conversation history follows app.persistence.type. Note that the JDBC
+      # repository drops tool-call messages from the history it stores.
+      #
       # How many past messages are replayed to the model on each turn.
       max-messages: 100
       jdbc:
-        # Only read when type is jdbc. The dialect and the schema script follow from the URL.
         # For the SQLite default, keep journal_mode=WAL and busy_timeout so concurrent agent
         # streams do not fail on SQLITE_BUSY.
         url: ${CHAT_MEMORY_JDBC_URL:jdbc:sqlite:data/chat-memory.db?journal_mode=WAL&busy_timeout=5000}

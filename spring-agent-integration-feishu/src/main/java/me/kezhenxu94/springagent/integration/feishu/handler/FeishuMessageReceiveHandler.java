@@ -45,10 +45,6 @@ import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 import reactor.core.publisher.SignalType;
@@ -66,13 +62,15 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
 
   final SpringAgent springAgent;
   final RestTemplate restTemplate;
-  final MongoTemplate mongoTemplate;
   final AgentToolsProvider agentToolsProvider;
   final UserWorkspaceFactory userWorkspaceFactory;
   final FeishuTools feishuTools;
 
+  // Not final, matching FeishuTools#feishuReplyCard: @Value on a field is an injection point in its
+  // own right, and AOT generates a plain field assignment for it, which cannot target a final field
+  // the way the JVM's reflective injection can.
   @Value("classpath:/feishu/reply-card.json")
-  final Resource feishuReplyCard;
+  Resource feishuReplyCard;
 
   @Override
   public void handle(final P2MessageReceiveV1 event) throws Exception {
@@ -248,20 +246,14 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
         return;
       }
       log.error("Failed to process message {}", messageId, error);
-      mongoTemplate.updateFirst(
-          new Query(Criteria.where("id").is(messageId)),
-          new Update().set("status", FeishuMessage.Status.FAILED),
-          FeishuMessage.class);
+      feishuMessageRepo.updateStatus(messageId, FeishuMessage.Status.FAILED);
     }
 
     @Override
     public void onFinished(SignalType signal) {
       log.info("Completed, {}", signal);
       if (signal == SignalType.ON_COMPLETE) {
-        mongoTemplate.updateFirst(
-            new Query(Criteria.where("id").is(messageId)),
-            new Update().set("status", FeishuMessage.Status.COMPLETED),
-            FeishuMessage.class);
+        feishuMessageRepo.updateStatus(messageId, FeishuMessage.Status.COMPLETED);
       }
       try {
         agentTools.mcpTools().close();

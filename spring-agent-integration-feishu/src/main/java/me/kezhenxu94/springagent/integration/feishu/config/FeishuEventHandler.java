@@ -11,13 +11,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessage;
+import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessageRepo;
 import me.kezhenxu94.springagent.integration.feishu.handler.FeishuMessageReceiveHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
 
 @Slf4j
 @Configuration
@@ -25,8 +22,8 @@ import org.springframework.data.mongodb.core.query.Update;
 public class FeishuEventHandler {
   final FeishuProperties feishuProperties;
   final FeishuMessageReceiveHandler feishuMessageReceiveHandler;
-  final MongoTemplate mongoTemplate;
   final SpringAgent springAgent;
+  final FeishuMessageRepo feishuMessageRepo;
 
   @Bean
   public EventDispatcher eventDispatcher() {
@@ -48,10 +45,7 @@ public class FeishuEventHandler {
                 if ("stop".equals(values.get("button"))) {
                   log.info("Stop command received");
                   final var messageID = event.getEvent().getContext().getOpenMessageId();
-                  mongoTemplate.updateFirst(
-                      new Query(Criteria.where("id").is(messageID)),
-                      new Update().set("status", FeishuMessage.Status.CANCELLED),
-                      FeishuMessage.class);
+                  feishuMessageRepo.updateStatus(messageID, FeishuMessage.Status.CANCELLED);
                   springAgent.cancel(messageID);
                 }
                 return new P2CardActionTriggerResponse();

@@ -1,3 +1,6 @@
 me.kezhenxu94.springagent.core.config.SpringAgentCoreAutoConfiguration
+me.kezhenxu94.springagent.core.config.PersistenceConfiguration
+me.kezhenxu94.springagent.core.config.PersistenceConfiguration$Mongo
+me.kezhenxu94.springagent.core.config.PersistenceConfiguration$Jdbc
 me.kezhenxu94.springagent.core.config.ChatMemoryConfiguration
 me.kezhenxu94.springagent.core.config.VectorStoreConfiguration
