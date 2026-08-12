@@ -8,6 +8,7 @@ import static org.mockito.Mockito.lenient;
 import java.nio.file.Path;
 import me.kezhenxu94.springagent.core.tools.UserHome;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,7 +35,12 @@ class FeishuToolsTest {
     lenient()
         .when(userWorkspaceFactory.forOwner(anyString()))
         .thenReturn(new UserHome(workspaceRoot));
-    tools = new FeishuTools(null, userWorkspaceFactory, objectMapper);
+    tools =
+        new FeishuTools(
+            null,
+            userWorkspaceFactory,
+            objectMapper,
+            new FeishuProperties(null, null, null, null, null, null, null, null));
     tools.feishuReplyCard = new ClassPathResource("feishu/reply-card.json");
   }
 
@@ -76,7 +82,7 @@ class FeishuToolsTest {
             .toList();
     assertThat(elementIds).doesNotContain("message_actions", "usage");
 
-    assertThat(json).doesNotContain("\"停止\"").doesNotContain("\"element_id\":\"stop\"");
+    assertThat(json).doesNotContain("\"Stop\"").doesNotContain("\"element_id\":\"stop\"");
   }
 
   @Test

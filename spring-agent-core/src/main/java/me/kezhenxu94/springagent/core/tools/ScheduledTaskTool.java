@@ -31,26 +31,33 @@ public class ScheduledTaskTool {
       name = "CreateScheduledTask",
       description =
 """
-创建定时任务。循环任务请提供 6 字段 Spring cron 表达式（秒 分 时 日 月 周）。
-示例："0 0 1 * * MON" = 每周一 09:00（北京时间），"0 */30 * * * *" = 每 30 分钟，
-"0 0 0 * * MON-FRI" = 工作日 08:00（北京时间）。
-一次性任务请提供 scheduledAt，格式为 ISO-8601（北京时间，如 "2025-01-15T10:00:00+08:00"）。
-相对时间（如"明天上午 10 点"）请先调用 DateTimeTool 转换后再调用本工具。
-cronExpression 与 scheduledAt 只能提供一个。
+Create a scheduled task. For a recurring one, give a 6-field Spring cron expression \
+(second minute hour day-of-month month day-of-week); for example "0 0 1 * * MON" is \
+every Monday at 01:00, "0 */30 * * * *" is every 30 minutes, and "0 0 0 * * MON-FRI" \
+is midnight on weekdays. For a one-off, give scheduledAt as an ISO-8601 timestamp \
+with an offset, such as "2025-01-15T10:00:00+08:00".
+Resolve anything relative ("tomorrow morning") with CurrentDateTime first, since the \
+times here are absolute. Give either cronExpression or scheduledAt, never both.
 """)
   public String createScheduledTask(
-      @ToolParam(description = "任务触发时要发送给 AI 的文本内容") final String taskText,
-      @ToolParam(description = "循环任务的 6 字段 Spring cron 表达式，一次性任务传 null", required = false)
+      @ToolParam(description = "The prompt to send to the agent when the task fires")
+          final String taskText,
+      @ToolParam(
+              description =
+                  "6-field Spring cron expression for a recurring task; null for a one-off",
+              required = false)
           final String cronExpression,
       @ToolParam(
               description =
-                  "一次性任务的触发时间，ISO-8601 格式（北京时间，如 \"2025-01-15T10:00:00+08:00\"），循环任务传 null",
+                  "When a one-off task fires, ISO-8601 with an offset (for example"
+                      + " \"2025-01-15T10:00:00+08:00\"); null for a recurring task",
               required = false)
           final String scheduledAt,
       @ToolParam(
               description =
-                  "任务过期时间，ISO-8601 格式（北京时间，如 \"2025-12-31T23:59:59+08:00\"）。传入 \"never\""
-                      + " 表示永不过期。不填则默认 7 天后过期。",
+                  "When the task stops firing, ISO-8601 with an offset (for example"
+                      + " \"2025-12-31T23:59:59+08:00\"). Pass \"never\" for no expiry at all;"
+                      + " omit it to expire in 7 days.",
               required = false)
           final String expiresAt,
       final ToolContext context) {
@@ -64,10 +71,10 @@ cronExpression 与 scheduledAt 只能提供一个。
     final var hasScheduledAt = !Strings.isNullOrEmpty(scheduledAt);
 
     if (hasCron && hasScheduledAt) {
-      return "错误：cronExpression 与 scheduledAt 只能提供一个。";
+      return "Error: give either cronExpression or scheduledAt, not both.";
     }
     if (!hasCron && !hasScheduledAt) {
-      return "错误：循环任务请提供 cronExpression，一次性任务请提供 scheduledAt。";
+      return "Error: give cronExpression for a recurring task, or scheduledAt for a one-off.";
     }
 
     final Instant resolvedExpiresAt;
@@ -80,22 +87,25 @@ cronExpression 与 scheduledAt 只能提供一个。
       try {
         parsed = Instant.parse(expiresAt);
       } catch (Exception e) {
-        return "错误：expiresAt 格式无效，请使用 ISO-8601 格式（如 2025-12-31T23:59:59+08:00）或 \"never\"。";
+        return "Error: expiresAt must be ISO-8601 with an offset (for example"
+            + " 2025-12-31T23:59:59+08:00), or \"never\".";
       }
       if (parsed.isBefore(Instant.now())) {
-        return "错误：expiresAt 必须是未来的时间。";
+        return "Error: expiresAt must be in the future.";
       }
       resolvedExpiresAt = parsed;
     }
 
     final var expiryNote =
-        resolvedExpiresAt == null ? "永久有效（不过期）。" : "过期时间：" + resolvedExpiresAt + "。";
+        resolvedExpiresAt == null
+            ? "It never expires."
+            : "It expires at " + resolvedExpiresAt + ".";
 
     if (hasCron) {
       try {
         CronExpression.parse(cronExpression);
       } catch (Exception e) {
-        return "错误：cron 表达式 '" + cronExpression + "' 无效：" + e.getMessage();
+        return "Error: cron expression '" + cronExpression + "' is invalid: " + e.getMessage();
       }
       final var validated = enforceMinimumInterval(cronExpression);
       final var task =
@@ -113,26 +123,29 @@ cronExpression 与 scheduledAt 只能提供一个。
                   .build());
       scheduledTaskService.schedule(task);
       final var overrideNote =
-          validated.equals(cronExpression) ? "" : "（注意：触发间隔已调整为最小允许值 " + validated + "）";
-      return "已创建循环任务："
+          validated.equals(cronExpression)
+              ? ""
+              : " The interval was raised to the smallest one allowed, " + validated + ".";
+      return "Created the recurring task \""
           + taskText
-          + "（"
+          + "\" ("
           + validated
-          + "），任务 ID "
+          + "), id "
           + task.id()
-          + "。"
+          + ". "
           + expiryNote
           + overrideNote
-          + "如需提前取消，请使用 cancelScheduledTask 并提供该 ID。";
+          + " Cancel it early with CancelScheduledTask and that id.";
     } else {
       final Instant fireAt;
       try {
         fireAt = Instant.parse(scheduledAt);
       } catch (Exception e) {
-        return "错误：scheduledAt 格式无效，请使用 ISO-8601 格式（如 2025-01-15T10:00:00+08:00）。";
+        return "Error: scheduledAt must be ISO-8601 with an offset (for example"
+            + " 2025-01-15T10:00:00+08:00).";
       }
       if (fireAt.isBefore(Instant.now())) {
-        return "错误：scheduledAt 必须是未来的时间。";
+        return "Error: scheduledAt must be in the future.";
       }
       final var task =
           scheduledTaskRepo.save(
@@ -148,15 +161,15 @@ cronExpression 与 scheduledAt 只能提供一个。
                   .status(ScheduledTask.Status.ACTIVE)
                   .build());
       scheduledTaskService.schedule(task);
-      return "已创建一次性任务："
+      return "Created the one-off task \""
           + taskText
-          + "，触发时间 "
+          + "\", firing at "
           + fireAt
-          + "，任务 ID "
+          + ", id "
           + task.id()
-          + "。"
+          + ". "
           + expiryNote
-          + "如需提前取消，请使用 cancelScheduledTask 并提供该 ID。";
+          + " Cancel it early with CancelScheduledTask and that id.";
     }
   }
 
@@ -168,7 +181,7 @@ cronExpression 与 scheduledAt 只能提供一个。
     final List<ScheduledTask> tasks =
         scheduledTaskRepo.findByUserIdAndStatus(userId, ScheduledTask.Status.ACTIVE);
     if (tasks.isEmpty()) {
-      return "暂无活跃的定时任务。";
+      return "You have no active scheduled tasks.";
     }
     return tasks.stream()
         .map(
@@ -189,18 +202,18 @@ cronExpression 与 scheduledAt 只能提供一个。
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
     final var taskOpt = scheduledTaskRepo.findById(taskId);
     if (taskOpt.isEmpty()) {
-      return "错误：未找到 ID 为 " + taskId + " 的任务。";
+      return "Error: no task with id " + taskId + ".";
     }
     final var task = taskOpt.get();
     if (!task.userId().equals(userId)) {
-      return "错误：只能取消自己创建的任务。";
+      return "Error: you can only cancel tasks you created yourself.";
     }
     if (task.status() != ScheduledTask.Status.ACTIVE) {
-      return "任务 " + taskId + " 已处于 " + task.status() + " 状态。";
+      return "Task " + taskId + " is already " + task.status() + ".";
     }
     scheduledTaskRepo.save(task.toBuilder().status(ScheduledTask.Status.CANCELLED).build());
     scheduledTaskService.unschedule(taskId);
-    return "已取消任务 " + taskId;
+    return "Cancelled task " + taskId + ".";
   }
 
   /**

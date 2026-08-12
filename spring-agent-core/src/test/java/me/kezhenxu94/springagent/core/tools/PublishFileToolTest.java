@@ -97,7 +97,8 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(file.toString(), "public", null, contextFor(USER_ID));
 
-    assertThat(result).startsWith("已发布，链接：http://localhost:8080/share/public/" + USER_ID + "/");
+    assertThat(result)
+        .startsWith("Published at http://localhost:8080/share/public/" + USER_ID + "/");
     assertThat(repoBackingStore).hasSize(1);
     final var resource = repoBackingStore.values().iterator().next();
     assertThat(resource.visibility()).isEqualTo(PublishedResource.Visibility.PUBLIC);
@@ -121,7 +122,7 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(dir.toString(), "internal", null, contextFor(USER_ID));
 
-    assertThat(result).contains("永久有效");
+    assertThat(result).contains("never expires");
     final var resource = repoBackingStore.values().iterator().next();
     assertThat(resource.directory()).isTrue();
     assertThat(resource.entryFilename()).isEqualTo("index.html");
@@ -156,7 +157,7 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(file.toString(), "public", null, contextFor(USER_ID));
 
-    assertThat(result).contains("只能发布当前用户 workspace 目录内");
+    assertThat(result).contains("inside the current user's workspace");
     assertThat(repoBackingStore).isEmpty();
   }
 
@@ -168,7 +169,7 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(file.toString(), "public", null, contextFor(USER_ID));
 
-    assertThat(result).contains("只能发布当前用户 workspace 目录内");
+    assertThat(result).contains("inside the current user's workspace");
   }
 
   @Test
@@ -179,7 +180,7 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(file.toString(), "public", null, contextFor(USER_ID));
 
-    assertThat(result).contains("只能发布当前用户 workspace 目录内");
+    assertThat(result).contains("inside the current user's workspace");
   }
 
   @Test
@@ -193,7 +194,7 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(traversalPath, "public", null, contextFor(USER_ID));
 
-    assertThat(result).contains("只能发布当前用户 workspace 目录内");
+    assertThat(result).contains("inside the current user's workspace");
   }
 
   @Test
@@ -206,7 +207,7 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(link.toString(), "public", null, contextFor(USER_ID));
 
-    assertThat(result).contains("只能发布当前用户 workspace 目录内");
+    assertThat(result).contains("inside the current user's workspace");
     assertThat(repoBackingStore).isEmpty();
   }
 
@@ -222,7 +223,7 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(dir.toString(), "public", null, contextFor(USER_ID));
 
-    assertThat(result).startsWith("已发布");
+    assertThat(result).startsWith("Published at");
     final var resource = repoBackingStore.values().iterator().next();
     final var storedDir = storageRoot.resolve("public").resolve(USER_ID).resolve(resource.id());
     assertThat(Files.exists(storedDir.resolve("index.html"))).isTrue();
@@ -236,7 +237,7 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(missing, "public", null, contextFor(USER_ID));
 
-    assertThat(result).contains("不存在");
+    assertThat(result).contains("No such file or directory");
   }
 
   @Test
@@ -256,7 +257,7 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(file.toString(), "everyone", null, contextFor(USER_ID));
 
-    assertThat(result).isEqualTo("错误：visibility 必须为 internal 或 public。");
+    assertThat(result).isEqualTo("Error: visibility must be internal or public.");
   }
 
   @Test
@@ -267,7 +268,7 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(file.toString(), "public", "31d", contextFor(USER_ID));
 
-    assertThat(result).contains("public 的 ttl 必须大于 0 且不超过 30d");
+    assertThat(result).contains("A public ttl must be above 0 and at most 30d");
     assertThat(repoBackingStore).isEmpty();
   }
 
@@ -279,7 +280,7 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(file.toString(), "public", "banana", contextFor(USER_ID));
 
-    assertThat(result).contains("ttl 格式无效");
+    assertThat(result).contains("Invalid ttl");
   }
 
   @Test
@@ -315,7 +316,7 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(file.toString(), "internal", "0s", contextFor(USER_ID));
 
-    assertThat(result).contains("ttl 必须大于 0");
+    assertThat(result).contains("ttl must be above 0");
   }
 
   // -------------------- unpublish --------------------
@@ -330,7 +331,7 @@ class PublishFileToolTest {
 
     final var result = tool.unpublishFile(token, contextFor(USER_ID));
 
-    assertThat(result).isEqualTo("已取消发布：" + token);
+    assertThat(result).isEqualTo("Unpublished " + token + ".");
     assertThat(repoBackingStore).isEmpty();
     assertThat(Files.exists(storageRoot.resolve("public").resolve(USER_ID).resolve(token)))
         .isFalse();
@@ -346,7 +347,7 @@ class PublishFileToolTest {
 
     final var result = tool.unpublishFile(token, contextFor("someone-else"));
 
-    assertThat(result).contains("只能取消自己发布的内容");
+    assertThat(result).contains("you can only unpublish content you published yourself");
     assertThat(repoBackingStore).containsKey(token);
   }
 
@@ -355,7 +356,7 @@ class PublishFileToolTest {
   void unpublishRejectsUnknownToken() {
     final var result = tool.unpublishFile("does-not-exist", contextFor(USER_ID));
 
-    assertThat(result).contains("未找到该发布记录");
+    assertThat(result).contains("nothing is published under");
   }
 
   // -------------------- renew --------------------
@@ -370,7 +371,7 @@ class PublishFileToolTest {
 
     final var result = tool.renewPublishedFile(token, "10d", contextFor(USER_ID));
 
-    assertThat(result).contains("已续期");
+    assertThat(result).contains("Extended");
     assertThat(repoBackingStore.get(token).expiresAt())
         .isAfter(Instant.now().plus(Duration.ofDays(9)));
   }
@@ -385,7 +386,7 @@ class PublishFileToolTest {
 
     final var result = tool.renewPublishedFile(token, "1d", contextFor("someone-else"));
 
-    assertThat(result).contains("只能续期自己发布的内容");
+    assertThat(result).contains("you can only extend content you published yourself");
   }
 
   @Test
@@ -393,7 +394,7 @@ class PublishFileToolTest {
   void renewRejectsUnknownToken() {
     final var result = tool.renewPublishedFile("missing", "1d", contextFor(USER_ID));
 
-    assertThat(result).contains("未找到该发布记录");
+    assertThat(result).contains("nothing is published under");
   }
 
   @Test
@@ -406,7 +407,7 @@ class PublishFileToolTest {
 
     final var result = tool.renewPublishedFile(token, "60d", contextFor(USER_ID));
 
-    assertThat(result).contains("public 的 ttl 必须大于 0 且不超过 30d");
+    assertThat(result).contains("A public ttl must be above 0 and at most 30d");
   }
 
   // -------------------- update --------------------
@@ -421,7 +422,8 @@ class PublishFileToolTest {
     final var publishResult =
         tool.publishFile(file.toString(), "public", "10d", contextFor(USER_ID));
     final var token = repoBackingStore.keySet().iterator().next();
-    final var originalUrl = publishResult.split("链接：")[1].split(" ")[0];
+    final var originalUrl =
+        publishResult.split("Published at ")[1].split(" ")[0].replaceAll("\\.$", "");
     final var originalExpiresAt = repoBackingStore.get(token).expiresAt();
 
     // Even though the new source file has a different name, the stored filename (and therefore
@@ -432,7 +434,12 @@ class PublishFileToolTest {
         tool.updatePublishedFile(token, updated.toString(), null, null, contextFor(USER_ID));
 
     assertThat(result)
-        .isEqualTo("已更新，链接保持不变：" + originalUrl + " " + "过期时间：" + originalExpiresAt + "。");
+        .isEqualTo(
+            "Updated, still at "
+                + originalUrl
+                + ". The link expires at "
+                + originalExpiresAt
+                + ".");
     final var resource = repoBackingStore.get(token);
     assertThat(resource.entryFilename()).isEqualTo("a.txt");
     assertThat(resource.expiresAt()).isEqualTo(originalExpiresAt);
@@ -455,7 +462,8 @@ class PublishFileToolTest {
     final var publishResult =
         tool.publishFile(dir.toString(), "internal", null, contextFor(USER_ID));
     final var token = repoBackingStore.keySet().iterator().next();
-    final var originalUrl = publishResult.split("链接：")[1].split(" ")[0];
+    final var originalUrl =
+        publishResult.split("Published at ")[1].split(" ")[0].replaceAll("\\.$", "");
 
     final var dir2 = Files.createDirectories(workspaceOf(USER_ID).resolve("site-v2"));
     Files.writeString(dir2.resolve("index.html"), "v2");
@@ -500,7 +508,7 @@ class PublishFileToolTest {
     final var result =
         tool.updatePublishedFile(token, file.toString(), "update", null, contextFor(USER_ID));
 
-    assertThat(result).contains("mode=update 时，新内容的类型");
+    assertThat(result).contains("with mode=update the new content must be the same kind");
     // the original content must be untouched after a rejected update
     assertThat(repoBackingStore.get(token).directory()).isTrue();
   }
@@ -518,7 +526,7 @@ class PublishFileToolTest {
     final var result =
         tool.updatePublishedFile(token, file.toString(), "replace", null, contextFor(USER_ID));
 
-    assertThat(result).startsWith("已更新");
+    assertThat(result).startsWith("Updated, still at");
     final var resource = repoBackingStore.get(token);
     assertThat(resource.directory()).isFalse();
     assertThat(resource.entryFilename()).isEqualTo("single.txt");
@@ -536,7 +544,7 @@ class PublishFileToolTest {
         tool.updatePublishedFile(
             token, file.toString(), "overwrite-everything", null, contextFor(USER_ID));
 
-    assertThat(result).isEqualTo("错误：mode 必须为 update 或 replace。");
+    assertThat(result).isEqualTo("Error: mode must be update or replace.");
   }
 
   @Test
@@ -567,7 +575,7 @@ class PublishFileToolTest {
         tool.updatePublishedFile(
             token, otherFile.toString(), null, null, contextFor("someone-else"));
 
-    assertThat(result).contains("只能更新自己发布的内容");
+    assertThat(result).contains("you can only update content you published yourself");
   }
 
   @Test
@@ -579,7 +587,7 @@ class PublishFileToolTest {
     final var result =
         tool.updatePublishedFile("missing", file.toString(), null, null, contextFor(USER_ID));
 
-    assertThat(result).contains("未找到该发布记录");
+    assertThat(result).contains("nothing is published under");
   }
 
   @Test
@@ -595,7 +603,7 @@ class PublishFileToolTest {
     final var result =
         tool.updatePublishedFile(token, outsideFile.toString(), null, null, contextFor(USER_ID));
 
-    assertThat(result).contains("只能发布当前用户 workspace 目录内");
+    assertThat(result).contains("inside the current user's workspace");
   }
 
   @Test
@@ -612,7 +620,7 @@ class PublishFileToolTest {
     final var result =
         tool.updatePublishedFile(token, updated.toString(), null, "60d", contextFor(USER_ID));
 
-    assertThat(result).contains("public 的 ttl 必须大于 0 且不超过 30d");
+    assertThat(result).contains("A public ttl must be above 0 and at most 30d");
     assertThat(repoBackingStore.get(token).expiresAt()).isEqualTo(originalExpiresAt);
     assertThat(repoBackingStore.get(token).entryFilename()).isEqualTo("a.txt");
   }

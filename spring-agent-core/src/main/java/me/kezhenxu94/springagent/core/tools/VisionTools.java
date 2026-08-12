@@ -32,28 +32,34 @@ public class VisionTools {
   @Tool(
       name = "RecognizeImage",
       description =
-          "识别/描述图片内容或回答关于图片的问题 (视觉理解), 支持本地文件路径 (必须是此前保存到当前用户 workspace/artifacts "
-              + "目录内的图片) 或可公开访问的图片 URL, 可同时传入多张图片")
+          "Describe what an image shows, or answer a question about it. Takes local paths (only"
+              + " images already saved under the current user's workspace/artifacts directory) or"
+              + " publicly reachable URLs, and several images at once.")
   public String recognizeImage(
-      @ToolParam(description = "图片来源列表: 本地文件绝对路径或可公开访问的图片 URL") final List<String> images,
-      @ToolParam(description = "关于图片的问题或指令, 不填则默认让模型描述图片内容", required = false) final String prompt,
+      @ToolParam(description = "The images: absolute local paths, or publicly reachable URLs")
+          final List<String> images,
+      @ToolParam(
+              description = "What to ask about the images; omit it to just have them described",
+              required = false)
+          final String prompt,
       final ToolContext context) {
     if (images == null || images.isEmpty()) {
-      return "错误：请至少提供一张图片。";
+      return "Error: give at least one image.";
     }
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
     log.info("Recognizing {} image(s) for user {}", images.size(), userId);
 
     final var mediaList = images.stream().map(src -> resolveMedia(src, userId)).toList();
     if (mediaList.stream().anyMatch(Objects::isNull)) {
-      return "错误：无法读取图片，请检查路径或 URL 是否正确，本地路径必须在当前用户的 workspace 目录内。";
+      return "Error: none of the images could be read. Check the paths and URLs; a local path has"
+          + " to be inside the current user's workspace directory.";
     }
 
     return visionChatClient
         .prompt()
         .user(
             u -> {
-              u.text(Strings.isNullOrEmpty(prompt) ? "请描述这张图片的内容。" : prompt);
+              u.text(Strings.isNullOrEmpty(prompt) ? "Describe what this image shows." : prompt);
               mediaList.forEach(u::media);
             })
         .call()

@@ -46,17 +46,25 @@ public class PublishFileTool {
       name = "PublishFile",
       description =
           """
-          发布一个本地文件或文件夹为可访问的分享链接。
-          visibility=internal：仅登录过 Feishu 的公司成员可访问，ttl 选填，不填表示永久有效。
-          visibility=public：任何人凭链接均可访问（无需登录），ttl 选填，不填默认 1d，最大 30d。
-          只能发布当前用户 workspace 目录内的文件或文件夹（即本工具或其他工具此前为该用户生成的文件）。
-          文件夹会整体发布，保留原有目录结构，浏览器访问时默认打开其中的 index.html（如果存在）。
+          Publish a local file or directory as a shareable link.
+          visibility=internal: reachable only by colleagues who have signed in with Feishu. ttl is
+              optional and means the link never expires when omitted.
+          visibility=public: reachable by anyone holding the link, no sign-in. ttl is optional and
+              defaults to 1d, at most 30d.
+          Only files and directories inside the current user's workspace can be published, which
+          means whatever this or another tool produced for them earlier.
+          A directory is published whole, keeping its structure, and a browser opens its index.html
+          if it has one.
           """)
   public String publishFile(
-      @ToolParam(description = "要发布的本地文件或文件夹的绝对路径") final String path,
-      @ToolParam(description = "internal 或 public") final String visibilityParam,
+      @ToolParam(description = "Absolute path of the local file or directory to publish")
+          final String path,
+      @ToolParam(description = "internal or public") final String visibilityParam,
       @ToolParam(
-              description = "有效期，时长格式如 30s、10m、2h、1d。public 选填，不填默认 1d，最大 30d；internal 选填，不填表示永久有效",
+              description =
+                  "How long the link lives, as a duration such as 30s, 10m, 2h or 1d. Optional for"
+                      + " public (defaults to 1d, at most 30d) and for internal (never expires when"
+                      + " omitted)",
               required = false)
           final String ttl,
       final ToolContext context) {
@@ -67,19 +75,19 @@ public class PublishFileTool {
     try {
       sourcePath = resolveSourcePath(path, userId);
     } catch (IllegalArgumentException e) {
-      return "错误：" + e.getMessage();
+      return "Error: " + e.getMessage();
     }
 
     final var visibility = PublishedResource.Visibility.from(visibilityParam);
     if (visibility == null) {
-      return "错误：visibility 必须为 internal 或 public。";
+      return "Error: visibility must be internal or public.";
     }
 
     final Instant expiresAt;
     try {
       expiresAt = resolveExpiresAt(visibility, ttl);
     } catch (IllegalArgumentException e) {
-      return "错误：" + e.getMessage();
+      return "Error: " + e.getMessage();
     }
 
     final var token = UUID.randomUUID().toString().replace("-", "");
@@ -91,7 +99,7 @@ public class PublishFileTool {
       stored = storeContent(sourcePath, basePrefix, null);
     } catch (IOException | UncheckedIOException e) {
       log.error("Failed to publish {} for user {}", sourcePath, userId, e);
-      return "错误：发布失败，请稍后重试。";
+      return "Error: publishing failed, try again shortly.";
     }
 
     publishedResourceRepo.save(
@@ -105,7 +113,8 @@ public class PublishFileTool {
             .build());
 
     final var url = buildUrl(visibilityDir, userId, token, stored);
-    final var expiryNote = expiresAt == null ? "永久有效（不过期）。" : "过期时间：" + expiresAt + "。";
+    final var expiryNote =
+        expiresAt == null ? "The link never expires." : "The link expires at " + expiresAt + ".";
 
     log.info(
         "Published resource token={} owner={} visibility={} directory={} expiresAt={}",
@@ -115,56 +124,70 @@ public class PublishFileTool {
         stored.directory(),
         expiresAt);
 
-    return "已发布，链接：" + url + " " + expiryNote;
+    return "Published at " + url + ". " + expiryNote;
   }
 
   @Tool(
       name = "UpdatePublishedFile",
       description =
           """
-          更新一个已发布的文件或文件夹的内容，分享链接（URL）保持不变。
-          mode=update（默认）：将新内容叠加到已发布内容之上，同名文件被覆盖，未涉及的旧文件保留。
-              仅当已发布内容和新内容都是文件夹时才能使用；用于只想新增/覆盖部分文件的场景。
-          mode=replace：先删除已发布的全部旧内容，再整体替换为新内容，等价于重新发布一次但保留原链接。
-          可选提供新的 ttl 重新计算有效期，不提供则保留原有效期不变。
-          新内容同样只能来自当前用户 workspace 目录内的文件或文件夹。
+          Replace what an already published link serves, keeping the link itself unchanged.
+          mode=update (the default): lay the new content over the published content, overwriting
+              files of the same name and leaving the rest alone. Only possible when both sides are
+              directories, and meant for adding or replacing part of what is published.
+          mode=replace: delete everything published so far and put the new content in its place,
+              which is a fresh publish that keeps the old link.
+          Pass a new ttl to restart the expiry from now; omit it to leave the expiry as it is.
+          The new content, too, has to come from inside the current user's workspace.
           """)
   public String updatePublishedFile(
-      @ToolParam(description = "发布时返回的 token（分享链接中 visibility 和用户 id 之后的那一段）") final String token,
-      @ToolParam(description = "新内容的本地文件或文件夹绝对路径") final String path,
-      @ToolParam(description = "update（叠加/覆盖，默认）或 replace（整体替换）", required = false)
+      @ToolParam(
+              description =
+                  "The token publishing returned: the segment of the link after visibility and the"
+                      + " user id")
+          final String token,
+      @ToolParam(description = "Absolute path of the new local file or directory")
+          final String path,
+      @ToolParam(
+              description = "update (overlay, the default) or replace (swap wholesale)",
+              required = false)
           final String mode,
-      @ToolParam(description = "新的有效期，从现在开始计算，时长格式如 30s、10m、2h、1d。不填则保留原有效期不变", required = false)
+      @ToolParam(
+              description =
+                  "New lifetime, counted from now, as a duration such as 30s, 10m, 2h or 1d; omit"
+                      + " it to keep the current expiry",
+              required = false)
           final String ttl,
       final ToolContext context) {
 
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
     if (Strings.isNullOrEmpty(token)) {
-      return "错误：请提供 token。";
+      return "Error: give a token.";
     }
 
     final var resource = publishedResourceRepo.findById(token).orElse(null);
     if (resource == null) {
-      return "错误：未找到该发布记录：" + token;
+      return "Error: nothing is published under " + token + ".";
     }
     if (!resource.ownerId().equals(userId)) {
-      return "错误：只能更新自己发布的内容。";
+      return "Error: you can only update content you published yourself.";
     }
 
     final var updateMode = UpdateMode.from(mode);
     if (updateMode == null) {
-      return "错误：mode 必须为 update 或 replace。";
+      return "Error: mode must be update or replace.";
     }
 
     final Path sourcePath;
     try {
       sourcePath = resolveSourcePath(path, userId);
     } catch (IllegalArgumentException e) {
-      return "错误：" + e.getMessage();
+      return "Error: " + e.getMessage();
     }
 
     if (updateMode == UpdateMode.UPDATE && resource.directory() != Files.isDirectory(sourcePath)) {
-      return "错误：mode=update 时，新内容的类型（文件/文件夹）必须与已发布内容一致；" + "如需更换类型，请使用 mode=replace。";
+      return "Error: with mode=update the new content must be the same kind, file or directory, as"
+          + " what is published. Use mode=replace to change kind.";
     }
 
     final Instant expiresAt;
@@ -174,7 +197,7 @@ public class PublishFileTool {
       try {
         expiresAt = resolveExpiresAt(resource.visibility(), ttl);
       } catch (IllegalArgumentException e) {
-        return "错误：" + e.getMessage();
+        return "Error: " + e.getMessage();
       }
     }
 
@@ -195,7 +218,7 @@ public class PublishFileTool {
       }
     } catch (IOException | UncheckedIOException e) {
       log.error("Failed to update published resource {} for user {}", token, userId, e);
-      return "错误：更新失败，请稍后重试。";
+      return "Error: the update failed, try again shortly.";
     }
 
     publishedResourceRepo.save(
@@ -206,7 +229,8 @@ public class PublishFileTool {
             .build());
 
     final var url = buildUrl(visibilityDir, userId, token, stored);
-    final var expiryNote = expiresAt == null ? "永久有效（不过期）。" : "过期时间：" + expiresAt + "。";
+    final var expiryNote =
+        expiresAt == null ? "The link never expires." : "The link expires at " + expiresAt + ".";
 
     log.info(
         "Updated published resource token={} owner={} mode={} directory={} expiresAt={}",
@@ -216,84 +240,101 @@ public class PublishFileTool {
         stored.directory(),
         expiresAt);
 
-    return "已更新，链接保持不变：" + url + " " + expiryNote;
+    return "Updated, still at " + url + ". " + expiryNote;
   }
 
-  @Tool(name = "UnpublishFile", description = "取消发布一个已发布的文件或文件夹，链接将立即失效并删除已发布的内容。")
+  @Tool(
+      name = "UnpublishFile",
+      description =
+          "Unpublish a file or directory: the link stops working at once and the published"
+              + " content is deleted.")
   public String unpublishFile(
-      @ToolParam(description = "发布时返回的 token（分享链接中 visibility 和用户 id 之后的那一段）") final String token,
+      @ToolParam(
+              description =
+                  "The token publishing returned: the segment of the link after visibility and the"
+                      + " user id")
+          final String token,
       final ToolContext context) {
 
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
     if (Strings.isNullOrEmpty(token)) {
-      return "错误：请提供 token。";
+      return "Error: give a token.";
     }
 
     final var resource = publishedResourceRepo.findById(token).orElse(null);
     if (resource == null) {
-      return "错误：未找到该发布记录：" + token;
+      return "Error: nothing is published under " + token + ".";
     }
     if (!resource.ownerId().equals(userId)) {
-      return "错误：只能取消自己发布的内容。";
+      return "Error: you can only unpublish content you published yourself.";
     }
 
     deletePublishedFiles(resource, userId);
     publishedResourceRepo.deleteById(token);
 
     log.info("Unpublished resource token={} owner={}", token, userId);
-    return "已取消发布：" + token;
+    return "Unpublished " + token + ".";
   }
 
-  @Tool(name = "RenewPublishedFile", description = "续期一个已发布的文件或文件夹，从现在开始重新计算有效期，避免链接过期失效。")
+  @Tool(
+      name = "RenewPublishedFile",
+      description =
+          "Extend a published link: its lifetime restarts from now, so it does not lapse.")
   public String renewPublishedFile(
-      @ToolParam(description = "发布时返回的 token（分享链接中 visibility 和用户 id 之后的那一段）") final String token,
       @ToolParam(
               description =
-                  "新的有效期，从现在开始计算，时长格式如 30s、10m、2h、1d。"
-                      + "public 选填，不填默认 1d，最大 30d；internal 选填，不填表示永久有效",
+                  "The token publishing returned: the segment of the link after visibility and the"
+                      + " user id")
+          final String token,
+      @ToolParam(
+              description =
+                  "New lifetime, counted from now, as a duration such as 30s, 10m, 2h or 1d."
+                      + " Optional for public (defaults to 1d, at most 30d) and for internal"
+                      + " (never expires when omitted)",
               required = false)
           final String ttl,
       final ToolContext context) {
 
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
     if (Strings.isNullOrEmpty(token)) {
-      return "错误：请提供 token。";
+      return "Error: give a token.";
     }
 
     final var resource = publishedResourceRepo.findById(token).orElse(null);
     if (resource == null) {
-      return "错误：未找到该发布记录：" + token;
+      return "Error: nothing is published under " + token + ".";
     }
     if (!resource.ownerId().equals(userId)) {
-      return "错误：只能续期自己发布的内容。";
+      return "Error: you can only extend content you published yourself.";
     }
 
     final Instant expiresAt;
     try {
       expiresAt = resolveExpiresAt(resource.visibility(), ttl);
     } catch (IllegalArgumentException e) {
-      return "错误：" + e.getMessage();
+      return "Error: " + e.getMessage();
     }
 
     publishedResourceRepo.save(resource.toBuilder().expiresAt(expiresAt).build());
 
-    final var expiryNote = expiresAt == null ? "永久有效（不过期）。" : "过期时间：" + expiresAt + "。";
+    final var expiryNote =
+        expiresAt == null ? "The link never expires." : "The link expires at " + expiresAt + ".";
     log.info("Renewed resource token={} owner={} expiresAt={}", token, userId, expiresAt);
-    return "已续期：" + token + "，" + expiryNote;
+    return "Extended " + token + ". " + expiryNote;
   }
 
   private Path resolveSourcePath(final String path, final String userId) {
     if (Strings.isNullOrEmpty(path)) {
-      throw new IllegalArgumentException("请提供文件或文件夹路径。");
+      throw new IllegalArgumentException("Give a file or directory path.");
     }
     final Path sourcePath;
     try {
       sourcePath = Path.of(path).toAbsolutePath().normalize();
     } catch (Exception e) {
-      throw new IllegalArgumentException("路径无效：" + path);
+      throw new IllegalArgumentException("Invalid path: " + path);
     }
     if (!Files.exists(sourcePath)) {
-      throw new IllegalArgumentException("文件或文件夹不存在：" + path);
+      throw new IllegalArgumentException("No such file or directory: " + path);
     }
 
     final var userHome = userWorkspaceFactory.forOwner(userId);
@@ -303,11 +344,12 @@ public class PublishFileTool {
       realSourcePath = sourcePath.toRealPath();
       realWorkspaceRoot = userHome.workspace().toRealPath();
     } catch (IOException e) {
-      throw new IllegalArgumentException("无法解析路径：" + path);
+      throw new IllegalArgumentException("Could not resolve the path: " + path);
     }
     if (!realSourcePath.equals(realWorkspaceRoot)
         && !realSourcePath.startsWith(realWorkspaceRoot)) {
-      throw new IllegalArgumentException("只能发布当前用户 workspace 目录内的文件或文件夹。");
+      throw new IllegalArgumentException(
+          "Only files and directories inside the current user's workspace can be published.");
     }
     return sourcePath;
   }
@@ -393,7 +435,7 @@ public class PublishFileTool {
       if (resolvedTtl.isZero()
           || resolvedTtl.isNegative()
           || resolvedTtl.compareTo(PUBLIC_MAX_TTL) > 0) {
-        throw new IllegalArgumentException("public 的 ttl 必须大于 0 且不超过 30d。");
+        throw new IllegalArgumentException("A public ttl must be above 0 and at most 30d.");
       }
       return Instant.now().plus(resolvedTtl);
     }
@@ -402,7 +444,7 @@ public class PublishFileTool {
     }
     final var parsed = parseTtl(ttl);
     if (parsed.isZero() || parsed.isNegative()) {
-      throw new IllegalArgumentException("ttl 必须大于 0。");
+      throw new IllegalArgumentException("ttl must be above 0.");
     }
     return Instant.now().plus(parsed);
   }
@@ -411,7 +453,7 @@ public class PublishFileTool {
     try {
       return DurationStyle.detectAndParse(ttl);
     } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("ttl 格式无效，请使用如 30s、10m、2h、1d 的格式。");
+      throw new IllegalArgumentException("Invalid ttl: use a duration such as 30s, 10m, 2h or 1d.");
     }
   }
 

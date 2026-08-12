@@ -10,16 +10,40 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "app")
 public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
 
+  /**
+   * @param scheduledTaskPrompt what a firing scheduled task says to the model, as a template over
+   *     {@code {taskText}} — the prompt the task was created with. Defaults to {@link
+   *     #DEFAULT_SCHEDULED_TASK_PROMPT}, since a deployment that never schedules anything has no
+   *     reason to state one.
+   */
   public record Ai(
       BotInterceptor botInterceptor,
       Set<String> admins,
       Map<String, ModelPricing> modelPricing,
       ChatMemory chatMemory,
       VectorStore vectorstore,
-      String systemPrompt) {
+      String systemPrompt,
+      String scheduledTaskPrompt) {
+
+    public static final String DEFAULT_SCHEDULED_TASK_PROMPT =
+        """
+        A scheduled task of yours has fired. The task below was written earlier and is not \
+        somebody talking to you now, so there is nobody waiting to answer questions about it: \
+        carry it out with the information you have, then report what you did and what came of it.
+
+        Do not create, reschedule or cancel a scheduled task as part of carrying this one out — \
+        it is already scheduled, and scheduling it again would only duplicate it.
+
+        # The task
+        {taskText}\
+        """;
+
     public Ai {
       if (systemPrompt == null || systemPrompt.isBlank()) {
         throw new IllegalArgumentException("app.ai.system-prompt must not be blank");
+      }
+      if (scheduledTaskPrompt == null || scheduledTaskPrompt.isBlank()) {
+        scheduledTaskPrompt = DEFAULT_SCHEDULED_TASK_PROMPT;
       }
       if (admins == null) {
         admins = Set.of();

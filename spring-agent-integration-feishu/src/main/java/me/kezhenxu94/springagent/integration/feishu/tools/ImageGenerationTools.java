@@ -40,20 +40,27 @@ public class ImageGenerationTools {
   @Tool(
       name = "GenerateImage",
       description =
-          "根据提示词生成图片, 返回图片的 URL, 使用 markdown 显示图片; 支持图生图, "
-              + "若参考图片是本地文件而非可公开访问的 URL, 请先调用 PublishFileTool 的 publishFile "
-              + "(visibility=public, ttl=30m) 发布该文件获取公开 URL, 再传入 referenceImages")
+          "Generate an image from a prompt and return its URL, to be shown with markdown. Also"
+              + " generates from reference images: a local file has to be published first with"
+              + " PublishFile (visibility=public, ttl=30m) and the URL it returns passed as"
+              + " referenceImages.")
   public List<String> generateImage(
-      @ToolParam(description = "提示词, Prompt") final String prompt,
+      @ToolParam(description = "The prompt describing the image") final String prompt,
       @ToolParam(
               description =
-                  "参考图片 URL 列表, 用于图生图; 必须是可公开访问的 URL, 本地文件请先用 PublishFileTool 的 publishFile"
-                      + " (visibility=public, ttl=30m) 发布后再使用其返回的链接",
+                  "Reference images to generate from. Each has to be a publicly reachable URL;"
+                      + " publish a local file with PublishFile (visibility=public, ttl=30m) first"
+                      + " and use the link it returns",
               required = false)
           final List<String> referenceImages,
-      @ToolParam(description = "图片尺寸, 可选值: '2K', '4K', '1:1', '16:9', '9:16'", required = false)
+      @ToolParam(
+              description = "Image size: one of '2K', '4K', '1:1', '16:9', '9:16'",
+              required = false)
           final String size,
-      @ToolParam(description = "是否开启思考模式, 默认 false", required = false) final Boolean thinkingMode) {
+      @ToolParam(
+              description = "Whether to think before generating; false by default",
+              required = false)
+          final Boolean thinkingMode) {
     log.info("Generating image for prompt: {}, referenceImages: {}", prompt, referenceImages);
 
     final var content = new ArrayList<Map<String, String>>();

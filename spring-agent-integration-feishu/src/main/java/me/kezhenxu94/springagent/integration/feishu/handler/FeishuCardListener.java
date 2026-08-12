@@ -17,6 +17,7 @@ import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.agent.AgentRunRegistry;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessage;
 import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessage.Status;
 import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessageRepo;
@@ -45,11 +46,12 @@ public class FeishuCardListener implements AgentResponseListener {
   final SpringAgentProperties appConfiguration;
   final FeishuMessageRepo feishuMessageRepo;
   final RestTemplate restTemplate;
+  final FeishuProperties feishuProperties;
 
   // Not final, matching FeishuTools#feishuReplyCard: @Value on a field is an injection point in its
   // own right, and AOT generates a plain field assignment for it, which cannot target a final field
   // the way the JVM's reflective injection can.
-  @Value("classpath:/feishu/reply-card.json")
+  @Value("${app.feishu.reply-card:classpath:/feishu/reply-card.json}")
   Resource feishuReplyCard;
 
   /**
@@ -87,7 +89,12 @@ public class FeishuCardListener implements AgentResponseListener {
 
       final var cardUpdater =
           new FeishuCardUpdater(
-              feishu, om, cardId, restTemplate, appConfiguration.ai().modelPricing());
+              feishu,
+              om,
+              cardId,
+              restTemplate,
+              appConfiguration.ai().modelPricing(),
+              feishuProperties.cardText());
       registry.addResponseListener(cardUpdater);
       registry.addTodoEventHandler(cardUpdater);
       registry.addToolContext(FeishuCardUpdater.TOOL_CONTEXT_KEY.key(), cardUpdater);
@@ -157,7 +164,10 @@ public class FeishuCardListener implements AgentResponseListener {
   }
 
   private String createCard(final String runId) throws Exception {
-    final var cardJson = feishuReplyCard.getContentAsString(StandardCharsets.UTF_8);
+    final var cardJson =
+        feishuProperties
+            .cardText()
+            .render(feishuReplyCard.getContentAsString(StandardCharsets.UTF_8));
     final var response =
         feishu
             .cardkit()

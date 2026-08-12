@@ -30,7 +30,7 @@
     "elements": [
       {
         "tag": "markdown",
-        "content": "生成中...",
+        "content": "{generating}",
         "text_align": "left",
         "text_size": "normal_v2",
         "element_id": "message"
@@ -46,7 +46,7 @@
         "tag": "button",
         "text": {
           "tag": "plain_text",
-          "content": "停止"
+          "content": "{stop}"
         },
         "type": "danger_filled",
         "width": "default",
@@ -78,7 +78,7 @@
       },
       {
         "tag": "markdown",
-        "content": "点击「回复」按钮可继续当前对话；直接发送新消息将开启新的对话",
+        "content": "{conversationHint}",
         "text_align": "left",
         "text_size": "notation",
         "element_id": "guide"

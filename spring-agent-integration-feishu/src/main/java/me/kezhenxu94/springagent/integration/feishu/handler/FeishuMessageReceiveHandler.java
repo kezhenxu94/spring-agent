@@ -207,7 +207,9 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
           final var localPath = downloadFeishuImageToLocal(messageID, image.imageKey(), userOpenId);
           text.accept(
               localPath != null
-                  ? "图片已保存到: " + localPath + "，如需查看图片内容请使用 recognizeImage 工具"
+                  ? "The image was saved to: "
+                      + localPath
+                      + ". Use the RecognizeImage tool to see what it shows."
                   : image.imageKey());
         }
         case MediaMessageContent mediaContent -> {}
@@ -250,7 +252,10 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
                 });
             imagesXml.append("</images>");
             log.info("Built images XML for messageId={}: {}", messageID, imagesXml);
-            fullText.append("\n").append(imagesXml).append("\n如需查看图片内容请使用 RecognizeImage 工具");
+            fullText
+                .append("\n")
+                .append(imagesXml)
+                .append("\nUse the RecognizeImage tool to see what these images show.");
           }
           text.accept(fullText.toString());
         }

@@ -1,7 +1,9 @@
 package me.kezhenxu94.springagent.core.scheduling;
 
+import com.google.common.base.Strings;
 import jakarta.annotation.PostConstruct;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -13,8 +15,10 @@ import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
+import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
+import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Service;
@@ -26,6 +30,7 @@ public class ScheduledTaskService {
 
   final SpringAgent springAgent;
   final ScheduledTaskRepo scheduledTaskRepo;
+  final SpringAgentProperties appConfiguration;
   final ThreadPoolTaskScheduler taskScheduler;
 
   final ConcurrentMap<String, ScheduledFuture<?>> scheduledFutures = new ConcurrentHashMap<>();
@@ -109,9 +114,31 @@ public class ScheduledTaskService {
             .conversationId(task.rootMessageId())
             .rootMessageId(task.rootMessageId())
             .replyMessageId(task.rootMessageId())
-            .userMessage(spec -> spec.text("【定时任务触发】请直接执行以下任务，不要创建新的定时任务：\n" + task.taskText()))
+            .userMessage(spec -> spec.text(firingPrompt(task)))
             .listener(new TaskLifecycleListener(task, task.cronExpression() != null))
             .build());
+  }
+
+  /**
+   * The configured template over the one variable a firing has to offer, the task's own prompt.
+   * Kept off the happy path of a blown-up template: a task that cannot be phrased is still worth
+   * running, so its own text goes to the model unwrapped.
+   */
+  private String firingPrompt(final ScheduledTask task) {
+    final var template = appConfiguration.ai().scheduledTaskPrompt();
+    try {
+      return PromptTemplate.builder()
+          .template(template)
+          .variables(Map.of("taskText", Strings.nullToEmpty(task.taskText())))
+          .build()
+          .render();
+    } catch (Exception e) {
+      log.error(
+          "Failed to render app.ai.scheduled-task-prompt for task {}, sending its text as-is",
+          task.id(),
+          e);
+      return Strings.nullToEmpty(task.taskText());
+    }
   }
 
   @RequiredArgsConstructor

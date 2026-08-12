@@ -81,7 +81,7 @@ class ScheduledTaskToolTest {
   void invalidCronIsRefused() {
     final var result = tool.createScheduledTask("summarise", "not a cron", null, null, context);
 
-    assertThat(result).startsWith("错误：");
+    assertThat(result).startsWith("Error:");
     verify(repo, never()).save(any());
     verify(service, never()).schedule(any());
   }
@@ -92,7 +92,7 @@ class ScheduledTaskToolTest {
     final var result = tool.createScheduledTask("poll", "0 */1 * * * *", null, null, context);
 
     assertThat(saved().cronExpression()).isEqualTo("0 */5 * * * *");
-    assertThat(result).contains("已调整为最小允许值");
+    assertThat(result).contains("raised to the smallest one allowed");
   }
 
   private ScheduledTask saved() {

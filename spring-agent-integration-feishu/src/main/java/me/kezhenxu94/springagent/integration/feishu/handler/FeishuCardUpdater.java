@@ -22,7 +22,6 @@ import java.util.Arrays;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.SneakyThrows;
@@ -32,6 +31,7 @@ import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.ToolContextKey;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.springaicommunity.agent.tools.TodoWriteTool;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
 import org.springaicommunity.agent.tools.TodoWriteTool.Todos;
@@ -52,8 +52,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   private final JsonMapper om;
   private final String cardId;
   private final RestTemplate restTemplate;
-  private final UnaryOperator<String> contentTransformer;
   private final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing;
+  private final FeishuProperties.CardText text;
   private final Instant startedAt = Instant.now();
   private final AtomicInteger sequence = new AtomicInteger(2);
   private String lastBaseContent = "";
@@ -62,42 +62,15 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       final Client feishu,
       final JsonMapper om,
       final String cardId,
-      final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing) {
-    this(feishu, om, cardId, null, UnaryOperator.identity(), modelPricing);
-  }
-
-  public FeishuCardUpdater(
-      final Client feishu,
-      final JsonMapper om,
-      final String cardId,
-      final UnaryOperator<String> contentTransformer,
-      final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing) {
-    this(feishu, om, cardId, null, contentTransformer, modelPricing);
-  }
-
-  public FeishuCardUpdater(
-      final Client feishu,
-      final JsonMapper om,
-      final String cardId,
       final RestTemplate restTemplate,
-      final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing) {
-    this(feishu, om, cardId, restTemplate, null, modelPricing);
-  }
-
-  private FeishuCardUpdater(
-      final Client feishu,
-      final JsonMapper om,
-      final String cardId,
-      final RestTemplate restTemplate,
-      final UnaryOperator<String> contentTransformer,
-      final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing) {
+      final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing,
+      final FeishuProperties.CardText text) {
     this.feishu = feishu;
     this.om = om;
     this.cardId = cardId;
     this.restTemplate = restTemplate;
-    this.contentTransformer =
-        contentTransformer != null ? contentTransformer : this::reuploadImages;
     this.modelPricing = modelPricing != null ? modelPricing : Map.of();
+    this.text = text;
   }
 
   private static boolean isThinkingMode(Usage usage) {
@@ -152,11 +125,11 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         Arrays.stream(Throwables.getStackTraceAsString(error).split("\n"))
             .map(line -> "> " + line)
             .collect(Collectors.joining("\n"));
-    updateContent("出错了: " + summary + "\n\n" + quoted);
+    updateContent(text.error(summary) + "\n\n" + quoted);
   }
 
   private static String errorDisplay(Throwable error) {
-    if (error == null) return "未知错误";
+    if (error == null) return null;
     final var msg = error.getMessage();
     return Strings.isNullOrEmpty(msg) ? error.getClass().getSimpleName() : msg;
   }
@@ -165,7 +138,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       String toolName, String toolInput, ToolContext toolContext) {
     final var quotedInput = quoteToolInput(toolInput);
     log.info("Tool call: cardId={}, tool={}", cardId, toolName);
-    sendContent(lastBaseContent + "\n正在调用 " + toolName + " ..." + quotedInput);
+    sendContent(lastBaseContent + "\n" + text.callingTool(toolName) + quotedInput);
   }
 
   private String quoteToolInput(String toolInput) {
@@ -379,7 +352,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
 
   @Override
   public void onContent(String contentSoFar) {
-    updateContent(contentTransformer.apply(contentSoFar));
+    updateContent(reuploadImages(contentSoFar));
   }
 
   @Override
@@ -450,12 +423,12 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
               "![" + imageName + "](" + uploadResponse.getData().getImageKey() + ")");
         } else {
           log.warn("Failed to upload image: {}, {}, {}", imageName, imageUrl, uploadResponse);
-          buffer.replace(matcher.start(), matcher.end(), "(图片无法显示)");
+          buffer.replace(matcher.start(), matcher.end(), text.imageUnavailable());
         }
         tempFile.delete();
       } catch (Exception e) {
         log.error("Failed to upload image: {}", imageUrl, e);
-        buffer.replace(matcher.start(), matcher.end(), "(图片无法显示)");
+        buffer.replace(matcher.start(), matcher.end(), text.imageUnavailable());
       }
     }
 
@@ -468,7 +441,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         todos == null || todos.todos() == null
             ? ""
             : todos.todos().stream().map(this::formatTodoItem).collect(Collectors.joining("\n"));
-    final var markdown = items.isEmpty() ? "" : "---\n**待办事项**\n" + items;
+    final var markdown = items.isEmpty() ? "" : "---\n" + text.todoHeading() + "\n" + items;
     log.info(
         "updateTodoList: cardId={}, itemCount={}",
         cardId,

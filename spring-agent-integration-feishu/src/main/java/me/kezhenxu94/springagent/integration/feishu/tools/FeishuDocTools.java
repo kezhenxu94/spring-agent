@@ -38,120 +38,137 @@ public class FeishuDocTools {
 
   private static final String DOC_BLOCK_GUIDE =
 """
-飞书文档 (docx) 块级操作参考。
+Working with the blocks of a Feishu document (docx).
 
-一、block_type 常用取值（每个块的 JSON 对象都包含 block_id、block_type、parent_id、children 等公共字段，\
-并附带与 block_type 对应的类型字段，例如 text/heading1/table 等）：
+1. Common block_type values. Every block's JSON carries the shared fields block_id, block_type,
+parent_id and children, plus one field named after its own type — text, heading1, table and so on.
 
-1  Page（文档根块，即 documentId 本身）    2  Text 文本    3~11  Heading1~Heading9 标题
-12 Bullet 无序列表   13 Ordered 有序列表   14 Code 代码块   15 Quote 引用
-17 Todo 待办事项      18 Bitable 多维表格   19 Callout 高亮块
-21 Diagram 流程图/UML  22 Divider 分割线（内容为空对象 {}）
-23 File 文件（须与 33 View 搭配出现）      24 Grid 分栏          25 GridColumn 分栏列
-27 Image 图片         30 Sheet 电子表格     31 Table 表格
-32 TableCell 表格单元格   33 View 视图（承载 File/Sheet 等的展示形态）
-34 QuoteContainer 引用容器（内容为空对象 {}）
-其余类型（ChatCard/MindNote/Board/OKR/Task/SourceSynced/ReferenceSynced 等，多为只读或暂不支持通过本工具集创建）\
-详见 FeishuDocBlockContentReference。
+1  Page (the document's root block, which is documentId itself)   2  Text   3-11  Heading1-Heading9
+12 Bullet (unordered list)   13 Ordered (ordered list)   14 Code   15 Quote
+17 Todo   18 Bitable   19 Callout
+21 Diagram (flowchart or UML)   22 Divider (its content is the empty object {})
+23 File (only ever alongside 33 View)   24 Grid (columns)   25 GridColumn
+27 Image   30 Sheet   31 Table
+32 TableCell   33 View (the presentation wrapper a File or Sheet sits in)
+34 QuoteContainer (its content is the empty object {})
+The rest — ChatCard, MindNote, Board, OKR, Task, SourceSynced, ReferenceSynced — are mostly \
+read-only or cannot yet be created through these tools; FeishuDocBlockContentReference has the \
+detail.
 
-二、通用参数说明：
-- documentRevisionId：乐观并发控制的文档版本号，写入类工具建议传 -1 表示基于最新版本操作；\
-可通过 FeishuGetDocumentInfo 获取当前最新的 revisionId。
-- clientToken：幂等键，建议每次调用生成一个新的 UUID 并传入，避免网络重试导致重复写入。
-- GridColumn、TableCell、Callout 类型的块在创建时必须至少包含一个子块（哪怕是空的 Text 块），不能完全为空。
-- 各类块的内容实体（Image/Table/Grid/Callout/File/Sheet 等）具体 JSON 字段，参见 FeishuDocBlockContentReference。
+2. Shared parameters.
+- documentRevisionId: the document version, used for optimistic concurrency. Pass -1 to work from \
+whatever is latest, which is what writes normally want; FeishuGetDocumentInfo returns the current \
+revisionId if you need it.
+- clientToken: an idempotency key. Generate a fresh UUID per call so a network retry cannot write \
+twice.
+- A GridColumn, TableCell or Callout has to be created with at least one child, even an empty Text \
+block; none of them can be empty.
+- For the JSON fields of each block's content — Image, Table, Grid, Callout, File, Sheet — see \
+FeishuDocBlockContentReference.
 
-三、核心工作流建议（**重要**）：
-新建一篇文档并写入正文内容时，**不要**使用 FeishuCreateDocBlockChildren 手动逐块拼装 JSON，\
-正确做法是：
-1. 调用 FeishuCreateDocument 创建空文档，得到 documentId（新文档已自带一个 Page 根块，无需再创建）；
-2. 调用 FeishuConvertMarkdownOrHtmlToBlocks 将 Markdown 或 HTML 正文转换为块结构，\
-得到 firstLevelBlockIds 和 blocks（一棵以临时 ID 表示父子关系的块树）；
-3. 将上一步返回的 blocks 原样作为 descendantsJson、firstLevelBlockIds 作为 childrenId，\
-调用 FeishuCreateDocBlockDescendant，一次性将整棵块树插入 documentId 的根块下（blockId 传 documentId 本身）；
-4. 若内容中包含表格，插入前需去掉每个 table 块 property 中的 mergeInfo 字段（只读字段，携带会报错）；
-5. 若内容中包含图片/文件，按下文「四、图片与附件插入工作流」完成上传和替换；
-6. 单次 FeishuCreateDocBlockDescendant 最多插入 1000 个块，超出需分批调用。
+3. The workflow that matters. To write the body of a new document, do **not** assemble it block by \
+block with FeishuCreateDocBlockChildren. Instead:
+1. FeishuCreateDocument for an empty document, which gives you a documentId (it already has a Page \
+root block, so there is nothing to create).
+2. FeishuConvertMarkdownOrHtmlToBlocks to turn the Markdown or HTML body into blocks, which gives \
+you firstLevelBlockIds and blocks — a tree whose parent/child links are temporary ids.
+3. FeishuCreateDocBlockDescendant with those blocks as descendantsJson and firstLevelBlockIds as \
+childrenId, which inserts the whole tree under the document's root block in one call (pass \
+documentId itself as blockId).
+4. If the content has tables, drop the mergeInfo field from each table block's property before \
+inserting: it is read-only and inserting it fails.
+5. If the content has images or attachments, follow section 4 below.
+6. One FeishuCreateDocBlockDescendant inserts at most 1000 blocks; past that, split the call.
 
-FeishuCreateDocBlockChildren 仅适用于在已有内容基础上追加少量（不超过 50 个、不含子块层级的）扁平同级块，\
-例如在文档末尾补充几行文字。
+FeishuCreateDocBlockChildren is for appending a little flat content to a document that already has \
+some — a few lines at the end, say. It takes at most 50 blocks and no nesting.
 
-四、图片与附件插入工作流：
-1. 得到目标 Image/File 块的真实 block_id：通过 FeishuConvertMarkdownOrHtmlToBlocks + \
-FeishuCreateDocBlockDescendant 插入后，从返回的 blockIdRelations 中查找；或直接调用 \
-FeishuCreateDocBlockChildren 单独创建一个空 Image/File 块获得其 block_id（File 块创建后会自动生成一个父级 \
-View 块，属正常现象）；
-2. 调用 FeishuUploadDocBlockMedia，以该 block_id 作为 parent_node 上传本地文件（图片传 parentType=\
-docx_image，文件传 parentType=docx_file），得到 fileToken；
-3. 调用 FeishuUpdateDocBlock，对该 block_id 执行 replaceImage（图片）或 replaceFile（文件）操作，\
-将 fileToken 写入 token 字段，完成替换。
+4. Inserting images and attachments.
+1. Get the real block_id of the target Image or File block: either from the blockIdRelations that \
+FeishuConvertMarkdownOrHtmlToBlocks plus FeishuCreateDocBlockDescendant return, or by creating an \
+empty Image or File block with FeishuCreateDocBlockChildren and taking its block_id. A File block \
+gets a parent View block of its own automatically, which is expected.
+2. FeishuUploadDocBlockMedia with that block_id as parent_node to upload the local file \
+(parentType=docx_image for an image, parentType=docx_file for a file), which returns a fileToken.
+3. FeishuUpdateDocBlock on that block_id with replaceImage for an image or replaceFile for a file, \
+putting the fileToken in the token field.
 
-五、杂项提示：
-- 更新文档标题：documentId 与 blockId 均传文档 Token（即 Page 根块 ID），调用 FeishuUpdateDocBlock 执行 \
-updateTextElements 操作写入新标题。
-- 写入类接口存在限频（如更新单个块约 3 次/秒），批量修改多个块时优先使用 FeishuBatchUpdateDocBlocks 而非\
-循环调用 FeishuUpdateDocBlock。
-- 电子表格（Sheet）块创建后仅获得空表格，往单元格中写入数据需使用电子表格相关工具（如 FeishuSheetTools），\
-本工具集不直接提供 Sheet 单元格读写能力。
+5. Odds and ends.
+- To change the document title, pass the document token — the Page root block id — as both \
+documentId and blockId, and call FeishuUpdateDocBlock with updateTextElements.
+- Writes are rate-limited, updating a single block to roughly three times a second. To change \
+several blocks, reach for FeishuBatchUpdateDocBlocks rather than a loop over FeishuUpdateDocBlock.
+- Creating a Sheet block gets you an empty spreadsheet. Putting data in its cells is the sheet \
+tools' job (FeishuSheetTools); these tools do not read or write sheet cells.
 """;
 
   private static final String DOC_BLOCK_CONTENT_REFERENCE =
 """
-飞书文档 (docx) 块内容实体（BlockData）结构参考，用于手工拼装 childrenJson / descendantsJson / \
-updateOperationJson / requestsJson 中与 block_type 对应的类型字段。仅在 \
-FeishuConvertMarkdownOrHtmlToBlocks 无法覆盖的场景（例如需要精细控制图片尺寸、合并单元格、分栏比例等）才\
-需要手工拼装；常规正文内容优先走 Markdown/HTML 转换。
+The JSON shape of each Feishu document (docx) block's content entity (BlockData), for hand-assembling
+the type field that goes with a block_type inside childrenJson, descendantsJson,
+updateOperationJson or requestsJson. Only needed where FeishuConvertMarkdownOrHtmlToBlocks cannot
+reach — exact image dimensions, merged cells, column ratios. Ordinary body content should go through
+the Markdown or HTML conversion instead.
 
-一、Image（block_type=27）：
-{"token": "(只读，由 FeishuUploadDocBlockMedia 上传后通过 replaceImage 写入)", "width": int, \
-"height": int, "align": 1|2|3（居左/居中/居右）, "caption": {"content": "图片描述文本"}}
+1. Image (block_type=27):
+{"token": "(read-only; written by replaceImage after FeishuUploadDocBlockMedia)", "width": int, \
+"height": int, "align": 1|2|3 (left, centre, right), "caption": {"content": "the caption text"}}
 
-二、Table（block_type=31）与 TableCell（block_type=32）：
-Table 内容为 {"property": {"row_size": int, "column_size": int, "column_width": [int...], \
-"header_row": boolean, "header_column": boolean}}，children 为若干 TableCell 的 block_id；\
-TableCell 内容为空对象 {}，其 children 可承载任意其它块（文本、列表等）。\
-**注意**：property 中的 merge_info 为只读字段，创建/插入时必须去除，如需合并单元格需在创建后\
-通过 FeishuUpdateDocBlock 的 mergeTableCells 操作完成。
+2. Table (block_type=31) and TableCell (block_type=32):
+A Table's content is {"property": {"row_size": int, "column_size": int, "column_width": [int...], \
+"header_row": boolean, "header_column": boolean}} and its children are TableCell block_ids. A \
+TableCell's content is the empty object {}, and its children can be any other blocks — text, \
+lists, whatever.
+**Note**: merge_info inside property is read-only and has to be left out when creating or \
+inserting. To merge cells, create first and then call FeishuUpdateDocBlock with mergeTableCells.
 
-三、Grid（block_type=24）与 GridColumn（block_type=25）：
-Grid 内容为 {"column_size": int}（取值 2~5），children 为对应数量的 GridColumn block_id；\
-GridColumn 内容为 {"width_ratio": int}（1~99，各列之和建议为 100），children 至少包含一个块。
+3. Grid (block_type=24) and GridColumn (block_type=25):
+A Grid's content is {"column_size": int}, between 2 and 5, and its children are that many \
+GridColumn block_ids. A GridColumn's content is {"width_ratio": int}, between 1 and 99 and best \
+summing to 100 across the columns, and it needs at least one child.
 
-四、Callout（block_type=19，高亮块）：
-{"background_color": enum, "border_color": enum, "text_color": enum, "emoji_id": "表情名，如 gift"}，\
-children 至少包含一个块（例如一个 Text 块）。
+4. Callout (block_type=19):
+{"background_color": enum, "border_color": enum, "text_color": enum, "emoji_id": "an emoji name, \
+such as gift"}, with at least one child — a Text block will do.
 
-五、File（block_type=23）+ View（block_type=33）：
-File 块不能独立存在，必须由一个 View 块（{"view_type": 1}，卡片视图）作为其父块；\
-File 内容为 {"token": "(只读，创建时留空，由 replaceFile 写入)", "name": "文件名", "view_type": 1|2}。
+5. File (block_type=23) with View (block_type=33):
+A File block cannot stand alone: it needs a View block ({"view_type": 1}, the card view) as its \
+parent. Its content is {"token": "(read-only; left empty at creation, written by replaceFile)", \
+"name": "the filename", "view_type": 1|2}.
 
-六、Sheet（block_type=30，电子表格）：
-创建时仅指定 {"row_size": int（最大 9）, "column_size": int（最大 9）}，token 为只读字段；\
-写入单元格内容需改用电子表格相关工具，不在本工具集范围内。
+6. Sheet (block_type=30):
+Created with only {"row_size": int (9 at most), "column_size": int (9 at most)}; token is \
+read-only. Writing cells is the sheet tools' job, not these tools'.
 
-七、文本元素（Text 类型块 elements 数组中的特殊元素）：
-- @提及用户：{"mention_user": {"user_id": "用户 OpenID"}}（不会触发系统通知）；
-- 公式：{"equation": {"content": "符合 KaTeX 语法的公式内容"}}。
+7. Special elements inside a Text block's elements array:
+- Mention a user: {"mention_user": {"user_id": "the user's OpenID"}} — this raises no notification.
+- Formula: {"equation": {"content": "KaTeX"}}.
 
-八、只读或暂不支持创建的类型（了解即可，本工具集不提供创建/编辑能力）：
-Bitable 多维表格、Diagram 流程图/UML、MindNote 思维笔记、Board 画板、Task 任务、OKR 及其子块、\
-SourceSynced/ReferenceSynced 同步块——这些块只能通过 FeishuGetDocBlock / FeishuListDocBlocks 读取，\
-无法通过本工具集创建。
+8. Read-only, or not creatable through these tools (worth knowing, but there is nothing to call):
+Bitable, Diagram, MindNote, Board, Task, OKR and its child blocks, and the SourceSynced and \
+ReferenceSynced blocks. These can be read with FeishuGetDocBlock or FeishuListDocBlocks and \
+nothing more.
 """;
 
   @Tool(
       name = "FeishuCreateDocument",
       description =
-          "创建一个新的飞书文档（docx），仅创建空文档，不含正文内容。返回的 documentId 可用于本工具集其它工具，"
-              + "返回的 url 是该文档的链接，创建完成（如需写入正文内容则在写入完成后）应将该链接回复给用户。"
-              + "**创建后如需写入正文内容，不要用 FeishuCreateDocBlockChildren 手动逐块拼装，"
-              + "应优先调用 FeishuConvertMarkdownOrHtmlToBlocks 将 Markdown/HTML 转换为块结构，"
-              + "再调用 FeishuCreateDocBlockDescendant 一次性插入**，详见 FeishuDocBlockGuide。"
-              + "若需基于已有文档（模板）创建新文档，应使用云空间的复制文件接口，本工具集暂未提供。")
+          "Create a new Feishu document (docx), empty, with no body. The documentId it returns is"
+              + " what the other doc tools take, and the url is the link to reply to the user with"
+              + " once the document is finished — after the body is written, if a body is coming.\n"
+              + "**To write that body, do not assemble it block by block with"
+              + " FeishuCreateDocBlockChildren: convert the Markdown or HTML with"
+              + " FeishuConvertMarkdownOrHtmlToBlocks and insert it in one call with"
+              + " FeishuCreateDocBlockDescendant**, as FeishuDocBlockGuide describes. Creating a"
+              + " document from an existing one, a template say, needs the drive copy endpoint,"
+              + " which these tools do not cover yet.")
   @SneakyThrows
   public CreatedDocument createDocument(
-      @ToolParam(description = "文档标题") String title,
-      @ToolParam(description = "目标文件夹 token，留空使用默认文件夹", required = false) String folderToken,
+      @ToolParam(description = "Document title") String title,
+      @ToolParam(
+              description = "Token of the folder to create it in; the default folder when left out",
+              required = false)
+          String folderToken,
       ToolContext toolContext) {
     final var targetFolderToken =
         folderToken == null || folderToken.isBlank()
@@ -170,11 +187,12 @@ SourceSynced/ReferenceSynced 同步块——这些块只能通过 FeishuGetDocBl
   @Tool(
       name = "FeishuGetDocumentInfo",
       description =
-          "获取飞书文档的标题及最新版本号 revisionId。revisionId 用于后续写入类工具（如 FeishuCreateDocBlockChildren、"
-              + "FeishuUpdateDocBlock 等）的 documentRevisionId 参数，做乐观并发控制；也可直接传 -1 表示使用最新版本，"
-              + "无需先调用本工具获取。")
+          "The title and latest revisionId of a document. That revisionId is what the writing"
+              + " tools take as documentRevisionId, for optimistic concurrency — though passing -1"
+              + " means the latest version and saves the call.")
   public DocumentInfo getDocumentInfo(
-      @ToolParam(description = "飞书文档的唯一标识 document_id") String documentId) {
+      @ToolParam(description = "The document_id identifying the Feishu document")
+          String documentId) {
     final var document = feishuDocxService.getDocumentInfo(documentId);
     return DocumentInfo.builder()
         .documentId(document.getDocumentId())
@@ -183,25 +201,36 @@ SourceSynced/ReferenceSynced 同步块——这些块只能通过 FeishuGetDocBl
         .build();
   }
 
-  @Tool(name = "FeishuGetDocumentRawContent", description = "获取飞书文档的纯文本内容。")
+  @Tool(name = "FeishuGetDocumentRawContent", description = "The plain text of a Feishu document.")
   public String getDocumentRawContent(
-      @ToolParam(description = "飞书文档的唯一标识 document_id") String documentId) {
+      @ToolParam(description = "The document_id identifying the Feishu document")
+          String documentId) {
     return feishuDocxService.getDocumentRawContent(documentId);
   }
 
   @Tool(
       name = "FeishuListDocBlocks",
       description =
-          "分页获取飞书文档中的全部块（扁平列表，不体现层级关系，层级由每个块的 parent_id/children 字段表达）。"
-              + "这是获取文档中各个 block_id 的主要方式，后续调用 FeishuGetDocBlockChildren、FeishuGetDocBlock、"
-              + "FeishuUpdateDocBlock、FeishuDeleteDocBlockChildren 等工具前通常需要先通过本工具或 "
-              + "FeishuGetDocBlockChildren 定位目标 block_id。")
+          "Every block of a document, a page at a time, as a flat list: the nesting is not in the"
+              + " order but in each block's parent_id and children fields. This is the main way to"
+              + " find a block_id, which FeishuGetDocBlockChildren, FeishuGetDocBlock,"
+              + " FeishuUpdateDocBlock and FeishuDeleteDocBlockChildren all need before they can do"
+              + " anything.")
   @SneakyThrows
   public JsonNode listDocBlocks(
-      @ToolParam(description = "飞书文档的唯一标识 document_id") String documentId,
-      @ToolParam(description = "文档版本号，默认 -1 表示最新版本", required = false) Integer documentRevisionId,
-      @ToolParam(description = "分页标记，翻页时传入上一次返回的 pageToken", required = false) String pageToken,
-      @ToolParam(description = "每页数量，默认且最大 500", required = false) Integer pageSize) {
+      @ToolParam(description = "The document_id identifying the Feishu document") String documentId,
+      @ToolParam(
+              description = "Document version; -1, the default, means the latest",
+              required = false)
+          Integer documentRevisionId,
+      @ToolParam(
+              description = "Page marker: the pageToken the previous call returned",
+              required = false)
+          String pageToken,
+      @ToolParam(
+              description = "How many per page; 500 both by default and at most",
+              required = false)
+          Integer pageSize) {
     final var json =
         feishuDocxService.listDocumentBlocks(documentId, documentRevisionId, pageToken, pageSize);
     return objectMapper.readTree(json);
@@ -210,18 +239,33 @@ SourceSynced/ReferenceSynced 同步块——这些块只能通过 FeishuGetDocBl
   @Tool(
       name = "FeishuGetDocBlockChildren",
       description =
-          "获取指定块的子块列表；withDescendants 为 true 时返回该块及其所有后代的完整前序遍历树，"
-              + "为 false（默认）时仅返回直接子块。block_id 可通过 FeishuListDocBlocks 获取；"
-              + "若要获取文档根块的直接子块，将 blockId 传入 documentId 本身即可。")
+          "The children of a block. With withDescendants true it returns the block and all of its"
+              + " descendants as a pre-order tree; false, the default, returns only its immediate"
+              + " children. FeishuListDocBlocks returns the block_id, and passing documentId itself"
+              + " as blockId gets the children of the document's root block.")
   @SneakyThrows
   public JsonNode getDocBlockChildren(
-      @ToolParam(description = "飞书文档的唯一标识 document_id") String documentId,
-      @ToolParam(description = "父块的 block_id，传 documentId 本身表示文档根块") String blockId,
-      @ToolParam(description = "是否返回所有后代块（完整子树），默认 false 仅返回直接子块", required = false)
+      @ToolParam(description = "The document_id identifying the Feishu document") String documentId,
+      @ToolParam(description = "block_id of the parent; documentId itself means the root block")
+          String blockId,
+      @ToolParam(
+              description =
+                  "Return every descendant, the whole subtree; false by default, which"
+                      + " returns only immediate children",
+              required = false)
           Boolean withDescendants,
-      @ToolParam(description = "文档版本号，默认 -1 表示最新版本", required = false) Integer documentRevisionId,
-      @ToolParam(description = "分页标记，翻页时传入上一次返回的 pageToken", required = false) String pageToken,
-      @ToolParam(description = "每页数量，默认且最大 500", required = false) Integer pageSize) {
+      @ToolParam(
+              description = "Document version; -1, the default, means the latest",
+              required = false)
+          Integer documentRevisionId,
+      @ToolParam(
+              description = "Page marker: the pageToken the previous call returned",
+              required = false)
+          String pageToken,
+      @ToolParam(
+              description = "How many per page; 500 both by default and at most",
+              required = false)
+          Integer pageSize) {
     final var json =
         feishuDocxService.getDocumentBlockChildren(
             documentId, blockId, withDescendants, documentRevisionId, pageToken, pageSize);
@@ -230,12 +274,17 @@ SourceSynced/ReferenceSynced 同步块——这些块只能通过 FeishuGetDocBl
 
   @Tool(
       name = "FeishuGetDocBlock",
-      description = "获取单个块的详细内容；block_id 可通过 FeishuListDocBlocks 或 FeishuGetDocBlockChildren 获取。")
+      description =
+          "One block in full. FeishuListDocBlocks and FeishuGetDocBlockChildren both return the"
+              + " block_id.")
   @SneakyThrows
   public JsonNode getDocBlock(
-      @ToolParam(description = "飞书文档的唯一标识 document_id") String documentId,
-      @ToolParam(description = "块的 block_id") String blockId,
-      @ToolParam(description = "文档版本号，默认 -1 表示最新版本", required = false) Integer documentRevisionId) {
+      @ToolParam(description = "The document_id identifying the Feishu document") String documentId,
+      @ToolParam(description = "The block_id") String blockId,
+      @ToolParam(
+              description = "Document version; -1, the default, means the latest",
+              required = false)
+          Integer documentRevisionId) {
     final var json = feishuDocxService.getDocumentBlock(documentId, blockId, documentRevisionId);
     return objectMapper.readTree(json);
   }
@@ -243,20 +292,38 @@ SourceSynced/ReferenceSynced 同步块——这些块只能通过 FeishuGetDocBl
   @Tool(
       name = "FeishuCreateDocBlockChildren",
       description =
-          "在指定父块下创建一批扁平的同级子块（不支持在同一次调用中携带子块的子块，最多 50 个块，其中 Sheet 类型的块最多 5 个）。"
-              + "**仅用于在已有内容基础上追加少量扁平内容（例如在文档末尾补几行文字）；"
-              + "如果是从零构建一整篇文档的正文内容，不要用本工具手动逐块拼装，"
-              + "应改用 FeishuConvertMarkdownOrHtmlToBlocks + FeishuCreateDocBlockDescendant 的组合**，"
-              + "详见 FeishuDocBlockGuide。childrenJson 的块结构说明参见 FeishuDocBlockContentReference。")
+          "Create a batch of flat sibling blocks under a parent. No nesting in the same call, at"
+              + " most 50 blocks, and at most 5 of those a Sheet.\n"
+              + "**This is for appending a little flat content to a document that already has some,"
+              + " a few lines at the end say. To build a whole document body, do not assemble it"
+              + " here block by block: use FeishuConvertMarkdownOrHtmlToBlocks with"
+              + " FeishuCreateDocBlockDescendant instead**, as FeishuDocBlockGuide describes."
+              + " FeishuDocBlockContentReference has the shape of the blocks in childrenJson.")
   @SneakyThrows
   public JsonNode createDocBlockChildren(
-      @ToolParam(description = "飞书文档的唯一标识 document_id") String documentId,
-      @ToolParam(description = "父块的 block_id，传 documentId 本身表示插入到文档根块下") String blockId,
-      @ToolParam(description = "要创建的子块数组 JSON 字符串，每个元素为一个块对象，结构参见 FeishuDocBlockContentReference")
+      @ToolParam(description = "The document_id identifying the Feishu document") String documentId,
+      @ToolParam(
+              description =
+                  "block_id of the parent; documentId itself inserts under the document's root"
+                      + " block")
+          String blockId,
+      @ToolParam(
+              description =
+                  "JSON array of the blocks to create, each one a block object of the shape"
+                      + " FeishuDocBlockContentReference describes")
           String childrenJson,
-      @ToolParam(description = "插入位置索引，默认 -1 表示追加到末尾，0 表示插入到最前面", required = false) Integer index,
-      @ToolParam(description = "文档版本号，默认 -1 表示最新版本", required = false) Integer documentRevisionId,
-      @ToolParam(description = "幂等键，建议传入一个 UUID，避免重试导致重复创建", required = false) String clientToken) {
+      @ToolParam(
+              description = "Where to insert; -1, the default, appends and 0 puts them first",
+              required = false)
+          Integer index,
+      @ToolParam(
+              description = "Document version; -1, the default, means the latest",
+              required = false)
+          Integer documentRevisionId,
+      @ToolParam(
+              description = "Idempotency key: pass a UUID so a retry cannot create twice",
+              required = false)
+          String clientToken) {
     final var json =
         feishuDocxService.createDocumentBlockChildren(
             documentId, blockId, childrenJson, index, documentRevisionId, clientToken);
@@ -266,24 +333,50 @@ SourceSynced/ReferenceSynced 同步块——这些块只能通过 FeishuGetDocBl
   @Tool(
       name = "FeishuCreateDocBlockDescendant",
       description =
-          "**推荐的正文内容写入方式**：一次性插入一整棵带层级关系的块树（最多 1000 个块），适合插入从 FeishuConvertMarkdownOrHtmlToBlocks"
-              + " 转换出的内容，或表格、分栏等含子块层级的结构。descendantsJson 中每个块使用调用方自定义的临时 block_id 表达父子关系（children"
-              + " 字段为其它临时 ID 的数组），childrenId 是这棵树中作为父块 blockId 直接子节点的临时 ID 列表（通常直接使用转换接口返回的"
-              + " firstLevelBlockIds）。返回结果中的 blockIdRelations 记录了临时 ID 与插入后真实 block_id"
-              + " 的映射：**若内容包含图片或附件，需按 FeishuDocBlockGuide 中「图片与附件插入工作流」，用其中的真实 block_id 依次调用"
-              + " FeishuUploadDocBlockMedia 和 FeishuUpdateDocBlock"
-              + " 完成替换**。GridColumn/TableCell/Callout 类型的块必须至少包含一个子块。工作流详见"
-              + " FeishuDocBlockGuide，块结构详见 FeishuDocBlockContentReference。")
+          "**The way to write a document body**: insert a whole nested tree of blocks in one call,"
+              + " at most 1000 of them. It suits whatever FeishuConvertMarkdownOrHtmlToBlocks"
+              + " produced, and anything with nesting of its own such as tables or columns.\n"
+              + "In descendantsJson each block carries a temporary block_id of your choosing and"
+              + " links to others by them (the children field is an array of those temporary ids);"
+              + " childrenId lists the temporary ids that are immediate children of blockId, which"
+              + " is normally just the firstLevelBlockIds the conversion returned. The"
+              + " blockIdRelations that come back map each temporary id to the real block_id it was"
+              + " inserted as.\n"
+              + "**If the content has images or attachments, take the real block_ids from there and"
+              + " follow the image and attachment workflow in FeishuDocBlockGuide: first"
+              + " FeishuUploadDocBlockMedia, then FeishuUpdateDocBlock.** A GridColumn, TableCell"
+              + " or Callout has to have at least one child. FeishuDocBlockGuide has the workflow,"
+              + " FeishuDocBlockContentReference the block shapes.")
   @SneakyThrows
   public JsonNode createDocBlockDescendant(
-      @ToolParam(description = "飞书文档的唯一标识 document_id") String documentId,
-      @ToolParam(description = "父块的 block_id，传 documentId 本身表示插入到文档根块下") String blockId,
-      @ToolParam(description = "作为父块直接子节点的临时 block_id 列表，通常直接使用转换接口返回的 firstLevelBlockIds")
+      @ToolParam(description = "The document_id identifying the Feishu document") String documentId,
+      @ToolParam(
+              description =
+                  "block_id of the parent; documentId itself inserts under the document's root"
+                      + " block")
+          String blockId,
+      @ToolParam(
+              description =
+                  "The temporary block_ids that are immediate children of the parent, normally the"
+                      + " firstLevelBlockIds the conversion returned")
           List<String> childrenId,
-      @ToolParam(description = "带层级关系的块树数组 JSON 字符串，通常直接使用转换接口返回的 blocks") String descendantsJson,
-      @ToolParam(description = "插入位置索引，默认 -1 表示追加到末尾，0 表示插入到最前面", required = false) Integer index,
-      @ToolParam(description = "文档版本号，默认 -1 表示最新版本", required = false) Integer documentRevisionId,
-      @ToolParam(description = "幂等键，建议传入一个 UUID，避免重试导致重复创建", required = false) String clientToken) {
+      @ToolParam(
+              description =
+                  "JSON array of the nested block tree, normally the blocks the conversion"
+                      + " returned")
+          String descendantsJson,
+      @ToolParam(
+              description = "Where to insert; -1, the default, appends and 0 puts them first",
+              required = false)
+          Integer index,
+      @ToolParam(
+              description = "Document version; -1, the default, means the latest",
+              required = false)
+          Integer documentRevisionId,
+      @ToolParam(
+              description = "Idempotency key: pass a UUID so a retry cannot create twice",
+              required = false)
+          String clientToken) {
     if (childrenId == null) {
       throw new IllegalArgumentException("childrenId must not be null");
     }
@@ -302,19 +395,29 @@ SourceSynced/ReferenceSynced 同步块——这些块只能通过 FeishuGetDocBl
   @Tool(
       name = "FeishuUpdateDocBlock",
       description =
-          "对单个块执行一项更新操作（更新文本内容/段落样式、表格行列增删/合并、分栏列增删/宽度、替换图片/附件、更新待办状态等）。"
-              + "updateOperationJson 必须且只能包含其中一个操作字段，例如 "
-              + "{\"updateTextElements\": {...}} 或 {\"replaceImage\": {...}}，具体每种操作的字段结构参见 "
-              + "FeishuDocBlockContentReference 及飞书开放平台文档；replaceImage/replaceFile 所需的 token "
-              + "通过先调用 FeishuUploadDocBlockMedia 获取。若需对多个块批量执行更新操作，使用 "
-              + "FeishuBatchUpdateDocBlocks 更高效。")
+          "Apply one update to one block: its text or paragraph style, adding, removing or merging"
+              + " table rows and columns, adding, removing or resizing grid columns, replacing an"
+              + " image or attachment, ticking a todo, and so on.\n"
+              + "updateOperationJson has to hold exactly one operation field, such as"
+              + " {\"updateTextElements\": {...}} or {\"replaceImage\": {...}}."
+              + " FeishuDocBlockContentReference and the Feishu open platform docs have the fields"
+              + " of each; the token that replaceImage and replaceFile need comes from"
+              + " FeishuUploadDocBlockMedia. To update several blocks, FeishuBatchUpdateDocBlocks"
+              + " is cheaper.")
   @SneakyThrows
   public JsonNode updateDocBlock(
-      @ToolParam(description = "飞书文档的唯一标识 document_id") String documentId,
-      @ToolParam(description = "要更新的块的 block_id") String blockId,
-      @ToolParam(description = "更新操作 JSON 字符串，必须且只能包含一个操作字段") String updateOperationJson,
-      @ToolParam(description = "文档版本号，默认 -1 表示最新版本", required = false) Integer documentRevisionId,
-      @ToolParam(description = "幂等键，建议传入一个 UUID，避免重试导致重复更新", required = false) String clientToken) {
+      @ToolParam(description = "The document_id identifying the Feishu document") String documentId,
+      @ToolParam(description = "block_id of the block to update") String blockId,
+      @ToolParam(description = "The update as JSON, holding exactly one operation field")
+          String updateOperationJson,
+      @ToolParam(
+              description = "Document version; -1, the default, means the latest",
+              required = false)
+          Integer documentRevisionId,
+      @ToolParam(
+              description = "Idempotency key: pass a UUID so a retry cannot update twice",
+              required = false)
+          String clientToken) {
     final var json =
         feishuDocxService.patchDocumentBlock(
             documentId, blockId, updateOperationJson, documentRevisionId, clientToken);
@@ -324,15 +427,25 @@ SourceSynced/ReferenceSynced 同步块——这些块只能通过 FeishuGetDocBl
   @Tool(
       name = "FeishuBatchUpdateDocBlocks",
       description =
-          "一次性对文档中的多个块执行更新操作（最多 200 个，且同一次调用中不能对同一个 block_id 重复下发操作），"
-              + "比多次调用 FeishuUpdateDocBlock 更高效。requestsJson 为数组，每个元素既包含目标 blockId，"
-              + "又包含且只能包含一个更新操作字段，结构参见 FeishuDocBlockContentReference。")
+          "Update several blocks of a document in one call, at most 200 and no block_id twice,"
+              + " which beats calling FeishuUpdateDocBlock repeatedly. requestsJson is an array"
+              + " whose elements each carry a blockId and exactly one operation field, of the shape"
+              + " FeishuDocBlockContentReference describes.")
   @SneakyThrows
   public JsonNode batchUpdateDocBlocks(
-      @ToolParam(description = "飞书文档的唯一标识 document_id") String documentId,
-      @ToolParam(description = "更新请求数组 JSON 字符串，每个元素包含 blockId 及一个更新操作字段") String requestsJson,
-      @ToolParam(description = "文档版本号，默认 -1 表示最新版本", required = false) Integer documentRevisionId,
-      @ToolParam(description = "幂等键，建议传入一个 UUID，避免重试导致重复更新", required = false) String clientToken) {
+      @ToolParam(description = "The document_id identifying the Feishu document") String documentId,
+      @ToolParam(
+              description =
+                  "JSON array of the updates, each element a blockId and one operation field")
+          String requestsJson,
+      @ToolParam(
+              description = "Document version; -1, the default, means the latest",
+              required = false)
+          Integer documentRevisionId,
+      @ToolParam(
+              description = "Idempotency key: pass a UUID so a retry cannot update twice",
+              required = false)
+          String clientToken) {
     final var json =
         feishuDocxService.batchUpdateDocumentBlocks(
             documentId, requestsJson, documentRevisionId, clientToken);
@@ -342,39 +455,51 @@ SourceSynced/ReferenceSynced 同步块——这些块只能通过 FeishuGetDocBl
   @Tool(
       name = "FeishuDeleteDocBlockChildren",
       description =
-          "删除父块下连续一段区间 [startIndex, endIndex) 的子块（按索引，startIndex 从 0"
-              + " 开始，区间左闭右开）。**不支持**用本工具删除表格的行/列或分栏的列，那些需改用 FeishuUpdateDocBlock 的 deleteTableRows"
-              + " / deleteTableColumns / deleteGridColumn 操作；也不支持将 TableCell/GridColumn/Callout"
-              + " 的子块全部删空。block_id 可通过 FeishuListDocBlocks 获取。")
+          "Delete the children of a block over the half-open index range [startIndex, endIndex),"
+              + " counting from 0.\n"
+              + "**This cannot** delete table rows or columns, or grid columns: those need"
+              + " FeishuUpdateDocBlock with deleteTableRows, deleteTableColumns or"
+              + " deleteGridColumn. Nor can it empty a TableCell, GridColumn or Callout of every"
+              + " child. FeishuListDocBlocks returns the block_id.")
   public String deleteDocBlockChildren(
-      @ToolParam(description = "飞书文档的唯一标识 document_id") String documentId,
-      @ToolParam(description = "父块的 block_id") String blockId,
-      @ToolParam(description = "起始索引（含），从 0 开始") int startIndex,
-      @ToolParam(description = "结束索引（不含）") int endIndex,
-      @ToolParam(description = "文档版本号，默认 -1 表示最新版本", required = false) Integer documentRevisionId,
-      @ToolParam(description = "幂等键，建议传入一个 UUID，避免重试导致重复删除", required = false) String clientToken) {
+      @ToolParam(description = "The document_id identifying the Feishu document") String documentId,
+      @ToolParam(description = "block_id of the parent") String blockId,
+      @ToolParam(description = "First index to delete, counting from 0") int startIndex,
+      @ToolParam(description = "Index to stop before") int endIndex,
+      @ToolParam(
+              description = "Document version; -1, the default, means the latest",
+              required = false)
+          Integer documentRevisionId,
+      @ToolParam(
+              description = "Idempotency key: pass a UUID so a retry cannot delete twice",
+              required = false)
+          String clientToken) {
     feishuDocxService.deleteDocumentBlockChildren(
         documentId, blockId, startIndex, endIndex, documentRevisionId, clientToken);
-    return "已删除区间 [" + startIndex + ", " + endIndex + ") 内的子块。";
+    return "Deleted the children over [" + startIndex + ", " + endIndex + ").";
   }
 
   @Tool(
       name = "FeishuConvertMarkdownOrHtmlToBlocks",
       description =
-          "将 Markdown 或 HTML 文本转换为飞书文档块结构（不会写入任何文档，仅做纯转换），"
-              + "支持文本、H1~H9 标题、无序/有序列表、代码块、引用、待办、图片、表格及表格单元格。"
-              + "**这是从零构建新文档正文内容的推荐入口**：转换得到 firstLevelBlockIds 和 blocks 后，"
-              + "将 blocks 原样作为 descendantsJson、firstLevelBlockIds 作为 childrenId，"
-              + "直接调用 FeishuCreateDocBlockDescendant 整体插入目标文档（blockId 传目标 documentId 本身即可）。"
-              + "注意：若转换结果包含表格，插入前需先去掉每个 table 块 property 中的 mergeInfo 字段（只读字段）；"
-              + "若包含图片，返回结果中的 blockIdToImageUrls 给出了每个图片临时块对应的临时图片地址，"
-              + "插入后应按 FeishuDocBlockGuide 中「图片与附件插入工作流」调用 FeishuUploadDocBlockMedia 和 "
-              + "FeishuUpdateDocBlock 完成替换；若 blocks 数量超过 1000，需拆分为多次 "
-              + "FeishuCreateDocBlockDescendant 调用。")
+          "Turn Markdown or HTML into Feishu document blocks. Nothing is written anywhere: this is"
+              + " conversion and nothing else. It handles text, H1 to H9 headings, unordered and"
+              + " ordered lists, code blocks, quotes, todos, images, tables and table cells.\n"
+              + "**This is where building a new document body starts.** Take the firstLevelBlockIds"
+              + " and blocks it returns, pass blocks as descendantsJson and firstLevelBlockIds as"
+              + " childrenId, and insert the lot with FeishuCreateDocBlockDescendant (blockId being"
+              + " the target documentId itself).\n"
+              + "Two things to watch. If the result has tables, drop the read-only mergeInfo field"
+              + " from each table block's property before inserting. If it has images, the"
+              + " blockIdToImageUrls that come back give the temporary image address behind each"
+              + " temporary image block: once inserted, follow the image and attachment workflow in"
+              + " FeishuDocBlockGuide with FeishuUploadDocBlockMedia and FeishuUpdateDocBlock. And"
+              + " past 1000 blocks, split the insert across several"
+              + " FeishuCreateDocBlockDescendant calls.")
   @SneakyThrows
   public JsonNode convertMarkdownOrHtmlToBlocks(
-      @ToolParam(description = "内容类型，可选值: markdown / html") String contentType,
-      @ToolParam(description = "要转换的 Markdown 或 HTML 文本内容") String content) {
+      @ToolParam(description = "Either markdown or html") String contentType,
+      @ToolParam(description = "The Markdown or HTML to convert") String content) {
     final var json = feishuDocxService.convertToBlocks(contentType, content);
     return objectMapper.readTree(json);
   }
@@ -382,12 +507,15 @@ SourceSynced/ReferenceSynced 同步块——这些块只能通过 FeishuGetDocBl
   @Tool(
       name = "FeishuDocBlockGuide",
       description =
-          "获取飞书文档块级操作的工作流参考说明，包括常用 block_type"
-              + " 取值、通用参数（documentRevisionId/clientToken）说明、新建文档正文内容的推荐工作流（优先用"
-              + " FeishuConvertMarkdownOrHtmlToBlocks + FeishuCreateDocBlockDescendant，而非手动用"
-              + " FeishuCreateDocBlockChildren 逐块拼装）、图片与附件的上传替换工作流，以及标题更新、限频等杂项提示。"
-              + "在插入图片/附件、更新文档标题或批量更新块之前，应先调用本工具了解流程；"
-              + "若需要具体某个 block_type 的 JSON 字段结构，改用 FeishuDocBlockContentReference。")
+          "How to work with the blocks of a Feishu document: the common block_type values, what"
+              + " documentRevisionId and clientToken are for, the way to write a new document's"
+              + " body (FeishuConvertMarkdownOrHtmlToBlocks with FeishuCreateDocBlockDescendant"
+              + " rather than assembling it by hand with FeishuCreateDocBlockChildren), the"
+              + " upload-then-replace workflow for images and attachments, and odds and ends such"
+              + " as changing the title and the write rate limits.\n"
+              + "Read it before inserting an image or attachment, changing a document title or"
+              + " updating blocks in bulk. For the JSON fields of one particular block_type, read"
+              + " FeishuDocBlockContentReference instead.")
   public String getDocBlockGuide() {
     return DOC_BLOCK_GUIDE;
   }
@@ -395,11 +523,13 @@ SourceSynced/ReferenceSynced 同步块——这些块只能通过 FeishuGetDocBl
   @Tool(
       name = "FeishuDocBlockContentReference",
       description =
-          "获取飞书文档各 block_type 对应内容实体（BlockData）的 JSON 字段结构参考（Image/Table/Grid/Callout/"
-              + "File/Sheet 及 @提及用户、公式等文本元素），用于手工拼装 childrenJson / descendantsJson / "
-              + "updateOperationJson / requestsJson 中与 block_type 对应的类型字段。仅在 "
-              + "FeishuConvertMarkdownOrHtmlToBlocks 无法覆盖的场景（精细控制图片尺寸、合并单元格、分栏比例等）才"
-              + "需要手工拼装；工作流层面的建议参见 FeishuDocBlockGuide。")
+          "The JSON fields of each Feishu document block's content entity (BlockData) — Image,"
+              + " Table, Grid, Callout, File, Sheet, and the text elements that mention a user or"
+              + " hold a formula — for hand-assembling the type field that goes with a block_type"
+              + " inside childrenJson, descendantsJson, updateOperationJson or requestsJson. Only"
+              + " needed where FeishuConvertMarkdownOrHtmlToBlocks cannot reach: exact image"
+              + " dimensions, merged cells, column ratios. For the workflow rather than the fields,"
+              + " read FeishuDocBlockGuide.")
   public String getDocBlockContentReference() {
     return DOC_BLOCK_CONTENT_REFERENCE;
   }
@@ -407,16 +537,22 @@ SourceSynced/ReferenceSynced 同步块——这些块只能通过 FeishuGetDocBl
   @Tool(
       name = "FeishuUploadDocBlockMedia",
       description =
-          "上传本地图片/文件素材并绑定到文档中已存在的 Image/File 块，是插入图片或附件工作流的第二步"
-              + "（第一步：得到目标 Image/File 块的真实 block_id；第三步：调用 FeishuUpdateDocBlock 执行 "
-              + "replaceImage/replaceFile 操作，将本工具返回的 fileToken 写入 token 字段完成替换）。"
-              + "详细工作流参见 FeishuDocBlockGuide 中「图片与附件插入工作流」。")
+          "Upload a local image or file and bind it to an Image or File block that already exists"
+              + " in the document. This is step two of inserting an image or attachment: step one"
+              + " is getting the real block_id of that block, and step three is"
+              + " FeishuUpdateDocBlock with replaceImage or replaceFile, putting the fileToken this"
+              + " returns into the token field. FeishuDocBlockGuide has the whole workflow.")
   @SneakyThrows
   public String uploadDocBlockMedia(
-      @ToolParam(description = "目标 Image 或 File 块的真实 block_id，将作为上传接口的 parent_node") String blockId,
-      @ToolParam(description = "本地文件的绝对路径") String filePath,
-      @ToolParam(description = "素材文件名，用于展示") String fileName,
-      @ToolParam(description = "素材类型，图片传 docx_image，文件/附件传 docx_file") String parentType) {
+      @ToolParam(
+              description =
+                  "Real block_id of the target Image or File block, which becomes the upload's"
+                      + " parent_node")
+          String blockId,
+      @ToolParam(description = "Absolute path of the local file") String filePath,
+      @ToolParam(description = "Filename to show") String fileName,
+      @ToolParam(description = "docx_image for an image, docx_file for a file or attachment")
+          String parentType) {
     final var file = new File(filePath);
     if (!file.isFile()) {
       throw new IllegalArgumentException(

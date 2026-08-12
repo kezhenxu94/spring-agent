@@ -20,7 +20,11 @@ public class DateTimeTool {
   public static record CurrentDateTime(String dateTime) {}
 
   @SneakyThrows
-  @Tool(name = "CurrentDateTime", description = "获取当前的日期和时间, 或者用于计算相对时间, 比如 '明天' 或 '下个月' 等等.")
+  @Tool(
+      name = "CurrentDateTime",
+      description =
+          "The current date and time, and the basis for working out anything relative such as"
+              + " 'tomorrow' or 'next month'.")
   public CurrentDateTime currentDateTime(final ToolContext context) {
     final var currentDateTime = java.time.ZonedDateTime.now().toString();
     log.info("Current date and time: {}", currentDateTime);

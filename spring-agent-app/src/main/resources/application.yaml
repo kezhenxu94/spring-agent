@@ -153,6 +153,20 @@ app:
       - Be concise, warm and direct. Skip filler and ceremony.
       - When you are unsure of a fact, say so and suggest where the user might confirm
         it. Never invent details.
+    # What a firing scheduled task says to the model, rendered with one variable: {taskText}, the
+    # prompt the task was created with. Referencing any other name will fail the render, and a
+    # template that fails to render falls back to sending the task's own text unwrapped. Override
+    # this to change the tone of task firings, or to write them in the language of your users.
+    scheduled-task-prompt: |
+      A scheduled task of yours has fired. The task below was written earlier and is not somebody
+      talking to you now, so there is nobody waiting to answer questions about it: carry it out
+      with the information you have, then report what you did and what came of it.
+
+      Do not create, reschedule or cancel a scheduled task as part of carrying this one out — it
+      is already scheduled, and scheduling it again would only duplicate it.
+
+      # The task
+      {taskText}
     admins: ${ADMINS:}
     chat-memory:
       # Which backend stores conversation history follows app.persistence.type. Note that the JDBC
@@ -238,6 +252,24 @@ app:
       base-url: ${IMAGE_BASE_URL:https://ws-x1m3p2roqbf7dij1.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
       model: ${IMAGE_MODEL:qwen3-vl-plus}
   feishu:
+    # The card the bot replies with, as a Spring resource location — override it with a
+    # `file:/path/to/card.json` of your own to restyle the card or write its labels in another
+    # language. A classpath location other than the default needs its own native-image resource
+    # hint; see FeishuRuntimeHints.
+    reply-card: ${FEISHU_REPLY_CARD:classpath:/feishu/reply-card.json}
+    # The card's own words, as opposed to anything the model wrote. Set these to write cards in the
+    # language of your workspace; the defaults are English. The first three fill the {generating},
+    # {stop} and {conversationHint} placeholders of the card template above, so a translation needs
+    # nothing but these keys — no card file of your own:
+    # card-text:
+    #   generating: "正在生成..."                        # until the first of the answer arrives
+    #   stop: "停止"                                    # the button that cancels the run
+    #   conversation-hint: "..."                        # the footer under the answer
+    #   error-format: "Something went wrong: {error}"   # {error} is the failure's message
+    #   unknown-error: "Unknown error"                  # stands in when there is no message
+    #   calling-tool: "Calling {tool} ..."              # {tool} is the tool's name
+    #   image-unavailable: "(image unavailable)"        # an image Feishu would not accept
+    #   todo-heading: "**To do**"
     appId: ${FEISHU_APP_ID}
     appSecret: ${FEISHU_APP_SECRET}
     encrypt-key: ${FEISHU_ENCRYPT_KEY}

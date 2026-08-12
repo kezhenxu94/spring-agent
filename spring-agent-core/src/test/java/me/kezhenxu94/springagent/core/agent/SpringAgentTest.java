@@ -267,7 +267,8 @@ class SpringAgentTest {
             new SpringAgentProperties.Ai.ChatMemory(10, null),
             null,
             "You are {userId} in {chatId} ({chatType}), thread {threadId}, parent {parentId},"
-                + " mentions {mentions}."));
+                + " mentions {mentions}.",
+            null));
   }
 
   private static final class RecordingListener implements AgentResponseListener {

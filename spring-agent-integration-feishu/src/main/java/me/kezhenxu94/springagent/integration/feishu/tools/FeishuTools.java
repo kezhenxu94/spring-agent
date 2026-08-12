@@ -36,6 +36,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -55,8 +56,9 @@ public class FeishuTools {
   final Client feishu;
   final UserWorkspaceFactory userWorkspaceFactory;
   final JsonMapper objectMapper;
+  final FeishuProperties feishuProperties;
 
-  @Value("classpath:/feishu/reply-card.json")
+  @Value("${app.feishu.reply-card:classpath:/feishu/reply-card.json}")
   Resource feishuReplyCard;
 
   @Builder
@@ -84,20 +86,24 @@ public class FeishuTools {
       String createTime,
       List<String> mentions) {}
 
-  @Tool(name = "FeishuSendFile", description = "将本地文件上传至飞书云空间，并发送到指定的飞书会话；如果未指定接收者，默认发送到当前飞书会话。")
+  @Tool(
+      name = "FeishuSendFile",
+      description =
+          "Upload a local file to Feishu and send it to a conversation. With no recipient it goes"
+              + " to the current conversation.")
   @SneakyThrows
   public String sendFile(
-      @ToolParam(description = "要发送的本地文件的绝对路径") String filePath,
+      @ToolParam(description = "Absolute path of the local file to send") String filePath,
       @ToolParam(
               description =
-                  "接收者 ID。根据 receiveIdType 不同，可为 open_id / user_id / union_id / email / chat_id 的值；"
-                      + "留空则使用当前会话的 chatId",
+                  "Who receives it: an open_id, user_id, union_id, email or chat_id, according to"
+                      + " receiveIdType. Leave it out to use the current conversation's chatId",
               required = false)
           String receiveId,
       @ToolParam(
               description =
-                  "接收者 ID 类型，可选值: open_id, user_id, union_id, email, chat_id；"
-                      + "当 receiveId 留空时此参数将被忽略",
+                  "What kind of id receiveId is: open_id, user_id, union_id, email or chat_id."
+                      + " Ignored when receiveId is left out",
               required = false)
           String receiveIdType,
       ToolContext toolContext) {
@@ -189,15 +195,21 @@ public class FeishuTools {
   }
 
   @SneakyThrows
-  @Tool(name = "FeishuSendMessage", description = "向指定的飞书用户或群发送一条消息；内容为 Markdown 文本")
+  @Tool(
+      name = "FeishuSendMessage",
+      description = "Send a markdown message to a Feishu user or group.")
   public String sendMessage(
       @ToolParam(
               description =
-                  "接收者 ID。根据 receiveIdType 不同，可为 open_id / user_id / union_id / email / chat_id 的值")
+                  "Who receives it: an open_id, user_id, union_id, email or chat_id, according to"
+                      + " receiveIdType")
           String receiveId,
-      @ToolParam(description = "接收者 ID 类型，可选值: open_id, user_id, union_id, email, chat_id")
+      @ToolParam(
+              description =
+                  "What kind of id receiveId is: open_id, user_id, union_id, email or chat_id")
           String receiveIdType,
-      @ToolParam(description = "Markdown 内容；会被注入到消息模板中") String content) {
+      @ToolParam(description = "The markdown body, dropped into the message template")
+          String content) {
 
     final var cardContent = buildCardContent(content);
 
@@ -229,7 +241,10 @@ public class FeishuTools {
   String buildCardContent(final String markdown) throws IOException {
     final var card =
         (ObjectNode)
-            objectMapper.readTree(feishuReplyCard.getContentAsString(StandardCharsets.UTF_8));
+            objectMapper.readTree(
+                feishuProperties
+                    .cardText()
+                    .render(feishuReplyCard.getContentAsString(StandardCharsets.UTF_8)));
     final var config = card.path("config");
     if (config instanceof ObjectNode configNode) {
       configNode.put("streaming_mode", false);
@@ -248,12 +263,14 @@ public class FeishuTools {
     return objectMapper.writeValueAsString(card);
   }
 
-  @Tool(name = "FeishuDownloadFile", description = "从飞书会话下载文件并保存到产物目录。")
+  @Tool(
+      name = "FeishuDownloadFile",
+      description = "Download a file from a Feishu conversation into the artifacts directory.")
   @SneakyThrows
   public String downloadFeishuFile(
-      @ToolParam(description = "包含文件的飞书消息 ID") String messageId,
-      @ToolParam(description = "要下载的飞书文件 key") String fileKey,
-      @ToolParam(description = "保存时使用的文件名") String fileName,
+      @ToolParam(description = "Id of the Feishu message holding the file") String messageId,
+      @ToolParam(description = "Key of the Feishu file to download") String fileKey,
+      @ToolParam(description = "Filename to save it under") String fileName,
       ToolContext toolContext) {
     try {
       final var userId = ToolContexts.require(toolContext, ToolContexts.USER_ID);
@@ -286,20 +303,22 @@ public class FeishuTools {
   @Tool(
       name = "FeishuReadMessageHistory",
       description =
-          "读取飞书会话或话题的历史消息, 用于在群聊/话题中被 @ 提及但缺少上下文时获取上下文. "
-              + "containerIdType=chat 时 containerId 传 chatId; containerIdType=thread 时传 threadId. "
-              + "返回的消息按创建时间倒序排列(最新在前).")
+          "Read earlier messages from a conversation or a thread, which is how to get the context"
+              + " behind an @-mention that does not explain itself. Pass containerId as the chatId"
+              + " when containerIdType is chat, and as the threadId when it is thread. Messages"
+              + " come back newest first.")
   @SneakyThrows
   // TODO restrict only chat/group members can call this tool, and containerId must be one of the
   // chats the user is in
   public List<MessageHistoryItem> readMessageHistory(
-      @ToolParam(description = "容器类型: \"chat\" (单聊或群聊) 或 \"thread\" (话题)")
+      @ToolParam(description = "Either \"chat\" (a direct or group conversation) or \"thread\"")
           final String containerIdType,
       @ToolParam(
               description =
-                  "容器 ID: containerIdType=chat 时为 chat_id; containerIdType=thread 时为 thread_id")
+                  "The chat_id when containerIdType is chat, the thread_id when it is thread")
           final String containerId,
-      @ToolParam(description = "返回条数, 默认 20, 最大 50") final Integer pageSize) {
+      @ToolParam(description = "How many to return; 20 by default, 50 at most")
+          final Integer pageSize) {
 
     final var size = pageSize == null ? 20 : Math.min(Math.max(pageSize, 1), 50);
     final var query =
@@ -343,13 +362,14 @@ public class FeishuTools {
   @Tool(
       name = "FeishuReadMessage",
       description =
-          "通过 messageId 读取单条飞书消息的内容, 用于查询用户回复/引用的特定消息. "
-              + "如果返回的消息包含 threadId, 说明该消息属于一个话题, "
-              + "建议接着调用 FeishuReadMessageHistory 工具, "
-              + "传入 containerIdType=thread 和 containerId=threadId, 以获取该话题的上下文.")
+          "Read one Feishu message by id, which is how to see the message a user replied to or"
+              + " quoted. If the result carries a threadId the message belongs to a thread, so"
+              + " follow up with FeishuReadMessageHistory passing containerIdType=thread and"
+              + " containerId=threadId to get the rest of it.")
   @SneakyThrows
   public MessageHistoryItem readMessage(
-      @ToolParam(description = "要读取的飞书消息 ID, 形如 om_xxx") final String messageId) {
+      @ToolParam(description = "Id of the Feishu message to read, of the form om_xxx")
+          final String messageId) {
 
     final var query = GetMessageQuery.builder().cardMsgContentType("user_card_content").build();
 
@@ -402,17 +422,19 @@ public class FeishuTools {
   @Tool(
       name = "FeishuListDriveFolder",
       description =
-          "列出飞书云空间文件夹中的文件，返回文件信息列表 (名称、URL、token、类型、创建/修改时间、所有者)。"
-              + "使用场景: 当用户提供飞书文件夹链接并要求查看/整理/导出其中的文件时调用本工具。"
-              + "若返回的文件数 > 10, 不要在消息中直接罗列, 而是调用 FeishuCreateSpreadsheet 创建新表格, "
-              + "再用 FeishuSheetUpdateRange 将文件列表写入表格, 最后只把表格链接回复给用户。")
+          "List the files in a Feishu drive folder: name, URL, token, type, creation and"
+              + " modification times, and owner. Use it when a user gives a folder link and wants"
+              + " what is in it seen, tidied or exported.\n"
+              + "Past ten files, do not list them in the reply: create a spreadsheet with"
+              + " FeishuCreateSpreadsheet, write the list into it with FeishuSheetUpdateRange, and"
+              + " reply with nothing but the link to it.")
   @SneakyThrows
   public List<FeishuFileInfo> listFeishuFolderFiles(
-      @ToolParam(description = "飞书文件夹链接") final String folderURL) {
+      @ToolParam(description = "Link to the Feishu folder") final String folderURL) {
 
     final var folderToken = extractFolderToken(folderURL);
     if (folderToken == null) {
-      log.error("无法从链接中提取文件夹 Token: {}", folderURL);
+      log.error("Could not find a folder token in the link: {}", folderURL);
       return List.of();
     }
 
@@ -463,13 +485,13 @@ public class FeishuTools {
   @Tool(
       name = "FeishuDownloadDriveFile",
       description =
-          "从飞书云空间下载文件并保存到产物目录。仅支持 type=\"file\" 的二进制文件; "
-              + "doc/sheet/slides/bitable/folder 等类型不能直接下载, 需先导出。"
-              + "fileToken 可由 FeishuListDriveFolder 工具的返回值中获取。")
+          "Download a file from Feishu drive into the artifacts directory. Only binary files, the"
+              + " ones of type \"file\": docs, sheets, slides, bitables and folders have to be"
+              + " exported first. FeishuListDriveFolder returns the fileToken to pass here.")
   @SneakyThrows
   public String downloadDriveFile(
-      @ToolParam(description = "飞书云空间文件 token") String fileToken,
-      @ToolParam(description = "保存时使用的文件名") String fileName,
+      @ToolParam(description = "Token of the file in Feishu drive") String fileToken,
+      @ToolParam(description = "Filename to save it under") String fileName,
       ToolContext toolContext) {
 
     if (fileToken == null || fileToken.isBlank()) {

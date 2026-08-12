@@ -46,22 +46,27 @@ public class FeishuWikiTools {
   @Tool(
       name = "FeishuGetWikiNodeInfo",
       description =
-          "获取飞书知识空间节点（Wiki）的信息，包括标题、节点类型、所属知识空间 ID、以及该节点对应的实际云文档 token (objToken) 及类型"
-              + " (objType)。支持直接传入知识库节点链接 (如 https://xxx.feishu.cn/wiki/xxxxx) 或云文档链接 (如"
-              + " .../docx/xxx、.../sheets/xxx)，也可以直接传入 token。**返回的 objType 为 sheet"
-              + " 时，说明该节点是一个电子表格，此时应使用返回的 objToken 作为 spreadsheetToken，调用 FeishuSheetTools 中的工具（如"
-              + " FeishuListSheets、FeishuSheetReadRange、FeishuSheetUpdateRange 等）读取或修改其内容**；objType"
-              + " 为 docx/doc 时可使用 objToken 作为 documentId，调用 FeishuDocTools 中的工具（如"
-              + " FeishuGetDocumentRawContent 读取纯文本内容，FeishuListDocBlocks、FeishuGetDocBlockChildren"
-              + " 等读取或编辑块级结构）。")
+          "Look up a Feishu wiki node: its title, node type, the id of the wiki space it belongs"
+              + " to, and the token (objToken) and type (objType) of the cloud document behind it."
+              + " Takes a wiki node link (https://xxx.feishu.cn/wiki/xxxxx), a document link"
+              + " (.../docx/xxx, .../sheets/xxx), or a bare token.\n"
+              + "**When objType comes back as sheet the node is a spreadsheet: pass the objToken as"
+              + " spreadsheetToken to the sheet tools (FeishuListSheets, FeishuSheetReadRange,"
+              + " FeishuSheetUpdateRange and the rest) to read or change it.** When it is docx or"
+              + " doc, pass the objToken as documentId to the doc tools:"
+              + " FeishuGetDocumentRawContent for the plain text, FeishuListDocBlocks and"
+              + " FeishuGetDocBlockChildren for the block structure.")
   @SneakyThrows
   public WikiNodeInfo getWikiNodeInfo(
-      @ToolParam(description = "知识库节点链接、云文档链接或者节点/文档的 token") String urlOrToken,
+      @ToolParam(
+              description = "A wiki node link, a document link, or a bare node or document token")
+          String urlOrToken,
       @ToolParam(
               description =
-                  "文档类型，当 urlOrToken 为云文档 token（非知识库节点 token）时必须传入，"
-                      + "可选值: doc, docx, sheet, mindnote, bitable, file, slides, wiki；"
-                      + "若 urlOrToken 是链接或知识库节点 token，可留空，将自动识别或默认按 wiki 处理",
+                  "Document type, required when urlOrToken is a document token rather than a wiki"
+                      + " node token: one of doc, docx, sheet, mindnote, bitable, file, slides,"
+                      + " wiki. Leave it out for a link or a wiki node token, which are recognised"
+                      + " on their own and otherwise treated as wiki",
               required = false)
           String objType) {
 

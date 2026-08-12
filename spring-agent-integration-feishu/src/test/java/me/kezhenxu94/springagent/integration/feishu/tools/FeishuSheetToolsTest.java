@@ -133,7 +133,7 @@ class FeishuSheetToolsTest {
   void deleteSheet() {
     final var message = tools.deleteSheet("token", "sxj5ws");
 
-    assertThat(message).isEqualTo("已删除工作表 sxj5ws");
+    assertThat(message).isEqualTo("Deleted sheet sxj5ws.");
     verify(feishuSheetsService).deleteSheet("token", "sxj5ws");
   }
 
@@ -213,7 +213,7 @@ class FeishuSheetToolsTest {
   void updateSheetRangeNoData() {
     final var message = tools.updateSheetRange("token", "sxj5ws!A1:A1", List.of());
 
-    assertThat(message).isEqualTo("没有需要写入的数据。");
+    assertThat(message).isEqualTo("There was nothing to write.");
     verify(feishuSheetsService, org.mockito.Mockito.never()).setValuesV2(any(), any());
   }
 
@@ -222,7 +222,7 @@ class FeishuSheetToolsTest {
   void updateSheetRange() {
     final var message = tools.updateSheetRange("token", "sxj5ws!A1:B1", List.of(List.of("a", "b")));
 
-    assertThat(message).isEqualTo("已写入 1 行至区域 sxj5ws!A1:B1。");
+    assertThat(message).isEqualTo("Wrote 1 rows to sxj5ws!A1:B1.");
     verify(feishuSheetsService).setValuesV2(eq("token"), any(ValueRangeV2.class));
   }
 
@@ -242,7 +242,7 @@ class FeishuSheetToolsTest {
                     .values(List.of(List.of("b")))
                     .build()));
 
-    assertThat(message).isEqualTo("已写入 2 个区域的数据。");
+    assertThat(message).isEqualTo("Wrote 2 ranges.");
     verify(feishuSheetsService).setValuesBatchV2(eq("token"), anyList());
   }
 
@@ -281,7 +281,7 @@ class FeishuSheetToolsTest {
             null,
             null);
 
-    assertThat(message).isEqualTo("没有需要设置的样式。");
+    assertThat(message).isEqualTo("There was no style to set.");
     verify(feishuSheetsService, org.mockito.Mockito.never()).setStyle(any(), any(), any());
   }
 
@@ -305,7 +305,7 @@ class FeishuSheetToolsTest {
             "#FF0000",
             null);
 
-    assertThat(message).isEqualTo("已为区域 sxj5ws!A1:C4 设置样式。");
+    assertThat(message).isEqualTo("Styled sxj5ws!A1:C4.");
     final var captor = org.mockito.ArgumentCaptor.forClass(Map.class);
     verify(feishuSheetsService)
         .setStyle(eq("token"), any(ValueRange.Range.class), captor.capture());
@@ -329,7 +329,7 @@ class FeishuSheetToolsTest {
   @Test
   @DisplayName("lockSheet returns a plain message when no protectId is reported")
   void lockSheetWithoutProtectId() {
-    assertThat(tools.lockSheet("token", "sxj5ws", "editing")).isEqualTo("已锁定工作表 sxj5ws");
+    assertThat(tools.lockSheet("token", "sxj5ws", "editing")).isEqualTo("Locked sheet sxj5ws.");
     verify(feishuSheetsService).lockSheet("token", "sxj5ws", "editing");
   }
 
@@ -345,7 +345,7 @@ class FeishuSheetToolsTest {
   @Test
   @DisplayName("unlockSheet delegates to FeishuSheetsService")
   void unlockSheet() {
-    assertThat(tools.unlockSheet("token", "sxj5ws")).isEqualTo("已解锁工作表 sxj5ws");
+    assertThat(tools.unlockSheet("token", "sxj5ws")).isEqualTo("Unlocked sheet sxj5ws.");
     verify(feishuSheetsService).unlockSheet("token", "sxj5ws");
   }
 
