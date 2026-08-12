@@ -12,7 +12,19 @@ dependencies {
   implementation 'org.springframework.boot:spring-boot-starter-webmvc'
   implementation 'org.springframework.boot:spring-boot-starter-validation'
   implementation 'org.springframework.boot:spring-boot-starter-restclient'
+  // Chat memory backends, selected at runtime by app.ai.chat-memory.type. MongoDB keeps Spring
+  // AI's own auto-configuration; the JDBC one is deliberately the plain module, since the starter
+  // would wire a repository off any DataSource without asking which backend was selected.
   implementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-mongodb'
+  // The connection pool goes: ChatMemoryConfiguration builds an unpooled DataSource, and a pool on
+  // the classpath would switch DataSourceAutoConfiguration on, which then fails a MongoDB-backed
+  // deployment for want of a spring.datasource.url.
+  implementation('org.springframework.ai:spring-ai-model-chat-memory-repository-jdbc') {
+    exclude group: 'com.zaxxer', module: 'HikariCP'
+  }
+  implementation 'org.springframework.boot:spring-boot-jdbc'
+  implementation 'org.springframework:spring-jdbc'
+  implementation libs.sqlite.jdbc
   implementation 'org.springframework.ai:spring-ai-starter-mcp-client'
   implementation 'org.springframework.ai:spring-ai-starter-tool-search-advisor'
   implementation 'org.springframework.ai:spring-ai-starter-vector-store-milvus'

@@ -14,6 +14,7 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
       BotInterceptor botInterceptor,
       Set<String> admins,
       Map<String, ModelPricing> modelPricing,
+      ChatMemory chatMemory,
       String systemPrompt) {
     public Ai {
       if (systemPrompt == null || systemPrompt.isBlank()) {
@@ -25,9 +26,59 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
       if (modelPricing == null) {
         modelPricing = Map.of();
       }
+      if (chatMemory == null) {
+        chatMemory = new ChatMemory(null, 0, null);
+      }
     }
 
     public record BotInterceptor(int guideThreshold) {}
+
+    /**
+     * Where the agent keeps its conversation history, and how much of it is replayed to the model.
+     *
+     * @param type which backend stores the conversations
+     * @param maxMessages size of the message window replayed on each turn
+     * @param sqlite settings for {@link Type#SQLITE}, ignored for the other types
+     */
+    public record ChatMemory(Type type, int maxMessages, Jdbc jdbc) {
+      public ChatMemory {
+        if (type == null) {
+          type = Type.MONGODB;
+        }
+        if (maxMessages <= 0) {
+          maxMessages = 100;
+        }
+        if (jdbc == null) {
+          jdbc = new Jdbc(null, null, null, null);
+        }
+      }
+
+      public enum Type {
+        MONGODB,
+        JDBC
+      }
+
+      /**
+       * Any database Spring AI has a chat memory dialect for; the dialect and the schema script are
+       * derived from the URL. The default is a local SQLite file, which needs no server. WAL plus a
+       * busy timeout are part of that default because concurrent agent streams write to the same
+       * file and SQLite serialises writers: without them a second writer fails immediately with
+       * SQLITE_BUSY.
+       *
+       * @param initializeSchema whether to run Spring AI's schema script on startup; leave it on
+       *     unless the table is managed elsewhere
+       */
+      public record Jdbc(String url, String username, String password, Boolean initializeSchema) {
+        public Jdbc {
+          if (url == null || url.isBlank()) {
+            url = "jdbc:sqlite:data/chat-memory.db?journal_mode=WAL&busy_timeout=5000";
+          }
+          if (initializeSchema == null) {
+            initializeSchema = true;
+          }
+        }
+      }
+    }
 
     /** Per-model token pricing used to estimate the approximate cost of a chat completion. */
     public record ModelPricing(

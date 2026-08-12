@@ -8,6 +8,7 @@ spring-ai = "2.0.1-SNAPSHOT"
 spring-dependency-management = "1.1.7"
 fabric8 = "6.13.4"
 springboot = "4.0.7"
+sqlite-jdbc = "3.53.2.1"
 testcontainers = "2.0.3"
 
 [libraries]
@@ -16,6 +17,7 @@ jakarta-annotation-api = { module = "jakarta.annotation:jakarta.annotation-api",
 logback-jackson = { module = "ch.qos.logback.contrib:logback-jackson", version.ref = "logback-json" }
 logback-json-classic = { module = "ch.qos.logback.contrib:logback-json-classic", version.ref = "logback-json" }
 spring-ai-bom = { module = "org.springframework.ai:spring-ai-bom", version.ref = "spring-ai" }
+sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
 larksuite-oapi = { module = "com.larksuite.oapi:oapi-sdk", version.ref = "larksuite-oapi" }
 testcontainers-core = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }

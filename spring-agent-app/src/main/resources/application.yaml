@@ -50,13 +50,6 @@ spring:
   data:
     mongodb:
       auto-index-creation: true
-    redis:
-      repositories:
-        enabled: false
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
-      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
   servlet:
     multipart:
       max-file-size: 100MB
@@ -144,6 +137,22 @@ app:
       - When you are unsure of a fact, say so and suggest where the user might confirm
         it. Never invent details.
     admins: ${BOT_ADMINS:}
+    chat-memory:
+      # Where conversation history lives. `mongodb` reuses the MongoDB the rest of the app needs
+      # anyway; `jdbc` stores it in a relational database — by default a local SQLite file, for
+      # single-node or offline setups. Note that the JDBC repository drops tool-call messages from
+      # the history it stores.
+      type: ${BOT_CHAT_MEMORY_TYPE:jdbc}
+      # How many past messages are replayed to the model on each turn.
+      max-messages: 100
+      jdbc:
+        # Only read when type is jdbc. The dialect and the schema script follow from the URL.
+        # For the SQLite default, keep journal_mode=WAL and busy_timeout so concurrent agent
+        # streams do not fail on SQLITE_BUSY.
+        url: ${BOT_CHAT_MEMORY_JDBC_URL:jdbc:sqlite:data/chat-memory.db?journal_mode=WAL&busy_timeout=5000}
+        username: ${BOT_CHAT_MEMORY_JDBC_USERNAME:}
+        password: ${BOT_CHAT_MEMORY_JDBC_PASSWORD:}
+        initialize-schema: true
     tools:
       shell-pod:
         # The bot's ServiceAccount needs get/list/create/update/patch/delete on

@@ -18,8 +18,8 @@ import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
-import org.springframework.ai.chat.memory.repository.mongo.MongoChatMemoryRepository;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
 import org.springframework.context.event.ContextClosedEvent;
@@ -32,7 +32,7 @@ import reactor.core.publisher.Flux;
 @RequiredArgsConstructor
 public class SpringAgent {
   final ChatClient chatClient;
-  final MongoChatMemoryRepository chatMemoryRepository;
+  final ChatMemoryRepository chatMemoryRepository;
   final SpringAgentProperties appConfiguration;
 
   private final ConcurrentMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
@@ -168,7 +168,7 @@ public class SpringAgent {
           MessageChatMemoryAdvisor.builder(
                   MessageWindowChatMemory.builder()
                       .chatMemoryRepository(chatMemoryRepository)
-                      .maxMessages(100)
+                      .maxMessages(appConfiguration.ai().chatMemory().maxMessages())
                       .build())
               .build());
     }

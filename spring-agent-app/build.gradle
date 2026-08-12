@@ -30,6 +30,14 @@ dependencies {
   testImplementation libs.larksuite.oapi
   testImplementation libs.fabric8.kubernetes.client
 
+  // Internals of the core module; the chat memory tests assert which backend got wired.
+  testImplementation 'org.springframework.ai:spring-ai-model-chat-memory-repository-mongodb'
+  // The HikariCP exclusion mirrors spring-agent-core/build.gradle: a connection pool on the
+  // classpath switches DataSourceAutoConfiguration on, which breaks the MongoDB-backed context.
+  testImplementation('org.springframework.ai:spring-ai-model-chat-memory-repository-jdbc') {
+    exclude group: 'com.zaxxer', module: 'HikariCP'
+  }
+
   testImplementation libs.testcontainers.core
   testImplementation libs.testcontainers.mongodb
   testImplementation libs.testcontainers.milvus
