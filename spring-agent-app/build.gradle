@@ -22,13 +22,13 @@ if (providers.gradleProperty('native').present) {
 }
 
 def patchJvmArgs = [
-  // The Feishu SDK's shaded protobuf reads arrays through sun.misc.Unsafe, which JDK 25 warns about
-  // on every startup. Nothing here can fix it: larksuite-oapi-shaded-protobuf 2.4.6 is the newest
-  // published version, so even upgrading oapi-sdk keeps the same call. This silences the warning
-  // without changing behaviour — but the method is slated for removal, so the SDK will eventually
-  // need an upstream fix rather than this flag.
-  "--sun-misc-unsafe-memory-access=allow",
   // sqlite-jdbc loads its bundled native library through System::load.
+  //
+  // Deliberately no --sun-misc-unsafe-memory-access, despite the warning the Feishu SDK's shaded
+  // protobuf triggers: that option only exists on JDK 24 and later, and passing it to the Java 21
+  // this application runs on is a fatal "Unrecognized option". Java 21 does not emit the warning
+  // anyway — it is only visible when running on a newer JDK, and the call itself is upstream's to
+  // fix, larksuite-oapi-shaded-protobuf 2.4.6 being the newest published version.
   "--enable-native-access=ALL-UNNAMED",
   "--add-opens=java.base/java.io=ALL-UNNAMED",
   "--add-opens=java.base/java.lang=ALL-UNNAMED",

@@ -2,8 +2,9 @@ bootBuildImage {
   imageName = "ghcr.io/kezhenxu94/spring-agent"
   tags = ["latest", project.ext.gitSha].collect { "${imageName}:${it}" }
 
+  // No --sun-misc-unsafe-memory-access here either: the option is JDK 24+, and this image runs on
+  // the Java 21 pinned below, where it is a fatal "Unrecognized option".
   environment["BPE_APPEND_JAVA_TOOL_OPTIONS"] = "\
-    --sun-misc-unsafe-memory-access=allow \
     --enable-native-access=ALL-UNNAMED \
     --add-opens=java.base/java.io=ALL-UNNAMED \
     --add-opens=java.base/java.lang=ALL-UNNAMED \

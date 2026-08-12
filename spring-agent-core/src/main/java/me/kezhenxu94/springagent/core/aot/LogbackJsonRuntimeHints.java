@@ -48,5 +48,8 @@ public class LogbackJsonRuntimeHints implements RuntimeHintsRegistrar {
               MemberCategory.INVOKE_DECLARED_METHODS);
     }
     hints.resources().registerPattern("logback.xml");
+    // The per-appender files logback.xml includes by name. Both, not just the selected one: the
+    // include resolves ${LOG_APPENDER} at runtime, and the image has to cover either answer.
+    hints.resources().registerPattern("logback-appender-*.xml");
   }
 }
