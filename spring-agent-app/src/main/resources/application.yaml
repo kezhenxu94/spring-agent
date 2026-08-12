@@ -98,7 +98,7 @@ management:
       exposure:
         include: health,prometheus
 storage:
-  location: /tmp/upload-dir
+  location: ./data/
   base-url: http://localhost:8080/files/%s
   cdn-url: http://localhost:8080/files/%s
 share:
