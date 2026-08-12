@@ -16,10 +16,10 @@ spring:
           tool-index-type: vector
           max-results: 5
     openai:
-      base-url: ${BOT_OPENAI_BASE_URL}
-      api-key: ${BOT_OPENAI_API_KEY}
+      base-url: ${OPENAI_BASE_URL}
+      api-key: ${OPENAI_API_KEY}
       chat:
-        model: ${BOT_OPENAI_MODEL}
+        model: ${OPENAI_MODEL}
         temperature: 0
         timeout: 5m
         stream-options:
@@ -29,9 +29,9 @@ spring:
       embedding:
         # Alibaba Bailian embedding model, OpenAI-compatible endpoint. Overrides the
         # base-url/api-key/model of spring.ai.openai.* (chat) above for embeddings only.
-        base-url: ${BOT_EMBEDDING_BASE_URL:https://ws-x1m3p2roqbf7dij1.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
-        api-key: ${BOT_EMBEDDING_API_KEY}
-        model: ${BOT_EMBEDDING_MODEL:qwen3.7-text-embedding}
+        base-url: ${EMBEDDING_BASE_URL}
+        api-key: ${EMBEDDING_API_KEY}
+        model: ${EMBEDDING_MODEL}
         dimensions: 1024
       audio:
         transcription:
@@ -136,22 +136,22 @@ app:
       - Be concise, warm and direct. Skip filler and ceremony.
       - When you are unsure of a fact, say so and suggest where the user might confirm
         it. Never invent details.
-    admins: ${BOT_ADMINS:}
+    admins: ${ADMINS:}
     chat-memory:
       # Where conversation history lives. `mongodb` reuses the MongoDB the rest of the app needs
       # anyway; `jdbc` stores it in a relational database — by default a local SQLite file, for
       # single-node or offline setups. Note that the JDBC repository drops tool-call messages from
       # the history it stores.
-      type: ${BOT_CHAT_MEMORY_TYPE:jdbc}
+      type: ${CHAT_MEMORY_TYPE:jdbc}
       # How many past messages are replayed to the model on each turn.
       max-messages: 100
       jdbc:
         # Only read when type is jdbc. The dialect and the schema script follow from the URL.
         # For the SQLite default, keep journal_mode=WAL and busy_timeout so concurrent agent
         # streams do not fail on SQLITE_BUSY.
-        url: ${BOT_CHAT_MEMORY_JDBC_URL:jdbc:sqlite:data/chat-memory.db?journal_mode=WAL&busy_timeout=5000}
-        username: ${BOT_CHAT_MEMORY_JDBC_USERNAME:}
-        password: ${BOT_CHAT_MEMORY_JDBC_PASSWORD:}
+        url: ${CHAT_MEMORY_JDBC_URL:jdbc:sqlite:data/chat-memory.db?journal_mode=WAL&busy_timeout=5000}
+        username: ${CHAT_MEMORY_JDBC_USERNAME:}
+        password: ${CHAT_MEMORY_JDBC_PASSWORD:}
         initialize-schema: true
     tools:
       shell-pod:
@@ -211,13 +211,13 @@ app:
         currency: USD
   dashscope:
     image:
-      api-key: ${BOT_DASHSCOPE_API_KEY}
-      base-url: ${BOT_DASHSCOPE_IMAGE_BASE_URL:https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation}
-      model: ${BOT_DASHSCOPE_IMAGE_MODEL:wan2.7-image-pro}
+      api-key: ${DASHSCOPE_API_KEY}
+      base-url: ${DASHSCOPE_IMAGE_BASE_URL:https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation}
+      model: ${DASHSCOPE_IMAGE_MODEL:wan2.7-image-pro}
     vision:
-      api-key: ${BOT_IMAGE_API_KEY}
-      base-url: ${BOT_IMAGE_BASE_URL:https://ws-x1m3p2roqbf7dij1.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
-      model: ${BOT_IMAGE_MODEL:qwen3-vl-plus}
+      api-key: ${IMAGE_API_KEY}
+      base-url: ${IMAGE_BASE_URL:https://ws-x1m3p2roqbf7dij1.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
+      model: ${IMAGE_MODEL:qwen3-vl-plus}
   feishu:
     appId: ${FEISHU_APP_ID}
     appSecret: ${FEISHU_APP_SECRET}

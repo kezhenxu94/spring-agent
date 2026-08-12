@@ -6,3 +6,4 @@ bin/
 .factorypath
 .settings/
 *.DS_Store
+.env
