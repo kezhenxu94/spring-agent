@@ -65,8 +65,10 @@ pluginManager.withPlugin('org.graalvm.buildtools.native') {
     binaries {
       main {
         imageName = 'spring-agent'
-        // Reachability analysis over this dependency graph needs more than the default heap.
-        buildArgs.add('-J-Xmx10g')
+        // No -Xmx: native-image already defaults to 80% of available RAM, so any fixed value is
+        // either below that default or unportable. Pinning 10g here starved the builder once the JPA
+        // backend grew the reachable graph — it stalled at 99% heap in "Building universe" and the
+        // deadlock watchdog aborted the build, which looks nothing like an out-of-memory error.
         // Turns a native-image failure into something diagnosable instead of a one-line message.
         buildArgs.add('-H:+ReportExceptionStackTraces')
         // A native image bundles only the charsets it can prove it needs, and the OkHttp the Feishu
