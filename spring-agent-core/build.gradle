@@ -1,0 +1,26 @@
+plugins {
+  id 'springagent.java-library-conventions'
+}
+
+dependencies {
+  // api: types that appear in signatures integration modules compile against.
+  api 'org.springframework.boot:spring-boot-starter'
+  api 'org.springframework.boot:spring-boot-starter-data-mongodb'
+  api 'org.springframework.ai:spring-ai-starter-model-openai'
+  api libs.spring.ai.agent.utils
+
+  implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+  implementation 'org.springframework.boot:spring-boot-starter-validation'
+  implementation 'org.springframework.boot:spring-boot-starter-restclient'
+  implementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-mongodb'
+  implementation 'org.springframework.ai:spring-ai-starter-mcp-client'
+  implementation 'org.springframework.ai:spring-ai-starter-tool-search-advisor'
+  implementation 'org.springframework.ai:spring-ai-starter-vector-store-milvus'
+  implementation 'io.fabric8:kubernetes-httpclient-jdk'
+  implementation(libs.fabric8.kubernetes.client) {
+    exclude group: 'io.fabric8', module: 'kubernetes-httpclient-okhttp'
+  }
+  implementation libs.guava
+  implementation libs.jakarta.annotation.api
+  implementation libs.bundles.logback.json
+}

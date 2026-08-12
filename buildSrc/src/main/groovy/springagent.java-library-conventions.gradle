@@ -1,0 +1,32 @@
+plugins {
+  id 'java-library'
+  id 'springagent.java-common-conventions'
+}
+
+// Precompiled script plugins don't get the generated `libs` accessors, so the catalog
+// has to be looked up by hand.
+def libs = extensions.getByType(VersionCatalogsExtension).named('libs')
+
+def bootBom = "org.springframework.boot:spring-boot-dependencies:${libs.findVersion('springboot').get()}"
+
+// `api platform` only constrains the compile/runtime configurations. The common conventions
+// declare Lombok (and this plugin the configuration processor) without versions on the
+// annotation-processor and compile-only paths, so those need the BOM as well.
+['annotationProcessor', 'compileOnly', 'testAnnotationProcessor', 'testCompileOnly'].each { conf ->
+  dependencies.add(conf, dependencies.platform(bootBom))
+}
+
+dependencies {
+  // Library modules deliberately do not apply the org.springframework.boot plugin — that would
+  // register bootJar and make them unconsumable as project dependencies — so they do not get its
+  // BOM either. Declared as `api platform` rather than imported through the dependency-management
+  // plugin so the constraints propagate to consuming projects; an imported BOM would not, leaving
+  // unversioned transitive dependencies unresolvable on the application's runtime classpath.
+  api platform(bootBom)
+  api platform(libs.findLibrary('spring-ai-bom').get())
+  api platform(libs.findLibrary('spring-ai-agent-utils-bom').get())
+  api platform(libs.findLibrary('fabric8-kubernetes-client-bom').get())
+
+  annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+  testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

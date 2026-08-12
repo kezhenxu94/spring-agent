@@ -1,0 +1,49 @@
+plugins {
+  alias(libs.plugins.spring.boot)
+  alias(libs.plugins.spring.dependency.management)
+  id 'springagent.java-common-conventions'
+  id 'springagent.docker'
+  id 'application'
+}
+
+def patchJvmArgs = [
+  "--add-opens=java.base/java.io=ALL-UNNAMED",
+  "--add-opens=java.base/java.lang=ALL-UNNAMED",
+  "--add-opens=java.base/java.time=ALL-UNNAMED",
+  "--add-opens=java.base/java.util=ALL-UNNAMED",
+  "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED"
+]
+
+dependencies {
+  implementation project(':spring-agent-core')
+  implementation project(':spring-agent-integration-feishu')
+
+  implementation 'org.springframework.boot:spring-boot-starter-actuator'
+  implementation 'org.springframework.boot:spring-boot-starter-security'
+  implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'
+  implementation 'io.micrometer:micrometer-registry-prometheus'
+
+  implementation platform(libs.spring.ai.bom)
+
+  // Both are internals of the library modules; the assembly test replaces them with mocks so
+  // it never talks to Feishu or a cluster.
+  testImplementation platform(libs.fabric8.kubernetes.client.bom)
+  testImplementation libs.larksuite.oapi
+  testImplementation libs.fabric8.kubernetes.client
+
+  testImplementation libs.testcontainers.core
+  testImplementation libs.testcontainers.mongodb
+  testImplementation libs.testcontainers.milvus
+  testImplementation libs.testcontainers.junit.jupiter
+
+  testImplementation 'org.springframework.boot:spring-boot-starter-test'
+  // @ServiceConnection support: Boot ships the MongoDB factory, Spring AI the Milvus one.
+  testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+  testImplementation 'org.springframework.ai:spring-ai-spring-boot-testcontainers'
+}
+
+application { applicationDefaultJvmArgs += patchJvmArgs }
+
+bootJar {
+  from('Aptfile')
+}
