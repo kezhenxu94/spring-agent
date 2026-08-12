@@ -2,12 +2,14 @@ package me.kezhenxu94.springagent.security;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.core.authority.mapping.GrantedAuthoritiesMapper;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Slf4j
@@ -15,9 +17,13 @@ import org.springframework.security.web.SecurityFilterChain;
 @EnableWebSecurity
 @RequiredArgsConstructor
 @EnableMethodSecurity
-public class SecurityCongfigurer {
+public class SecurityConfigurer {
 
-  final FeishuAuthoritiesMapper feishuAuthoritiesMapper;
+  /**
+   * Contributed by whichever integration owns identity — Feishu today. Absent when no integration
+   * is on the classpath, in which case OAuth2 login maps no authorities of its own.
+   */
+  final ObjectProvider<GrantedAuthoritiesMapper> authoritiesMapper;
 
   @Bean
   SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -33,8 +39,8 @@ public class SecurityCongfigurer {
         .logout(it -> it.permitAll())
         .oauth2Login(
             it ->
-                it.userInfoEndpoint(
-                    config -> config.userAuthoritiesMapper(feishuAuthoritiesMapper)))
+                authoritiesMapper.ifAvailable(
+                    mapper -> it.userInfoEndpoint(config -> config.userAuthoritiesMapper(mapper))))
         .build();
   }
 }
