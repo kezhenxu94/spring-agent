@@ -23,7 +23,7 @@
   "body": {
     "direction": "vertical",
     "vertical_spacing": "8px",
-    "padding": "14px 16px 12px 16px",
+    "padding": "12px 12px 12px 12px",
     "elements": [
       {
         "tag": "markdown",
@@ -31,13 +31,6 @@
         "text_align": "left",
         "text_size": "normal_v2",
         "element_id": "message"
-      },
-      {
-        "tag": "markdown",
-        "content": "",
-        "text_align": "left",
-        "text_size": "normal_v2",
-        "element_id": "todo"
       },
       {
         "tag": "button",
@@ -61,6 +54,13 @@
           }
         ],
         "element_id": "stop"
+      },
+      {
+        "tag": "markdown",
+        "content": "",
+        "text_align": "left",
+        "text_size": "normal_v2",
+        "element_id": "todo"
       },
       {
         "tag": "hr",
