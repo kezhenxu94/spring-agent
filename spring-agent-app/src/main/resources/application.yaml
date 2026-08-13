@@ -294,13 +294,13 @@ app:
         currency: USD
   dashscope:
     image:
-      api-key: ${DASHSCOPE_API_KEY}
+      api-key: ${DASHSCOPE_IMAGE_API_KEY}
       base-url: ${DASHSCOPE_IMAGE_BASE_URL:https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation}
       model: ${DASHSCOPE_IMAGE_MODEL:wan2.7-image-pro}
     vision:
-      api-key: ${IMAGE_API_KEY}
-      base-url: ${IMAGE_BASE_URL:https://ws-x1m3p2roqbf7dij1.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
-      model: ${IMAGE_MODEL:qwen3-vl-plus}
+      api-key: ${DASHSCOPE_VISION_API_KEY}
+      base-url: ${DASHSCOPE_VISION_BASE_URL:https://ws-x1m3p2roqbf7dij1.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
+      model: ${DASHSCOPE_VISION_MODEL:qwen3-vl-plus}
   feishu:
     # The card the bot replies with, as a Spring resource location — override it with a
     # `file:/path/to/card.json` of your own to restyle the card or write its labels in another
