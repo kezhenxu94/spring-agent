@@ -1,0 +1,19 @@
+plugins {
+  id 'springagent.java-library-conventions'
+}
+
+dependencies {
+  api project(':spring-agent-core')
+
+  // The only module that may carry Testcontainers on a runtime classpath, as
+  // spring-agent-tools-shell-kubernetes is the only one that may carry fabric8: spring-agent-core
+  // forbids the group on its own. Testcontainers is a testing library being used in production
+  // here, deliberately — it is the maintained Java wrapper over docker-java's container lifecycle,
+  // and the alternative is reimplementing create/start/exec against docker-java by hand.
+  //
+  // What comes with that choice is Ryuk, its resource reaper: it kills every container this
+  // application started when the JVM exits, so a user's sandbox does not outlive a restart the way
+  // a Kubernetes Pod does. That is a trade for never leaking a container, and it is documented on
+  // `app.ai.tools.shell.docker` in application.yaml.
+  implementation libs.testcontainers.core
+}

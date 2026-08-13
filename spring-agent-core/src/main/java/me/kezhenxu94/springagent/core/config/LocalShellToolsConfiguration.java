@@ -42,7 +42,9 @@ public class LocalShellToolsConfiguration {
 
         Use this for local development only. For anything with real users or real
         credentials, set app.ai.tools.shell.type=kubernetes and add
-        spring-agent-tools-shell-kubernetes, which gives each user a disposable Pod.
+        spring-agent-tools-shell-kubernetes, which gives each user a disposable Pod —
+        or, on a single host with no cluster, app.ai.tools.shell.type=docker with
+        spring-agent-tools-shell-docker, which gives each user a container.
         ################################################################################
         """);
     return ShellTools.builder().build();

@@ -63,6 +63,7 @@ forbidOnRuntimeClasspath(
       'com.zaxxer',
       'org.xerial',
       'io.fabric8',
+      'org.testcontainers',
     ],
     modules: [
       'spring-data-jpa',

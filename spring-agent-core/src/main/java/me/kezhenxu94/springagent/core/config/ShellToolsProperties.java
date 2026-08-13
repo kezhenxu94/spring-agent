@@ -35,6 +35,13 @@ public record ShellToolsProperties(Type type) {
      * A per-user sandbox Pod. Requires {@code spring-agent-tools-shell-kubernetes} on the classpath
      * and {@code app.ai.tools.shell.kubernetes.image} to be set.
      */
-    KUBERNETES
+    KUBERNETES,
+    /**
+     * A per-user sandbox container on the local Docker daemon, for a single-host deployment that
+     * wants isolation between users without a cluster. Requires {@code
+     * spring-agent-tools-shell-docker} on the classpath and {@code app.ai.tools.shell.docker.image}
+     * to be set.
+     */
+    DOCKER
   }
 }

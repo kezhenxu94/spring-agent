@@ -38,7 +38,7 @@ class ShellBackendCondition extends SpringBootCondition {
               .formatted(
                   ShellBackendResolver.TYPE_PROPERTY,
                   wanted.name().toLowerCase(),
-                  ShellBackendResolver.KUBERNETES_ARTIFACT));
+                  ShellBackendResolver.artifactFor(wanted)));
     }
 
     return ConditionOutcome.match("the shell is %s".formatted(wanted.name().toLowerCase()));

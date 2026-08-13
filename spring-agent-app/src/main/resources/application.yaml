@@ -193,6 +193,10 @@ app:
         #   none        no Bash tool at all.
         #   kubernetes  a disposable per-user sandbox Pod, configured below. The only option fit for
         #               real users.
+        #   docker      a per-user sandbox container on the local Docker daemon, for a single host
+        #               with no cluster. Isolates users from each other and from this application,
+        #               but reaching the Docker socket is equivalent to root on the host, so this
+        #               trades the model's blast radius for the application's own.
         #   local       Spring AI's own ShellTools, in this process as this application's own OS
         #               user, with its filesystem, secrets and network. No sandbox and no isolation
         #               between users. Development only.
@@ -227,6 +231,36 @@ app:
             memory-limit: 1Gi
           credentials:
             mount-path: /run/secrets/credentials
+        docker:
+          # Required whenever type is docker. The image needs bash, and GNU coreutils for the
+          # `stat -c` the idle watchdog and the background-shell bookkeeping rely on.
+          image: ${TOOLS_SHELL_DOCKER_IMAGE:}
+          # network: bridge                      # optional; the daemon's default when unset
+          # Unlike the Kubernetes sandbox, a container does not outlive this application: the
+          # Testcontainers reaper stops every one of them when the JVM exits, so a restart gives
+          # each user a fresh sandbox and loses their background shells. Files under
+          # storage.location survive, because they are bind-mounted from the host.
+          idle-timeout: 30m
+          hard-deadline: 4h
+          startup-timeout: 60s
+          max-output-bytes: 30000
+          default-timeout-ms: 120000
+          max-timeout-ms: 600000
+          resources:
+            # Docker has no requests/limits split, so there is nothing here matching the
+            # Kubernetes block's cpu-request and memory-request.
+            cpu-limit: 1000m
+            memory-limit: 1Gi
+          credentials:
+            # Credentials live in the database, not on this host: they are read at container start,
+            # passed as environment variables, and written into a tmpfs at the path below. Nothing
+            # lands on the host filesystem.
+            mount-path: /run/secrets/credentials
+            # Required before any credential can be stored — without it the values would sit in the
+            # database as plaintext, which is what keeping them off disk was meant to avoid.
+            # A base64-encoded 128, 192 or 256-bit key; generate one with:
+            #   head -c 32 /dev/urandom | base64
+            encryption-key: ${TOOLS_SHELL_DOCKER_CREDENTIALS_ENCRYPTION_KEY:}
       mcp:
         # Hostnames allowed to bypass the SSRF guard's https-only and private-address checks.
         # Keep this narrow — every entry is reachable by any user who registers an MCP server.

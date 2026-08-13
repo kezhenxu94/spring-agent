@@ -32,6 +32,7 @@ pluginManager.withPlugin('org.graalvm.buildtools.native') {
   def persistenceType = backends.contains('mongodb') ? 'mongodb' : 'jdbc'
   def vectorStoreType = backends.contains('milvus') ? 'milvus' : 'simple'
   def shellType = backends.contains('shell-kubernetes') ? 'kubernetes'
+      : backends.contains('shell-docker') ? 'docker'
       : backends.contains('shell-local') ? 'local' : 'none'
 
   // Matched by name rather than by ProcessAot type: buildSrc has no Spring Boot plugin on its

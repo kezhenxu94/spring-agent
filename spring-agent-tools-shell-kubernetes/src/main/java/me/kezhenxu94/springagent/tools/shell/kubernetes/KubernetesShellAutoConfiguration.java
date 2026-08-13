@@ -6,6 +6,8 @@ import me.kezhenxu94.springagent.core.config.ConditionalOnShellBackend;
 import me.kezhenxu94.springagent.core.config.ShellToolsProperties.Type;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.storage.StorageProperties;
+import me.kezhenxu94.springagent.core.tools.credentials.CredentialTools;
+import me.kezhenxu94.springagent.core.tools.credentials.ShellCredentialStore;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -49,8 +51,14 @@ public class KubernetesShellAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  CredentialTools credentialTools(
+  ShellCredentialStore shellCredentialStore(
       final KubernetesClient kubernetesClient, final UserPodManager userPodManager) {
-    return new CredentialTools(kubernetesClient, userPodManager);
+    return new KubernetesSecretCredentialStore(kubernetesClient, userPodManager);
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  CredentialTools credentialTools(final ShellCredentialStore store) {
+    return new CredentialTools(store, "RestartShellPod");
   }
 }

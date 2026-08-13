@@ -18,14 +18,34 @@ final class ShellBackendResolver {
 
   static final String KUBERNETES_ARTIFACT = "spring-agent-tools-shell-kubernetes";
 
+  static final String DOCKER_ARTIFACT = "spring-agent-tools-shell-docker";
+
   private static final String KUBERNETES_MODULE =
       "me.kezhenxu94.springagent.tools.shell.kubernetes.KubernetesShellAutoConfiguration";
 
+  private static final String DOCKER_MODULE =
+      "me.kezhenxu94.springagent.tools.shell.docker.DockerShellAutoConfiguration";
+
   private ShellBackendResolver() {}
 
-  /** Whether the module implementing {@code type} is present. Only KUBERNETES needs one. */
+  /** Whether the module implementing {@code type} is present. NONE and LOCAL need none. */
   static boolean present(final Type type, final ClassLoader classLoader) {
-    return type != Type.KUBERNETES || ClassUtils.isPresent(KUBERNETES_MODULE, classLoader);
+    return switch (type) {
+      case NONE, LOCAL -> true;
+      case KUBERNETES -> ClassUtils.isPresent(KUBERNETES_MODULE, classLoader);
+      case DOCKER -> ClassUtils.isPresent(DOCKER_MODULE, classLoader);
+    };
+  }
+
+  /**
+   * The artifact carrying {@code type}, for the message when {@link #present} says it is absent.
+   */
+  static String artifactFor(final Type type) {
+    return switch (type) {
+      case KUBERNETES -> KUBERNETES_ARTIFACT;
+      case DOCKER -> DOCKER_ARTIFACT;
+      case NONE, LOCAL -> throw new IllegalArgumentException(type + " needs no module");
+    };
   }
 
   static Type resolve(final Environment environment) {
