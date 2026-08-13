@@ -1,6 +1,36 @@
+// A plain string rather than reading it back off the task: bootBuildImage.imageName is a Property,
+// so interpolating the getter into a GString yields "task ... property 'imageName'" instead of the
+// name, which silently produced unusable tags.
+def image = "ghcr.io/kezhenxu94/spring-agent"
+
+// Full references rather than bare tags, so CI can hand over docker/metadata-action's output as-is
+// and this file needs to know nothing about refs. The local default is latest plus the commit,
+// which is what a developer building by hand wants.
+def imageRefs = providers.gradleProperty('imageRefs')
+    .map { it.split(',').collect { ref -> ref.trim() }.findAll { it } }
+    .getOrElse(["${image}:latest".toString(), "${image}:${project.ext.gitSha}".toString()])
+
 bootBuildImage {
-  imageName = "ghcr.io/kezhenxu94/spring-agent"
-  tags = ["latest", project.ext.gitSha].collect { "${imageName}:${it}" }
+  // The first reference is the image name rather than an entry in `tags`, because an imageName
+  // without a tag means :latest and --publishImage pushes the name as well as every tag — which
+  // would move :latest on a release build too.
+  imageName = imageRefs.first()
+  tags = imageRefs.drop(1)
+
+  // Only consulted by --publishImage, so leaving these unset for a local build changes nothing.
+  // Read from the environment because a registry password does not belong in a gradle property,
+  // which shows up in the process arguments of every build.
+  def registryUser = providers.environmentVariable('DOCKER_USERNAME')
+  def registryPassword = providers.environmentVariable('DOCKER_PASSWORD')
+  if (registryUser.present && registryPassword.present) {
+    docker {
+      publishRegistry {
+        url = "https://ghcr.io"
+        username = registryUser.get()
+        password = registryPassword.get()
+      }
+    }
+  }
 
   environment["BPE_APPEND_JAVA_TOOL_OPTIONS"] = "\
     --sun-misc-unsafe-memory-access=allow \
