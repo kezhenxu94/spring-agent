@@ -27,9 +27,12 @@ import org.springframework.ai.chat.model.ToolContext;
 class DockerShellToolsIntegrationTest {
 
   /**
-   * Needs bash, GNU coreutils for {@code stat -c}/{@code dd}, and util-linux for {@code setsid}.
+   * The base {@code docker/shell-runner} is built on, rather than the published runner itself:
+   * these tests exercise the shell against the floor it needs — bash, GNU coreutils for {@code stat
+   * -c} and {@code dd}, util-linux for {@code setsid} — and nothing that image adds on top. Pulled
+   * from a public registry, so this runs before that image exists anywhere.
    */
-  private static final String IMAGE = "ubuntu:24.04";
+  private static final String IMAGE = "debian:trixie-slim";
 
   private static final String USER_ID = "u1";
   private static final ToolContext CONTEXT = new ToolContext(Map.of("userId", USER_ID));

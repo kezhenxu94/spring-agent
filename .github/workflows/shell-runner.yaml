@@ -1,0 +1,82 @@
+name: Shell runner
+on:
+  push:
+    branches:
+      - main
+    # The sandbox image changes far less often than the application does, so a commit that does not
+    # touch it rebuilds nothing. Release tags are unaffected: GitHub does not evaluate path filters
+    # for pushes of tags, so a `v*` tag still publishes its versioned image whatever it changed.
+    paths:
+      - docker/shell-runner/**
+      - .github/workflows/shell-runner.yaml
+    tags:
+      - v[0-9]+.[0-9]+.[0-9]+*
+  # For a rebuild the filter above would otherwise skip — a base-image security update, say, where
+  # nothing in this repository changed at all.
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: shell-runner-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    name: Build ${{ matrix.arch }} image
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      # A native runner per architecture rather than one buildx job over QEMU, matching docker.yaml:
+      # the application image is built by a buildpack that cannot cross-build at all, and following
+      # the same shape here keeps one story for how this repository publishes images.
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish
+        run: |
+          image=ghcr.io/${{ github.repository }}/shell-runner
+          docker build \
+            --tag "$image:${{ github.sha }}-${{ matrix.arch }}" \
+            docker/shell-runner
+          docker push "$image:${{ github.sha }}-${{ matrix.arch }}"
+  manifest:
+    name: Publish multi-arch manifest
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/metadata-action@v6
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}/shell-runner
+          sep-tags: ','
+          flavor: latest=false
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=sha,prefix=,format=long
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create and push manifest list
+        run: |
+          image=ghcr.io/${{ github.repository }}/shell-runner
+          args=()
+          IFS=',' read -ra tags <<< '${{ steps.meta.outputs.tags }}'
+          for tag in "${tags[@]}"; do
+            args+=(--tag "$tag")
+          done
+          docker buildx imagetools create "${args[@]}" \
+            "$image:${{ github.sha }}-amd64" \
+            "$image:${{ github.sha }}-arm64"

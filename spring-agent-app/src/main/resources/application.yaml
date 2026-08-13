@@ -209,8 +209,10 @@ app:
           # sandbox namespace (used by SetCredential / ListCredentials / DeleteCredential to manage
           # per-user credential Secrets), and the same verbs on `jobs` and `pods` plus `pods/exec`.
           #
-          # Required whenever type is kubernetes.
-          image: ${TOOLS_SHELL_KUBERNETES_IMAGE:}
+          # Defaults to the sandbox image this repository publishes from docker/shell-runner, which
+          # carries what the shell tools require plus git, gh, jq, yq, curl and python3. Override it
+          # with an image built FROM that one to add a language toolchain.
+          image: ${TOOLS_SHELL_KUBERNETES_IMAGE:ghcr.io/kezhenxu94/spring-agent/shell-runner:latest}
           # namespace: spring-agent-assistant     # optional; auto-detected from the bot's own ServiceAccount
           # Comma-separated list of imagePullSecret names to attach to each shell sandbox Pod.
           # Required when `image` lives in a private registry (the Pod does not inherit the bot's secrets).
@@ -232,9 +234,10 @@ app:
           credentials:
             mount-path: /run/secrets/credentials
         docker:
-          # Required whenever type is docker. The image needs bash, and GNU coreutils for the
-          # `stat -c` the idle watchdog and the background-shell bookkeeping rely on.
-          image: ${TOOLS_SHELL_DOCKER_IMAGE:}
+          # The same sandbox image the kubernetes block above defaults to. An image substituted here
+          # needs bash, GNU coreutils for the `stat -c` and `dd` the background-shell bookkeeping
+          # relies on, and util-linux for `setsid` — see docker/shell-runner/Dockerfile.
+          image: ${TOOLS_SHELL_DOCKER_IMAGE:ghcr.io/kezhenxu94/spring-agent/shell-runner:latest}
           # network: bridge                      # optional; the daemon's default when unset
           # Unlike the Kubernetes sandbox, a container does not outlive this application: the
           # Testcontainers reaper stops every one of them when the JVM exits, so a restart gives
