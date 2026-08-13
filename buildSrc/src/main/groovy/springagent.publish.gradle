@@ -1,0 +1,74 @@
+// GitHub Packages serves Maven from maven.pkg.github.com; ghcr.io is the container registry only
+// (see springagent.docker.gradle).
+
+plugins {
+  id 'maven-publish'
+}
+
+java {
+  withSourcesJar()
+  // See the delombok task below for what javadoc needs before it can run at all.
+  withJavadocJar()
+}
+
+publishing {
+  publications {
+    maven(MavenPublication) {
+      from components.java
+
+      pom {
+        name = project.name
+        url = 'https://github.com/kezhenxu94/spring-agent'
+        scm {
+          url = 'https://github.com/kezhenxu94/spring-agent'
+          connection = 'scm:git:https://github.com/kezhenxu94/spring-agent.git'
+        }
+      }
+    }
+  }
+
+  repositories {
+    maven {
+      name = 'GitHubPackages'
+      url = 'https://maven.pkg.github.com/kezhenxu94/spring-agent'
+      // From the environment rather than gradle properties, matching springagent.docker.gradle: a
+      // token passed as -P shows up in the process arguments of every build.
+      credentials {
+        username = providers.environmentVariable('GITHUB_ACTOR').orNull
+        password = providers.environmentVariable('GITHUB_TOKEN').orNull
+      }
+    }
+  }
+}
+
+// Javadoc reads source, and javadoc has no `-proc` option on any current JDK, so Lombok's
+// annotation processor never runs for it and every generated type is an unresolvable symbol —
+// `TemplateContent.TemplateContentBuilder` and friends are hard errors, not warnings. Delombok
+// expands the annotations into real source first, and javadoc runs on that.
+//
+// A task rather than the io.freefair.lombok plugin, which also takes over the lombok version (it is
+// BOM-managed here) and generates its own lombok.config over this repository's.
+def delombok = tasks.register('delombok', JavaExec) {
+  description = 'Expands Lombok annotations into plain source for javadoc.'
+  def outputDir = layout.buildDirectory.dir('delombok')
+  def mainSources = sourceSets.main.java
+  def compileClasspath = sourceSets.main.compileClasspath
+
+  inputs.files(mainSources).withPathSensitivity(PathSensitivity.RELATIVE)
+  outputs.dir(outputDir)
+
+  // annotationProcessor already carries lombok, at the version the Spring Boot BOM manages.
+  classpath = configurations.annotationProcessor
+  mainClass = 'lombok.launch.Main'
+  argumentProviders.add({
+    ['delombok', '--encoding', 'UTF-8', '--classpath', compileClasspath.asPath,
+     '-d', outputDir.get().asFile.absolutePath] + mainSources.srcDirs*.absolutePath
+  } as CommandLineArgumentProvider)
+}
+
+javadoc {
+  source = delombok.map { it.outputs.files.asFileTree.matching { include '**/*.java' } }
+  options.encoding = 'UTF-8'
+  // The sources are generated, so a missing-comment warning points at a file nobody edits.
+  options.addStringOption('Xdoclint:all,-missing', '-quiet')
+}

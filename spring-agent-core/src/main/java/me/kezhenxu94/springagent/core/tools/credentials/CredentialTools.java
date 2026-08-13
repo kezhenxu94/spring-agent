@@ -17,9 +17,9 @@ import org.springframework.ai.tool.annotation.ToolParam;
  * <p>Written against {@link ShellCredentialStore} rather than any one backend, so both shells
  * expose the same three tools. What differs between them — where the values live, and which tool
  * restarts the sandbox — is constructor state, because a {@code @Tool} description is a
- * compile-time constant and cannot say "Pod" to one deployment and "container" to another.
- *
- * @param restartToolName the sandbox-restarting tool the model should call to pick up a change.
+ * compile-time constant and cannot say "Pod" to one deployment and "container" to another. That is
+ * what {@code restartToolName} is: the sandbox-restarting tool the model should call to pick up a
+ * change.
  */
 @Slf4j
 @AgentTool

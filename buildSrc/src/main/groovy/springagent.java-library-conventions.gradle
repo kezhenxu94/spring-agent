@@ -1,6 +1,9 @@
 plugins {
   id 'java-library'
   id 'springagent.java-common-conventions'
+  // Library modules only. spring-agent-app is a deployable application, shipped as a container
+  // image by springagent.docker.gradle rather than as a Maven artifact.
+  id 'springagent.publish'
 }
 
 // Precompiled script plugins don't get the generated `libs` accessors.

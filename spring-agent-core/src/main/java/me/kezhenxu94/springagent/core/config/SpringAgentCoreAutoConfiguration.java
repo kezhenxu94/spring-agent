@@ -39,8 +39,9 @@ import org.springframework.web.client.RestTemplate;
  * some fifty tool and service beans by hand. It is safe because this module owns that package
  * exclusively.
  *
- * <p>Repository registration lives in {@link PersistenceConfiguration} instead, because which
- * repositories exist depends on {@code app.persistence.type}.
+ * <p>Repository registration lives in the spring-agent-persistence-* modules instead, because which
+ * repositories exist depends on {@code app.persistence.type} — see {@link
+ * ConditionalOnPersistenceBackend}.
  */
 @AutoConfiguration
 @ComponentScan(

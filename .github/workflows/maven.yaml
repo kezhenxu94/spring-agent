@@ -1,0 +1,48 @@
+name: Maven package
+on:
+  push:
+    branches:
+      - main
+    # An exclude list rather than an include one: the sources feeding the jars are spread across the
+    # library modules plus buildSrc, and a missing entry in an include list silently stops
+    # publishing. GitHub does not evaluate path filters for tag pushes.
+    paths-ignore:
+      - docker/**
+      - .github/workflows/docker.yaml
+      - .github/workflows/shell-runner.yaml
+      - '**/*.md'
+      - .gitignore
+    tags:
+      - v[0-9]+.[0-9]+.[0-9]+*
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  # Not cancel-in-progress, unlike the image workflows: a half-finished multi-module publication
+  # leaves some modules of a version present and the rest missing, and GitHub Packages will not
+  # accept a re-upload to repair it.
+  group: maven-${{ github.ref }}
+jobs:
+  publish:
+    name: Publish to GitHub Packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Publish
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # A tag publishes its own version; anything else publishes the -SNAPSHOT in
+          # gradle.properties, which GitHub Packages accepts repeatedly.
+          args=()
+          if [ "${{ github.ref_type }}" = tag ]; then
+            args+=("-Pversion=${GITHUB_REF_NAME#v}")
+          fi
+          ./gradlew publish "${args[@]}"
