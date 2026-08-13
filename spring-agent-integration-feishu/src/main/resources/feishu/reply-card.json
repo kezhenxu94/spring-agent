@@ -8,7 +8,7 @@
         "default": 1
       },
       "print_frequency_ms": {
-        "default": 70
+        "default": 50
       },
       "print_strategy": "fast"
     },
@@ -22,15 +22,12 @@
   },
   "body": {
     "direction": "vertical",
-    "horizontal_spacing": "8px",
     "vertical_spacing": "8px",
-    "horizontal_align": "left",
-    "vertical_align": "top",
-    "padding": "12px 12px 12px 12px",
+    "padding": "14px 16px 12px 16px",
     "elements": [
       {
         "tag": "markdown",
-        "content": "{generating}",
+        "content": "<font color='grey'>{generating}</font>",
         "text_align": "left",
         "text_size": "normal_v2",
         "element_id": "message"
@@ -67,6 +64,7 @@
       },
       {
         "tag": "hr",
+        "margin": "6px 0px 2px 0px",
         "element_id": "guide_divider"
       },
       {
@@ -74,13 +72,15 @@
         "content": "",
         "text_align": "left",
         "text_size": "notation",
+        "margin": "0px",
         "element_id": "usage"
       },
       {
         "tag": "markdown",
-        "content": "{conversationHint}",
+        "content": "<font color='grey'>{conversationHint}</font>",
         "text_align": "left",
         "text_size": "notation",
+        "margin": "-4px 0px 0px 0px",
         "element_id": "guide"
       }
     ]
