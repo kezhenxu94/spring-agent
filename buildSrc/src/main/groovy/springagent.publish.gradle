@@ -1,5 +1,4 @@
-// GitHub Packages serves Maven from maven.pkg.github.com; ghcr.io is the container registry only
-// (see springagent.docker.gradle).
+// GitHub Packages serves Maven from maven.pkg.github.com; ghcr.io is the container registry only.
 
 plugins {
   id 'maven-publish'
@@ -7,7 +6,6 @@ plugins {
 
 java {
   withSourcesJar()
-  // See the delombok task below for what javadoc needs before it can run at all.
   withJavadocJar()
 }
 
@@ -31,8 +29,8 @@ publishing {
     maven {
       name = 'GitHubPackages'
       url = 'https://maven.pkg.github.com/kezhenxu94/spring-agent'
-      // From the environment rather than gradle properties, matching springagent.docker.gradle: a
-      // token passed as -P shows up in the process arguments of every build.
+      // From the environment, matching springagent.docker.gradle: a token passed as -P shows up in
+      // the process arguments of every build.
       credentials {
         username = providers.environmentVariable('GITHUB_ACTOR').orNull
         password = providers.environmentVariable('GITHUB_TOKEN').orNull
@@ -41,13 +39,12 @@ publishing {
   }
 }
 
-// Javadoc reads source, and javadoc has no `-proc` option on any current JDK, so Lombok's
-// annotation processor never runs for it and every generated type is an unresolvable symbol —
-// `TemplateContent.TemplateContentBuilder` and friends are hard errors, not warnings. Delombok
-// expands the annotations into real source first, and javadoc runs on that.
+// Javadoc reads source and has no `-proc` option on any current JDK, so Lombok never runs for it
+// and every generated type — `TemplateContent.TemplateContentBuilder` and friends — is a hard
+// error. Delombok expands the annotations into real source first.
 //
-// A task rather than the io.freefair.lombok plugin, which also takes over the lombok version (it is
-// BOM-managed here) and generates its own lombok.config over this repository's.
+// A task rather than the io.freefair.lombok plugin, which would also take over the BOM-managed
+// lombok version and generate its own lombok.config over this repository's.
 def delombok = tasks.register('delombok', JavaExec) {
   description = 'Expands Lombok annotations into plain source for javadoc.'
   def outputDir = layout.buildDirectory.dir('delombok')
@@ -57,9 +54,12 @@ def delombok = tasks.register('delombok', JavaExec) {
   inputs.files(mainSources).withPathSensitivity(PathSensitivity.RELATIVE)
   outputs.dir(outputDir)
 
-  // annotationProcessor already carries lombok, at the version the Spring Boot BOM manages.
+  // annotationProcessor already carries lombok, at the BOM-managed version.
   classpath = configurations.annotationProcessor
   mainClass = 'lombok.launch.Main'
+  // lombok.permit.Permit opens the compiler's internals through sun.misc.Unsafe, which every JDK 24
+  // or later warns about. Only Lombok can fix the call; this quiets it meanwhile.
+  jvmArgs '--sun-misc-unsafe-memory-access=allow'
   argumentProviders.add({
     ['delombok', '--encoding', 'UTF-8', '--classpath', compileClasspath.asPath,
      '-d', outputDir.get().asFile.absolutePath] + mainSources.srcDirs*.absolutePath
@@ -68,7 +68,4 @@ def delombok = tasks.register('delombok', JavaExec) {
 
 javadoc {
   source = delombok.map { it.outputs.files.asFileTree.matching { include '**/*.java' } }
-  options.encoding = 'UTF-8'
-  // The sources are generated, so a missing-comment warning points at a file nobody edits.
-  options.addStringOption('Xdoclint:all,-missing', '-quiet')
 }

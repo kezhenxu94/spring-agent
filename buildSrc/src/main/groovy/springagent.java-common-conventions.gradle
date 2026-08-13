@@ -35,6 +35,14 @@ tasks.withType(JavaCompile).configureEach {
   options.encoding = 'UTF-8'
 }
 
+// Here rather than in springagent.publish so spring-agent-app's javadoc is configured too.
+tasks.withType(Javadoc).configureEach {
+  options.encoding = 'UTF-8'
+  // Every doclint check but missing comments: javadoc runs over delombok'd sources (see
+  // springagent.publish), where most missing comments are on members Lombok generated.
+  options.addStringOption('Xdoclint:all,-missing', '-quiet')
+}
+
 configurations {
   compileOnly {
     extendsFrom annotationProcessor
