@@ -1,20 +1,17 @@
-package me.kezhenxu94.springagent.integration.feishu.tools;
+package me.kezhenxu94.springagent.core.tools;
 
-import com.lark.oapi.Client;
-import com.lark.oapi.service.im.v1.model.CreateImageReq;
-import com.lark.oapi.service.im.v1.model.CreateImageReqBody;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.net.URI;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.Objects;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
-import me.kezhenxu94.springagent.core.tools.AgentTool;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.http.HttpEntity;
@@ -23,27 +20,27 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 /**
- * Generates images with DashScope and uploads them to Feishu, returning {@code
- * https://image-key/<key>} URLs — a private contract with {@code FeishuCardUpdater}, which resolves
- * the keys when rendering a card. That contract is why this lives here rather than in core beside
- * {@code VisionTools}.
+ * Generates images with DashScope and saves them under the user's artifacts directory, returning
+ * {@code file://} URLs for them. Where an image goes from there — uploaded to a chat, published as
+ * a link — is up to whichever integration renders the answer, which the scheme tells it how to do.
  */
 @Slf4j
 @AgentTool
 @Component
 @RequiredArgsConstructor
 public class ImageGenerationTools {
-  private final Client feishu;
   private final RestTemplate restTemplate;
   private final SpringAgentProperties appConfiguration;
+  private final UserWorkspaceFactory userWorkspaceFactory;
 
   @Tool(
       name = "GenerateImage",
       description =
-          "Generate an image from a prompt and return its URL, to be shown with markdown. Also"
-              + " generates from reference images: a local file has to be published first with"
-              + " PublishFile (visibility=public, ttl=30m) and the URL it returns passed as"
-              + " referenceImages.")
+          "Generate an image from a prompt and return its URL, a file:// one naming where the image"
+              + " was saved on this machine, to be shown with markdown as"
+              + " ![description](file:///absolute/path.png). Also generates from reference images:"
+              + " a local file has to be published first with PublishFile (visibility=public,"
+              + " ttl=30m) and the URL it returns passed as referenceImages.")
   public List<String> generateImage(
       @ToolParam(description = "The prompt describing the image") final String prompt,
       @ToolParam(
@@ -60,8 +57,14 @@ public class ImageGenerationTools {
       @ToolParam(
               description = "Whether to think before generating; false by default",
               required = false)
-          final Boolean thinkingMode) {
-    log.info("Generating image for prompt: {}, referenceImages: {}", prompt, referenceImages);
+          final Boolean thinkingMode,
+      final ToolContext context) {
+    final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
+    log.info(
+        "Generating image for user {}, prompt: {}, referenceImages: {}",
+        userId,
+        prompt,
+        referenceImages);
 
     final var content = new ArrayList<Map<String, String>>();
     if (referenceImages != null) {
@@ -106,38 +109,36 @@ public class ImageGenerationTools {
                 choice.message().content().stream()
                     .filter(c -> c.image() != null)
                     .map(c -> c.image()))
-        .map(
-            imageUrl -> {
-              try {
-                final var imageBytes =
-                    restTemplate.getForObject(URI.create(imageUrl), byte[].class);
-                final var tempFile = File.createTempFile("image-", ".png");
-                try (final var fos = new FileOutputStream(tempFile)) {
-                  fos.write(imageBytes);
-                }
-                final var resp =
-                    feishu
-                        .im()
-                        .v1()
-                        .image()
-                        .create(
-                            CreateImageReq.newBuilder()
-                                .createImageReqBody(
-                                    CreateImageReqBody.newBuilder()
-                                        .imageType("message")
-                                        .image(tempFile)
-                                        .build())
-                                .build());
-                tempFile.delete();
-                return resp.getData().getImageKey();
-              } catch (Exception e) {
-                log.error("Failed to process image", e);
-                return null;
-              }
-            })
-        .filter(key -> key != null)
-        .map(it -> "https://image-key/" + it)
-        .collect(Collectors.toList());
+        .map(imageUrl -> save(imageUrl, userId))
+        .filter(Objects::nonNull)
+        .toList();
+  }
+
+  /**
+   * Downloads a generated image into the user's artifacts directory, returning a {@code file://}
+   * URL for it, or {@code null} if it could not be fetched or written — one failure shouldn't cost
+   * the caller the images that did come back. A URL rather than a bare path so that whoever renders
+   * the answer can tell from the scheme alone what it is holding.
+   */
+  private String save(final String imageUrl, final String userId) {
+    try {
+      final var imageBytes = restTemplate.getForObject(URI.create(imageUrl), byte[].class);
+      if (imageBytes == null) {
+        log.error("Nothing to download at generated image URL: {}", imageUrl);
+        return null;
+      }
+      final var dest =
+          userWorkspaceFactory
+              .forOwner(userId)
+              .artifacts()
+              .resolve("generated-" + UUID.randomUUID() + ".png");
+      Files.write(dest, imageBytes);
+      log.info("Saved generated image to {}, size={} bytes", dest, imageBytes.length);
+      return dest.toUri().toString();
+    } catch (Exception e) {
+      log.error("Failed to save generated image: {}", imageUrl, e);
+      return null;
+    }
   }
 
   record DashScopeImageResponse(Output output) {

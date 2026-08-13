@@ -14,14 +14,20 @@ import com.lark.oapi.service.im.v1.model.CreateImageReqBody;
 import com.openai.models.completions.CompletionUsage;
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.IOException;
+import java.net.URI;
 import java.net.URLConnection;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.SneakyThrows;
@@ -31,6 +37,7 @@ import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.ToolContextKey;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.springaicommunity.agent.tools.TodoWriteTool;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
@@ -48,27 +55,38 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
 
   private static final int CODE_STREAMING_MODE_CLOSED = 300309;
 
+  private static final Pattern IMAGE_PATTERN = Pattern.compile("!\\[(.*?)\\]\\(([^)\\s]+)\\)");
+
+  private static final String FILE_SCHEME = "file:";
+
   private final Client feishu;
   private final JsonMapper om;
   private final String cardId;
+  private final String userId;
   private final RestTemplate restTemplate;
+  private final UserWorkspaceFactory userWorkspaceFactory;
   private final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing;
   private final FeishuProperties.CardText text;
   private final Instant startedAt = Instant.now();
   private final AtomicInteger sequence = new AtomicInteger(2);
+  private final ConcurrentMap<String, String> imageKeysBySource = new ConcurrentHashMap<>();
   private String lastBaseContent = "";
 
   public FeishuCardUpdater(
       final Client feishu,
       final JsonMapper om,
       final String cardId,
+      final String userId,
       final RestTemplate restTemplate,
+      final UserWorkspaceFactory userWorkspaceFactory,
       final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing,
       final FeishuProperties.CardText text) {
     this.feishu = feishu;
     this.om = om;
     this.cardId = cardId;
+    this.userId = userId;
     this.restTemplate = restTemplate;
+    this.userWorkspaceFactory = userWorkspaceFactory;
     this.modelPricing = modelPricing != null ? modelPricing : Map.of();
     this.text = text;
   }
@@ -370,69 +388,107 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     finalizeCard();
   }
 
-  private String reuploadImages(String content) {
+  /**
+   * Replaces every markdown image whose target is a local file or a URL with the key Feishu hands
+   * back for it, since a card can only show images the tenant has uploaded. Tools produce local
+   * paths — {@code GenerateImage} saves into the user's artifacts directory — so this is where they
+   * become something a card can render.
+   */
+  String reuploadImages(String content) {
     if (Strings.isNullOrEmpty(content)) {
       return content;
     }
-    final var buffer = new StringBuffer(content);
-
-    final var imageKeyPattern = Pattern.compile("!\\[(.*?)\\]\\(https://image-key/(.*?)\\)");
-    final var imageKeyMatcher = imageKeyPattern.matcher(buffer);
-    while (imageKeyMatcher.find()) {
-      final var imageName = imageKeyMatcher.group(1);
-      final var imageKey = imageKeyMatcher.group(2);
-      buffer.replace(
-          imageKeyMatcher.start(), imageKeyMatcher.end(), "![" + imageName + "](" + imageKey + ")");
-    }
-
-    final var imagePattern = Pattern.compile("!\\[(.*?)\\]\\((https?://.*?)\\)");
-    final var matcher = imagePattern.matcher(buffer);
+    final var matcher = IMAGE_PATTERN.matcher(content);
+    final var out = new StringBuilder();
     while (matcher.find()) {
       final var imageName = matcher.group(1);
-      final var imageUrl = matcher.group(2);
-      try {
-        final var imageBytes = restTemplate.getForObject(imageUrl, byte[].class);
-        if (imageBytes == null) {
-          continue;
-        }
-
-        final var extension =
-            URLConnection.guessContentTypeFromStream(new ByteArrayInputStream(imageBytes))
-                .split("/")[1];
-        final var tempFile = File.createTempFile(imageName, "." + extension);
-        Files.write(tempFile.toPath(), imageBytes);
-
-        final var uploadResponse =
-            feishu
-                .im()
-                .v1()
-                .image()
-                .create(
-                    CreateImageReq.newBuilder()
-                        .createImageReqBody(
-                            CreateImageReqBody.newBuilder()
-                                .imageType("message")
-                                .image(tempFile)
-                                .build())
-                        .build());
-
-        if (uploadResponse.getCode() == 0) {
-          buffer.replace(
-              matcher.start(),
-              matcher.end(),
-              "![" + imageName + "](" + uploadResponse.getData().getImageKey() + ")");
-        } else {
-          log.warn("Failed to upload image: {}, {}, {}", imageName, imageUrl, uploadResponse);
-          buffer.replace(matcher.start(), matcher.end(), text.imageUnavailable());
-        }
-        tempFile.delete();
-      } catch (Exception e) {
-        log.error("Failed to upload image: {}", imageUrl, e);
-        buffer.replace(matcher.start(), matcher.end(), text.imageUnavailable());
+      final var source = matcher.group(2);
+      if (!isRemote(source) && !isLocal(source)) {
+        matcher.appendReplacement(out, Matcher.quoteReplacement(matcher.group()));
+        continue;
       }
+      // Every streaming tick re-renders the whole answer, so without this the same image would be
+      // downloaded and uploaded again on each of them. An empty value caches a failure.
+      final var imageKey =
+          imageKeysBySource.computeIfAbsent(source, it -> Strings.nullToEmpty(uploadImage(it)));
+      final var replacement =
+          imageKey.isEmpty() ? text.imageUnavailable() : "![" + imageName + "](" + imageKey + ")";
+      matcher.appendReplacement(out, Matcher.quoteReplacement(replacement));
     }
+    matcher.appendTail(out);
+    return out.toString();
+  }
 
-    return buffer.toString();
+  private static boolean isRemote(final String source) {
+    return source.startsWith("http://") || source.startsWith("https://");
+  }
+
+  /** A {@code file://} URL, as {@code GenerateImage} returns, or a plain absolute path. */
+  private static boolean isLocal(final String source) {
+    return source.startsWith(FILE_SCHEME) || source.startsWith("/");
+  }
+
+  private static Path pathOf(final String source) {
+    return (source.startsWith(FILE_SCHEME) ? Path.of(URI.create(source)) : Path.of(source))
+        .toAbsolutePath()
+        .normalize();
+  }
+
+  /**
+   * Uploads the image at {@code source} to Feishu, returning its key, or {@code null} if it fails.
+   */
+  private String uploadImage(final String source) {
+    try {
+      if (isRemote(source)) {
+        final var imageBytes = restTemplate.getForObject(source, byte[].class);
+        if (imageBytes == null) {
+          log.warn("Nothing to download at image URL: {}", source);
+          return null;
+        }
+        final var tempFile = File.createTempFile("image-", "." + extensionOf(imageBytes));
+        try {
+          Files.write(tempFile.toPath(), imageBytes);
+          return upload(tempFile, source);
+        } finally {
+          tempFile.delete();
+        }
+      }
+      final var path = pathOf(source);
+      // The same containment check VisionTools makes: a run may only show files belonging to the
+      // user it is answering, never an arbitrary path the model wrote into its answer.
+      if (!userWorkspaceFactory.forOwner(userId).contains(path) || !Files.isRegularFile(path)) {
+        log.warn("Rejected image path outside the user's home or missing: {}", source);
+        return null;
+      }
+      return upload(path.toFile(), source);
+    } catch (Exception e) {
+      log.error("Failed to upload image: {}", source, e);
+      return null;
+    }
+  }
+
+  private String upload(final File file, final String source) throws Exception {
+    final var response =
+        feishu
+            .im()
+            .v1()
+            .image()
+            .create(
+                CreateImageReq.newBuilder()
+                    .createImageReqBody(
+                        CreateImageReqBody.newBuilder().imageType("message").image(file).build())
+                    .build());
+    if (!response.success()) {
+      log.warn("Failed to upload image: {}, {}, {}", source, response.getCode(), response.getMsg());
+      return null;
+    }
+    return response.getData().getImageKey();
+  }
+
+  private static String extensionOf(final byte[] imageBytes) throws IOException {
+    final var contentType =
+        URLConnection.guessContentTypeFromStream(new ByteArrayInputStream(imageBytes));
+    return contentType == null ? "png" : contentType.split("/")[1];
   }
 
   @Override

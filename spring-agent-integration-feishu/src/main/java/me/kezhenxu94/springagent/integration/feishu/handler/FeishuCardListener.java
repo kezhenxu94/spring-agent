@@ -17,6 +17,7 @@ import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.agent.AgentRunRegistry;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessage;
 import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessage.Status;
@@ -47,6 +48,7 @@ public class FeishuCardListener implements AgentResponseListener {
   final FeishuMessageRepo feishuMessageRepo;
   final RestTemplate restTemplate;
   final FeishuProperties feishuProperties;
+  final UserWorkspaceFactory userWorkspaceFactory;
 
   // Not final, matching FeishuTools#feishuReplyCard: @Value on a field is an injection point in its
   // own right, and AOT generates a plain field assignment for it, which cannot target a final field
@@ -92,7 +94,9 @@ public class FeishuCardListener implements AgentResponseListener {
               feishu,
               om,
               cardId,
+              request.userId(),
               restTemplate,
+              userWorkspaceFactory,
               appConfiguration.ai().modelPricing(),
               feishuProperties.cardText());
       registry.addResponseListener(cardUpdater);
