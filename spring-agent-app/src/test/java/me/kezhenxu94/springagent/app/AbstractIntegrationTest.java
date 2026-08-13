@@ -35,8 +35,9 @@ public abstract class AbstractIntegrationTest {
     // parallel forks against the same working directory, and SQLite serialises writers across
     // processes, so a shared file makes them contend for locks.
     registry.add("spring.datasource.url", () -> "jdbc:sqlite:" + databaseFile());
-    registry.add("app.ai.tools.shell-pod.enabled", () -> "true");
-    registry.add("app.ai.tools.shell-pod.image", () -> "test-image:latest");
+    // The client above is mocked, so no cluster is contacted.
+    registry.add("app.ai.tools.shell.type", () -> "kubernetes");
+    registry.add("app.ai.tools.shell.kubernetes.image", () -> "test-image:latest");
     registry.add("spring.ai.openai.base-url", () -> "http://127.0.0.1:8080");
     registry.add("spring.ai.openai.api-key", () -> "test-openai-key");
     registry.add("spring.ai.openai.chat.model", () -> "test-openai-model");

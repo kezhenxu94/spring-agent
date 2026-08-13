@@ -39,10 +39,7 @@ dependencies {
   // org.springframework.ai:spring-ai-starter-vector-store-milvus itself and sets
   // spring.ai.vectorstore.type=milvus; Spring AI's own auto-configuration takes it from there.
   api 'org.springframework.ai:spring-ai-vector-store'
-  implementation 'io.fabric8:kubernetes-httpclient-jdk'
-  implementation(libs.fabric8.kubernetes.client) {
-    exclude group: 'io.fabric8', module: 'kubernetes-httpclient-okhttp'
-  }
+
   implementation libs.guava
   implementation libs.jakarta.annotation.api
   implementation libs.bundles.logback.json
@@ -57,9 +54,16 @@ dependencies {
 }
 
 // Core is backend-agnostic and must stay that way: it is the module every consumer takes, whichever
-// database they run.
+// database, vector store and shell they run.
 forbidOnRuntimeClasspath(
-    groups: ['org.hibernate.orm', 'org.mongodb', 'io.milvus', 'com.zaxxer', 'org.xerial'],
+    groups: [
+      'org.hibernate.orm',
+      'org.mongodb',
+      'io.milvus',
+      'com.zaxxer',
+      'org.xerial',
+      'io.fabric8',
+    ],
     modules: [
       'spring-data-jpa',
       'spring-data-mongodb',

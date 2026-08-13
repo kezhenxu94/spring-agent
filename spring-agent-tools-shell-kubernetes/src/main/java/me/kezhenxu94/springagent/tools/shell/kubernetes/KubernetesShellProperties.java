@@ -1,12 +1,17 @@
-package me.kezhenxu94.springagent.core.tools;
+package me.kezhenxu94.springagent.tools.shell.kubernetes;
 
 import java.time.Duration;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@ConfigurationProperties(prefix = "app.ai.tools.shell-pod")
-public record ShellPodProperties(
-    Boolean enabled,
+/**
+ * The sandbox Pod this module runs commands in.
+ *
+ * <p>Bound only when {@code app.ai.tools.shell.type=kubernetes} selects this module, which is why
+ * there is no {@code enabled} flag and why {@code image} is required outright.
+ */
+@ConfigurationProperties(prefix = "app.ai.tools.shell.kubernetes")
+public record KubernetesShellProperties(
     String namespace,
     String image,
     List<String> imagePullSecrets,
@@ -20,11 +25,11 @@ public record ShellPodProperties(
     Resources resources,
     Credentials credentials) {
 
-  public ShellPodProperties {
-    if (enabled == null) enabled = Boolean.TRUE;
-    if (enabled && (image == null || image.isBlank())) {
+  public KubernetesShellProperties {
+    if (image == null || image.isBlank()) {
       throw new IllegalArgumentException(
-          "app.ai.tools.shell-pod.image must be set when app.ai.tools.shell-pod.enabled=true");
+          "app.ai.tools.shell.kubernetes.image must be set when"
+              + " app.ai.tools.shell.type=kubernetes");
     }
     if (imagePullSecrets == null) {
       imagePullSecrets = List.of();
@@ -65,7 +70,7 @@ public record ShellPodProperties(
     }
 
     public String cpuLimitOrDefault() {
-      return cpuLimit == null ? "500m" : cpuLimit;
+      return cpuLimit == null ? "1000m" : cpuLimit;
     }
 
     public String memoryLimitOrDefault() {

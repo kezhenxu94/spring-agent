@@ -1,7 +1,5 @@
 package me.kezhenxu94.springagent.core.config;
 
-import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -12,7 +10,6 @@ import me.kezhenxu94.springagent.core.storage.StorageProperties;
 import me.kezhenxu94.springagent.core.tools.InterceptingToolCallbackResolver;
 import me.kezhenxu94.springagent.core.tools.InterceptingToolCallingManager;
 import me.kezhenxu94.springagent.core.tools.McpProperties;
-import me.kezhenxu94.springagent.core.tools.ShellPodProperties;
 import me.kezhenxu94.springagent.core.tools.ToolCallInterceptor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
@@ -25,7 +22,6 @@ import org.springframework.ai.tool.resolution.ToolCallbackResolver;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -56,11 +52,12 @@ import org.springframework.web.client.RestTemplate;
             classes = SpringAgentCoreAutoConfiguration.class))
 @EnableConfigurationProperties({
   SpringAgentProperties.class,
-  ShellPodProperties.class,
   McpProperties.class,
   // Bound here rather than by the backend modules: whichever of them is on the classpath reads it,
   // and neither is guaranteed to be.
-  PersistenceProperties.class
+  PersistenceProperties.class,
+  // Same reasoning: the settings of a particular shell are bound by the module implementing it.
+  ShellToolsProperties.class
 })
 @ImportRuntimeHints(StoragePropertiesRuntimeHints.class)
 public class SpringAgentCoreAutoConfiguration {
@@ -165,12 +162,5 @@ public class SpringAgentCoreAutoConfiguration {
     scheduler.setPoolSize(4);
     scheduler.setThreadNamePrefix("scheduled-task-");
     return scheduler;
-  }
-
-  @Bean(destroyMethod = "close")
-  @ConditionalOnMissingBean
-  @ConditionalOnProperty(prefix = "app.ai.tools.shell-pod", name = "enabled", havingValue = "true")
-  KubernetesClient kubernetesClient() {
-    return new KubernetesClientBuilder().build();
   }
 }

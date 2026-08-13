@@ -1,0 +1,15 @@
+plugins {
+  id 'springagent.java-library-conventions'
+}
+
+dependencies {
+  api project(':spring-agent-core')
+
+  // The only module that may carry fabric8: spring-agent-core forbids the group on its runtime
+  // classpath. The JDK HTTP client rather than the OkHttp one the client defaults to.
+  api platform(libs.fabric8.kubernetes.client.bom)
+  implementation 'io.fabric8:kubernetes-httpclient-jdk'
+  implementation(libs.fabric8.kubernetes.client) {
+    exclude group: 'io.fabric8', module: 'kubernetes-httpclient-okhttp'
+  }
+}

@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,7 +19,6 @@ import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.context.ApplicationContext;
-import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.stereotype.Component;
 
 @Slf4j
@@ -91,15 +91,19 @@ public class AgentToolsProvider {
         agentTools, tools.toArray(), callbacks.toArray(new ToolCallback[0]), memoriesRootDirectory);
   }
 
-  private List<Object> resolveScenarioTools(final AgentScenario scenario) {
-    return applicationContext.getBeansWithAnnotation(AgentTool.class).values().stream()
+  // Package-private for AgentToolsProviderScenarioTest.
+  List<Object> resolveScenarioTools(final AgentScenario scenario) {
+    // findAnnotationOnBean, not findAnnotation on the bean's class: @AgentTool may sit on a @Bean
+    // factory method. It is also the lookup getBeansWithAnnotation performs, so the two agree.
+    return applicationContext.getBeansWithAnnotation(AgentTool.class).entrySet().stream()
         .filter(
-            bean -> {
+            entry -> {
               final var annotation =
-                  AnnotationUtils.findAnnotation(bean.getClass(), AgentTool.class);
-              return Arrays.asList(annotation.scenario()).contains(AgentScenario.ALL)
-                  || Arrays.asList(annotation.scenario()).contains(scenario);
+                  applicationContext.findAnnotationOnBean(entry.getKey(), AgentTool.class);
+              final var scenarios = Arrays.asList(annotation.scenario());
+              return scenarios.contains(AgentScenario.ALL) || scenarios.contains(scenario);
             })
+        .map(Map.Entry::getValue)
         .toList();
   }
 

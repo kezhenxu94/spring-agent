@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.tools;
+package me.kezhenxu94.springagent.tools.shell.kubernetes;
 
 import io.fabric8.kubernetes.api.model.DeletionPropagation;
 import io.fabric8.kubernetes.api.model.LocalObjectReferenceBuilder;
@@ -23,12 +23,8 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.storage.StorageProperties;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Component;
 
 @Slf4j
-@Component
-@ConditionalOnProperty(prefix = "app.ai.tools.shell-pod", name = "enabled", havingValue = "true")
 @RequiredArgsConstructor
 public class UserPodManager {
 
@@ -43,7 +39,7 @@ public class UserPodManager {
   public static final String CREDENTIALS_VOLUME_NAME = "user-credentials";
 
   private final KubernetesClient kubernetesClient;
-  private final ShellPodProperties properties;
+  private final KubernetesShellProperties properties;
   private final StorageProperties storageProperties;
   private final SpringAgentProperties appConfiguration;
 

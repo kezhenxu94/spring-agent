@@ -21,7 +21,6 @@ dependencies {
   api platform(bootBom)
   api platform(libs.findLibrary('spring-ai-bom').get())
   api platform(libs.findLibrary('spring-ai-agent-utils-bom').get())
-  api platform(libs.findLibrary('fabric8-kubernetes-client-bom').get())
 
   annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
   testImplementation 'org.springframework.boot:spring-boot-starter-test'

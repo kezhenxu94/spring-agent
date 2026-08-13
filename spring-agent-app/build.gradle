@@ -46,6 +46,9 @@ dependencies {
   // PersistenceMongoTest assert each backend from a single JVM classpath.
   implementation project(':spring-agent-persistence-jdbc')
   implementation project(':spring-agent-persistence-mongodb')
+  // Optional for an SDK consumer. Depending on it decides nothing: app.ai.tools.shell.type does,
+  // and it defaults to none.
+  implementation project(':spring-agent-tools-shell-kubernetes')
   implementation project(':spring-agent-integration-feishu')
 
   implementation 'org.springframework.boot:spring-boot-starter-actuator'

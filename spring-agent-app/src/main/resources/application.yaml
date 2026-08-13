@@ -187,36 +187,49 @@ app:
       # cost of re-embedding the tool descriptions.
       file: ${VECTORSTORE_FILE:data/vectorstore.json}
     tools:
-      shell-pod:
-        # The bot's ServiceAccount needs get/list/create/update/patch/delete on
-        # `secrets` in the shell-pod namespace (used by SetCredential / ListCredentials /
-        # DeleteCredential to manage per-user credential Secrets).
-        enabled: ${TOOLS_SHELL_POD_ENABLED:false}
-        # namespace: spring-agent-assistant     # optional; auto-detected from the bot's own ServiceAccount
-        image: ${TOOLS_SHELL_POD_IMAGE:}
-        # Comma-separated list of imagePullSecret names to attach to each shell sandbox Pod.
-        # Required when `image` lives in a private registry (the Pod does not inherit the bot's secrets).
-        image-pull-secrets: ${TOOLS_SHELL_POD_IMAGE_PULL_SECRETS:}
-        idle-timeout: 30m
-        hard-deadline: 4h
-        startup-timeout: 60s
-        max-output-bytes: 30000
-        default-timeout-ms: 120000
-        max-timeout-ms: 600000
-        storage:
-          pvc-name: ${TOOLS_SHELL_POD_STORAGE_PVC_NAME:}
-          pvc-mount-path: ${TOOLS_SHELL_POD_STORAGE_PVC_MOUNT_PATH:/data/spring-agent}
-        resources:
-          cpu-request: 100m
-          memory-request: 256Mi
-          cpu-limit: 1000m
-          memory-limit: 1Gi
-        credentials:
-          mount-path: /run/secrets/credentials
+      shell:
+        # Where the agent's Bash tool runs commands. One of:
+        #
+        #   none        no Bash tool at all.
+        #   kubernetes  a disposable per-user sandbox Pod, configured below. The only option fit for
+        #               real users.
+        #   local       Spring AI's own ShellTools, in this process as this application's own OS
+        #               user, with its filesystem, secrets and network. No sandbox and no isolation
+        #               between users. Development only.
+        #
+        # This selects which beans exist, so it is a build-time decision in a native image: see
+        # -PnativeBackends in springagent.native.gradle.
+        type: ${TOOLS_SHELL_TYPE:none}
+        kubernetes:
+          # The bot's ServiceAccount needs get/list/create/update/patch/delete on `secrets` in the
+          # sandbox namespace (used by SetCredential / ListCredentials / DeleteCredential to manage
+          # per-user credential Secrets), and the same verbs on `jobs` and `pods` plus `pods/exec`.
+          #
+          # Required whenever type is kubernetes.
+          image: ${TOOLS_SHELL_KUBERNETES_IMAGE:}
+          # namespace: spring-agent-assistant     # optional; auto-detected from the bot's own ServiceAccount
+          # Comma-separated list of imagePullSecret names to attach to each shell sandbox Pod.
+          # Required when `image` lives in a private registry (the Pod does not inherit the bot's secrets).
+          image-pull-secrets: ${TOOLS_SHELL_KUBERNETES_IMAGE_PULL_SECRETS:}
+          idle-timeout: 30m
+          hard-deadline: 4h
+          startup-timeout: 60s
+          max-output-bytes: 30000
+          default-timeout-ms: 120000
+          max-timeout-ms: 600000
+          storage:
+            pvc-name: ${TOOLS_SHELL_KUBERNETES_STORAGE_PVC_NAME:}
+            pvc-mount-path: ${TOOLS_SHELL_KUBERNETES_STORAGE_PVC_MOUNT_PATH:/data/spring-agent}
+          resources:
+            cpu-request: 100m
+            memory-request: 256Mi
+            cpu-limit: 1000m
+            memory-limit: 1Gi
+          credentials:
+            mount-path: /run/secrets/credentials
       mcp:
-        # Hostnames allowed to bypass the SSRF guard's https-only and private-address checks
-        # (spring-agent-cli/src/main/java/me/kezhenxu94/springagent/tools/McpClientFactory.java).
-        # Keep this narrow — every entry is reachable by any bot user who registers an MCP server.
+        # Hostnames allowed to bypass the SSRF guard's https-only and private-address checks.
+        # Keep this narrow — every entry is reachable by any user who registers an MCP server.
         trusted-hosts:
           - monitoring-mcp.monitoring
     bot-interceptor:
