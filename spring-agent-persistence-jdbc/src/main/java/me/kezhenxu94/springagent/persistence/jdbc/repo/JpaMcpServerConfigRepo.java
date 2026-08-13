@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.dao.repo.jpa;
+package me.kezhenxu94.springagent.persistence.jdbc.repo;
 
 import java.util.Collection;
 import java.util.List;
@@ -8,7 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.transaction.annotation.Transactional;
 
-/** JPA implementation, registered only when {@code app.persistence.type} is {@code jdbc}. */
+/** JPA implementation, registered when this module is the persistence backend in play. */
 public interface JpaMcpServerConfigRepo
     extends McpServerConfigRepo, JpaRepository<McpServerConfig, String> {
 

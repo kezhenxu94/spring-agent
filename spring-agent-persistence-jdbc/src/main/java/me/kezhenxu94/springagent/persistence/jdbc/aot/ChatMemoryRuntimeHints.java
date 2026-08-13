@@ -1,14 +1,14 @@
-package me.kezhenxu94.springagent.core.aot;
+package me.kezhenxu94.springagent.persistence.jdbc.aot;
 
-import me.kezhenxu94.springagent.core.config.ChatMemoryConfiguration;
+import me.kezhenxu94.springagent.persistence.jdbc.JdbcChatMemoryAutoConfiguration;
 import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
 
 /**
- * Hints for the two things {@link ChatMemoryConfiguration} resolves from runtime strings, which AOT
- * therefore cannot infer: the schema script it loads as a {@code ClassPathResource} and the JDBC
- * driver it names through {@code DatabaseDriver.fromJdbcUrl}.
+ * Hints for the two things {@link JdbcChatMemoryAutoConfiguration} resolves from runtime strings,
+ * which AOT therefore cannot infer: the schema script it loads as a {@code ClassPathResource} and
+ * the JDBC driver it names through {@code DatabaseDriver.fromJdbcUrl}.
  *
  * <p>Imported from that configuration rather than registered globally, so the hints are only
  * contributed when the {@code jdbc} chat memory branch is the one baked into the image.

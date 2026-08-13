@@ -1,0 +1,48 @@
+plugins {
+  id 'springagent.java-library-conventions'
+  id 'springagent.classpath-isolation'
+}
+
+// One of the two backends a consumer of spring-agent-core picks between. It owns the whole JDBC
+// story: the JPA repository implementations, the chat memory repository, the SQLite driver and the
+// Hibernate dialect that reads it, and the native-image hints for all of them. That set is not
+// obvious — the exclusion and the plain-module choice below each exist for a specific reason — which
+// is precisely why it is a module rather than a paragraph of documentation asking consumers to
+// assemble it themselves.
+dependencies {
+  // api: the repository interfaces here implement spring-agent-core's neutral contracts, and the
+  // domain models appear in their signatures.
+  api project(':spring-agent-core')
+  // api: JpaMcpServerConfigRepo and friends extend JpaRepository, so it is part of their public type.
+  api 'org.springframework.boot:spring-boot-starter-data-jpa'
+  // api: the chat memory tests assert `instanceof JdbcChatMemoryRepository`, and a consumer may
+  // reasonably want to as well.
+  //
+  // Deliberately the plain module and not the starter: the starter builds its repository from
+  // whatever DataSource it finds, without asking which backend was selected. The HikariCP exclusion
+  // keeps a connection pool from arriving through this path — JdbcChatMemoryAutoConfiguration builds
+  // its own unpooled DataSource, and a pool on the classpath switches DataSourceAutoConfiguration
+  // on, which then fails a MongoDB deployment that has no spring.datasource.url.
+  api('org.springframework.ai:spring-ai-model-chat-memory-repository-jdbc') {
+    exclude group: 'com.zaxxer', module: 'HikariCP'
+  }
+
+  // Hibernate keeps SQLite support out of its core artifact; without this the default backend has no
+  // dialect for the database it defaults to.
+  implementation 'org.hibernate.orm:hibernate-community-dialects'
+  implementation 'org.springframework.boot:spring-boot-jdbc'
+  implementation 'org.springframework:spring-jdbc'
+  // runtimeOnly: nothing here compiles against org.sqlite. The driver is reached by name, through
+  // DatabaseDriver.fromJdbcUrl, and named as a string in ChatMemoryRuntimeHints.
+  runtimeOnly libs.sqlite.jdbc
+}
+
+forbidOnRuntimeClasspath(
+    groups: ['org.mongodb'],
+    modules: [
+      'spring-data-mongodb',
+      'spring-boot-mongodb',
+      'spring-boot-data-mongodb',
+      'spring-boot-starter-data-mongodb',
+      'spring-ai-model-chat-memory-repository-mongodb',
+    ])

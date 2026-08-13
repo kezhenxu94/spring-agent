@@ -2,8 +2,8 @@ package me.kezhenxu94.springagent.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import me.kezhenxu94.springagent.core.dao.repo.jpa.JpaMcpServerConfigRepo;
-import me.kezhenxu94.springagent.core.dao.repo.mongo.MongoMcpServerConfigRepo;
+import me.kezhenxu94.springagent.persistence.jdbc.repo.JpaMcpServerConfigRepo;
+import me.kezhenxu94.springagent.persistence.mongodb.repo.MongoMcpServerConfigRepo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

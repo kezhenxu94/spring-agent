@@ -1,17 +1,19 @@
-package me.kezhenxu94.springagent.core.config;
+package me.kezhenxu94.springagent.persistence.jdbc;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import javax.sql.DataSource;
-import me.kezhenxu94.springagent.core.aot.ChatMemoryRuntimeHints;
+import me.kezhenxu94.springagent.core.config.ConditionalOnPersistenceBackend;
+import me.kezhenxu94.springagent.core.config.PersistenceProperties.Type;
+import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.persistence.jdbc.aot.ChatMemoryRuntimeHints;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.repository.jdbc.JdbcChatMemoryRepository;
 import org.springframework.ai.chat.memory.repository.jdbc.JdbcChatMemoryRepositoryDialect;
 import org.springframework.ai.model.chat.memory.autoconfigure.ChatMemoryAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.boot.jdbc.DatabaseDriver;
 import org.springframework.context.annotation.Bean;
@@ -23,25 +25,27 @@ import org.springframework.jdbc.datasource.init.DatabasePopulatorUtils;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 
 /**
- * The JDBC branch of {@code app.persistence.type}: any database Spring AI ships a chat memory
- * dialect for, the default URL being a local SQLite file.
+ * Conversation history in any database Spring AI ships a chat memory dialect for, the default URL
+ * being a local SQLite file.
  *
- * <p>The MongoDB branch stays with Spring AI's own auto-configuration; {@link
- * PersistenceAutoConfigurationFilter} is what keeps it from adding a second {@link
- * ChatMemoryRepository} next to this one. Spring AI's JDBC auto-configuration is deliberately
- * absent from the classpath (we depend on the plain module, not the starter): it would build its
- * repository from whatever {@link DataSource} it finds, without asking which backend was selected.
+ * <p>Chat memory follows the same backend as the domain repositories rather than having a selector
+ * of its own — see {@code PersistenceProperties} for why one property covers everything. So this
+ * lives beside {@link JdbcPersistenceAutoConfiguration} in the same module: a deployment that
+ * depends on the MongoDB module gets Spring AI's own MongoDB chat memory auto-configuration and
+ * never sees this class at all.
+ *
+ * <p>Spring AI's JDBC chat memory auto-configuration is deliberately absent from the classpath
+ * (this module depends on the plain artifact, not the starter): it would build its repository from
+ * whatever {@link DataSource} it finds, without asking which backend was selected. In an
+ * application carrying both modules, {@code PersistenceAutoConfigurationFilter} is what stops
+ * Spring AI's MongoDB one adding a second {@link ChatMemoryRepository} next to this.
  *
  * <p>Ordered before {@link ChatMemoryAutoConfiguration} so its in-memory fallback backs off.
  */
 @AutoConfiguration(before = ChatMemoryAutoConfiguration.class)
-@ConditionalOnProperty(
-    prefix = "app.persistence",
-    name = "type",
-    havingValue = "jdbc",
-    matchIfMissing = true)
+@ConditionalOnPersistenceBackend(Type.JDBC)
 @ImportRuntimeHints(ChatMemoryRuntimeHints.class)
-public class ChatMemoryConfiguration {
+public class JdbcChatMemoryAutoConfiguration {
   private static final String SCHEMA_LOCATION =
       "org/springframework/ai/chat/memory/repository/jdbc/schema-%s.sql";
 

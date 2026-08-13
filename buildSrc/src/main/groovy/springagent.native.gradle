@@ -19,6 +19,11 @@ pluginManager.withPlugin('org.graalvm.buildtools.native') {
   // native binary need no extra configuration. Pass -PnativeBackends=mongodb,milvus for the
   // server-backed variant — that image must then be *run* with PERSISTENCE_TYPE=mongodb and
   // VECTORSTORE_TYPE=milvus so the live environment agrees with the baked context.
+  //
+  // spring-agent-app depends on both spring-agent-persistence-* modules, so the property below is
+  // what picks between them rather than merely confirming a choice the classpath already made — see
+  // ConditionalOnPersistenceBackend. An application depending on a single backend module needs
+  // neither this flag nor the env var.
   def backends = providers.gradleProperty('nativeBackends').getOrElse('')
       .split(',').collect { it.trim().toLowerCase() }.findAll { it }
   def persistenceType = backends.contains('mongodb') ? 'mongodb' : 'jdbc'

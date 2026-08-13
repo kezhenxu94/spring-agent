@@ -9,7 +9,15 @@ dependencies {
   implementation 'org.springframework.boot:spring-boot-starter'
   implementation 'org.springframework.boot:spring-boot-starter-webmvc'
   implementation 'org.springframework.boot:spring-boot-starter-restclient'
-  implementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
+  // compileOnly, like spring-agent-core and for the same reason: FeishuMessage is dual-mapped and
+  // the two nested configurations in FeishuAutoConfiguration name both backends' repository types,
+  // but this module contributes no persistence dependency of its own. Whichever
+  // spring-agent-persistence-* module the application picked supplies the runtime half.
+  //
+  // These used to be one `implementation` line for MongoDB plus a free ride on spring-agent-core's
+  // api export of the JPA starter, which forced MongoDB onto every consumer of this integration.
+  compileOnly 'org.springframework.boot:spring-boot-starter-data-jpa'
+  compileOnly 'org.springframework.boot:spring-boot-starter-data-mongodb'
   implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'
   implementation 'org.springframework.ai:spring-ai-starter-model-openai'
   implementation libs.spring.ai.agent.utils

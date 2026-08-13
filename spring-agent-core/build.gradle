@@ -1,48 +1,44 @@
 plugins {
   id 'springagent.java-library-conventions'
+  id 'springagent.classpath-isolation'
 }
 
 dependencies {
   // api: types that appear in signatures integration modules compile against.
   api 'org.springframework.boot:spring-boot-starter'
-  // Both persistence backends are on the classpath and selected at runtime by app.persistence.type;
-  // api because the shared domain models carry the mapping annotations of both, so the integration
-  // modules compile against them. PersistenceAutoConfigurationFilter is what keeps the unselected
-  // backend's auto-configuration out of the context — in particular it keeps
-  // DataSourceAutoConfiguration off a MongoDB deployment, which has no spring.datasource.url. That
-  // used to be achieved by keeping every connection pool off the classpath; the JPA starter brings
-  // HikariCP with it, so the filter is now the only thing enforcing it.
-  api 'org.springframework.boot:spring-boot-starter-data-mongodb'
-  api 'org.springframework.boot:spring-boot-starter-data-jpa'
-  // Hibernate keeps SQLite out of core; without this the default JDBC backend has no dialect for
-  // the database it defaults to.
-  implementation 'org.hibernate.orm:hibernate-community-dialects'
+  // Neither persistence backend is a dependency of this module. The domain models in dao/models
+  // carry the mapping annotations of both, so both have to be here to *compile* — but an annotation
+  // whose type is absent at runtime is discarded when the class is reflected over, which is what
+  // makes one model serve both backends and what makes compileOnly correct rather than merely
+  // convenient. A consumer adds spring-agent-persistence-jdbc or spring-agent-persistence-mongodb,
+  // and resolves nothing belonging to the other.
+  //
+  // This is the whole point of the split: promoting either of these back to api or implementation
+  // puts Hibernate on every MongoDB deployment, or the Mongo driver on every JDBC one. The
+  // checkRuntimeClasspathIsolation task below is what catches that happening by accident.
+  compileOnly 'jakarta.persistence:jakarta.persistence-api'
+  compileOnly 'org.springframework.data:spring-data-mongodb'
+  compileOnly 'org.springframework.data:spring-data-commons'
   api 'org.springframework.ai:spring-ai-starter-model-openai'
   api libs.spring.ai.agent.utils
 
   implementation 'org.springframework.boot:spring-boot-starter-webmvc'
   implementation 'org.springframework.boot:spring-boot-starter-validation'
   implementation 'org.springframework.boot:spring-boot-starter-restclient'
-  // Chat memory backends, selected at runtime by app.persistence.type. MongoDB keeps Spring
-  // AI's own auto-configuration; the JDBC one is deliberately the plain module, since the starter
-  // would wire a repository off any DataSource without asking which backend was selected.
-  implementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-mongodb'
-  // The connection pool goes: ChatMemoryConfiguration builds an unpooled DataSource, and a pool on
-  // the classpath would switch DataSourceAutoConfiguration on, which then fails a MongoDB-backed
-  // deployment for want of a spring.datasource.url.
-  implementation('org.springframework.ai:spring-ai-model-chat-memory-repository-jdbc') {
-    exclude group: 'com.zaxxer', module: 'HikariCP'
-  }
-  implementation 'org.springframework.boot:spring-boot-jdbc'
-  implementation 'org.springframework:spring-jdbc'
-  implementation libs.sqlite.jdbc
+  // Chat memory follows app.persistence.type, so its two implementations live in the two
+  // spring-agent-persistence-* modules alongside the repositories they share a database with.
   implementation 'org.springframework.ai:spring-ai-starter-mcp-client'
   implementation 'org.springframework.ai:spring-ai-starter-tool-search-advisor'
-  // Vector store backends, selected at runtime by spring.ai.vectorstore.type. Milvus keeps Spring
-  // AI's own auto-configuration, which already backs off when the property names another store;
-  // the simple one is wired by VectorStoreConfiguration.
-  implementation 'org.springframework.ai:spring-ai-starter-vector-store-milvus'
-  implementation 'org.springframework.ai:spring-ai-vector-store'
+  // api: SimpleVectorStore and VectorStore appear in VectorStoreConfiguration's bean signatures,
+  // and consumers inject them. Cheap to carry — its only transitive is spring-ai-model, which the
+  // OpenAI starter above already brings.
+  //
+  // Only the simple store lives here. Milvus is not a dependency of this module: its starter drags
+  // in milvus-sdk-java, grpc, protobuf, okhttp and kotlin-stdlib, which is a large price for every
+  // consumer to pay for a store most of them do not run. A deployment that wants it declares
+  // org.springframework.ai:spring-ai-starter-vector-store-milvus itself and sets
+  // spring.ai.vectorstore.type=milvus; Spring AI's own auto-configuration takes it from there.
+  api 'org.springframework.ai:spring-ai-vector-store'
   implementation 'io.fabric8:kubernetes-httpclient-jdk'
   implementation(libs.fabric8.kubernetes.client) {
     exclude group: 'io.fabric8', module: 'kubernetes-httpclient-okhttp'
@@ -50,4 +46,29 @@ dependencies {
   implementation libs.guava
   implementation libs.jakarta.annotation.api
   implementation libs.bundles.logback.json
+
+  // Raw coordinates rather than the sibling projects, which would be a dependency cycle. These are
+  // here only so PersistenceAutoConfigurationFilterTest can assert the auto-configuration class
+  // names it filters still exist. testImplementation does not reach runtimeClasspath, so the
+  // isolation assertion below is unaffected.
+  testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+  testImplementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
+  testImplementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-mongodb'
 }
+
+// Core is backend-agnostic and must stay that way: it is the module every consumer takes, whichever
+// database they run.
+forbidOnRuntimeClasspath(
+    groups: ['org.hibernate.orm', 'org.mongodb', 'io.milvus', 'com.zaxxer', 'org.xerial'],
+    modules: [
+      'spring-data-jpa',
+      'spring-data-mongodb',
+      'spring-jdbc',
+      'spring-orm',
+      'spring-boot-jdbc',
+      'spring-boot-starter-data-jpa',
+      'spring-boot-starter-data-mongodb',
+      'spring-ai-model-chat-memory-repository-jdbc',
+      'spring-ai-model-chat-memory-repository-mongodb',
+      'spring-ai-milvus-store',
+    ])

@@ -1,0 +1,57 @@
+// Asserts that a module does not drag a persistence backend onto its consumers' runtime classpath.
+//
+// This is the invariant the spring-agent-persistence-* split exists to create, and it is invisible
+// in Java source: nothing fails to compile when an `implementation` in one build file quietly turns
+// into an `api`, or when a starter grows a transitive it did not have last release. The coupling
+// this project just finished unpicking arose exactly that way. A resolution-time assertion is the
+// only thing that holds it.
+//
+// Usage: `forbidOnRuntimeClasspath groups: [...], modules: [...]`, then `check` depends on it.
+
+def forbiddenGroups = objects.setProperty(String)
+def forbiddenModules = objects.setProperty(String)
+
+ext.forbidOnRuntimeClasspath = { Map args ->
+  forbiddenGroups.addAll(args.groups ?: [])
+  forbiddenModules.addAll(args.modules ?: [])
+}
+
+// allComponents rather than resolvedConfiguration.resolvedArtifacts: the latter is deprecated in
+// Gradle 9, and the wrapper pins 9.x.
+def resolved = provider {
+  configurations.runtimeClasspath.incoming.resolutionResult.allComponents
+      .collect { it.moduleVersion }
+      .findAll { it != null }
+      .collect { "${it.group}:${it.name}".toString() }
+}
+
+def checkTask = tasks.register('checkRuntimeClasspathIsolation') {
+  group = 'verification'
+  description = 'Fails if a forbidden persistence backend reaches the runtime classpath.'
+
+  def groups = forbiddenGroups
+  def modules = forbiddenModules
+  def coordinates = resolved
+  def name = project.name
+
+  inputs.property('forbiddenGroups', groups)
+  inputs.property('forbiddenModules', modules)
+  inputs.property('coordinates', coordinates)
+
+  doLast {
+    def leaked = coordinates.get().findAll { coordinate ->
+      def (group, module) = coordinate.split(':', 2)
+      groups.get().contains(group) || modules.get().contains(module)
+    }.unique().sort()
+
+    if (leaked) {
+      throw new GradleException(
+          "${name} leaks these onto its consumers' runtime classpath:\n" +
+          leaked.collect { "  - ${it}" }.join('\n') +
+          "\n\nA consumer picks one persistence backend and must not resolve the other. Check " +
+          "whether a dependency became `api`, or grew a new transitive.")
+    }
+  }
+}
+
+tasks.named('check') { dependsOn checkTask }

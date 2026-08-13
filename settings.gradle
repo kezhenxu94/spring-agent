@@ -21,5 +21,9 @@ dependencyResolutionManagement {
 rootProject.name = 'spring-agent'
 
 include 'spring-agent-core'
+// Pick exactly one of these two. They are what put a database on the classpath at all: core carries
+// the domain models and the backend-neutral repository contracts, but neither backend's driver.
+include 'spring-agent-persistence-jdbc'
+include 'spring-agent-persistence-mongodb'
 include 'spring-agent-integration-feishu'
 include 'spring-agent-app'

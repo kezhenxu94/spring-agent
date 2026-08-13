@@ -65,8 +65,14 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
      * How much conversation history is replayed to the model, and where it is kept when {@code
      * app.persistence.type} selects a relational database.
      *
+     * <p>These stay here, in the module that owns the {@code app} prefix, rather than moving to
+     * {@code spring-agent-persistence-jdbc} which is the only thing that reads them: splitting one
+     * configuration prefix across two jars would scatter its metadata for no gain, and the record
+     * holds nothing but strings.
+     *
      * @param maxMessages size of the message window replayed on each turn
-     * @param jdbc settings for the JDBC backend, ignored when MongoDB is selected
+     * @param jdbc settings read by {@code JdbcChatMemoryAutoConfiguration}; nothing reads them on a
+     *     MongoDB deployment
      */
     public record ChatMemory(int maxMessages, Jdbc jdbc) {
       public ChatMemory {

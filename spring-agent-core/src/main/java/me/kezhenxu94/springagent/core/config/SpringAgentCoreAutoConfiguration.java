@@ -57,7 +57,10 @@ import org.springframework.web.client.RestTemplate;
 @EnableConfigurationProperties({
   SpringAgentProperties.class,
   ShellPodProperties.class,
-  McpProperties.class
+  McpProperties.class,
+  // Bound here rather than by the backend modules: whichever of them is on the classpath reads it,
+  // and neither is guaranteed to be.
+  PersistenceProperties.class
 })
 @ImportRuntimeHints(StoragePropertiesRuntimeHints.class)
 public class SpringAgentCoreAutoConfiguration {

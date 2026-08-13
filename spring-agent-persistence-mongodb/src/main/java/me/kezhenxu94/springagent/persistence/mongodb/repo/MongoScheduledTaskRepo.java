@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.dao.repo.mongo;
+package me.kezhenxu94.springagent.persistence.mongodb.repo;
 
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
@@ -6,9 +6,7 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.data.mongodb.repository.Query;
 import org.springframework.data.mongodb.repository.Update;
 
-/**
- * The MongoDB implementation, registered only when {@code app.persistence.type} is {@code mongodb}.
- */
+/** The MongoDB implementation, registered when this module is the persistence backend in play. */
 public interface MongoScheduledTaskRepo
     extends ScheduledTaskRepo, MongoRepository<ScheduledTask, String> {
 

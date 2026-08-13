@@ -41,6 +41,11 @@ def patchJvmArgs = [
 
 dependencies {
   implementation project(':spring-agent-core')
+  // Both, deliberately. An SDK consumer picks one and configures nothing; this application is the
+  // runtime-switchable case app.persistence.type exists for, and PersistenceJdbcTest and
+  // PersistenceMongoTest assert each backend from a single JVM classpath.
+  implementation project(':spring-agent-persistence-jdbc')
+  implementation project(':spring-agent-persistence-mongodb')
   implementation project(':spring-agent-integration-feishu')
 
   implementation 'org.springframework.boot:spring-boot-starter-actuator'
@@ -50,22 +55,20 @@ dependencies {
 
   implementation platform(libs.spring.ai.bom)
 
+  // Moved down from spring-agent-core, which used to carry it for every consumer: this starter
+  // brings milvus-sdk-java, grpc, protobuf, okhttp and kotlin-stdlib. Spring AI's own
+  // auto-configuration backs off unless spring.ai.vectorstore.type is milvus, so having it here
+  // costs a deployment that runs the simple store nothing but disk.
+  implementation 'org.springframework.ai:spring-ai-starter-vector-store-milvus'
+
   // Internals of the library modules; the assembly test mocks these beans.
   testImplementation platform(libs.fabric8.kubernetes.client.bom)
   testImplementation libs.larksuite.oapi
   testImplementation libs.fabric8.kubernetes.client
 
-  // Internals of the core module; the chat memory tests assert which backend got wired.
-  testImplementation 'org.springframework.ai:spring-ai-model-chat-memory-repository-mongodb'
-  // The HikariCP exclusion mirrors spring-agent-core/build.gradle: a connection pool on the
-  // classpath switches DataSourceAutoConfiguration on, which breaks the MongoDB-backed context.
-  testImplementation('org.springframework.ai:spring-ai-model-chat-memory-repository-jdbc') {
-    exclude group: 'com.zaxxer', module: 'HikariCP'
-  }
-  // Likewise for the vector store tests, which assert which store got wired.
-  testImplementation 'org.springframework.ai:spring-ai-vector-store'
-  testImplementation 'org.springframework.ai:spring-ai-milvus-store'
-
+  // The chat memory tests assert which backend got wired; they reach both repository types through
+  // the two spring-agent-persistence-* modules, which expose them as api. These used to be
+  // re-declared here because spring-agent-core hid them behind implementation.
   testImplementation libs.testcontainers.core
   testImplementation libs.testcontainers.mongodb
   testImplementation libs.testcontainers.milvus

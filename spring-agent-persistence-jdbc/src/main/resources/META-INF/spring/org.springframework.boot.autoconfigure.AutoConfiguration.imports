@@ -1,0 +1,2 @@
+me.kezhenxu94.springagent.persistence.jdbc.JdbcPersistenceAutoConfiguration
+me.kezhenxu94.springagent.persistence.jdbc.JdbcChatMemoryAutoConfiguration

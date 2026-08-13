@@ -1,6 +1,8 @@
 package me.kezhenxu94.springagent.integration.feishu.config;
 
 import com.lark.oapi.Client;
+import me.kezhenxu94.springagent.core.config.ConditionalOnPersistenceBackend;
+import me.kezhenxu94.springagent.core.config.PersistenceProperties.Type;
 import me.kezhenxu94.springagent.integration.feishu.aot.FeishuRuntimeHints;
 import me.kezhenxu94.springagent.integration.feishu.aot.LarkSdkRuntimeHints;
 import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessage;
@@ -49,24 +51,28 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
 public class FeishuAutoConfiguration {
 
   /**
-   * The Feishu message repository, registered for whichever backend {@code app.persistence.type}
-   * names. Nested rather than folded into the core module's PersistenceConfiguration because this
-   * repository belongs to this module and must disappear with it when Feishu is switched off —
-   * which is why these are {@code @Import}ed from the enclosing class rather than listed as
-   * auto-configurations of their own: an entry in {@code AutoConfiguration.imports} is evaluated
-   * independently and would survive {@code app.feishu.enabled=false}.
+   * The Feishu message repository, registered for whichever backend is in play. Nested rather than
+   * folded into the spring-agent-persistence-* modules because this repository belongs to this
+   * module and must disappear with it when Feishu is switched off — which is why these are
+   * {@code @Import}ed from the enclosing class rather than listed as auto-configurations of their
+   * own: an entry in {@code AutoConfiguration.imports} is evaluated independently and would survive
+   * {@code app.feishu.enabled=false}.
+   *
+   * <p>This module depends on neither backend, so on any given deployment one of these two classes
+   * names a repository type that is not on the classpath. That is safe in this exact shape: both
+   * are empty classes with no supertype and no member signatures, so they load; their
+   * {@code @Enable…} annotation is then read reflectively and discarded when its type is absent, so
+   * the repository interface it names — which really would fail to load — is never resolved. Adding
+   * a field, a method or a supertype referring to either backend would break that, as would
+   * replacing {@code @Import} with anything that resolves the nested class eagerly.
    */
   @Configuration(proxyBeanMethods = false)
-  @ConditionalOnProperty(prefix = "app.persistence", name = "type", havingValue = "mongodb")
+  @ConditionalOnPersistenceBackend(Type.MONGODB)
   @EnableMongoRepositories(basePackageClasses = MongoFeishuMessageRepo.class)
   public static class Mongo {}
 
   @Configuration(proxyBeanMethods = false)
-  @ConditionalOnProperty(
-      prefix = "app.persistence",
-      name = "type",
-      havingValue = "jdbc",
-      matchIfMissing = true)
+  @ConditionalOnPersistenceBackend(Type.JDBC)
   @EnableJpaRepositories(basePackageClasses = JpaFeishuMessageRepo.class)
   @EntityScan(basePackageClasses = FeishuMessage.class)
   public static class Jdbc {}

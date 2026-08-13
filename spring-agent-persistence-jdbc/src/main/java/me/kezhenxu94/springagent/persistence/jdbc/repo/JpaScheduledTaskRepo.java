@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.dao.repo.jpa;
+package me.kezhenxu94.springagent.persistence.jdbc.repo;
 
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.transaction.annotation.Transactional;
 
-/** The JPA implementation, registered only when {@code app.persistence.type} is {@code jdbc}. */
+/** The JPA implementation, registered when this module is the persistence backend in play. */
 public interface JpaScheduledTaskRepo
     extends ScheduledTaskRepo, JpaRepository<ScheduledTask, String> {
 

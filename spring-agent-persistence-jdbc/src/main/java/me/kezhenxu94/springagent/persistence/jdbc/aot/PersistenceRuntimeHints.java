@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.aot;
+package me.kezhenxu94.springagent.persistence.jdbc.aot;
 
 import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
