@@ -17,22 +17,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # A plain JDK rather than the GraalVM mise.toml pins, because native-image is only needed for
-      # the -Pnative build, which this workflow does not run.
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "25"
       - uses: gradle/actions/setup-gradle@v6
-      # latest=false because the rule below already puts :latest on default-branch builds only;
-      # left on auto, a release tag would move :latest as well. The build takes the first reference
-      # as the image name and the rest as extra tags, so declaration order matters here — see
-      # springagent.docker.gradle.
       - uses: docker/metadata-action@v6
         id: meta
         with:
           images: ghcr.io/${{ github.repository }}
-          sep-tags: ","
+          sep-tags: ','
           flavor: latest=false
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
