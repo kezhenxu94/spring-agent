@@ -47,7 +47,4 @@ bootBuildImage {
   // JDK. The bytecode stays at 21 (see options.release in springagent.java-common-conventions), so
   // the artifact still runs on an older JVM — just not with these options.
   environment["BP_JVM_VERSION"] = "25"
-
-  builder = "paketobuildpacks/builder-jammy-full:latest"
-  runImage = "paketobuildpacks/run-jammy-full:latest"
 }
