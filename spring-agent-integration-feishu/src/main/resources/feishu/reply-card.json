@@ -5,7 +5,7 @@
     "streaming_mode": true,
     "streaming_config": {
       "print_step": {
-        "default": 1
+        "default": 10
       },
       "print_frequency_ms": {
         "default": 50
