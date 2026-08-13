@@ -66,6 +66,21 @@ class DockerShellToolsIntegrationTest {
   }
 
   @Test
+  @DisplayName("the container says whose sandbox it is, even for a user id Docker would reject")
+  void namesContainersAfterTheirOwner() {
+    tools(Map.of());
+
+    // The underscore every Feishu open id carries is legal in a Docker name, so it survives as
+    // written — this is the case that has to stay readable.
+    assertThat(manager.ensureContainerFor("ou_7f40fefc8ddae").getContainerName())
+        .startsWith("/" + UserContainerManager.CONTAINER_NAME_PREFIX + "ou_7f40fefc8ddae-");
+    // `@` is not. An id carrying one still starts, under a sanitised name rather than a rejected
+    // one.
+    assertThat(manager.ensureContainerFor("user@example").getContainerName())
+        .startsWith("/" + UserContainerManager.CONTAINER_NAME_PREFIX + "user-example-");
+  }
+
+  @Test
   @DisplayName("a failing command reports its exit code and stderr")
   void reportsFailures() {
     final var tools = tools(Map.of());

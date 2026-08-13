@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,7 +42,17 @@ public class UserContainerManager implements AutoCloseable {
   public static final String LABEL_SHELL_CONTAINER_ROLE = "springagent.io/shell-container-role";
   public static final String SHELL_CONTAINER_ROLE_ADMIN = "admin";
 
+  /** What {@code docker ps} leads with, so a sandbox is recognisable without reading its labels. */
+  public static final String CONTAINER_NAME_PREFIX = "spring-agent-shell-";
+
   private static final Pattern ENV_VAR_NAME = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,63}$");
+
+  /**
+   * Everything Docker rejects in a container name. The prefix covers the leading-character rule.
+   */
+  private static final Pattern UNSAFE_IN_NAME = Pattern.compile("[^A-Za-z0-9_.-]");
+
+  private static final int MAX_USER_ID_IN_NAME = 64;
 
   private final DockerShellProperties properties;
   private final StorageProperties storageProperties;
@@ -126,10 +137,12 @@ public class UserContainerManager implements AutoCloseable {
             .withEnv("IDLE_TTL_SECONDS", Long.toString(properties.idleTimeout().getSeconds()))
             .withEnv("MAX_LIFETIME_SECONDS", Long.toString(properties.hardDeadline().getSeconds()))
             .withCreateContainerCmdModifier(
-                cmd ->
-                    cmd.getHostConfig()
-                        .withMemory(properties.resources().memoryBytes())
-                        .withNanoCPUs(properties.resources().nanoCpus()))
+                cmd -> {
+                  cmd.withName(containerName(userId));
+                  cmd.getHostConfig()
+                      .withMemory(properties.resources().memoryBytes())
+                      .withNanoCPUs(properties.resources().nanoCpus());
+                })
             .withStartupTimeout(properties.startupTimeout())
             .withCommand("sh", "-c", watchdogScript());
 
@@ -190,6 +203,28 @@ public class UserContainerManager implements AutoCloseable {
     } catch (final IOException e) {
       throw new IllegalStateException("Failed to write credential files into the sandbox", e);
     }
+  }
+
+  /**
+   * {@code spring-agent-shell-<user>-<random>}, rather than the name Docker would invent.
+   *
+   * <p>The prefix and the owner are there to be read: {@code docker ps} on a host running this
+   * shows which containers are agent sandboxes and whose, without anyone having to know the label
+   * scheme. The random tail is what keeps the name from being a liability — a name derived only
+   * from the user would collide with a leftover container whenever this process died hard enough
+   * that Ryuk went with it, turning a stale sandbox into a failure to start a new one. The labels
+   * remain the thing to query; this is the thing to glance at.
+   *
+   * <p>Unlike {@code UserPodManager}, the user id goes in as written where it can. Kubernetes
+   * hashes because DNS-1123 forbids the underscore that every Feishu open id contains; Docker
+   * allows it, so hashing here would cost the legibility that is the whole point.
+   */
+  private static String containerName(final String userId) {
+    final var safe = UNSAFE_IN_NAME.matcher(userId).replaceAll("-");
+    final var trimmed =
+        safe.length() > MAX_USER_ID_IN_NAME ? safe.substring(0, MAX_USER_ID_IN_NAME) : safe;
+    final var suffix = Long.toHexString(ThreadLocalRandom.current().nextLong() & 0xFFFFFFFFL);
+    return CONTAINER_NAME_PREFIX + trimmed + "-" + suffix;
   }
 
   /**
