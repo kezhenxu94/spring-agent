@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.tools;
+package me.kezhenxu94.springagent.core.tools.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
+import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

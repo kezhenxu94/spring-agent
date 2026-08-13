@@ -1,8 +1,8 @@
 package me.kezhenxu94.springagent.integration.feishu.tools;
 
 import lombok.extern.slf4j.Slf4j;
-import me.kezhenxu94.springagent.core.tools.ToolCallInterceptor;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.core.tools.interceptors.ToolCallInterceptor;
 import me.kezhenxu94.springagent.integration.feishu.handler.FeishuCardUpdater;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.stereotype.Component;

@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.tools;
+package me.kezhenxu94.springagent.core.tools.mcp;
 
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;

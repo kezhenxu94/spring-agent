@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.tools;
+package me.kezhenxu94.springagent.core.tools.mcp;
 
 import io.modelcontextprotocol.client.McpSyncClient;
 import java.util.ArrayList;
@@ -10,6 +10,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
+import me.kezhenxu94.springagent.core.tools.AgentTool;
+import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;

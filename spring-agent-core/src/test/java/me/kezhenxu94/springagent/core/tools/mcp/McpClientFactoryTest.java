@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.tools;
+package me.kezhenxu94.springagent.core.tools.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;

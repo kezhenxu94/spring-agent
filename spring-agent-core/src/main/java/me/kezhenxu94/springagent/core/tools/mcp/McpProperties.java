@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.tools;
+package me.kezhenxu94.springagent.core.tools.mcp;
 
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;

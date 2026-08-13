@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.tools;
+package me.kezhenxu94.springagent.core.tools.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -16,7 +16,8 @@ import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
  * Reproduces the original bug report: two MCP server registrations (e.g. two instances of the same
  * backend) that expose an identical tool set and report identical server {@code Implementation}
  * info during the handshake. Exercises the exact assembly path used for a real chat request (see
- * {@link AgentToolsProvider}), via {@link ServerNameToolPrefixGenerator}.
+ * {@link me.kezhenxu94.springagent.core.tools.AgentToolsProvider}), via {@link
+ * ServerNameToolPrefixGenerator}.
  */
 class AgentToolsProviderMcpAssemblyTest {
 

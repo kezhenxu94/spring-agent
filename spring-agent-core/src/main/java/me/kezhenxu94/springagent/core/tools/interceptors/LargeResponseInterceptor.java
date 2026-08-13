@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.tools;
+package me.kezhenxu94.springagent.core.tools.interceptors;
 
 import com.google.common.base.Strings;
 import java.nio.file.Files;
@@ -8,6 +8,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.stereotype.Component;
 

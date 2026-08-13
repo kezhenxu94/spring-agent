@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
+import me.kezhenxu94.springagent.core.tools.mcp.McpClientFactory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;

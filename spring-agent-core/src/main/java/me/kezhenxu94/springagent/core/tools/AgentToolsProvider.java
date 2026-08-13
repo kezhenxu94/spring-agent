@@ -12,6 +12,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
+import me.kezhenxu94.springagent.core.tools.mcp.McpClientFactory;
+import me.kezhenxu94.springagent.core.tools.mcp.ServerNameToolPrefixGenerator;
 import org.springaicommunity.agent.tools.FileSystemTools;
 import org.springaicommunity.agent.tools.SkillsTool;
 import org.springaicommunity.agent.tools.TodoWriteTool;

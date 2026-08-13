@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.tools;
+package me.kezhenxu94.springagent.core.tools.mcp;
 
 import io.modelcontextprotocol.spec.McpSchema;
 import org.springframework.ai.mcp.McpConnectionInfo;
@@ -11,7 +11,7 @@ import org.springframework.ai.mcp.McpToolNamePrefixGenerator;
  * servers that report identical MCP {@code Implementation} info during the handshake — e.g. two
  * registered environments (staging/prod) of the same underlying MCP server.
  */
-class ServerNameToolPrefixGenerator implements McpToolNamePrefixGenerator {
+public class ServerNameToolPrefixGenerator implements McpToolNamePrefixGenerator {
 
   private static final int MAX_TOOL_NAME_LENGTH = 64;
   private static final int TRUNCATION_SUFFIX_HASH_LENGTH = 8;
