@@ -93,25 +93,27 @@ class FeishuQuestionFormTest {
   }
 
   @Test
-  @DisplayName("a single-choice question prints its options and offers them by number")
-  void singleChoicePrintsOptionsAndSelectsByNumber() {
+  @DisplayName("a single-choice question offers its options by label, and prints the descriptions")
+  void singleChoiceSelectsByLabel() {
     final var elements = elements(form().build(List.of(single()), PQ));
 
-    // The labels belong in the prompt, since the dropdown holds only the numbers pointing at them.
+    // The dropdown has nowhere to put a description, so those stay in the prompt.
     final var prompt = firstWithTag(elements, "markdown").get("content").asString();
     assertThat(prompt)
         .contains("**Database**", "Which database should we use?")
-        .contains("1. **Postgres** — Battle-tested")
-        .contains("2. **SQLite** — Zero ops");
+        .contains("- **Postgres** — Battle-tested")
+        .contains("- **SQLite** — Zero ops");
 
     final var select = firstWithTag(elements, "select_static");
     assertThat(select.get("name").asString()).isEqualTo(FeishuQuestionForm.selectName(PREFIX, 0));
-    // Displayed one-based so it lines up with the printed list, submitted zero-based so it indexes
-    // the options directly.
+    // Named by label so the menu can be read on its own, valued by index so the answer resolves
+    // straight back to the option the model wrote.
     assertThat(select.get("options")).hasSize(2);
-    assertThat(select.get("options").get(0).get("text").get("content").asString()).isEqualTo("1");
+    assertThat(select.get("options").get(0).get("text").get("content").asString())
+        .isEqualTo("Postgres");
     assertThat(select.get("options").get(0).get("value").asString()).isEqualTo("0");
-    assertThat(select.get("options").get(1).get("text").get("content").asString()).isEqualTo("2");
+    assertThat(select.get("options").get(1).get("text").get("content").asString())
+        .isEqualTo("SQLite");
     assertThat(select.get("options").get(1).get("value").asString()).isEqualTo("1");
   }
 
@@ -161,7 +163,7 @@ class FeishuQuestionFormTest {
   }
 
   @Test
-  @DisplayName("a chosen number and ticked checkers come back as the labels the model wrote")
+  @DisplayName("a chosen option and ticked checkers come back as the labels the model wrote")
   void selectionsResolveToLabels() {
     final var questions = List.of(single(), multi());
     final var answers =
@@ -254,6 +256,6 @@ class FeishuQuestionFormTest {
     final var built = form().build(List.of(single()), PQ);
 
     assertThat(built).doesNotContain("{selectHint}", "{otherHint}", "{submitText}");
-    assertThat(built).contains("Pick a number", "Other — type your own answer", "Submit");
+    assertThat(built).contains("Pick an option", "Other — type your own answer", "Submit");
   }
 }

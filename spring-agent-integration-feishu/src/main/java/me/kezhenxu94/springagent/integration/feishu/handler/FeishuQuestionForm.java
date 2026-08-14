@@ -108,14 +108,14 @@ public class FeishuQuestionForm {
           elements.add(checker);
         }
       } else if (!options.isEmpty()) {
-        // The options are printed above and the dropdown holds only their numbers, so an option
-        // whose label is a sentence still reads properly instead of being clipped into a menu.
+        // Each entry names its own option, so choosing needs nothing but the open dropdown. The
+        // value stays the index, which is what resolves back to the label on submission.
         final var select = fragments.get("select").deepCopy();
         select.put("name", selectName(prefix, i));
         final var optionNodes = select.withArrayProperty("options");
         for (var j = 0; j < options.size(); j++) {
           final var option = fragments.get("selectOption").deepCopy();
-          option.withObjectProperty("text").put("content", String.valueOf(j + 1));
+          option.withObjectProperty("text").put("content", options.get(j).label());
           option.put("value", String.valueOf(j));
           optionNodes.add(option);
         }
@@ -232,19 +232,23 @@ public class FeishuQuestionForm {
   }
 
   /**
-   * The prompt above a question's controls: what was asked, and for a dropdown, what the numbers
-   * mean.
+   * The prompt above a question's controls: what was asked, and whatever the controls themselves
+   * cannot carry.
+   *
+   * <p>A checker holds its option's label and description both, so a multi-select needs nothing
+   * more. A dropdown entry is plain text with room for the label only, so the descriptions — which
+   * the tool requires of every option, and which are often what decides the choice — are listed
+   * here instead.
    */
   private static String prompt(
       final Question question, final List<Question.Option> options, final boolean multiSelect) {
     final var prompt = new StringBuilder();
     prompt.append("**").append(question.header()).append("** ").append(question.question());
     if (multiSelect) {
-      // The labels are on the checkers themselves, so repeating them here would only be noise.
       return prompt.toString();
     }
-    for (var i = 0; i < options.size(); i++) {
-      prompt.append("\n").append(i + 1).append(". ").append(label(options.get(i)));
+    for (final var option : options) {
+      prompt.append("\n- ").append(label(option));
     }
     return prompt.toString();
   }

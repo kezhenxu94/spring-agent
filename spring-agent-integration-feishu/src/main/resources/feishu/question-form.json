@@ -31,7 +31,7 @@
     "tag": "select_static",
     "name": "",
     "type": "default",
-    "width": "default",
+    "width": "fill",
     "required": false,
     "placeholder": {
       "tag": "plain_text",

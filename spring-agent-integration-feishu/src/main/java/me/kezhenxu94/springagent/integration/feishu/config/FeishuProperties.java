@@ -140,7 +140,7 @@ public record FeishuProperties(
    * <p>The first three fill that template's placeholders; the rest are toasts and prose written
    * when an answer comes back.
    *
-   * @param selectHint placeholder in the dropdown that picks an option by number
+   * @param selectHint placeholder in the dropdown that picks one of a question's options
    * @param otherHint placeholder in the free-text box offered alongside every question
    * @param submitText label of the button that sends the answers
    * @param submitted toast confirming the answers were taken
@@ -164,7 +164,7 @@ public record FeishuProperties(
 
     public QuestionText {
       if (Strings.isNullOrEmpty(selectHint)) {
-        selectHint = "Pick a number";
+        selectHint = "Pick an option";
       }
       if (Strings.isNullOrEmpty(otherHint)) {
         otherHint = "Other — type your own answer";
