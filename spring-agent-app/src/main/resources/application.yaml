@@ -206,6 +206,31 @@ app:
         including relative expressions like "today", "this week" or "in two hours".
         Never guess the current time or the user's timezone.
 
+      # Ask before you do something you cannot undo
+      Get on with the work. The tools you have are there to be used, and asking to use
+      them normally is friction, not care. Stop and ask only when you are about to:
+      - Destroy or overwrite something that already exists — deleting or truncating
+        files, replacing a document's contents, dropping data, or any shell command
+        whose damage you could not reverse.
+      - Reach someone outside this conversation, since a message cannot be unsent.
+      - Change a live production system. This one you must always ask about, however
+        small or reversible the change looks: writes through an MCP server that reaches
+        production, anything applied to a Kubernetes cluster or its workloads, deploys,
+        restarts, scaling and config changes, and anything else touching real traffic or
+        real data. Inspecting production — reading, listing, describing, querying — is
+        fine and needs no permission. Your own sandbox is not production; work in it
+        freely.
+
+      Everything else — reading, searching, writing new files, publishing, editing docs
+      and sheets, scheduling — go ahead and do, then say what you did.
+
+      When you do ask, call AskUserQuestionTool with the safest option first and say
+      plainly what would be lost. Then stop and end your turn: no further tools, no
+      asking twice, no assuming an answer. You will be started again with their reply,
+      however long it takes. If the user has already approved this exact action, or
+      there is nobody to ask, do the reversible part and report what you stopped short
+      of.
+
       # Style
       - Reply in the language the user wrote in.
       - Be concise, warm and direct. Skip filler and ceremony.
@@ -220,6 +245,10 @@ app:
       talking to you now, so there is nobody waiting to answer questions about it: carry it out
       with the information you have, then report what you did and what came of it.
 
+      Because nobody is there to ask, you cannot get permission for anything the task did not
+      already authorise. Do the reversible part, stop before anything destructive or irreversible
+      that the task does not plainly call for, and say in your report what you stopped short of.
+
       Do not create, reschedule or cancel a scheduled task as part of carrying this one out — it
       is already scheduled, and scheduling it again would only duplicate it.
 
@@ -232,12 +261,13 @@ app:
       # tables. Where the repository itself is configured is spring.ai.chat.memory.repository.*
       # above.
       #
-      # What is stored is the user's message and the model's final answer, on every backend. Tool
-      # calls and their results are not: the tool-calling loop runs inside the chat model, and by
-      # the time MessageChatMemoryAdvisor sees a response it holds the finished reply. So a later
-      # turn replays what the agent said about a command, not the command's raw output. (The JDBC
-      # repository additionally refuses tool messages outright, with a warning, but nothing in this
-      # application hands it any.)
+      # What is stored is the user's message, the model's answer, and — since the memory advisor was
+      # ordered inside the tool-calling loop — the calls the turn made and what they returned. So a
+      # later turn replays the command's own output, not only what the agent said about it.
+      #
+      # Except on jdbc: JdbcChatMemoryRepository refuses tool messages outright, with a warning, and
+      # keeps the rest. Anything relying on a past tool call still being visible — resuming a
+      # question the agent asked, say — has to carry what it needs in its own message there.
       #
       # How many past messages are replayed to the model on each turn.
       max-messages: 100
@@ -247,6 +277,20 @@ app:
       # cost of re-embedding the tool descriptions.
       file: ${VECTORSTORE_FILE:data/vectorstore.json}
     tools:
+      ask-user-question:
+        # Whether the agent may stop and ask the user a multiple-choice question when a request is
+        # ambiguous, rather than guessing.
+        #
+        # It never waits for the reply. The questions go onto the reply card as a form, the run
+        # ends, and submitting the form starts a fresh run on the same conversation with the
+        # answers — so an answer given an hour later, or after a restart, works exactly like an
+        # answer given at once. The tool is only offered on runs that have somewhere to put the
+        # questions, which today means a Feishu chat; a scheduled task is told there is nobody
+        # to ask.
+        enabled: ${ASK_USER_QUESTION_ENABLED:true}
+        # How long the questions stay answerable. Capped from above by Feishu regardless of what is
+        # set here: the card the form lives on expires 14 days after it is created.
+        ttl: ${ASK_USER_QUESTION_TTL:24h}
       shell:
         # Where the agent's Bash tool runs commands. One of:
         #

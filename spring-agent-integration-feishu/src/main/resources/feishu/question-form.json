@@ -1,0 +1,96 @@
+{
+  "_comment": [
+    "Fragments the agent's questions are assembled from, one form inserted into the reply card.",
+    "Not a whole card: how many questions there are, and how many options each has, is only known",
+    "when the agent asks, so what can be written down ahead of time is the shape of each piece.",
+    "",
+    "The {} placeholders are filled in two different ways, deliberately. The label ones —",
+    "{selectHint}, {otherHint}, {submitText} — are configuration, substituted into this file as",
+    "text by FeishuProperties.QuestionText. The rest carry what the model wrote, and are set on the",
+    "parsed JSON instead, so a question containing a quote cannot break the card.",
+    "",
+    "Names must be unique across the whole card, start with a letter, hold only letters, digits and",
+    "underscores, and stay within 20 characters."
+  ],
+  "form": {
+    "tag": "form",
+    "name": "askq",
+    "element_id": "askq",
+    "direction": "vertical",
+    "vertical_spacing": "8px",
+    "padding": "4px 0px 4px 0px",
+    "elements": []
+  },
+  "questionText": {
+    "tag": "markdown",
+    "content": "",
+    "text_align": "left",
+    "text_size": "normal_v2"
+  },
+  "select": {
+    "tag": "select_static",
+    "name": "",
+    "type": "default",
+    "width": "default",
+    "required": false,
+    "placeholder": {
+      "tag": "plain_text",
+      "content": "{selectHint}"
+    },
+    "options": []
+  },
+  "selectOption": {
+    "text": {
+      "tag": "plain_text",
+      "content": ""
+    },
+    "value": ""
+  },
+  "checker": {
+    "tag": "checker",
+    "name": "",
+    "checked": false,
+    "overall_checkable": true,
+    "text": {
+      "tag": "lark_md",
+      "content": ""
+    },
+    "checked_style": {
+      "show_strikethrough": false,
+      "opacity": 1
+    },
+    "padding": "2px 2px 2px 2px"
+  },
+  "other": {
+    "tag": "input",
+    "name": "",
+    "required": false,
+    "width": "fill",
+    "max_length": 1000,
+    "placeholder": {
+      "tag": "plain_text",
+      "content": "{otherHint}"
+    }
+  },
+  "submit": {
+    "tag": "button",
+    "name": "submit",
+    "type": "primary_filled",
+    "size": "small",
+    "width": "default",
+    "form_action_type": "submit",
+    "text": {
+      "tag": "plain_text",
+      "content": "{submitText}"
+    },
+    "behaviors": [
+      {
+        "type": "callback",
+        "value": {
+          "button": "answer",
+          "pq": ""
+        }
+      }
+    ]
+  }
+}

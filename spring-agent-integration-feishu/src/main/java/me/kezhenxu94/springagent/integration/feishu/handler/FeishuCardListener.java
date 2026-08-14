@@ -16,6 +16,7 @@ import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.agent.AgentRunRegistry;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.springframework.beans.factory.annotation.Value;
@@ -44,6 +45,8 @@ public class FeishuCardListener implements AgentResponseListener {
   final RestTemplate restTemplate;
   final FeishuProperties feishuProperties;
   final UserWorkspaceFactory userWorkspaceFactory;
+  final PendingQuestionRepo pendingQuestionRepo;
+  final FeishuQuestionForm questionForm;
 
   // Not final, matching FeishuTools#feishuReplyCard: @Value on a field is an injection point in its
   // own right, and AOT generates a plain field assignment for it, which cannot target a final field
@@ -97,6 +100,21 @@ public class FeishuCardListener implements AgentResponseListener {
       registry.addResponseListener(cardUpdater);
       registry.addTodoEventHandler(cardUpdater);
       registry.addToolContext(FeishuCardUpdater.TOOL_CONTEXT_KEY.key(), cardUpdater);
+
+      // Only a chat run, and registering this is what decides whether the agent may ask at all. A
+      // scheduled task has no conversation memory, so an answer arriving later would have nothing
+      // to rejoin — its prompt already tells the model there is nobody to ask.
+      if (request.scenario() == AgentScenario.CHAT) {
+        registry.addQuestionHandler(
+            new FeishuQuestionHandler(
+                request,
+                cardUpdater,
+                cardId,
+                pendingQuestionRepo,
+                questionForm,
+                om,
+                appConfiguration.ai().tools().askUserQuestion().ttl()));
+      }
 
       runIdsByCardMessage.put(cardMessageId, runId);
       registry.addResponseListener(new CardRun(runId, cardMessageId));

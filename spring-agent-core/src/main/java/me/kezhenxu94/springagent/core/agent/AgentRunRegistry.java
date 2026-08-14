@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
 
 /**
@@ -24,6 +25,7 @@ public final class AgentRunRegistry {
 
   private final List<AgentResponseListener> responseListeners = new ArrayList<>();
   private final List<TodoEventHandler> todoEventHandlers = new ArrayList<>();
+  private final List<QuestionHandler> questionHandlers = new ArrayList<>();
   private final Map<String, Object> toolContext = new LinkedHashMap<>();
 
   @Getter private String abortReason;
@@ -47,6 +49,17 @@ public final class AgentRunRegistry {
     todoEventHandlers.add(handler);
   }
 
+  /**
+   * Offers a way to put questions to the user, which is what decides whether the agent is given the
+   * tool to ask them at all: a run nobody registers one for cannot ask.
+   *
+   * <p>Unlike the handlers above these do not fan out — a question has one answer — so the first
+   * registered wins and the rest are ignored.
+   */
+  public void addQuestionHandler(final QuestionHandler handler) {
+    questionHandlers.add(handler);
+  }
+
   /** Contributes an entry to the tool context the agent's tools will see. */
   public void addToolContext(final String key, final Object value) {
     toolContext.put(key, value);
@@ -58,6 +71,10 @@ public final class AgentRunRegistry {
 
   List<TodoEventHandler> todoEventHandlers() {
     return todoEventHandlers;
+  }
+
+  List<QuestionHandler> questionHandlers() {
+    return questionHandlers;
   }
 
   Map<String, Object> toolContext() {

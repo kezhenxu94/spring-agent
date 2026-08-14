@@ -11,9 +11,12 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
+import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.tools.mcp.McpClientFactory;
 import me.kezhenxu94.springagent.core.tools.mcp.ServerNameToolPrefixGenerator;
+import org.springaicommunity.agent.tools.AskUserQuestionTool;
+import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springaicommunity.agent.tools.FileSystemTools;
 import org.springaicommunity.agent.tools.SkillsTool;
 import org.springaicommunity.agent.tools.TodoWriteTool;
@@ -32,6 +35,7 @@ public class AgentToolsProvider {
   private final McpServerConfigRepo mcpServerConfigRepo;
   private final McpClientFactory mcpClientFactory;
   private final ApplicationContext applicationContext;
+  private final SpringAgentProperties appConfiguration;
 
   public record AgentTools(
       FileSystemTools fileSystemTools, Optional<ToolCallback> skillsTool, McpTools mcpTools) {}
@@ -72,7 +76,8 @@ public class AgentToolsProvider {
       final String chatId,
       final String chatType,
       final AgentScenario scenario,
-      final TodoEventHandler todoEventHandler)
+      final TodoEventHandler todoEventHandler,
+      final QuestionHandler questionHandler)
       throws IOException {
     final var agentTools = build(userId, chatId);
     final var memoriesRootDirectory = userWorkspaceFactory.forOwner(userId).memories().toString();
@@ -81,6 +86,12 @@ public class AgentToolsProvider {
     tools.addAll(resolveScenarioTools(scenario));
     tools.add(agentTools.fileSystemTools());
     tools.add(TodoWriteTool.builder().todoEventHandler(todoEventHandler).build());
+    // Two independent gates, and both have to open. No handler means the run has no way to reach
+    // the user, so offering the tool would only invite the agent to ask into the void; the property
+    // is how a deployment turns the whole interaction off whatever the channel can do.
+    if (questionHandler != null && appConfiguration.ai().tools().askUserQuestion().enabled()) {
+      tools.add(AskUserQuestionTool.builder().questionHandler(questionHandler).build());
+    }
 
     final var callbacks = new ArrayList<ToolCallback>();
     agentTools.skillsTool().ifPresent(callbacks::add);

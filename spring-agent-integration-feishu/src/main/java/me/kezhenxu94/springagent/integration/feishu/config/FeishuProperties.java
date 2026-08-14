@@ -16,12 +16,41 @@ public record FeishuProperties(
     String appSecret,
     String botOpenId,
     String verificationToken,
-    CardText cardText) {
+    CardText cardText,
+    QuestionText questionText) {
 
   public FeishuProperties {
     if (cardText == null) {
       cardText = new CardText(null, null, null, null, null, null, null, null);
     }
+    if (questionText == null) {
+      questionText = new QuestionText(null, null, null, null, null, null, null, null, null);
+    }
+  }
+
+  /**
+   * Substitution happens in a template's text rather than its parsed form, so a label carrying a
+   * quote or a newline would otherwise produce a card that no longer parses.
+   */
+  static String jsonEscaped(final String value) {
+    final var escaped = new StringBuilder(value.length());
+    for (final var c : value.toCharArray()) {
+      switch (c) {
+        case '"' -> escaped.append("\\\"");
+        case '\\' -> escaped.append("\\\\");
+        case '\n' -> escaped.append("\\n");
+        case '\r' -> escaped.append("\\r");
+        case '\t' -> escaped.append("\\t");
+        default -> {
+          if (c < 0x20) {
+            escaped.append(String.format("\\u%04x", (int) c));
+          } else {
+            escaped.append(c);
+          }
+        }
+      }
+    }
+    return escaped.toString();
   }
 
   /**
@@ -93,31 +122,6 @@ public record FeishuProperties(
           .replace("{conversationHint}", jsonEscaped(conversationHint));
     }
 
-    /**
-     * Substitution happens in the template's text rather than its parsed form, so a label carrying
-     * a quote or a newline would otherwise produce a card that no longer parses.
-     */
-    private static String jsonEscaped(final String value) {
-      final var escaped = new StringBuilder(value.length());
-      for (final var c : value.toCharArray()) {
-        switch (c) {
-          case '"' -> escaped.append("\\\"");
-          case '\\' -> escaped.append("\\\\");
-          case '\n' -> escaped.append("\\n");
-          case '\r' -> escaped.append("\\r");
-          case '\t' -> escaped.append("\\t");
-          default -> {
-            if (c < 0x20) {
-              escaped.append(String.format("\\u%04x", (int) c));
-            } else {
-              escaped.append(c);
-            }
-          }
-        }
-      }
-      return escaped.toString();
-    }
-
     public String error(final String message) {
       return errorFormat.replace(
           "{error}", Strings.isNullOrEmpty(message) ? unknownError : message);
@@ -125,6 +129,75 @@ public record FeishuProperties(
 
     public String callingTool(final String toolName) {
       return callingTool.replace("{tool}", Strings.nullToEmpty(toolName));
+    }
+  }
+
+  /**
+   * Everything in the agent's question form that a reader sees and the model did not write. Split
+   * from {@link CardText} because these belong to a different template, {@code question-form.json},
+   * and because a deployment that turns the tool off never sees any of them.
+   *
+   * <p>The first three fill that template's placeholders; the rest are toasts and prose written
+   * when an answer comes back.
+   *
+   * @param selectHint placeholder in the dropdown that picks an option by number
+   * @param otherHint placeholder in the free-text box offered alongside every question
+   * @param submitText label of the button that sends the answers
+   * @param submitted toast confirming the answers were taken
+   * @param alreadyAnswered toast for a form submitted twice, or after a reply already answered it
+   * @param expired toast for a form submitted past the questions' lifetime
+   * @param notYours toast for someone other than the person who was asked. Cards are shared, so in
+   *     a group chat everyone can see and press this form.
+   * @param nothingChosen toast for a submission that answered none of the questions
+   * @param answerHeading opens the message the answers are carried back to the agent in
+   */
+  public record QuestionText(
+      String selectHint,
+      String otherHint,
+      String submitText,
+      String submitted,
+      String alreadyAnswered,
+      String expired,
+      String notYours,
+      String nothingChosen,
+      String answerHeading) {
+
+    public QuestionText {
+      if (Strings.isNullOrEmpty(selectHint)) {
+        selectHint = "Pick a number";
+      }
+      if (Strings.isNullOrEmpty(otherHint)) {
+        otherHint = "Other — type your own answer";
+      }
+      if (Strings.isNullOrEmpty(submitText)) {
+        submitText = "Submit";
+      }
+      if (Strings.isNullOrEmpty(submitted)) {
+        submitted = "Thanks — picking this up now";
+      }
+      if (Strings.isNullOrEmpty(alreadyAnswered)) {
+        alreadyAnswered = "These questions have already been answered";
+      }
+      if (Strings.isNullOrEmpty(expired)) {
+        expired = "These questions are too old to answer; just say what you need in a new message";
+      }
+      if (Strings.isNullOrEmpty(notYours)) {
+        notYours = "Only the person who was asked can answer these";
+      }
+      if (Strings.isNullOrEmpty(nothingChosen)) {
+        nothingChosen = "Choose an option or type an answer first";
+      }
+      if (Strings.isNullOrEmpty(answerHeading)) {
+        answerHeading = "Here are my answers to the questions you asked:";
+      }
+    }
+
+    /** Fills the question form template's label placeholders. */
+    public String render(final String formJson) {
+      return formJson
+          .replace("{selectHint}", jsonEscaped(selectHint))
+          .replace("{otherHint}", jsonEscaped(otherHint))
+          .replace("{submitText}", jsonEscaped(submitText));
     }
   }
 

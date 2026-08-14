@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
+import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.tools.mcp.McpClientFactory;
 import org.junit.jupiter.api.DisplayName;
@@ -62,7 +63,8 @@ class AgentToolsProviderScenarioTest {
               mock(UserWorkspaceFactory.class),
               mock(McpServerConfigRepo.class),
               mock(McpClientFactory.class),
-              context);
+              context,
+              mock(SpringAgentProperties.class));
 
       assertThat(provider.resolveScenarioTools(AgentScenario.CHAT))
           .extracting(Object::getClass)

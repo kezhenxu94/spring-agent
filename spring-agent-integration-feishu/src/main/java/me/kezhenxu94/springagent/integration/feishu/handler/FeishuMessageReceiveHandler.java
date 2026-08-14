@@ -18,6 +18,8 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
+import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
+import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
@@ -44,6 +46,25 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
   final SpringAgent springAgent;
   final UserWorkspaceFactory userWorkspaceFactory;
   final FeishuTools feishuTools;
+  final PendingQuestionRepo pendingQuestionRepo;
+
+  /**
+   * Marks anything the agent was still waiting to hear back on in this conversation as overtaken by
+   * what just arrived. Best effort: a failure here costs a stale form the chance to be refused, not
+   * this message the chance to be answered.
+   */
+  private void supersedePendingQuestions(final String conversationId) {
+    try {
+      pendingQuestionRepo
+          .findByConversationIdAndStatus(conversationId, PendingQuestion.Status.PENDING)
+          .forEach(
+              pending ->
+                  pendingQuestionRepo.updateStatus(
+                      pending.id(), PendingQuestion.Status.SUPERSEDED));
+    } catch (Exception e) {
+      log.warn("Failed to supersede pending questions in conversation {}", conversationId, e);
+    }
+  }
 
   @Override
   public void handle(final P2MessageReceiveV1 event) throws Exception {
@@ -77,6 +98,11 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
           message.getChatId());
       return;
     }
+
+    // Whatever this message says, it is the user's answer to anything the agent was still waiting
+    // on in this conversation — they replied instead of using the form. Closing those off now stops
+    // the form, pressed later, from starting a second run with an answer that has been overtaken.
+    supersedePendingQuestions(rootId);
 
     if (message.getMentions() != null && message.getMentions().length > 0) {
       message.setContent(

@@ -2,11 +2,16 @@ package me.kezhenxu94.springagent.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
+import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
+import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,6 +30,7 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
 
   @Autowired McpServerConfigRepo mcpServerConfigRepo;
   @Autowired ScheduledTaskRepo scheduledTaskRepo;
+  @Autowired PendingQuestionRepo pendingQuestionRepo;
 
   /**
    * The owner is per-subclass so the two backends cannot collide on the ownerId+name constraint.
@@ -143,5 +149,51 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
     assertThat(scheduledTaskRepo.findByUserIdAndStatus(owner(), ScheduledTask.Status.ACTIVE))
         .extracting(ScheduledTask::id)
         .doesNotContain(id);
+  }
+
+  @Test
+  @DisplayName("a pending question round trips, and answering it takes it out of the conversation")
+  void pendingQuestionRoundTripsAndLeavesPending() {
+    final var conversation = owner() + "-om_root";
+    final var id = owner() + "-question-1";
+    final var expiresAt = Instant.now().plus(Duration.ofHours(24)).truncatedTo(ChronoUnit.MILLIS);
+
+    pendingQuestionRepo.save(
+        PendingQuestion.builder()
+            .id(id)
+            .userId(owner())
+            .chatId("oc_chat")
+            .chatType("p2p")
+            .conversationId(conversation)
+            .rootMessageId(conversation)
+            .cardId("7355439197428236291")
+            .questionsJson("[{\"question\":\"Which database?\"}]")
+            .status(PendingQuestion.Status.PENDING)
+            .createdAt(Instant.now().truncatedTo(ChronoUnit.MILLIS))
+            .expiresAt(expiresAt)
+            .build());
+
+    final var found =
+        pendingQuestionRepo.findByConversationIdAndStatus(
+            conversation, PendingQuestion.Status.PENDING);
+    assertThat(found).extracting(PendingQuestion::id).containsExactly(id);
+    // Everything the answer handler needs hours later, when the run that asked is long gone.
+    assertThat(found.getFirst().cardId()).isEqualTo("7355439197428236291");
+    assertThat(found.getFirst().questionsJson()).contains("Which database?");
+    assertThat(found.getFirst().expiresAt()).isEqualTo(expiresAt);
+
+    pendingQuestionRepo.updateStatus(id, PendingQuestion.Status.ANSWERED);
+
+    // The index behind this query is what stops a second press, or a later message, from starting
+    // another run for the same questions — so it has to follow the partial update.
+    assertThat(
+            pendingQuestionRepo.findByConversationIdAndStatus(
+                conversation, PendingQuestion.Status.PENDING))
+        .isEmpty();
+    final var reloaded = pendingQuestionRepo.findById(id);
+    assertThat(reloaded).isPresent();
+    assertThat(reloaded.get().status()).isEqualTo(PendingQuestion.Status.ANSWERED);
+    assertThat(reloaded.get().cardId()).isEqualTo("7355439197428236291");
+    assertThat(reloaded.get().conversationId()).isEqualTo(conversation);
   }
 }

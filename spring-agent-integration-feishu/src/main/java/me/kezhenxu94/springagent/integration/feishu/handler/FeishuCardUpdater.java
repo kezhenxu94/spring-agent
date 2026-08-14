@@ -3,8 +3,11 @@ package me.kezhenxu94.springagent.integration.feishu.handler;
 import com.google.common.base.Strings;
 import com.google.common.base.Throwables;
 import com.lark.oapi.Client;
+import com.lark.oapi.service.cardkit.v1.enums.CreateCardElementTypeEnum;
 import com.lark.oapi.service.cardkit.v1.model.ContentCardElementReq;
 import com.lark.oapi.service.cardkit.v1.model.ContentCardElementReqBody;
+import com.lark.oapi.service.cardkit.v1.model.CreateCardElementReq;
+import com.lark.oapi.service.cardkit.v1.model.CreateCardElementReqBody;
 import com.lark.oapi.service.cardkit.v1.model.DeleteCardElementReq;
 import com.lark.oapi.service.cardkit.v1.model.DeleteCardElementReqBody;
 import com.lark.oapi.service.cardkit.v1.model.SettingsCardReq;
@@ -54,6 +57,12 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       new ToolContexts.Key<>("FeishuCardUpdater", FeishuCardUpdater.class);
 
   private static final int CODE_STREAMING_MODE_CLOSED = 300309;
+
+  /**
+   * The divider above the card's footer, and so the anchor anything added mid-run is placed before:
+   * it keeps the usage line and the conversation hint at the bottom where a reader expects them.
+   */
+  private static final String FOOTER_ELEMENT_ID = "guide_divider";
 
   private static final Pattern IMAGE_PATTERN = Pattern.compile("!\\[(.*?)\\]\\(([^)\\s]+)\\)");
 
@@ -196,6 +205,47 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       case in_progress -> "- [*] **" + item.activeForm() + "**";
       case pending -> "- [ ] " + item.content();
     };
+  }
+
+  /**
+   * Adds elements to the card, above the footer, and returns whether they landed.
+   *
+   * <p>Here rather than in the caller because {@link #sequence} is: the card rejects an operation
+   * whose sequence did not strictly increase, so everything writing to one card has to draw from
+   * the same counter, and this is where it lives.
+   *
+   * @param uuid an idempotency key, so a retry cannot leave the card holding two copies
+   */
+  @SneakyThrows
+  public synchronized boolean insertBeforeFooter(final String elementsJson, final String uuid) {
+    final var seq = sequence.getAndIncrement();
+    final var response =
+        feishu
+            .cardkit()
+            .v1()
+            .cardElement()
+            .create(
+                CreateCardElementReq.newBuilder()
+                    .cardId(cardId)
+                    .createCardElementReqBody(
+                        CreateCardElementReqBody.newBuilder()
+                            .type(CreateCardElementTypeEnum.INSERT_BEFORE)
+                            .targetElementId(FOOTER_ELEMENT_ID)
+                            .uuid(uuid)
+                            .sequence(seq)
+                            .elements(elementsJson)
+                            .build())
+                    .build());
+    if (response.getCode() != 0) {
+      log.warn(
+          "Failed to insert elements: cardId={}, seq={}, code={}, msg={}",
+          cardId,
+          seq,
+          response.getCode(),
+          response.getMsg());
+      return false;
+    }
+    return true;
   }
 
   @SneakyThrows

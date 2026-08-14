@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.integration.feishu.handler.FeishuCardListener;
 import me.kezhenxu94.springagent.integration.feishu.handler.FeishuMessageReceiveHandler;
+import me.kezhenxu94.springagent.integration.feishu.handler.FeishuQuestionAnswerHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -23,6 +24,7 @@ public class FeishuEventHandler {
   final FeishuMessageReceiveHandler feishuMessageReceiveHandler;
   final SpringAgent springAgent;
   final FeishuCardListener feishuCardListener;
+  final FeishuQuestionAnswerHandler feishuQuestionAnswerHandler;
 
   @Bean
   public EventDispatcher eventDispatcher() {
@@ -41,7 +43,13 @@ public class FeishuEventHandler {
                   throws Exception {
                 log.info("Card action trigger: {}", event.getEvent());
                 final var values = event.getEvent().getAction().getValue();
-                if ("stop".equals(values.get("button"))) {
+                // Not every interactive element carries one: a form's inputs report through
+                // form_value instead, and reading a button out of nothing would fail the callback.
+                if (values == null) {
+                  return new P2CardActionTriggerResponse();
+                }
+                final var button = values.get("button");
+                if ("stop".equals(button)) {
                   final var messageID = event.getEvent().getContext().getOpenMessageId();
                   // The button only knows the message the card was sent as; the run it belongs to
                   // is whatever the card listener started under it.
@@ -50,6 +58,8 @@ public class FeishuEventHandler {
                   if (runId != null) {
                     springAgent.cancel(runId);
                   }
+                } else if (FeishuQuestionAnswerHandler.ACTION.equals(button)) {
+                  return feishuQuestionAnswerHandler.handle(event);
                 }
                 return new P2CardActionTriggerResponse();
               }

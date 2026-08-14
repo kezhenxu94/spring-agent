@@ -40,7 +40,7 @@ class FeishuToolsTest {
             null,
             userWorkspaceFactory,
             objectMapper,
-            new FeishuProperties(null, null, null, null, null, null, null, null));
+            new FeishuProperties(null, null, null, null, null, null, null, null, null));
     tools.feishuReplyCard = new ClassPathResource("feishu/reply-card.json");
   }
 

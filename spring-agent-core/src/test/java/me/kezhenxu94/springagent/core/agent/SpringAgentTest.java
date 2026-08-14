@@ -59,7 +59,7 @@ class SpringAgentTest {
 
   @BeforeEach
   void setUp() throws Exception {
-    when(agentToolsProvider.compose(any(), any(), any(), any(), any()))
+    when(agentToolsProvider.compose(any(), any(), any(), any(), any(), any()))
         .thenReturn(
             new AgentComposition(
                 new AgentTools(
@@ -136,7 +136,7 @@ class SpringAgentTest {
   @Test
   @DisplayName("a run that cannot be composed reports FAILED rather than failing silently")
   void compositionFailureRun() throws Exception {
-    when(agentToolsProvider.compose(any(), any(), any(), any(), any()))
+    when(agentToolsProvider.compose(any(), any(), any(), any(), any(), any()))
         .thenThrow(new IOException("no workspace"));
 
     final var listener = fireAndAwait(request());
@@ -175,7 +175,7 @@ class SpringAgentTest {
     assertThat(listener.outcomes).containsExactly(AgentOutcome.FAILED);
     assertThat(listener.errors).hasSize(1);
     assertThat(listener.errors.getFirst()).hasMessage("nowhere to put the answer");
-    verify(agentToolsProvider, times(0)).compose(any(), any(), any(), any(), any());
+    verify(agentToolsProvider, times(0)).compose(any(), any(), any(), any(), any(), any());
   }
 
   @Test
@@ -207,7 +207,7 @@ class SpringAgentTest {
     agent.fire(request().listener(listener).build());
 
     assertThat(listener.outcomes).isEmpty();
-    verify(agentToolsProvider, times(0)).compose(any(), any(), any(), any(), any());
+    verify(agentToolsProvider, times(0)).compose(any(), any(), any(), any(), any(), any());
   }
 
   private RecordingListener fireAndAwait(final AgentRequest.AgentRequestBuilder request) {
@@ -265,6 +265,7 @@ class SpringAgentTest {
             Set.of(),
             Map.of(),
             new SpringAgentProperties.Ai.ChatMemory(10),
+            null,
             null,
             "You are {userId} in {chatId} ({chatType}), thread {threadId}, parent {parentId},"
                 + " mentions {mentions}.",

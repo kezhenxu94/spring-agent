@@ -134,6 +134,17 @@ public class SpringAgent {
     final var todoEventHandlers = new ArrayList<>(request.todoEventHandlers());
     todoEventHandlers.addAll(registry.todoEventHandlers());
 
+    // A question has one answer, so these cannot fan out the way the handlers above do: the first
+    // registered gets to ask, and none at all means the agent is not offered the tool.
+    final var questionHandlers = registry.questionHandlers();
+    if (questionHandlers.size() > 1) {
+      log.warn(
+          "Agent request {} has {} question handlers registered; using the first",
+          requestId,
+          questionHandlers.size());
+    }
+    final var questionHandler = questionHandlers.isEmpty() ? null : questionHandlers.getFirst();
+
     final var cancelFlag = new AtomicBoolean(false);
     if (requestId != null) {
       cancelFlags.put(requestId, cancelFlag);
@@ -154,7 +165,8 @@ public class SpringAgent {
                         request.chatId(),
                         request.chatType(),
                         request.scenario(),
-                        fanOut(todoEventHandlers));
+                        fanOut(todoEventHandlers),
+                        questionHandler);
                 mcpTools.set(composition.agentTools().mcpTools());
                 return rawStream(request, composition, toolContextFor(request, registry));
               } catch (Exception e) {
