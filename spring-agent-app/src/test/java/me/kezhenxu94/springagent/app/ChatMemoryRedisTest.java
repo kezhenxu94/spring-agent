@@ -3,6 +3,7 @@ package me.kezhenxu94.springagent.app;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
@@ -40,6 +41,36 @@ class ChatMemoryRedisTest extends AbstractIntegrationTest {
         "conversation-redis", List.of(new UserMessage("ping"), new AssistantMessage("pong")));
 
     assertThat(chatMemoryRepository.findByConversationId("conversation-redis"))
+        .extracting(Message::getText)
+        .containsExactly("ping", "pong");
+  }
+
+  @Test
+  @DisplayName("an assistant message carrying a model's own metadata comes back out")
+  void assistantMetadataDoesNotCostTheMessage() {
+    // The metadata a real chat model attaches, which is the point of this test: reads go through a
+    // RediSearch index, and indexing a document is all-or-nothing. Under the repository's default
+    // schema every metadata key is indexed as text through a $.metadata.* wildcard, and a value
+    // that is not a string — `index` is a number here and `annotations` a list, both of which
+    // OpenAI sends on every completion — makes RediSearch reject the whole document. It is still
+    // stored, and JSON.GET still returns it, so nothing looks wrong until findByConversationId
+    // quietly returns the user's turns and none of the assistant's.
+    final var assistant =
+        AssistantMessage.builder()
+            .content("pong")
+            .properties(
+                Map.of(
+                    "messageType", "ASSISTANT",
+                    "role", "assistant",
+                    "finishReason", "STOP",
+                    "index", 0,
+                    "annotations", List.of()))
+            .build();
+
+    chatMemoryRepository.saveAll(
+        "conversation-redis-metadata", List.of(new UserMessage("ping"), assistant));
+
+    assertThat(chatMemoryRepository.findByConversationId("conversation-redis-metadata"))
         .extracting(Message::getText)
         .containsExactly("ping", "pong");
   }

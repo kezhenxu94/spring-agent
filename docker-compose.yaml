@@ -1,0 +1,204 @@
+# Runs the agent locally against whichever backends you want to exercise.
+#
+# The two axes the application chooses between at startup each have a compose profile per value:
+#
+#   persistence   jdbc (default) | mongodb | redis     app.persistence.type
+#   vector store  simple (default) | milvus            spring.ai.vectorstore.type
+#
+# `jdbc` and `simple` name no service on purpose — they are the two that need no server, which is
+# the reason they are the defaults — so their profiles start nothing and exist only so the commands
+# below read the same whichever pair you pick.
+#
+# The agent itself is a third profile, `app`, so the backend profiles are usable without it. To
+# bring up only the servers and run the agent from an IDE or `./gradlew bootRun` against them:
+#
+#   PERSISTENCE_TYPE=redis VECTORSTORE_TYPE=milvus \
+#     COMPOSE_PROFILES=$PERSISTENCE_TYPE,$VECTORSTORE_TYPE docker compose up
+#
+# Note that the agent then runs on the host, so point it at the published ports —
+# PERSISTENCE_TYPE and VECTORSTORE_TYPE still apply, but REDIS_HOST and MILVUS_HOST default to
+# localhost, which is where those ports are. To run everything in containers instead, add `app`:
+#
+#   PERSISTENCE_TYPE=redis VECTORSTORE_TYPE=milvus \
+#     COMPOSE_PROFILES=app,$PERSISTENCE_TYPE,$VECTORSTORE_TYPE docker compose up
+#
+# Naming the backend profiles after the property values is what keeps the containers and the
+# application's own choice from drifting apart: one pair of variables drives both, so there is no
+# way to start MongoDB and then have the agent write to SQLite.
+#
+# The image is not built here — it comes from the Paketo buildpack, so there is no Dockerfile to
+# point at. Rebuild it after changing code, or the `app` profile runs whatever you built last:
+#
+#   ./gradlew bootBuildImage
+#
+# Model credentials and Feishu settings are read from .env, which is gitignored and yours to fill
+# in; see application.yaml for the full set. It is optional here, so `docker compose config` works
+# on a fresh clone, but the application will not start without at least OPENAI_BASE_URL,
+# OPENAI_API_KEY, OPENAI_MODEL and the EMBEDDING_* trio.
+#
+# Every published port is overridable through a *_HOST_PORT variable, because a machine that
+# already runs a Redis or a MongoDB is the normal case rather than the exception:
+#
+#   REDIS_HOST_PORT=6380 COMPOSE_PROFILES=redis docker compose up
+#
+# Those names are deliberately distinct from the REDIS_HOST/REDIS_PORT the application reads: the
+# app reaches its backends over the compose network on their standard ports, and what the host
+# publishes has nothing to do with it. Sharing one name would let a stray .env entry move the
+# published port and the application's target in opposite directions.
+#
+# Requires Docker Compose v2.20 or newer, for `depends_on: required: false` — that is what lets one
+# app service wait on whichever backend a profile actually started and ignore the rest.
+
+x-app-env: &app-env
+  # Defaults matching application.yaml, so `docker compose up` with no variables set runs the
+  # combination that needs no server at all.
+  PERSISTENCE_TYPE: ${PERSISTENCE_TYPE:-jdbc}
+  VECTORSTORE_TYPE: ${VECTORSTORE_TYPE:-simple}
+  # Service names rather than localhost: these are only read when the matching profile is active,
+  # and are harmless otherwise.
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  MILVUS_HOST: milvus
+  MILVUS_PORT: 19530
+  # Relaxed binding onto spring.data.mongodb.uri. application.yaml has no placeholder for it, so
+  # this is set in its canonical environment-variable spelling rather than through one.
+  SPRING_DATA_MONGODB_URI: mongodb://mongodb:27017/spring-agent
+
+services:
+  app:
+    # Behind a profile of its own, so the backend profiles are useful on their own: leave `app` out
+    # and compose brings up just the servers, for running the agent from an IDE or `./gradlew
+    # bootRun` against them. Add it and the whole stack runs in containers.
+    profiles: [app]
+    image: ghcr.io/kezhenxu94/spring-agent:latest
+    env_file:
+      - path: .env
+        required: false
+    environment: *app-env
+    ports:
+      - "${APP_HOST_PORT:-8080}:8080"
+    volumes:
+      # /workspace is the buildpack image's working directory, and the SQLite database
+      # (data/spring-agent.db) and the simple vector store's index (data/vectorstore.json) are both
+      # written relative to it. Without this they live inside the container and vanish with it,
+      # which would make the jdbc and simple profiles lose everything on every restart.
+      - agent-data:/workspace/data
+      # Uncomment for TOOLS_SHELL_TYPE=docker, which runs the agent's Bash tool in sibling
+      # containers. Reaching the Docker socket is equivalent to root on the host, so this is left
+      # off by default rather than being a line to remember to remove.
+      # - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      mongodb:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_healthy
+        required: false
+      milvus:
+        condition: service_healthy
+        required: false
+
+  mongodb:
+    profiles: [mongodb]
+    image: mongo:8
+    ports:
+      - "${MONGODB_HOST_PORT:-27017}:27017"
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    profiles: [redis]
+    # Redis 8, not an earlier line: the chat memory repository stores messages as RedisJSON and
+    # reads them through a RediSearch index, and 8 is the first release with both built in. Against
+    # a plain redis:7 the application fails creating that index at startup.
+    image: redis:8
+    # The two settings the Redis backend needs from its server, spelled out here so that what a
+    # deployment owes it is visible rather than a paragraph in the docs. These are the agent's own
+    # records — shell credentials, scheduled tasks, MCP server configs — not a cache, so a default
+    # eviction policy would be free to throw them away.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Milvus standalone still needs an etcd for metadata and a MinIO for segment storage; the three
+  # together are what the milvus profile means.
+  etcd:
+    profiles: [milvus]
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command:
+      - etcd
+      - --advertise-client-urls=http://127.0.0.1:2379
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --data-dir=/etcd
+    volumes:
+      - etcd-data:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  minio:
+    profiles: [milvus]
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    command: ["minio", "server", "/minio_data", "--console-address", ":9001"]
+    volumes:
+      - minio-data:/minio_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  milvus:
+    profiles: [milvus]
+    # The same version VectorStoreMilvusTest pins, so what runs here and what the tests assert
+    # against cannot diverge.
+    image: milvusdb/milvus:v2.4.13
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    ports:
+      - "${MILVUS_HOST_PORT:-19530}:19530"
+      # Metrics and the health endpoint the healthcheck below uses.
+      - "${MILVUS_METRICS_HOST_PORT:-9091}:9091"
+    volumes:
+      - milvus-data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 10s
+      # Generous: a cold Milvus takes appreciably longer to come up than the other two backends,
+      # and the application creates its collection at startup, so giving up early means the agent
+      # starts against a Milvus that is not listening yet.
+      retries: 40
+      start_period: 60s
+
+volumes:
+  agent-data:
+  mongodb-data:
+  redis-data:
+  etcd-data:
+  minio-data:
+  milvus-data:

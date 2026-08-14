@@ -27,6 +27,26 @@ spring:
             username: ${REDIS_USERNAME:}
             password: ${REDIS_PASSWORD:}
             initialize-schema: true
+            # Load-bearing, and not a tuning knob: naming any metadata field at all is what stops
+            # the repository indexing metadata through a `$.metadata.*` text wildcard.
+            #
+            # Reads go through a RediSearch index and indexing a document is all-or-nothing, so
+            # under that wildcard a metadata value that is not a string rejects the entire message.
+            # Every chat completion carries `index` (a number) and `annotations` (a list), which
+            # means every assistant message would fail to index. It would still be stored, and
+            # JSON.GET would still return it, so nothing looks broken — the agent would simply
+            # replay the user's turns and none of its own.
+            #
+            # messageType because it is on every message and is always a string. Nothing queries
+            # it; the field exists so the wildcard does not.
+            #
+            # Changing this does not rebuild an index that already exists — the repository creates
+            # one only when it is missing. After editing, run FT.DROPINDEX chat-memory-idx (without
+            # DD, which would delete the messages too) and restart; the documents are re-indexed
+            # against the new schema.
+            metadata-fields:
+              - name: messageType
+                type: tag
       client:
         tool-search-advisor:
           enabled: true
