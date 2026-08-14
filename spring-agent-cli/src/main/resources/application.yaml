@@ -1,0 +1,178 @@
+spring:
+  main:
+    banner-mode: off
+    # Belt and braces with SpringAgentCliApplication's builder: the property also covers a context
+    # started by a test, which does not go through main().
+    web-application-type: none
+  shell:
+    interactive:
+      # Spring Shell's own runners are replaced by CliShellRunner — see its javadoc for why a
+      # command shell cannot host free-typed prompts. This stays true so the command
+      # infrastructure (registry, parser, completion, theming) is still configured.
+      enabled: true
+    command:
+      # Both would appear in `/help` as commands the agent has no use for.
+      script:
+        enabled: false
+      version:
+        enabled: false
+  ai:
+    chat:
+      memory:
+        repository:
+          jdbc:
+            # `always`, not the default: Spring AI gates the schema initializer on Boot's
+            # embedded-database check, and SQLite does not count as embedded, so the
+            # SPRING_AI_CHAT_MEMORY tables would never be created.
+            initialize-schema: always
+      client:
+        tool-search-advisor:
+          enabled: true
+          tool-index-type: vector
+          max-results: 5
+    openai:
+      base-url: ${OPENAI_BASE_URL}
+      api-key: ${OPENAI_API_KEY}
+      chat:
+        model: ${OPENAI_MODEL}
+        temperature: 0
+        timeout: 5m
+        stream-options:
+          include-usage: true
+      image:
+        enabled: false
+      embedding:
+        base-url: ${EMBEDDING_BASE_URL}
+        api-key: ${EMBEDDING_API_KEY}
+        model: ${EMBEDDING_MODEL}
+        dimensions: 1024
+    vectorstore:
+      # `simple` and nothing else here: it keeps the tool-search index in the heap and mirrors it to
+      # a JSON file, so a laptop needs no server. Milvus is a deployment concern and its starter is
+      # not on this module's classpath.
+      type: simple
+  datasource:
+    # Under the user's home rather than ./data, unlike spring-agent-app: a binary on the PATH is run
+    # from whatever directory the user happens to be in, and a per-directory database would silently
+    # give them a different agent in each one.
+    #
+    # WAL and a busy timeout because a run writes while the next question is being typed, and SQLite
+    # serialises writers: without them a second writer fails immediately with SQLITE_BUSY.
+    url: ${DATASOURCE_URL:jdbc:sqlite:${user.home}/.spring-agent/spring-agent-cli.db?journal_mode=WAL&busy_timeout=5000}
+    username: ${DATASOURCE_USERNAME:}
+    password: ${DATASOURCE_PASSWORD:}
+  jpa:
+    hibernate:
+      # The schema is owned by the application: these are the agent's own tables and there is no
+      # migration tool in the picture. `update` adds tables and columns as the models gain them and
+      # never drops anything.
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    # SQLite lives in hibernate-community-dialects rather than core, so Hibernate cannot infer it
+    # from the JDBC metadata the way it does for the databases it ships.
+    database-platform: ${JPA_DIALECT:org.hibernate.community.dialect.SQLiteDialect}
+    open-in-view: false
+logging:
+  level:
+    # Spring AI logs every document it embeds at INFO while the tool index is built, which on a
+    # cold start is one line per tool. Harmless in a server log, but this is the file a user opens
+    # when something went wrong, and it buries everything else.
+    org.springframework.ai.vectorstore.SimpleVectorStore: WARN
+storage:
+  location: ${user.home}/.spring-agent/
+share:
+  # Nothing serves these on a command line; the value exists because the share link builder needs
+  # one, and a link to a file the user already has locally is of no interest anyway.
+  base-url: file://
+app:
+  cli:
+    # Who the agent thinks it is talking to. Scopes the workspace, the memories and the stored
+    # credentials, so changing it is equivalent to starting again as somebody else.
+    user-id: ${SPRING_AGENT_USER:${user.name}}
+    # Colour and the marker glyphs. Turned off automatically when the terminal is dumb or output is
+    # piped, so this is only for forcing plain text on a terminal that claims to support more.
+    color: ${SPRING_AGENT_COLOR:true}
+  persistence:
+    # The only backend this module depends on. Left explicit rather than inferred so the value is
+    # visible next to the datasource it uses.
+    type: jdbc
+  ai:
+    system-prompt: |
+      You are a helpful AI assistant working alongside someone at their terminal. You answer
+      questions, look things up, and carry out multi-step tasks on their behalf using the tools
+      available to you.
+
+      # Current conversation
+      - The user: {userId}
+      - Session: {chatId}
+
+      # Working rules
+      - Before replying, call MemoryView("MEMORY.md") to read what you already know about this
+        user, and keep it in mind.
+      - For anything that needs several steps, several tool calls, or noticeable time, call
+        TodoWrite first to break the work down, then update each item as you go so the user can
+        watch progress. Skip TodoWrite for simple one-shot answers.
+      - The last TodoWrite call comes before your final answer: no item may be left in_progress
+        when you stop.
+      - Call CurrentDateTime whenever the answer depends on the current date or time, including
+        relative expressions like "today", "this week" or "in two hours". Never guess the current
+        time or the user's timezone.
+
+      # Ask before you do something you cannot undo
+      Get on with the work. The tools you have are there to be used, and asking to use them
+      normally is friction, not care. Stop and ask only when you are about to:
+      - Destroy or overwrite something that already exists — deleting or truncating files,
+        replacing a document's contents, dropping data, or any shell command whose damage you
+        could not reverse.
+      - Reach someone outside this conversation, since a message cannot be unsent.
+      - Change a live production system. This one you must always ask about, however small or
+        reversible the change looks: writes through an MCP server that reaches production,
+        anything applied to a Kubernetes cluster or its workloads, deploys, restarts, scaling and
+        config changes, and anything else touching real traffic or real data. Inspecting
+        production — reading, listing, describing, querying — is fine and needs no permission.
+
+      Note that your Bash tool runs commands on this user's own machine, as them, with their files
+      and their network. There is no sandbox between you and their laptop, so the rule above about
+      irreversible damage applies to ordinary shell commands too.
+
+      Everything else — reading, searching, writing new files, publishing, editing docs — go ahead
+      and do, then say what you did.
+
+      When you do ask, call AskUserQuestionTool with the safest option first and say plainly what
+      would be lost. The user is sitting at the terminal, so they will answer immediately and you
+      will get their choice back as the tool's result.
+
+      # Style
+      - Reply in the language the user wrote in.
+      - Be concise, warm and direct. Skip filler and ceremony.
+      - You are writing into a terminal, not a chat window: prefer short paragraphs and plain
+        text, and keep tables and deeply nested lists for when they genuinely help.
+      - When you are unsure of a fact, say so and suggest where the user might confirm it. Never
+        invent details.
+    chat-memory:
+      # How many past messages are replayed to the model on each turn.
+      #
+      # Note that JdbcChatMemoryRepository refuses tool messages outright and keeps the rest, so
+      # what a past turn's tools returned is not replayed here — only the user's messages and the
+      # agent's answers.
+      max-messages: 100
+    vectorstore:
+      # Written on a graceful shutdown and reloaded on startup; if it is missing or unreadable the
+      # index is rebuilt, at the cost of re-embedding the tool descriptions on the next start.
+      file: ${VECTORSTORE_FILE:${user.home}/.spring-agent/vectorstore.json}
+    tools:
+      ask-user-question:
+        # Whether the agent may stop and ask a multiple-choice question rather than guessing. The
+        # questions are drawn in the terminal and the run waits for the answer, so unlike the chat
+        # integrations there is no expiry to configure — CliQuestionHandler explains why.
+        enabled: ${ASK_USER_QUESTION_ENABLED:true}
+      shell:
+        # `local`: Spring AI's own ShellTools, in this process as this user, with their filesystem,
+        # secrets and network. That is what makes the tool useful on a laptop and it is also the
+        # whole of the risk — there is no sandbox, and a command the agent runs is a command the
+        # user ran. Set TOOLS_SHELL_TYPE=none to take the Bash tool away entirely.
+        #
+        # `kubernetes` and `docker` are not options here: selecting them needs their modules, and
+        # this one depends on neither.
+        type: ${TOOLS_SHELL_TYPE:local}
+      mcp:
+        trusted-hosts: []

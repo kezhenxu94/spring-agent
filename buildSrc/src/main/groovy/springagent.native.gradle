@@ -27,7 +27,11 @@ pluginManager.withPlugin('org.graalvm.buildtools.native') {
   //
   // app.ai.tools.shell.type is the same, and defaults to none: without shell-kubernetes or
   // shell-local the image has no Bash tool whatever TOOLS_SHELL_TYPE says when it runs.
-  def backends = providers.gradleProperty('nativeBackends').getOrElse('')
+  // The property, when passed, replaces the module's own defaults rather than adding to them, so a
+  // module whose baked-in combination is already what it wants (spring-agent-cli, which is a
+  // laptop tool and bakes shell-local) does not need the flag repeated on every native build.
+  def backends = providers.gradleProperty('nativeBackends')
+      .getOrElse(project.findProperty('nativeDefaultBackends') ?: '')
       .split(',').collect { it.trim().toLowerCase() }.findAll { it }
   def persistenceType = backends.contains('mongodb') ? 'mongodb'
       : backends.contains('redis') ? 'redis' : 'jdbc'
@@ -77,7 +81,9 @@ pluginManager.withPlugin('org.graalvm.buildtools.native') {
 
     binaries {
       main {
-        imageName = 'spring-agent'
+        // Two modules produce a binary now, and the name is what the user ends up typing, so it
+        // cannot be one module's name written into shared configuration.
+        imageName = project.findProperty('nativeImageName') ?: 'spring-agent'
         // No -Xmx: native-image already defaults to 80% of available RAM, so any fixed value is
         // either below that default or unportable. Pinning 10g here starved the builder once the JPA
         // backend grew the reachable graph — it stalled at 99% heap in "Building universe" and the

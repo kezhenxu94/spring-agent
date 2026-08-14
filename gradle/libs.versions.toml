@@ -5,6 +5,10 @@ logback-json = "0.1.5"
 larksuite-oapi = "2.6.1"
 spring-ai-agent-utils = "0.10.0"
 spring-ai = "2.0.1-SNAPSHOT"
+# Not BOM-managed: spring-boot-dependencies does not manage Spring Shell at all. 4.x is the line
+# built against Spring Boot 4, and it is where the terminal UI moved to
+# org.springframework.shell.jline.tui — spring-agent-cli renders the agent's questions with it.
+spring-shell = "4.0.3"
 spring-dependency-management = "1.1.7"
 fabric8 = "6.13.4"
 # Deliberately not spring-boot-dependencies' native-build-tools-plugin.version (0.11.5): that
@@ -27,6 +31,14 @@ jakarta-annotation-api = { module = "jakarta.annotation:jakarta.annotation-api",
 logback-jackson = { module = "ch.qos.logback.contrib:logback-jackson", version.ref = "logback-json" }
 logback-json-classic = { module = "ch.qos.logback.contrib:logback-json-classic", version.ref = "logback-json" }
 spring-ai-bom = { module = "org.springframework.ai:spring-ai-bom", version.ref = "spring-ai" }
+# The ffm variant, not jni/jansi/jna: they differ only in which JLine terminal provider they add,
+# and jline-terminal-ffm needs no native library of its own — the others load one through JNI,
+# which a native image would have to be told about. It does need a JDK where the FFM API is final,
+# which this project is already past (spring-agent-app's --sun-misc-unsafe-memory-access needs 24).
+#
+# It is this starter rather than the plain spring-shell-starter because that one leaves
+# spring-shell-jline optional, and the terminal UI the agent's questions are drawn with lives there.
+spring-shell-starter = { module = "org.springframework.shell:spring-shell-starter-ffm", version.ref = "spring-shell" }
 jedis = { module = "redis.clients:jedis", version.ref = "jedis" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
 larksuite-oapi = { module = "com.larksuite.oapi:oapi-sdk", version.ref = "larksuite-oapi" }

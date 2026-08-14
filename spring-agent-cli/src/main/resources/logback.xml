@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!--
+      Defaults to FILE, where spring-agent-app defaults to CONSOLE: standard output here is the
+      user's conversation with the agent, and a log line written into the middle of a streaming
+      answer corrupts what they are reading. Set LOG_APPENDER=CONSOLE to get the logs back on the
+      terminal when debugging the command line itself.
+
+      Only the selected appender is declared, rather than declaring both and referencing one:
+      Logback warns "Appender named [...] not referenced. Skipping further processing." for every
+      appender no appender-ref points at, so the unselected one always produced a warning.
+    -->
+    <include resource="logback-appender-${LOG_APPENDER:-FILE}.xml"/>
+
+    <root level="${LOG_LEVEL:-INFO}">
+        <appender-ref ref="${LOG_APPENDER:-FILE}"/>
+    </root>
+</configuration>
