@@ -1,9 +1,11 @@
 package me.kezhenxu94.springagent.cli;
 
+import me.kezhenxu94.springagent.cli.aot.CliRuntimeHints;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
+import org.springframework.context.annotation.ImportRuntimeHints;
 
 /**
  * The agent as a command-line tool. Unlike {@code spring-agent-app} there is no web server, no
@@ -15,6 +17,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
  */
 @SpringBootApplication
 @ConfigurationPropertiesScan
+@ImportRuntimeHints(CliRuntimeHints.class)
 public class SpringAgentCliApplication {
 
   public static void main(final String[] args) {
@@ -25,10 +28,20 @@ public class SpringAgentCliApplication {
           .web(WebApplicationType.NONE)
           .run(args);
     } catch (Exception e) {
+      // The AOT processor runs this same main method at build time, and stops it by throwing once
+      // it has the context it came for — so catching everything here turned a successful
+      // processAot into a build failure reporting "could not start: null". A build-time failure
+      // also belongs at the build, with its stack trace, rather than as one tidy line.
+      if (Boolean.getBoolean("spring.aot.processing")) {
+        throw e;
+      }
       // Boot reports a failed start through the logger, and this application's logger writes to a
       // file. Without this the user gets a prompt back, no output at all, and no reason to think
       // anything happened — so the one thing they need, plus where the rest of it went.
-      System.err.println("spring-agent could not start: " + rootCause(e).getMessage());
+      final var cause = rootCause(e);
+      System.err.println(
+          "spring-agent could not start: "
+              + (cause.getMessage() == null ? cause.toString() : cause.getMessage()));
       System.err.println("See " + logFile() + " for the detail.");
       System.exit(1);
     }

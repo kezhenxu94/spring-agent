@@ -8,6 +8,7 @@ import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.tools.ToolContextKey;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import org.jline.utils.WCWidth;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
 import org.springaicommunity.agent.tools.TodoWriteTool.Todos;
 import org.springframework.ai.chat.metadata.Usage;
@@ -113,13 +114,14 @@ public class CliRenderer implements AgentResponseListener, TodoEventHandler {
    */
   private String wrap(final String chunk) {
     final var out = new StringBuilder(chunk.length() + 8);
-    for (var i = 0; i < chunk.length(); i++) {
-      final var c = chunk.charAt(i);
-      if (c == '\n') {
+    for (var i = 0; i < chunk.length(); ) {
+      final var codePoint = chunk.codePointAt(i);
+      i += Character.charCount(codePoint);
+      if (codePoint == '\n') {
         place(out);
         out.append('\n').append(INDENT);
         column = INDENT.length();
-      } else if (c == ' ') {
+      } else if (codePoint == ' ') {
         place(out);
         // Not at the start of a line: a break has just consumed the space that would go here, and
         // leading spaces would push the text out of the column the indent set.
@@ -127,8 +129,16 @@ public class CliRenderer implements AgentResponseListener, TodoEventHandler {
           out.append(' ');
           column++;
         }
+      } else if (WCWidth.wcwidth(codePoint) > 1) {
+        // A wide character is a unit of its own. Chinese and Japanese are written without spaces,
+        // so waiting for one means a whole paragraph arrives as a single unbreakable word and no
+        // line ever wraps — which is how a CJK answer ended up wrapped by the terminal instead,
+        // with the gutter lost.
+        place(out);
+        word.appendCodePoint(codePoint);
+        place(out);
       } else {
-        word.append(c);
+        word.appendCodePoint(codePoint);
       }
     }
     return out.toString();
@@ -140,10 +150,11 @@ public class CliRenderer implements AgentResponseListener, TodoEventHandler {
       return;
     }
     final var limit = console.width() - 1;
+    final var wordWidth = displayWidth(word);
     // Only when there is already something on the line: a word longer than the whole terminal
     // would otherwise loop, and breaking it up would ruin the one thing — a path, a URL — most
     // likely to be that long and most likely to be copied whole.
-    if (column > INDENT.length() && column + 1 + word.length() > limit) {
+    if (column > INDENT.length() && column + 1 + wordWidth > limit) {
       // The trailing space written for the previous word is now at the end of a line, so take it
       // back rather than leaving it to be wrapped onto the next one.
       if (!out.isEmpty() && out.charAt(out.length() - 1) == ' ') {
@@ -153,8 +164,24 @@ public class CliRenderer implements AgentResponseListener, TodoEventHandler {
       column = INDENT.length();
     }
     out.append(word);
-    column += word.length();
+    column += wordWidth;
     word.setLength(0);
+  }
+
+  /**
+   * How many columns {@code text} occupies, which is not how many characters it has: a CJK
+   * character takes two, and a combining mark none. Without this a line of Chinese wrapped at twice
+   * the terminal's width and the terminal broke it wherever it liked, losing the gutter — which
+   * matters here, because the agent answers in whatever language it was asked in.
+   */
+  private static int displayWidth(final CharSequence text) {
+    var width = 0;
+    for (var i = 0; i < text.length(); ) {
+      final var codePoint = Character.codePointAt(text, i);
+      width += Math.max(0, WCWidth.wcwidth(codePoint));
+      i += Character.charCount(codePoint);
+    }
+    return width;
   }
 
   /** Called by {@link CliToolCallInterceptor} as a tool starts. */

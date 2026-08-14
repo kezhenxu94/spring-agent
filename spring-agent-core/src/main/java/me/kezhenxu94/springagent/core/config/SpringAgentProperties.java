@@ -191,8 +191,8 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
 
     /**
      * What an application that configures no DashScope gets. The clients are still built — the
-     * image and vision tools are unconditional beans — but with nothing to call, so a call fails
-     * as a tool error the agent can report rather than taking the context down at startup.
+     * image and vision tools are unconditional beans — but with nothing to call, so a call fails as
+     * a tool error the agent can report rather than taking the context down at startup.
      */
     public static final Dashscope NONE =
         new Dashscope(new Image(null, null, null), new Vision(null, null, null));

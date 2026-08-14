@@ -86,6 +86,30 @@ class CliRendererTest {
   }
 
   @Test
+  void wrapsCjkWhereThereAreNoSpacesToBreakAt() {
+    when(console.width()).thenReturn(20);
+
+    // Nine characters, eighteen columns: without wide-character handling this is one unbreakable
+    // "word" that never wraps, and every character counts as one column so the limit never trips.
+    renderer.onContent("向量数据库是一种数据库向量数据库是一种数据库");
+    renderer.onFinished(AgentOutcome.COMPLETED);
+
+    final var lines = written.toString().lines().filter(line -> !line.isBlank()).toList();
+    assertThat(lines).hasSizeGreaterThan(1);
+    assertThat(lines).allSatisfy(line -> assertThat(displayWidth(line)).isLessThanOrEqualTo(20));
+  }
+
+  private static int displayWidth(final String text) {
+    var width = 0;
+    for (var i = 0; i < text.length(); ) {
+      final var codePoint = text.codePointAt(i);
+      width += Math.max(0, org.jline.utils.WCWidth.wcwidth(codePoint));
+      i += Character.charCount(codePoint);
+    }
+    return width;
+  }
+
+  @Test
   void doesNotBreakUpALongWord() {
     when(console.width()).thenReturn(20);
     final var path = "/a/very/long/path/that/exceeds/the/width";
