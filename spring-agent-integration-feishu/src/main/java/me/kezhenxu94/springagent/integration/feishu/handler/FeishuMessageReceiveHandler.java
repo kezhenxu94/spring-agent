@@ -21,7 +21,6 @@ import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
-import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessageRepo;
 import me.kezhenxu94.springagent.integration.feishu.model.AudioMessageContent;
 import me.kezhenxu94.springagent.integration.feishu.model.FileMessageContent;
 import me.kezhenxu94.springagent.integration.feishu.model.ImageMessageContent;
@@ -40,7 +39,6 @@ import tools.jackson.databind.json.JsonMapper;
 public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Handler {
   final JsonMapper om;
   final FeishuProperties feishuProperties;
-  final FeishuMessageRepo feishuMessageRepo;
   final Client feishu;
 
   final SpringAgent springAgent;
@@ -70,11 +68,6 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
 
     if (!springAgent.isAccepting()) {
       throw new IllegalStateException("Shutting down, ignoring message: " + messageId);
-    }
-
-    if (feishuMessageRepo.existsById(messageId)) {
-      log.info("Message {} already exists, skipping", messageId);
-      return;
     }
 
     if ("group".equalsIgnoreCase(message.getChatType()) && !isBotMentioned(message)) {

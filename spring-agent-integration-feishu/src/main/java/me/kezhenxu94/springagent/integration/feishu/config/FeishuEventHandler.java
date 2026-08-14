@@ -10,8 +10,6 @@ import com.lark.oapi.ws.Client;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
-import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessage;
-import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessageRepo;
 import me.kezhenxu94.springagent.integration.feishu.handler.FeishuCardListener;
 import me.kezhenxu94.springagent.integration.feishu.handler.FeishuMessageReceiveHandler;
 import org.springframework.context.annotation.Bean;
@@ -24,7 +22,6 @@ public class FeishuEventHandler {
   final FeishuProperties feishuProperties;
   final FeishuMessageReceiveHandler feishuMessageReceiveHandler;
   final SpringAgent springAgent;
-  final FeishuMessageRepo feishuMessageRepo;
   final FeishuCardListener feishuCardListener;
 
   @Bean
@@ -50,7 +47,6 @@ public class FeishuEventHandler {
                   // is whatever the card listener started under it.
                   final var runId = feishuCardListener.runIdFor(messageID);
                   log.info("Stop command received: cardMessageId={}, runId={}", messageID, runId);
-                  feishuMessageRepo.updateStatus(messageID, FeishuMessage.Status.CANCELLED);
                   if (runId != null) {
                     springAgent.cancel(runId);
                   }

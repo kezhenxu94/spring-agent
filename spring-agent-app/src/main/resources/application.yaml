@@ -157,7 +157,7 @@ share:
 app:
   persistence:
     # Where the agent's own records live — MCP server configs, scheduled tasks, published resources,
-    # Feishu message state and the conversation history, all together. One of:
+    # shell credentials and the conversation history, all together. One of:
     #
     #   jdbc     spring.datasource above, so the default deployment needs no server at all.
     #   mongodb  spring.data.mongodb, for a deployment that already runs one.

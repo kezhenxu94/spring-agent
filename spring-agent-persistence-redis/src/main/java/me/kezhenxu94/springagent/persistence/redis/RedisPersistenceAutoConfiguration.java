@@ -39,13 +39,11 @@ import org.springframework.data.redis.repository.configuration.EnableRedisReposi
  *
  * <p>Keyspaces and secondary indexes are declared as {@code @RedisHash} and {@code @Indexed} on the
  * models, rather than through this annotation's {@code keyspaceConfiguration} and {@code
- * indexConfiguration} attributes, and that is not a matter of taste. Those attributes are wired
- * into the {@code redisMappingContext} bean, which {@code RedisRepositoryConfigurationExtension}
- * registers under a fixed name and only if absent — so with a second
- * {@code @EnableRedisRepositories} in the context, and {@code spring-agent-integration-feishu}
- * contributes one, whichever is processed second has its configuration built as a bean and then
- * silently ignored. The annotations are read from the shared mapping context and cannot go missing
- * that way.
+ * indexConfiguration} attributes. Those attributes are wired into the {@code redisMappingContext}
+ * bean, which {@code RedisRepositoryConfigurationExtension} registers under a fixed name and only
+ * if absent, so a second {@code @EnableRedisRepositories} anywhere in the context would have its
+ * configuration built as a bean and then silently ignored. The annotations are read from whichever
+ * mapping context wins and cannot go missing that way.
  */
 @AutoConfiguration
 @ConditionalOnPersistenceBackend(Type.REDIS)

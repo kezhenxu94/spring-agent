@@ -12,16 +12,12 @@ import java.util.concurrent.ConcurrentMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
-import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.agent.AgentRunRegistry;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
-import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessage;
-import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessage.Status;
-import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessageRepo;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
@@ -45,7 +41,6 @@ public class FeishuCardListener implements AgentResponseListener {
   final Client feishu;
   final JsonMapper om;
   final SpringAgentProperties appConfiguration;
-  final FeishuMessageRepo feishuMessageRepo;
   final RestTemplate restTemplate;
   final FeishuProperties feishuProperties;
   final UserWorkspaceFactory userWorkspaceFactory;
@@ -104,22 +99,7 @@ public class FeishuCardListener implements AgentResponseListener {
       registry.addToolContext(FeishuCardUpdater.TOOL_CONTEXT_KEY.key(), cardUpdater);
 
       runIdsByCardMessage.put(cardMessageId, runId);
-      if (tracksMessages(request)) {
-        feishuMessageRepo.save(
-            FeishuMessage.builder()
-                .id(runId)
-                .messageRootId(request.rootMessageId())
-                .status(Status.GENERATING)
-                .responseCardId(cardId)
-                .build());
-        feishuMessageRepo.save(
-            FeishuMessage.builder()
-                .id(cardMessageId)
-                .messageRootId(request.rootMessageId())
-                .status(Status.GENERATING)
-                .build());
-      }
-      registry.addResponseListener(new CardRun(runId, cardMessageId, tracksMessages(request)));
+      registry.addResponseListener(new CardRun(runId, cardMessageId));
     } catch (Exception e) {
       log.error("Failed to attach a Feishu card to run {}", runId, e);
       abortOrCarryOn(registry, "failed to attach a Feishu reply card: " + e.getMessage());
@@ -136,34 +116,18 @@ public class FeishuCardListener implements AgentResponseListener {
     }
   }
 
-  /**
-   * Only chat runs are keyed by a Feishu message id, so only they have a row to keep up to date.
-   */
-  private static boolean tracksMessages(final AgentRequest request) {
-    return request.scenario() == AgentScenario.CHAT;
-  }
-
   /** The per-run half: the shared listener is a singleton, this holds one run's message ids. */
   @RequiredArgsConstructor
   private final class CardRun implements AgentResponseListener {
     private final String runId;
     private final String cardMessageId;
-    private final boolean tracksMessages;
 
     @Override
     public void onFinished(final AgentOutcome outcome) {
       log.info("Run {} finished: outcome={}", runId, outcome);
+      // The map is what the stop button reads to find a run by the card it was pressed on, so a
+      // finished run has to leave it or the entry outlives the run it names.
       runIdsByCardMessage.remove(cardMessageId);
-      if (!tracksMessages) {
-        return;
-      }
-      feishuMessageRepo.updateStatus(
-          runId,
-          switch (outcome) {
-            case COMPLETED -> Status.COMPLETED;
-            case FAILED -> Status.FAILED;
-            case CANCELLED -> Status.CANCELLED;
-          });
     }
   }
 

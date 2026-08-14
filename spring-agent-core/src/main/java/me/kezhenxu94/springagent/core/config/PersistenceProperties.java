@@ -3,9 +3,9 @@ package me.kezhenxu94.springagent.core.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Which database the agent uses: MCP server configs, scheduled tasks, published resources, Feishu
- * message state and the conversation history, all of them together. One property rather than one
- * per concern, because a deployment that runs MongoDB wants everything there, and one that does not
+ * Which database the agent uses: MCP server configs, scheduled tasks, published resources, shell
+ * credentials and the conversation history, all of them together. One property rather than one per
+ * concern, because a deployment that runs MongoDB wants everything there, and one that does not
  * wants nothing there. It is also why the persistence modules are split by backend rather than by
  * concern: chat memory could not be chosen separately even if it had a module of its own.
  *
