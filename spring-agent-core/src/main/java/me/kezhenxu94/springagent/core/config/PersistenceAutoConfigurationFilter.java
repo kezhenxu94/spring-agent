@@ -1,8 +1,11 @@
 package me.kezhenxu94.springagent.core.config;
 
 import java.util.Arrays;
-import java.util.List;
+import java.util.Collection;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import me.kezhenxu94.springagent.core.config.PersistenceProperties.Type;
 import org.springframework.beans.factory.BeanClassLoaderAware;
 import org.springframework.boot.autoconfigure.AutoConfigurationImportFilter;
@@ -23,10 +26,10 @@ import org.springframework.core.env.Environment;
  * <p>It does what a {@code spring.autoconfigure.exclude} entry would, except that it follows the
  * selected backend instead of having to be repeated by every application using this module.
  *
- * <p>It only acts when <em>both</em> {@code spring-agent-persistence-*} modules are present, which
- * is the only case that is ambiguous. A consumer who took a single backend module has nothing of
- * the other's to filter, and may well have brought Spring Data JPA for reasons of their own —
- * silently dropping their {@code DataSourceAutoConfiguration} would be a bug, not a service.
+ * <p>It only acts when more than one {@code spring-agent-persistence-*} module is present, which is
+ * the only case that is ambiguous. A consumer who took a single backend module has nothing of the
+ * others' to filter, and may well have brought Spring Data JPA for reasons of their own — silently
+ * dropping their {@code DataSourceAutoConfiguration} would be a bug, not a service.
  */
 public class PersistenceAutoConfigurationFilter
     implements AutoConfigurationImportFilter, EnvironmentAware, BeanClassLoaderAware {
@@ -44,11 +47,13 @@ public class PersistenceAutoConfigurationFilter
           "org.springframework.boot.jdbc.autoconfigure.metrics.DataSourcePoolMetricsAutoConfiguration",
           "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration",
           "org.springframework.boot.hibernate.autoconfigure.metrics.HibernateMetricsAutoConfiguration",
-          "org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration");
+          "org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration",
+          // Spring AI's JDBC chat memory. Its bean method takes JdbcTemplate and DataSource, and
+          // the entries above have already removed both from a non-JDBC deployment, so leaving it
+          // in would fail startup outright rather than merely wire the wrong repository.
+          "org.springframework.ai.model.chat.memory.repository.jdbc.autoconfigure.JdbcChatMemoryRepositoryAutoConfiguration");
 
-  /**
-   * Dropped when the JDBC backend is selected, so a JDBC-only deployment needs no MongoDB server.
-   */
+  /** Dropped unless the MongoDB backend is selected. */
   private static final Set<String> MONGODB_AUTO_CONFIGURATIONS =
       Set.of(
           "org.springframework.boot.mongodb.autoconfigure.MongoAutoConfiguration",
@@ -65,6 +70,31 @@ public class PersistenceAutoConfigurationFilter
           // ChatMemoryRepository beans and no way to choose.
           "org.springframework.ai.model.chat.memory.repository.mongo.autoconfigure.MongoChatMemoryAutoConfiguration",
           "org.springframework.ai.model.chat.memory.repository.mongo.autoconfigure.MongoChatMemoryIndexCreatorAutoConfiguration");
+
+  /** Dropped unless the Redis backend is selected. */
+  private static final Set<String> REDIS_AUTO_CONFIGURATIONS =
+      Set.of(
+          "org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration",
+          "org.springframework.boot.data.redis.autoconfigure.DataRedisReactiveAutoConfiguration",
+          "org.springframework.boot.data.redis.autoconfigure.DataRedisRepositoriesAutoConfiguration",
+          "org.springframework.boot.data.redis.autoconfigure.health.DataRedisHealthContributorAutoConfiguration",
+          "org.springframework.boot.data.redis.autoconfigure.health.DataRedisReactiveHealthContributorAutoConfiguration",
+          // Spring AI's Redis chat memory. A stronger reason than the MongoDB pair above: its
+          // repository bean would back off in front of another ChatMemoryRepository, but the Jedis
+          // client it builds is @ConditionalOnMissingBean only on itself, so the auto-configuration
+          // still opens a connection to localhost:6379 on a deployment that chose another backend.
+          "org.springframework.ai.model.chat.memory.repository.redis.autoconfigure.RedisChatMemoryRepositoryAutoConfiguration");
+
+  /**
+   * Every backend's set, so that selecting one drops the union of the rest. Keyed by {@link Type}
+   * because with more than two backends "the other one" is not a well-defined thing.
+   */
+  private static final Map<Type, Set<String>> AUTO_CONFIGURATIONS =
+      new EnumMap<>(
+          Map.of(
+              Type.JDBC, JDBC_AUTO_CONFIGURATIONS,
+              Type.MONGODB, MONGODB_AUTO_CONFIGURATIONS,
+              Type.REDIS, REDIS_AUTO_CONFIGURATIONS));
 
   private Environment environment;
   private ClassLoader classLoader;
@@ -85,10 +115,7 @@ public class PersistenceAutoConfigurationFilter
     final var matches = new boolean[autoConfigurationClasses.length];
     Arrays.fill(matches, true);
 
-    final var bothPresent =
-        PersistenceBackendResolver.present(Type.JDBC, classLoader)
-            && PersistenceBackendResolver.present(Type.MONGODB, classLoader);
-    if (!bothPresent) {
+    if (PersistenceBackendResolver.present(classLoader).size() < 2) {
       return matches;
     }
 
@@ -97,7 +124,10 @@ public class PersistenceAutoConfigurationFilter
     // other way to stay in step.
     final var selected = PersistenceBackendResolver.resolve(environment, classLoader);
     final var unwanted =
-        selected == Type.JDBC ? MONGODB_AUTO_CONFIGURATIONS : JDBC_AUTO_CONFIGURATIONS;
+        AUTO_CONFIGURATIONS.entrySet().stream()
+            .filter(entry -> entry.getKey() != selected)
+            .flatMap(entry -> entry.getValue().stream())
+            .collect(Collectors.toUnmodifiableSet());
 
     for (int i = 0; i < matches.length; i++) {
       final var candidate = autoConfigurationClasses[i];
@@ -107,7 +137,7 @@ public class PersistenceAutoConfigurationFilter
   }
 
   /** Exposed for the test that asserts the class names above still exist on the classpath. */
-  static List<Set<String>> filteredAutoConfigurations() {
-    return List.of(JDBC_AUTO_CONFIGURATIONS, MONGODB_AUTO_CONFIGURATIONS);
+  static Collection<Set<String>> filteredAutoConfigurations() {
+    return AUTO_CONFIGURATIONS.values();
   }
 }

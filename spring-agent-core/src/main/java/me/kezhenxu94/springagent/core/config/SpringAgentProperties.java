@@ -52,7 +52,7 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
         modelPricing = Map.of();
       }
       if (chatMemory == null) {
-        chatMemory = new ChatMemory(0, null);
+        chatMemory = new ChatMemory(0);
       }
       if (vectorstore == null) {
         vectorstore = new VectorStore(null);
@@ -62,46 +62,19 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
     public record BotInterceptor(int guideThreshold) {}
 
     /**
-     * How much conversation history is replayed to the model, and where it is kept when {@code
-     * app.persistence.type} selects a relational database.
+     * How much conversation history is replayed to the model.
      *
-     * <p>These stay here, in the module that owns the {@code app} prefix, rather than moving to
-     * {@code spring-agent-persistence-jdbc} which is the only thing that reads them: splitting one
-     * configuration prefix across two jars would scatter its metadata for no gain, and the record
-     * holds nothing but strings.
+     * <p>Where it is kept is not configured here at all. Every backend wires Spring AI's own chat
+     * memory repository, which reads its own {@code spring.ai.chat.memory.repository.*} properties
+     * and shares the backend's connection — for JDBC that means {@code spring.datasource}, and
+     * conversation history lands beside the domain tables.
      *
      * @param maxMessages size of the message window replayed on each turn
-     * @param jdbc settings read by {@code JdbcChatMemoryAutoConfiguration}; nothing reads them on a
-     *     MongoDB deployment
      */
-    public record ChatMemory(int maxMessages, Jdbc jdbc) {
+    public record ChatMemory(int maxMessages) {
       public ChatMemory {
         if (maxMessages <= 0) {
           maxMessages = 100;
-        }
-        if (jdbc == null) {
-          jdbc = new Jdbc(null, null, null, null);
-        }
-      }
-
-      /**
-       * Any database Spring AI has a chat memory dialect for; the dialect and the schema script are
-       * derived from the URL. The default is a local SQLite file, which needs no server. WAL plus a
-       * busy timeout are part of that default because concurrent agent streams write to the same
-       * file and SQLite serialises writers: without them a second writer fails immediately with
-       * SQLITE_BUSY.
-       *
-       * @param initializeSchema whether to run Spring AI's schema script on startup; leave it on
-       *     unless the table is managed elsewhere
-       */
-      public record Jdbc(String url, String username, String password, Boolean initializeSchema) {
-        public Jdbc {
-          if (url == null || url.isBlank()) {
-            url = "jdbc:sqlite:data/chat-memory.db?journal_mode=WAL&busy_timeout=5000";
-          }
-          if (initializeSchema == null) {
-            initializeSchema = true;
-          }
         }
       }
     }

@@ -13,13 +13,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
- * The behaviour both persistence backends owe their callers, run against each of them so that
+ * The behaviour every persistence backend owes its callers, run against each of them so that
  * switching {@code app.persistence.type} cannot quietly change semantics.
  *
  * <p>What is worth pinning here is the part that is not a shared derived query: {@code
- * findAccessibleTo} and {@code findBySharedWithIn} are hand-written per backend, one in MongoDB's
- * query language and one in JPQL over a collection table, and {@code updateStatus} is a partial
- * update expressed with a different annotation on each side.
+ * findAccessibleTo} and {@code findBySharedWithIn} are hand-written per backend — MongoDB's query
+ * language, JPQL over a collection table, and a union of indexed reads on Redis — and {@code
+ * updateStatus} is a partial update expressed differently on each.
  */
 abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
 

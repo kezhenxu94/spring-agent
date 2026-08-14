@@ -264,7 +264,7 @@ class SpringAgentTest {
             null,
             Set.of(),
             Map.of(),
-            new SpringAgentProperties.Ai.ChatMemory(10, null),
+            new SpringAgentProperties.Ai.ChatMemory(10),
             null,
             "You are {userId} in {chatId} ({chatType}), thread {threadId}, parent {parentId},"
                 + " mentions {mentions}.",

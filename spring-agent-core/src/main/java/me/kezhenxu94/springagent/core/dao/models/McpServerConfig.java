@@ -22,8 +22,18 @@ import me.kezhenxu94.springagent.core.dao.StringMapJsonConverter;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.redis.core.RedisHash;
+import org.springframework.data.redis.core.index.Indexed;
 
-/** Dual-mapped for both persistence backends; see {@link ScheduledTask} for why. */
+/**
+ * Mapped for every persistence backend; see {@link ScheduledTask} for why.
+ *
+ * <p>The {@code ownerId + name} uniqueness below is declared twice, once for each backend that can
+ * enforce it. Redis is not one of them — its secondary indexes cannot express uniqueness — so on
+ * that backend the constraint is advisory: saving twice under the same owner and name with
+ * different ids yields two records rather than an error. The callers reach servers through {@code
+ * findByOwnerIdAndName}, which would then return an arbitrary one of them.
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -38,14 +48,17 @@ import org.springframework.data.mongodb.core.mapping.Document;
         @UniqueConstraint(
             name = "owner_name_unique",
             columnNames = {"ownerId", "name"}))
+@RedisHash(McpServerConfig.COLLECTION_NAME)
 public class McpServerConfig {
   public static final String COLLECTION_NAME = "mcp_servers";
   public static final String DEFAULT_VERSION = "1.0.0";
 
   @Id @jakarta.persistence.Id private String id;
 
-  private String ownerId;
-  private String name;
+  // findByOwnerId, findByOwnerIdAndName.
+  @Indexed private String ownerId;
+
+  @Indexed private String name;
 
   @Enumerated(EnumType.STRING)
   private Transport transport;
@@ -83,8 +96,13 @@ public class McpServerConfig {
    * findAccessibleTo} query it; that keeps both as plain JPQL instead of database-specific JSON
    * functions. Eager because every read of a server config is followed by an access check, so lazy
    * loading would only add an N+1.
+   *
+   * <p>{@code @Indexed} on a collection indexes each element separately, one Redis set per
+   * identifier. That is what lets the Redis backend serve the two queries above as indexed reads
+   * rather than a scan of every stored server.
    */
   @Builder.Default
+  @Indexed
   @ElementCollection(fetch = FetchType.EAGER)
   @CollectionTable(
       name = COLLECTION_NAME + "_shared_with",

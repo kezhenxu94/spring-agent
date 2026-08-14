@@ -11,8 +11,12 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.redis.core.RedisHash;
 
-/** Dual-mapped for both persistence backends; see {@link ScheduledTask} for why. */
+/**
+ * Mapped for every persistence backend; see {@link ScheduledTask} for why. Nothing here is
+ * {@code @Indexed}: this is the one model reached only by id.
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -20,6 +24,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @Document(collection = PublishedResource.COLLECTION_NAME)
 @Entity
 @Table(name = PublishedResource.COLLECTION_NAME)
+@RedisHash(PublishedResource.COLLECTION_NAME)
 public class PublishedResource {
   public static final String COLLECTION_NAME = "bot_published_resources";
 

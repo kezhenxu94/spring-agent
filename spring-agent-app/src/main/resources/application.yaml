@@ -6,9 +6,27 @@ spring:
   ai:
     chat:
       memory:
+        # Each of these is read only when app.persistence.type selects the matching backend; the
+        # others' auto-configurations are filtered out. How much history is replayed is a separate
+        # setting, app.ai.chat-memory.max-messages below.
         repository:
           mongo:
             create-indices: true
+          jdbc:
+            # `always`, not the default: Spring AI gates the schema initializer on Boot's
+            # embedded-database check, and SQLite does not count as embedded, so on the default
+            # deployment the SPRING_AI_CHAT_MEMORY tables would never be created. Set this to
+            # `never` if the tables are managed elsewhere.
+            initialize-schema: always
+          redis:
+            # Spring AI builds its own Jedis client from these rather than reading
+            # spring.data.redis, so the two have to be pointed at the same server by hand — it
+            # ignores Boot's connection details entirely. Same defaults as spring.data.redis above.
+            host: ${REDIS_HOST:localhost}
+            port: ${REDIS_PORT:6379}
+            username: ${REDIS_USERNAME:}
+            password: ${REDIS_PASSWORD:}
+            initialize-schema: true
       client:
         tool-search-advisor:
           enabled: true
@@ -68,6 +86,17 @@ spring:
   data:
     mongodb:
       auto-index-creation: true
+    redis:
+      # Only read when app.persistence.type is redis.
+      #
+      # jedis, not the Lettuce default: Spring AI's Redis chat memory is built on Jedis and
+      # spring-agent-persistence-redis excludes Lettuce, so one driver serves both the repositories
+      # and the conversation history.
+      client-type: jedis
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      username: ${REDIS_USERNAME:}
+      password: ${REDIS_PASSWORD:}
   security:
     oauth2:
       client:
@@ -107,9 +136,18 @@ share:
   base-url: http://localhost:8080
 app:
   persistence:
-    # Where the agent's own records live — MCP server configs, scheduled tasks, published resources
-    # and Feishu message state. `jdbc` uses spring.datasource, so the default deployment needs no
-    # server at all; `mongodb` is for a deployment that already runs one.
+    # Where the agent's own records live — MCP server configs, scheduled tasks, published resources,
+    # Feishu message state and the conversation history, all together. One of:
+    #
+    #   jdbc     spring.datasource above, so the default deployment needs no server at all.
+    #   mongodb  spring.data.mongodb, for a deployment that already runs one.
+    #   redis    spring.data.redis. Needs Redis 8 or Redis Stack, because the chat memory
+    #            repository stores messages as RedisJSON and reads them through a RediSearch
+    #            index; against a plain Redis it fails creating that index at startup. It also
+    #            needs a server configured to keep what it is given — `maxmemory-policy
+    #            noeviction` plus AOF or RDB. These are the agent's own records, not a cache: a
+    #            Redis provisioned the usual way for caching will evict a user's stored shell
+    #            credentials or a scheduled task that has not fired yet, and say nothing.
     #
     # This selects which repositories exist, so it is a build-time decision in a native image: see
     # -PnativeBackends in springagent.native.gradle. Changing it does not migrate existing data.
@@ -169,18 +207,13 @@ app:
       {taskText}
     admins: ${ADMINS:}
     chat-memory:
-      # Which backend stores conversation history follows app.persistence.type. Note that the JDBC
-      # repository drops tool-call messages from the history it stores.
+      # Which backend stores conversation history follows app.persistence.type, and it shares that
+      # backend's connection: on jdbc the messages land in spring.datasource beside the domain
+      # tables. Where the repository itself is configured is spring.ai.chat.memory.repository.*
+      # above. Note that the JDBC repository drops tool-call messages from the history it stores.
       #
       # How many past messages are replayed to the model on each turn.
       max-messages: 100
-      jdbc:
-        # For the SQLite default, keep journal_mode=WAL and busy_timeout so concurrent agent
-        # streams do not fail on SQLITE_BUSY.
-        url: ${CHAT_MEMORY_JDBC_URL:jdbc:sqlite:data/chat-memory.db?journal_mode=WAL&busy_timeout=5000}
-        username: ${CHAT_MEMORY_JDBC_USERNAME:}
-        password: ${CHAT_MEMORY_JDBC_PASSWORD:}
-        initialize-schema: true
     vectorstore:
       # Only read when spring.ai.vectorstore.type is simple. Written on a graceful shutdown and
       # reloaded on startup; if it is missing or unreadable the index is simply rebuilt, at the

@@ -6,18 +6,19 @@ plugins {
 dependencies {
   // api: types that appear in signatures integration modules compile against.
   api 'org.springframework.boot:spring-boot-starter'
-  // Neither persistence backend is a dependency of this module. The domain models in dao/models
-  // carry the mapping annotations of both, so both have to be here to *compile* — but an annotation
-  // whose type is absent at runtime is discarded when the class is reflected over, which is what
-  // makes one model serve both backends and what makes compileOnly correct rather than merely
-  // convenient. A consumer adds spring-agent-persistence-jdbc or spring-agent-persistence-mongodb,
-  // and resolves nothing belonging to the other.
+  // No persistence backend is a dependency of this module. The domain models in dao/models carry
+  // the mapping annotations of all of them, so all of them have to be here to *compile* — but an
+  // annotation whose type is absent at runtime is discarded when the class is reflected over, which
+  // is what makes one model serve every backend and what makes compileOnly correct rather than
+  // merely convenient. A consumer adds one spring-agent-persistence-* module and resolves nothing
+  // belonging to the others.
   //
-  // This is the whole point of the split: promoting either of these back to api or implementation
-  // puts Hibernate on every MongoDB deployment, or the Mongo driver on every JDBC one. The
+  // This is the whole point of the split: promoting any of these back to api or implementation puts
+  // Hibernate on every MongoDB deployment, or the Mongo driver on every JDBC one. The
   // checkRuntimeClasspathIsolation task below is what catches that happening by accident.
   compileOnly 'jakarta.persistence:jakarta.persistence-api'
   compileOnly 'org.springframework.data:spring-data-mongodb'
+  compileOnly 'org.springframework.data:spring-data-redis'
   compileOnly 'org.springframework.data:spring-data-commons'
   api 'org.springframework.ai:spring-ai-starter-model-openai'
   api libs.spring.ai.agent.utils
@@ -50,7 +51,10 @@ dependencies {
   // isolation assertion below is unaffected.
   testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa'
   testImplementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
+  testImplementation 'org.springframework.boot:spring-boot-starter-data-redis'
+  testImplementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-jdbc'
   testImplementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-mongodb'
+  testImplementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-redis'
 }
 
 // Core is backend-agnostic and must stay that way: it is the module every consumer takes, whichever
@@ -64,16 +68,22 @@ forbidOnRuntimeClasspath(
       'org.xerial',
       'io.fabric8',
       'org.testcontainers',
+      'redis.clients',
+      'io.lettuce',
     ],
     modules: [
       'spring-data-jpa',
       'spring-data-mongodb',
+      'spring-data-redis',
       'spring-jdbc',
       'spring-orm',
       'spring-boot-jdbc',
+      'spring-boot-data-redis',
       'spring-boot-starter-data-jpa',
       'spring-boot-starter-data-mongodb',
+      'spring-boot-starter-data-redis',
       'spring-ai-model-chat-memory-repository-jdbc',
       'spring-ai-model-chat-memory-repository-mongodb',
+      'spring-ai-model-chat-memory-repository-redis',
       'spring-ai-milvus-store',
     ])

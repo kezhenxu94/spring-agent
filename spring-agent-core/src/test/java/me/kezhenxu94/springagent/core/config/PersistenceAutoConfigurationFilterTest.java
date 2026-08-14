@@ -15,8 +15,9 @@ import org.springframework.util.ClassUtils;
  * deployment failing on a missing {@code spring.datasource.url} — in production, since that is the
  * only place the MongoDB backend runs.
  *
- * <p>Both backends are on this module's test classpath (and only its test classpath) so that these
- * names are resolvable here at all.
+ * <p>Every backend is on this module's test classpath (and only its test classpath) so that these
+ * names are resolvable here at all. A backend whose artifacts are missing from it does not fail
+ * this test — it removes cases from it, which is the same silence this test exists to catch.
  */
 class PersistenceAutoConfigurationFilterTest {
 

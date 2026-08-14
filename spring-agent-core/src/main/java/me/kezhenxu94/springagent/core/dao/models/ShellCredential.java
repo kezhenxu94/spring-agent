@@ -12,13 +12,19 @@ import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.redis.core.RedisHash;
+import org.springframework.data.redis.core.index.Indexed;
 
 /**
- * One credential a user has stored for their shell sandbox. Dual-mapped for both persistence
- * backends; see {@link ScheduledTask} for why.
+ * One credential a user has stored for their shell sandbox. Mapped for every persistence backend;
+ * see {@link ScheduledTask} for why.
  *
  * <p>{@link #value} is ciphertext, and this class neither encrypts nor decrypts it — that belongs
  * to the store that owns the key. Nothing that reads a row can recover the secret without it.
+ *
+ * <p>Unlike {@link McpServerConfig}, the uniqueness declared below survives a backend that cannot
+ * enforce constraints: {@link #idFor} derives the id from the same owner and name, so a second save
+ * replaces the first wherever it is stored.
  */
 @Data
 @NoArgsConstructor
@@ -34,6 +40,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
         @UniqueConstraint(
             name = "owner_credential_unique",
             columnNames = {"ownerId", "name"}))
+@RedisHash(ShellCredential.COLLECTION_NAME)
 public class ShellCredential {
   public static final String COLLECTION_NAME = "shell_credentials";
 
@@ -43,8 +50,10 @@ public class ShellCredential {
    */
   @Id @jakarta.persistence.Id private String id;
 
-  private String ownerId;
-  private String name;
+  // findByOwnerId, findByOwnerIdAndName.
+  @Indexed private String ownerId;
+
+  @Indexed private String name;
 
   /**
    * The encrypted value, base64-encoded. Long enough for the 64KiB ceiling the tools impose, plus

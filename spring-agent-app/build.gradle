@@ -20,6 +20,18 @@ if (providers.gradleProperty('native').present) {
   pluginManager.apply('org.graalvm.buildtools.native')
 }
 
+// spring-boot-dependencies manages jedis at 7.0.0, below the 7.4.1 Spring AI's Redis chat memory
+// asks for. That module's auto-configuration is @ConditionalOnClass(redis.clients.jedis.RedisClient),
+// a class 7.0.0 does not ship, so the managed version turns Redis chat memory off without logging
+// anything — the context quietly falls back to the in-memory repository, and ChatMemoryRedisTest is
+// what catches it.
+//
+// Overriding the BOM property rather than forcing the version in a resolutionStrategy: this is the
+// only module that applies io.spring.dependency-management, and that plugin re-applies its managed
+// versions after Gradle's own rules, so a `force` here has no effect. The library modules resolve
+// 7.4.1 on their own, from the platform constraint.
+ext['jedis.version'] = libs.versions.jedis.get()
+
 def patchJvmArgs = [
   // The Feishu SDK's shaded protobuf reads arrays through sun.misc.Unsafe, which every JDK 24 or
   // later warns about on startup. Nothing here can fix the call itself:
@@ -41,11 +53,12 @@ def patchJvmArgs = [
 
 dependencies {
   implementation project(':spring-agent-core')
-  // Both, deliberately. An SDK consumer picks one and configures nothing; this application is the
-  // runtime-switchable case app.persistence.type exists for, and PersistenceJdbcTest and
-  // PersistenceMongoTest assert each backend from a single JVM classpath.
+  // All of them, deliberately. An SDK consumer picks one and configures nothing; this application is
+  // the runtime-switchable case app.persistence.type exists for, and PersistenceJdbcTest,
+  // PersistenceMongoTest and PersistenceRedisTest assert each backend from a single JVM classpath.
   implementation project(':spring-agent-persistence-jdbc')
   implementation project(':spring-agent-persistence-mongodb')
+  implementation project(':spring-agent-persistence-redis')
   // Optional for an SDK consumer. Depending on it decides nothing: app.ai.tools.shell.type does,
   // and it defaults to none.
   implementation project(':spring-agent-tools-shell-kubernetes')

@@ -8,6 +8,7 @@ import me.kezhenxu94.springagent.integration.feishu.aot.LarkSdkRuntimeHints;
 import me.kezhenxu94.springagent.integration.feishu.dao.FeishuMessage;
 import me.kezhenxu94.springagent.integration.feishu.dao.jpa.JpaFeishuMessageRepo;
 import me.kezhenxu94.springagent.integration.feishu.dao.mongo.MongoFeishuMessageRepo;
+import me.kezhenxu94.springagent.integration.feishu.dao.redis.RedisFeishuMessageRepo;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -21,6 +22,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
+import org.springframework.data.redis.repository.configuration.EnableRedisRepositories;
 
 /**
  * Wires the Feishu integration: the Lark client plus every {@code @Component} under {@code
@@ -42,7 +44,11 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
             classes = FeishuAutoConfiguration.class))
 @EnableConfigurationProperties(FeishuProperties.class)
 @ImportRuntimeHints({FeishuRuntimeHints.class, LarkSdkRuntimeHints.class})
-@Import({FeishuAutoConfiguration.Mongo.class, FeishuAutoConfiguration.Jdbc.class})
+@Import({
+  FeishuAutoConfiguration.Mongo.class,
+  FeishuAutoConfiguration.Jdbc.class,
+  FeishuAutoConfiguration.Redis.class
+})
 @ConditionalOnProperty(
     prefix = "app.feishu",
     name = "enabled",
@@ -76,6 +82,19 @@ public class FeishuAutoConfiguration {
   @EnableJpaRepositories(basePackageClasses = JpaFeishuMessageRepo.class)
   @EntityScan(basePackageClasses = FeishuMessage.class)
   public static class Jdbc {}
+
+  /**
+   * No {@code keyspaceConfiguration} or {@code indexConfiguration} here, and none on {@code
+   * RedisPersistenceAutoConfiguration} either. Those attributes are wired into the {@code
+   * redisMappingContext} bean, which Spring Data registers under a fixed name and only if absent,
+   * so of these two {@code @EnableRedisRepositories} the second one processed would have its
+   * configuration built and then silently ignored. {@code FeishuMessage} carries {@code @RedisHash}
+   * instead, which is read from whichever mapping context wins.
+   */
+  @Configuration(proxyBeanMethods = false)
+  @ConditionalOnPersistenceBackend(Type.REDIS)
+  @EnableRedisRepositories(basePackageClasses = RedisFeishuMessageRepo.class)
+  public static class Redis {}
 
   @Bean
   @ConditionalOnMissingBean

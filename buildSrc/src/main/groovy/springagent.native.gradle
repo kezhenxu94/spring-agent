@@ -20,7 +20,7 @@ pluginManager.withPlugin('org.graalvm.buildtools.native') {
   // server-backed variant — that image must then be *run* with PERSISTENCE_TYPE=mongodb and
   // VECTORSTORE_TYPE=milvus so the live environment agrees with the baked context.
   //
-  // spring-agent-app depends on both spring-agent-persistence-* modules, so the property below is
+  // spring-agent-app depends on every spring-agent-persistence-* module, so the property below is
   // what picks between them rather than merely confirming a choice the classpath already made — see
   // ConditionalOnPersistenceBackend. An application depending on a single backend module needs
   // neither this flag nor the env var.
@@ -29,7 +29,8 @@ pluginManager.withPlugin('org.graalvm.buildtools.native') {
   // shell-local the image has no Bash tool whatever TOOLS_SHELL_TYPE says when it runs.
   def backends = providers.gradleProperty('nativeBackends').getOrElse('')
       .split(',').collect { it.trim().toLowerCase() }.findAll { it }
-  def persistenceType = backends.contains('mongodb') ? 'mongodb' : 'jdbc'
+  def persistenceType = backends.contains('mongodb') ? 'mongodb'
+      : backends.contains('redis') ? 'redis' : 'jdbc'
   def vectorStoreType = backends.contains('milvus') ? 'milvus' : 'simple'
   def shellType = backends.contains('shell-kubernetes') ? 'kubernetes'
       : backends.contains('shell-docker') ? 'docker'

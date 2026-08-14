@@ -12,6 +12,12 @@ fabric8 = "6.13.4"
 # predates Gradle 9. 1.1.4+ is tested against Gradle 9.6.1, which is what the wrapper pins.
 graalvm-buildtools = "1.1.8"
 springboot = "4.0.7"
+# Above spring-boot-dependencies' jedis.version (7.0.0), which is why it is pinned rather than left
+# to the BOM. Spring AI's Redis chat memory declares 7.4.1 and its auto-configuration is
+# @ConditionalOnClass(redis.clients.jedis.RedisClient), a class 7.0.0 does not have — under the BOM
+# version the condition simply does not match, no error is logged, and chat memory silently falls
+# back to the in-memory repository. ChatMemoryRedisTest is what would catch a regression here.
+jedis = "7.4.1"
 sqlite-jdbc = "3.53.2.1"
 testcontainers = "2.0.3"
 
@@ -21,6 +27,7 @@ jakarta-annotation-api = { module = "jakarta.annotation:jakarta.annotation-api",
 logback-jackson = { module = "ch.qos.logback.contrib:logback-jackson", version.ref = "logback-json" }
 logback-json-classic = { module = "ch.qos.logback.contrib:logback-json-classic", version.ref = "logback-json" }
 spring-ai-bom = { module = "org.springframework.ai:spring-ai-bom", version.ref = "spring-ai" }
+jedis = { module = "redis.clients:jedis", version.ref = "jedis" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
 larksuite-oapi = { module = "com.larksuite.oapi:oapi-sdk", version.ref = "larksuite-oapi" }
 testcontainers-core = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
