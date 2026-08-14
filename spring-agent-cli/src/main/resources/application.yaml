@@ -5,13 +5,38 @@ spring:
     # started by a test, which does not go through main().
     web-application-type: none
   shell:
+    config:
+      # Where the history file lands. Without this Spring Shell writes spring-shell.log into the
+      # working directory, and a binary on the PATH is run from wherever the user happens to be —
+      # so it would scatter a history file through every project they used it in, and each one
+      # would only remember what they typed in that directory.
+      location: ${user.home}/.spring-agent
+    history:
+      name: history
     interactive:
       # Spring Shell's own runners are replaced by CliShellRunner — see its javadoc for why a
       # command shell cannot host free-typed prompts. This stays true so the command
       # infrastructure (registry, parser, completion, theming) is still configured.
       enabled: true
     command:
-      # Both would appear in `/help` as commands the agent has no use for.
+      # The built-ins this module replaces or has no use for. Without turning them off, two
+      # commands answer to the same name and which one the registry hands back is luck — `/help`
+      # printed Spring Shell's own listing, with bare names, for commands only reachable with a
+      # leading slash.
+      #
+      # `quit` is the exception: it is not a bean and has no property, so CliShellRunner
+      # unregisters it by hand.
+      help:
+        enabled: false
+      clear:
+        # Ours forgets the conversation, which is what /clear means to anyone arriving from a
+        # coding agent. The built-in clears the screen, and taking away the scrollback of an
+        # answer just read is not what they would be asking for.
+        enabled: false
+      history:
+        # It lists the commands run, which here is only the slash commands — the prompts, which
+        # are the interesting half, never reach the registry. Arrow-up still walks all of it.
+        enabled: false
       script:
         enabled: false
       version:
@@ -79,10 +104,15 @@ logging:
     org.springframework.ai.vectorstore.SimpleVectorStore: WARN
 storage:
   location: ${user.home}/.spring-agent/
+  # Both are validated as non-blank, and nothing on this path reads them: they exist for a
+  # deployment that serves its files over HTTP, which this is not. Pointed at the directory the
+  # files are genuinely in, so anything that does print one prints somewhere the user can look.
+  base-url: file://${user.home}/.spring-agent/%s
+  cdn-url: file://${user.home}/.spring-agent/%s
 share:
-  # Nothing serves these on a command line; the value exists because the share link builder needs
-  # one, and a link to a file the user already has locally is of no interest anyway.
-  base-url: file://
+  # Where PublishFileTool says it put a file. No server to serve it, so the honest answer is the
+  # path on this machine.
+  base-url: file://${user.home}/.spring-agent/
 app:
   cli:
     # Who the agent thinks it is talking to. Scopes the workspace, the memories and the stored

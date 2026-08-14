@@ -11,6 +11,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "app")
 public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
 
+  public SpringAgentProperties {
+    // An application that configures no DashScope at all is a legitimate one — spring-agent-cli is
+    // the first — and leaving this null made the vision ChatClient fail the whole context with a
+    // NullPointerException at startup rather than the image tools simply not working.
+    dashscope = dashscope == null ? Dashscope.NONE : dashscope;
+  }
+
   /**
    * @param scheduledTaskPrompt what a firing scheduled task says to the model, as a template over
    *     {@code {taskText}} — the prompt the task was created with. Defaults to {@link
@@ -67,6 +74,12 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
       if (tools == null) {
         tools = new Tools(null);
       }
+      // The one field this block used to leave null, which cost every application that did not
+      // configure it a NullPointerException from LargeResponseInterceptor — not at startup, but on
+      // the first tool call of the first turn.
+      if (botInterceptor == null) {
+        botInterceptor = new BotInterceptor(BotInterceptor.DEFAULT_GUIDE_THRESHOLD);
+      }
     }
 
     /**
@@ -100,7 +113,22 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
       }
     }
 
-    public record BotInterceptor(int guideThreshold) {}
+    /**
+     * @param guideThreshold how long a tool result may be before {@code LargeResponseInterceptor}
+     *     writes it to the user's workspace and hands the model a pointer instead. Zero and below
+     *     are read as "not configured" and replaced by {@link #DEFAULT_GUIDE_THRESHOLD}, since a
+     *     threshold of zero would divert every result a tool ever returned.
+     */
+    public record BotInterceptor(int guideThreshold) {
+
+      public static final int DEFAULT_GUIDE_THRESHOLD = 30000;
+
+      public BotInterceptor {
+        if (guideThreshold <= 0) {
+          guideThreshold = DEFAULT_GUIDE_THRESHOLD;
+        }
+      }
+    }
 
     /**
      * How much conversation history is replayed to the model.
@@ -160,6 +188,20 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
   }
 
   public record Dashscope(Image image, Vision vision) {
+
+    /**
+     * What an application that configures no DashScope gets. The clients are still built — the
+     * image and vision tools are unconditional beans — but with nothing to call, so a call fails
+     * as a tool error the agent can report rather than taking the context down at startup.
+     */
+    public static final Dashscope NONE =
+        new Dashscope(new Image(null, null, null), new Vision(null, null, null));
+
+    public Dashscope {
+      image = image == null ? new Image(null, null, null) : image;
+      vision = vision == null ? new Vision(null, null, null) : vision;
+    }
+
     public record Image(String apiKey, String baseUrl, String model) {}
 
     public record Vision(String apiKey, String baseUrl, String model) {}
