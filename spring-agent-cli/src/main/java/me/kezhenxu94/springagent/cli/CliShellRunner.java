@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.cli;
 
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.cli.config.CliProperties;
@@ -53,6 +54,12 @@ public class CliShellRunner implements ShellRunner {
   private final CliSession session;
   private final CliProperties properties;
   private final CliQuestionHandler questionHandler;
+
+  /** The latch the loop is blocked on, so a second Ctrl-C can release it. Null between turns. */
+  private final AtomicReference<CountDownLatch> waiting = new AtomicReference<>();
+
+  /** Whether this run has already been asked to stop once. Reset when the turn ends. */
+  private volatile boolean abandoned;
 
   @Override
   public void run(final String[] args) {
@@ -131,6 +138,7 @@ public class CliShellRunner implements ShellRunner {
     }
     final var runId = UUID.randomUUID().toString();
     final var done = new CountDownLatch(1);
+    waiting.set(done);
     session.runStarted(runId);
     try {
       springAgent.fire(
@@ -152,6 +160,8 @@ public class CliShellRunner implements ShellRunner {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     } finally {
+      waiting.set(null);
+      abandoned = false;
       session.runEnded();
     }
   }
@@ -165,6 +175,19 @@ public class CliShellRunner implements ShellRunner {
     if (runId == null) {
       return;
     }
+    final var latch = waiting.get();
+    if (abandoned && latch != null) {
+      // A second Ctrl-C. Cancelling is cooperative — the run stops at the next thing it emits — so
+      // a run that has stopped emitting at all never ends and the prompt never comes back. That is
+      // not hypothetical: a missing native-image registration surfaced as a fatal error on a
+      // reactor scheduler thread, which no listener hears, and the command line waited for ever.
+      // Stop waiting and hand the prompt back; the run is left to finish or not on its own.
+      log.warn("Giving up waiting on run {} after a second interrupt", runId);
+      console.writeLine(console.yellow("\nStopped waiting. The run may still be finishing."));
+      latch.countDown();
+      return;
+    }
+    abandoned = true;
     log.info("Cancel of run {} accepted: {}", runId, springAgent.cancel(runId));
   }
 

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import me.kezhenxu94.springagent.core.aot.AgentToolsRuntimeHints;
+import me.kezhenxu94.springagent.core.aot.OpenAiSdkRuntimeHints;
 import me.kezhenxu94.springagent.core.aot.StoragePropertiesRuntimeHints;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageService;
@@ -61,7 +62,11 @@ import org.springframework.web.client.RestTemplate;
   // Same reasoning: the settings of a particular shell are bound by the module implementing it.
   ShellToolsProperties.class
 })
-@ImportRuntimeHints({AgentToolsRuntimeHints.class, StoragePropertiesRuntimeHints.class})
+@ImportRuntimeHints({
+  AgentToolsRuntimeHints.class,
+  OpenAiSdkRuntimeHints.class,
+  StoragePropertiesRuntimeHints.class
+})
 public class SpringAgentCoreAutoConfiguration {
 
   @Bean

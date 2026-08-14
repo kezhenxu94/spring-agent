@@ -52,6 +52,24 @@ public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
 
   @Override
   public void registerHints(final RuntimeHints hints, final ClassLoader classLoader) {
+    // Spring AI's tool-search advisor reads its system-prompt suffix from a classpath resource at
+    // the root of spring-ai-tool-search-tool, and nothing registers it. Which of the two files it
+    // reads depends on how many tools are indexed, so both are registered — the failure is a
+    // FileNotFoundException while the advisor is being built, which takes the run with it.
+    hints.resources().registerPattern("DEFAULT_SYSTEM_PROMPT_SUFFIX*.md");
+
+    // The advisor's own tool, the one that lets the model search for the others. By name because
+    // the advisor is switched on by a property and its module need not be on the classpath at all;
+    // registerTypeIfPresent is a no-op when it is absent.
+    hints
+        .reflection()
+        .registerTypeIfPresent(
+            classLoader,
+            "org.springframework.ai.tool.toolsearch.ToolSearchTool",
+            MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
+            MemberCategory.INVOKE_DECLARED_METHODS,
+            MemberCategory.ACCESS_DECLARED_FIELDS);
+
     for (final var type : TOOL_TYPES) {
       hints
           .reflection()
