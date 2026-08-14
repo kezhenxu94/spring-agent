@@ -71,27 +71,32 @@ public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
             MemberCategory.ACCESS_DECLARED_FIELDS);
 
     for (final var type : TOOL_TYPES) {
-      hints
-          .reflection()
-          .registerType(
-              type,
-              // Methods to find the @Tool ones and to call them; constructors because several are
-              // built through a nested builder; fields because the JSON schema generator reads the
-              // parameter records' components.
-              MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
-              MemberCategory.INVOKE_DECLARED_METHODS,
-              MemberCategory.ACCESS_DECLARED_FIELDS);
-      // The parameter and result records live as nested types — Question, Todos, TodoItem and so
-      // on — and the schema generated for a tool call is built from them by reflection too.
-      for (final var nested : type.getDeclaredClasses()) {
-        hints
-            .reflection()
-            .registerType(
-                nested,
-                MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
-                MemberCategory.INVOKE_DECLARED_METHODS,
-                MemberCategory.ACCESS_DECLARED_FIELDS);
-      }
+      register(hints, type);
+    }
+  }
+
+  /**
+   * Registers {@code type} and everything nested inside it, to any depth.
+   *
+   * <p>The depth matters. The parameter and result types are records nested inside the tool class,
+   * and they nest further: {@code AskUserQuestionTool.Question.Option} is two levels down, and one
+   * level of {@code getDeclaredClasses()} left it out. A record whose components are not registered
+   * cannot be read at all in a native image — {@code UnsupportedFeatureError: Record components not
+   * available} — so the tool call that carried it failed rather than the option merely being blank.
+   */
+  private static void register(final RuntimeHints hints, final Class<?> type) {
+    hints
+        .reflection()
+        .registerType(
+            type,
+            // Methods to find the @Tool ones, to call them, and to read a record's components;
+            // constructors because several of these are built through a nested builder; fields
+            // because the JSON schema generated for a tool is read off them.
+            MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
+            MemberCategory.INVOKE_DECLARED_METHODS,
+            MemberCategory.ACCESS_DECLARED_FIELDS);
+    for (final var nested : type.getDeclaredClasses()) {
+      register(hints, nested);
     }
   }
 }
