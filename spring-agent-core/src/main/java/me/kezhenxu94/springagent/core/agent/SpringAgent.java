@@ -24,6 +24,7 @@ import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
+import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
@@ -312,6 +313,7 @@ public class SpringAgent {
                       .chatMemoryRepository(chatMemoryRepository)
                       .maxMessages(appConfiguration.ai().chatMemory().maxMessages())
                       .build())
+              .order(ToolCallingAdvisor.DEFAULT_ORDER + 100)
               .build());
     }
     advisors.add(SimpleLoggerAdvisor.builder().build());
