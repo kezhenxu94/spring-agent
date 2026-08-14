@@ -21,7 +21,7 @@ public record FeishuProperties(
 
   public FeishuProperties {
     if (cardText == null) {
-      cardText = new CardText(null, null, null, null, null, null, null, null);
+      cardText = new CardText(null, null, null, null, null, null, null, null, null);
     }
     if (questionText == null) {
       questionText = new QuestionText(null, null, null, null, null, null, null, null, null);
@@ -71,6 +71,8 @@ public record FeishuProperties(
    * @param callingTool shown while a tool runs, over {@code {tool}}
    * @param imageUnavailable stands in for an image that could not be uploaded to Feishu
    * @param todoHeading heading above the agent's todo list
+   * @param stopNotYours toast for someone other than the person whose run it is pressing stop.
+   *     Cards are shared, so in a group chat everyone can see and press that button.
    */
   public record CardText(
       String generating,
@@ -80,7 +82,8 @@ public record FeishuProperties(
       String unknownError,
       String callingTool,
       String imageUnavailable,
-      String todoHeading) {
+      String todoHeading,
+      String stopNotYours) {
 
     public CardText {
       if (Strings.isNullOrEmpty(generating)) {
@@ -108,6 +111,9 @@ public record FeishuProperties(
       }
       if (Strings.isNullOrEmpty(todoHeading)) {
         todoHeading = "**To do**";
+      }
+      if (Strings.isNullOrEmpty(stopNotYours)) {
+        stopNotYours = "Only the person who started this run can stop it";
       }
     }
 

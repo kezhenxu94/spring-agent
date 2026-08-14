@@ -55,15 +55,21 @@ public class FeishuCardListener implements AgentResponseListener {
   Resource feishuReplyCard;
 
   /**
+   * A run reachable from the card it is streaming into, and the user it was started for: the stop
+   * button is on a card, and a card in a group chat is in front of everyone.
+   */
+  public record StoppableRun(String runId, String userId) {}
+
+  /**
    * Which run each card's own message belongs to. The card's stop button knows only the message the
    * card was sent as, and cancelling is in-memory anyway, so this is exactly as durable as the
    * thing it feeds.
    */
-  private final ConcurrentMap<String, String> runIdsByCardMessage = new ConcurrentHashMap<>();
+  private final ConcurrentMap<String, StoppableRun> runsByCardMessage = new ConcurrentHashMap<>();
 
   /** The run the card sent as {@code cardMessageId} belongs to, or {@code null} if it has ended. */
-  public String runIdFor(final String cardMessageId) {
-    return runIdsByCardMessage.get(cardMessageId);
+  public StoppableRun runFor(final String cardMessageId) {
+    return runsByCardMessage.get(cardMessageId);
   }
 
   @Override
@@ -116,7 +122,7 @@ public class FeishuCardListener implements AgentResponseListener {
                 appConfiguration.ai().tools().askUserQuestion().ttl()));
       }
 
-      runIdsByCardMessage.put(cardMessageId, runId);
+      runsByCardMessage.put(cardMessageId, new StoppableRun(runId, request.userId()));
       registry.addResponseListener(new CardRun(runId, cardMessageId));
     } catch (Exception e) {
       log.error("Failed to attach a Feishu card to run {}", runId, e);
@@ -145,7 +151,7 @@ public class FeishuCardListener implements AgentResponseListener {
       log.info("Run {} finished: outcome={}", runId, outcome);
       // The map is what the stop button reads to find a run by the card it was pressed on, so a
       // finished run has to leave it or the entry outlives the run it names.
-      runIdsByCardMessage.remove(cardMessageId);
+      runsByCardMessage.remove(cardMessageId);
     }
   }
 

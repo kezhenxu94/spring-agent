@@ -7,12 +7,14 @@ import com.lark.oapi.event.cardcallback.model.P2CardActionTriggerResponse;
 import com.lark.oapi.service.im.ImService;
 import com.lark.oapi.service.im.v1.model.P2MessageReadV1;
 import com.lark.oapi.ws.Client;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.integration.feishu.handler.FeishuCardListener;
 import me.kezhenxu94.springagent.integration.feishu.handler.FeishuMessageReceiveHandler;
 import me.kezhenxu94.springagent.integration.feishu.handler.FeishuQuestionAnswerHandler;
+import me.kezhenxu94.springagent.integration.feishu.handler.FeishuToasts;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -53,11 +55,28 @@ public class FeishuEventHandler {
                   final var messageID = event.getEvent().getContext().getOpenMessageId();
                   // The button only knows the message the card was sent as; the run it belongs to
                   // is whatever the card listener started under it.
-                  final var runId = feishuCardListener.runIdFor(messageID);
-                  log.info("Stop command received: cardMessageId={}, runId={}", messageID, runId);
-                  if (runId != null) {
-                    springAgent.cancel(runId);
+                  final var run = feishuCardListener.runFor(messageID);
+                  final var operator = event.getEvent().getOperator().getOpenId();
+                  log.info(
+                      "Stop command received: cardMessageId={}, run={}, operator={}",
+                      messageID,
+                      run,
+                      operator);
+                  if (run == null) {
+                    return new P2CardActionTriggerResponse();
                   }
+                  // Cards are shared, so in a group chat everyone can see and press stop. Only the
+                  // person the run is answering gets to end it.
+                  if (!Objects.equals(operator, run.userId())) {
+                    log.info(
+                        "Stop for run {} from {}, who is not {}",
+                        run.runId(),
+                        operator,
+                        run.userId());
+                    return FeishuToasts.toast(
+                        "warning", feishuProperties.cardText().stopNotYours());
+                  }
+                  springAgent.cancel(run.runId());
                 } else if (FeishuQuestionAnswerHandler.ACTION.equals(button)) {
                   return feishuQuestionAnswerHandler.handle(event);
                 }

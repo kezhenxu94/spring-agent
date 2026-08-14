@@ -72,7 +72,7 @@ class FeishuCardUpdaterImageTest {
             restTemplate,
             userWorkspaceFactory,
             null,
-            new CardText(null, null, null, null, null, null, "[image unavailable]", null));
+            new CardText(null, null, null, null, null, null, "[image unavailable]", null, null));
   }
 
   @Test

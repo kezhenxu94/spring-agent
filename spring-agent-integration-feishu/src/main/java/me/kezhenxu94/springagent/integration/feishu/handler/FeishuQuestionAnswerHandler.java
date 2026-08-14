@@ -1,8 +1,9 @@
 package me.kezhenxu94.springagent.integration.feishu.handler;
 
+import static me.kezhenxu94.springagent.integration.feishu.handler.FeishuToasts.toast;
+
 import com.google.common.base.Strings;
 import com.lark.oapi.Client;
-import com.lark.oapi.event.cardcallback.model.CallBackToast;
 import com.lark.oapi.event.cardcallback.model.P2CardActionTrigger;
 import com.lark.oapi.event.cardcallback.model.P2CardActionTriggerResponse;
 import com.lark.oapi.service.cardkit.v1.model.UpdateCardElementReq;
@@ -199,14 +200,5 @@ public class FeishuQuestionAnswerHandler {
 
   private List<Question> questions(final PendingQuestion pending) {
     return om.readValue(pending.questionsJson(), new TypeReference<List<Question>>() {});
-  }
-
-  private static P2CardActionTriggerResponse toast(final String type, final String content) {
-    final var toast = new CallBackToast();
-    toast.setType(type);
-    toast.setContent(content);
-    final var response = new P2CardActionTriggerResponse();
-    response.setToast(toast);
-    return response;
   }
 }

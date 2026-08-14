@@ -23,7 +23,7 @@ class FeishuCardTextTest {
   }
 
   private static CardText cardText(final String generating, final String stop) {
-    return new CardText(generating, stop, null, null, null, null, null, null);
+    return new CardText(generating, stop, null, null, null, null, null, null, null);
   }
 
   @Test
