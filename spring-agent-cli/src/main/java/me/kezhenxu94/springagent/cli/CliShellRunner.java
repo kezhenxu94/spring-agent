@@ -71,7 +71,9 @@ public class CliShellRunner implements ShellRunner {
     while (!session.quitting()) {
       final String line;
       try {
-        line = lineReader.readLine(PROMPT);
+        // No prompt when nothing is there to read it: piped output is something a script consumes,
+        // and a "> " on every line would be for it to strip.
+        line = lineReader.readLine(console.interactive() ? PROMPT : "");
       } catch (UserInterruptException e) {
         // Ctrl-C with nothing running. Discards the half-typed line, as every shell does.
         continue;
@@ -93,6 +95,9 @@ public class CliShellRunner implements ShellRunner {
   }
 
   private void greet() {
+    if (!console.interactive()) {
+      return;
+    }
     console.writeLine(console.dim("spring-agent · type your question, or /help for commands"));
   }
 
@@ -156,12 +161,11 @@ public class CliShellRunner implements ShellRunner {
     // the tool call: cancelling alone would leave the box up with nothing behind it to end.
     questionHandler.interrupt();
     final var runId = session.activeRunId();
+    log.info("Interrupt received: activeRunId={}", runId);
     if (runId == null) {
       return;
     }
-    if (springAgent.cancel(runId)) {
-      log.info("Cancelled run {} on interrupt", runId);
-    }
+    log.info("Cancel of run {} accepted: {}", runId, springAgent.cancel(runId));
   }
 
   /** Releases the loop when the run ends, however it ends. */
