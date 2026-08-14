@@ -8,6 +8,7 @@ import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.resolution.ToolCallbackResolver;
+import org.springframework.ai.tool.toolsearch.ToolSearchTool;
 
 @Slf4j
 public class InterceptingToolCallbackResolver implements ToolCallbackResolver {
@@ -57,14 +58,20 @@ public class InterceptingToolCallbackResolver implements ToolCallbackResolver {
 
       @Override
       public String call(final String toolInput, final ToolContext toolContext) {
-        // The session id is the tool-search advisor's index key and the chat-memory conversation
-        // id, so it is what ties this drop to the run it happened in.
+        // The tool-search advisor keys its index by the conversation id and puts it in the tool
+        // context under its own name, which is what ties this drop to the run it happened in. The
+        // chat-memory key is not in the context, so it is only a fallback for a run without the
+        // advisor.
         final var context =
             toolContext == null ? Map.<String, Object>of() : toolContext.getContext();
+        final var sessionId =
+            context.getOrDefault(
+                ToolSearchTool.TOOL_SEARCH_TOOL_SESSION_ID_KEY,
+                context.get(ChatMemory.CONVERSATION_ID));
         log.warn(
             "Dropped call to unavailable tool '{}', sessionId={}, arguments={}",
             toolName,
-            context.get(ChatMemory.CONVERSATION_ID),
+            sessionId,
             abbreviate(toolInput));
         return recoveryMessage(toolName);
       }
