@@ -12,6 +12,7 @@ import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -174,10 +175,41 @@ public class FeishuQuestionForm {
       summary.append("**").append(question.header()).append("** ").append(question.question());
       summary.append("\n→ ").append(answer);
     }
+    return replacement(summary.toString(), pendingQuestionId);
+  }
+
+  /**
+   * What replaces the form when a later message in the conversation overtook the questions — the
+   * user said what they wanted in their own words instead of using the controls.
+   *
+   * <p>Without this the card would go on offering a form that no longer does anything: the row is
+   * closed the moment that message arrives, so a press could only be refused, and refused with a
+   * toast the reader has no way to have predicted. So the form goes, and what stays says why.
+   */
+  public String superseded(final List<Question> questions, final String pendingQuestionId) {
+    final var summary = new StringBuilder();
+    for (final var question : questions) {
+      summary.append("**").append(question.header()).append("** ").append(question.question());
+      summary.append('\n');
+    }
+    summary.append(feishuProperties.questionText().superseded());
+    return replacement(summary.toString(), pendingQuestionId);
+  }
+
+  /**
+   * A plain markdown element carrying {@code content}, under the id the form went in with, so an
+   * element update puts it exactly where the form was.
+   */
+  private String replacement(final String content, final String pendingQuestionId) {
     final var element = fragments().get("questionText").deepCopy();
     element.put("element_id", formElementId(pendingQuestionId));
-    element.put("content", summary.toString());
+    element.put("content", content);
     return om.writeValueAsString(element);
+  }
+
+  /** The questions as they were stored when they were asked. */
+  public List<Question> questions(final String questionsJson) {
+    return om.readValue(questionsJson, new TypeReference<List<Question>>() {});
   }
 
   /**

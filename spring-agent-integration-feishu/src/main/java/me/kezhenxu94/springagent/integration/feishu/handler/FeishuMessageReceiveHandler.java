@@ -47,20 +47,30 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
   final UserWorkspaceFactory userWorkspaceFactory;
   final FeishuTools feishuTools;
   final PendingQuestionRepo pendingQuestionRepo;
+  final FeishuQuestionFormCloser questionFormCloser;
 
   /**
    * Marks anything the agent was still waiting to hear back on in this conversation as overtaken by
-   * what just arrived. Best effort: a failure here costs a stale form the chance to be refused, not
-   * this message the chance to be answered.
+   * what just arrived, and takes its form off the card that carries it — a form the row behind it
+   * no longer backs is a control that can only be pressed to be refused.
+   *
+   * <p>Best effort: a failure here costs a stale form the chance to be refused, not this message
+   * the chance to be answered. The card is closed per question rather than for the batch, so one
+   * card that cannot be written to does not leave the others standing.
    */
   private void supersedePendingQuestions(final String conversationId) {
     try {
       pendingQuestionRepo
           .findByConversationIdAndStatus(conversationId, PendingQuestion.Status.PENDING)
           .forEach(
-              pending ->
-                  pendingQuestionRepo.updateStatus(
-                      pending.id(), PendingQuestion.Status.SUPERSEDED));
+              pending -> {
+                pendingQuestionRepo.updateStatus(pending.id(), PendingQuestion.Status.SUPERSEDED);
+                try {
+                  questionFormCloser.superseded(pending);
+                } catch (Exception e) {
+                  log.warn("Failed to close superseded question form {}", pending.id(), e);
+                }
+              });
     } catch (Exception e) {
       log.warn("Failed to supersede pending questions in conversation {}", conversationId, e);
     }

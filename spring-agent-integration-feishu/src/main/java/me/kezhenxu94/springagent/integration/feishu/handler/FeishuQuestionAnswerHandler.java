@@ -3,18 +3,13 @@ package me.kezhenxu94.springagent.integration.feishu.handler;
 import static me.kezhenxu94.springagent.integration.feishu.handler.FeishuToasts.toast;
 
 import com.google.common.base.Strings;
-import com.lark.oapi.Client;
 import com.lark.oapi.event.cardcallback.model.P2CardActionTrigger;
 import com.lark.oapi.event.cardcallback.model.P2CardActionTriggerResponse;
-import com.lark.oapi.service.cardkit.v1.model.UpdateCardElementReq;
-import com.lark.oapi.service.cardkit.v1.model.UpdateCardElementReqBody;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicInteger;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
@@ -26,8 +21,6 @@ import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Component;
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Takes the answers to questions the agent asked earlier and starts a fresh run to act on them.
@@ -54,10 +47,9 @@ public class FeishuQuestionAnswerHandler {
 
   private final PendingQuestionRepo pendingQuestionRepo;
   private final FeishuQuestionForm questionForm;
+  private final FeishuQuestionFormCloser formCloser;
   private final SpringAgent springAgent;
   private final FeishuProperties feishuProperties;
-  private final Client feishu;
-  private final JsonMapper om;
 
   /**
    * Boot's general-purpose executor by name, since {@code taskScheduler} is a {@code TaskExecutor}
@@ -79,7 +71,14 @@ public class FeishuQuestionAnswerHandler {
     }
     if (pending.status() != PendingQuestion.Status.PENDING) {
       log.info("Answer for {} which is already {}", id, pending.status());
-      return toast("info", text.alreadyAnswered());
+      // A form left standing after the row behind it closed — the card update that should have
+      // taken it away failed, or this press was already in flight. Say which of the two it is,
+      // since "already answered" is not true of questions a later message overtook.
+      return switch (pending.status()) {
+        case SUPERSEDED -> toast("info", text.superseded());
+        case EXPIRED -> toast("warning", text.expired());
+        default -> toast("info", text.alreadyAnswered());
+      };
     }
     // Cards are shared, so in a group chat everyone can see and press this form. Only the person
     // the agent was talking to gets to answer for them.
@@ -114,7 +113,7 @@ public class FeishuQuestionAnswerHandler {
       final Map<String, String> answers,
       final String replyTo) {
     try {
-      replaceForm(pending, questions, answers);
+      formCloser.answered(pending, answers);
     } catch (Exception e) {
       // The agent has the answers either way; a form left on screen is untidy, not broken, and the
       // row is already ANSWERED so pressing it again is refused.
@@ -158,47 +157,7 @@ public class FeishuQuestionAnswerHandler {
     return message.toString();
   }
 
-  /**
-   * Swaps the form for a plain record of what was asked and answered, so the card keeps telling the
-   * story and stops offering controls that would start a second run.
-   *
-   * <p>The sequence is taken from the clock rather than continued from the run's counter, which
-   * ended with the run and cannot be recovered. The card only requires that each operation's
-   * sequence be higher than the last, and seconds since the epoch is far past any count a run could
-   * have reached while still fitting the field.
-   */
-  @SneakyThrows
-  private void replaceForm(
-      final PendingQuestion pending,
-      final List<Question> questions,
-      final Map<String, String> answers) {
-    final var sequence = new AtomicInteger((int) Instant.now().getEpochSecond());
-    final var response =
-        feishu
-            .cardkit()
-            .v1()
-            .cardElement()
-            .update(
-                UpdateCardElementReq.newBuilder()
-                    .cardId(pending.cardId())
-                    .elementId(FeishuQuestionForm.formElementId(pending.id()))
-                    .updateCardElementReqBody(
-                        UpdateCardElementReqBody.newBuilder()
-                            .uuid(pending.id())
-                            .sequence(sequence.getAndIncrement())
-                            .element(questionForm.answered(questions, answers, pending.id()))
-                            .build())
-                    .build());
-    if (response.getCode() != 0) {
-      log.warn(
-          "Failed to close the question form: cardId={}, code={}, msg={}",
-          pending.cardId(),
-          response.getCode(),
-          response.getMsg());
-    }
-  }
-
   private List<Question> questions(final PendingQuestion pending) {
-    return om.readValue(pending.questionsJson(), new TypeReference<List<Question>>() {});
+    return questionForm.questions(pending.questionsJson());
   }
 }

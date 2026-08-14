@@ -251,6 +251,22 @@ class FeishuQuestionFormTest {
   }
 
   @Test
+  @DisplayName("a superseded form is replaced by what was asked and why it is closed")
+  void supersededSummaryReplacesTheForm() {
+    // A message in the conversation closes the row behind the form, so the form itself has to go —
+    // left standing it is a control that can only be pressed to be refused.
+    final var summary = om.readTree(form().superseded(List.of(single(), multi()), PQ));
+
+    assertThat(summary.get("element_id").asString())
+        .isEqualTo(FeishuQuestionForm.formElementId(PQ));
+    assertThat(summary.get("tag").asString()).isEqualTo("markdown");
+    assertThat(summary.get("content").asString())
+        .contains("Which database should we use?")
+        .contains("Which features should be enabled?")
+        .contains("so this form is closed");
+  }
+
+  @Test
   @DisplayName("the shipped template has every placeholder the labels can fill, and no others")
   void shippedTemplatePlaceholdersAllResolve() {
     final var built = form().build(List.of(single()), PQ);

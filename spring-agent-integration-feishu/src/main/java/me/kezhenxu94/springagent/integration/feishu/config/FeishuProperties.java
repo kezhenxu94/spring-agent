@@ -24,7 +24,7 @@ public record FeishuProperties(
       cardText = new CardText(null, null, null, null, null, null, null, null, null);
     }
     if (questionText == null) {
-      questionText = new QuestionText(null, null, null, null, null, null, null, null, null);
+      questionText = new QuestionText(null, null, null, null, null, null, null, null, null, null);
     }
   }
 
@@ -150,7 +150,9 @@ public record FeishuProperties(
    * @param otherHint placeholder in the free-text box offered alongside every question
    * @param submitText label of the button that sends the answers
    * @param submitted toast confirming the answers were taken
-   * @param alreadyAnswered toast for a form submitted twice, or after a reply already answered it
+   * @param alreadyAnswered toast for a form submitted twice
+   * @param superseded said in place of a form whose questions a later message in the conversation
+   *     overtook, on the card and in the toast if it is somehow submitted anyway
    * @param expired toast for a form submitted past the questions' lifetime
    * @param notYours toast for someone other than the person who was asked. Cards are shared, so in
    *     a group chat everyone can see and press this form.
@@ -163,6 +165,7 @@ public record FeishuProperties(
       String submitText,
       String submitted,
       String alreadyAnswered,
+      String superseded,
       String expired,
       String notYours,
       String nothingChosen,
@@ -183,6 +186,9 @@ public record FeishuProperties(
       }
       if (Strings.isNullOrEmpty(alreadyAnswered)) {
         alreadyAnswered = "These questions have already been answered";
+      }
+      if (Strings.isNullOrEmpty(superseded)) {
+        superseded = "_You answered in a message instead, so this form is closed._";
       }
       if (Strings.isNullOrEmpty(expired)) {
         expired = "These questions are too old to answer; just say what you need in a new message";
