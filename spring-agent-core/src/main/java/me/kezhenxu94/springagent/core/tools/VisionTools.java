@@ -1,12 +1,14 @@
 package me.kezhenxu94.springagent.core.tools;
 
+import com.google.common.base.Strings;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.IntStream;
-
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.content.Media;
@@ -16,11 +18,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MimeTypeUtils;
 import org.springframework.web.client.RestTemplate;
-
-import com.google.common.base.Strings;
-
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @AgentTool
@@ -33,12 +30,19 @@ public class VisionTools {
   @Qualifier("vision")
   private final ChatClient visionChatClient;
 
-  @Tool(name = "RecognizeImage", description = "Describe what an image shows, or answer a question about it. Takes local paths (only"
-      + " images already saved under the current user's workspace/artifacts directory) or"
-      + " publicly reachable URLs, and several images at once.")
+  @Tool(
+      name = "RecognizeImage",
+      description =
+          "Describe what an image shows, or answer a question about it. Takes local paths (only"
+              + " images already saved under the current user's workspace/artifacts directory) or"
+              + " publicly reachable URLs, and several images at once.")
   public String recognizeImage(
-      @ToolParam(description = "The images: absolute local paths, or publicly reachable URLs") final List<String> images,
-      @ToolParam(description = "What to ask about the images; omit it to just have them described", required = false) final String prompt,
+      @ToolParam(description = "The images: absolute local paths, or publicly reachable URLs")
+          final List<String> images,
+      @ToolParam(
+              description = "What to ask about the images; omit it to just have them described",
+              required = false)
+          final String prompt,
       final ToolContext context) {
     if (images == null || images.isEmpty()) {
       log.warn("RecognizeImage called with no images");
@@ -54,10 +58,11 @@ public class VisionTools {
 
     final var mediaList = images.stream().map(src -> resolveMedia(src, userId)).toList();
     if (mediaList.stream().anyMatch(Objects::isNull)) {
-      final var failed = IntStream.range(0, mediaList.size())
-          .filter(i -> mediaList.get(i) == null)
-          .mapToObj(images::get)
-          .toList();
+      final var failed =
+          IntStream.range(0, mediaList.size())
+              .filter(i -> mediaList.get(i) == null)
+              .mapToObj(images::get)
+              .toList();
       log.warn(
           "Giving up on RecognizeImage for user {}: {} of {} image(s) unreadable: {}",
           userId,
@@ -70,23 +75,25 @@ public class VisionTools {
 
     final var startedAt = System.nanoTime();
     try {
-      final var content = visionChatClient
-          .prompt()
-          .user(
-              u -> {
-                final var text = Strings.isNullOrEmpty(prompt) ? "Describe what this image shows." : prompt;
-                log.info(
-                    "Calling vision model for user {} with text={}, media={}",
-                    userId,
-                    text,
-                    mediaList.stream()
-                        .map(m -> m.getName() + " (" + m.getMimeType() + ")")
-                        .toList());
-                u.text(text);
-                mediaList.forEach(u::media);
-              })
-          .call()
-          .content();
+      final var content =
+          visionChatClient
+              .prompt()
+              .user(
+                  u -> {
+                    final var text =
+                        Strings.isNullOrEmpty(prompt) ? "Describe what this image shows." : prompt;
+                    log.info(
+                        "Calling vision model for user {} with text={}, media={}",
+                        userId,
+                        text,
+                        mediaList.stream()
+                            .map(m -> m.getName() + " (" + m.getMimeType() + ")")
+                            .toList());
+                    u.text(text);
+                    mediaList.forEach(u::media);
+                  })
+              .call()
+              .content();
       log.info(
           "Recognized {} image(s) for user {} in {} ms, result length={}",
           mediaList.size(),
