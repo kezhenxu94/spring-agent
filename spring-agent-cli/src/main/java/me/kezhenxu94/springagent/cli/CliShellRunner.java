@@ -52,6 +52,7 @@ public class CliShellRunner implements ShellRunner {
   private final CliConsole console;
   private final CliSession session;
   private final CliProperties properties;
+  private final CliQuestionHandler questionHandler;
 
   @Override
   public void run(final String[] args) {
@@ -151,6 +152,9 @@ public class CliShellRunner implements ShellRunner {
   }
 
   private void cancelActiveRun() {
+    // First, because a question on screen owns the terminal and blocks the run's own thread inside
+    // the tool call: cancelling alone would leave the box up with nothing behind it to end.
+    questionHandler.interrupt();
     final var runId = session.activeRunId();
     if (runId == null) {
       return;

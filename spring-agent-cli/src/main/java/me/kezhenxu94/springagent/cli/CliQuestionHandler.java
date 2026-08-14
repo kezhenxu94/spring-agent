@@ -8,7 +8,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
-import org.springframework.shell.jline.tui.component.ViewComponentBuilder;
+import org.springframework.shell.jline.tui.component.message.ShellMessageBuilder;
+import org.springframework.shell.jline.tui.component.view.TerminalUI;
+import org.springframework.shell.jline.tui.component.view.TerminalUIBuilder;
 import org.springframework.shell.jline.tui.component.view.control.ListView;
 import org.springframework.shell.jline.tui.component.view.control.ListView.ItemStyle;
 import org.springframework.shell.jline.tui.component.view.control.ListView.ListViewOpenSelectedItemEvent;
@@ -42,11 +44,35 @@ public class CliQuestionHandler implements QuestionHandler {
           + " be shown and no answer is coming. Carry on with what you know, and say which"
           + " assumption you made.";
 
-  /** Leaves room for the border, the title and the hint line around the options themselves. */
-  private static final int CHROME_ROWS = 5;
+  /** The top and bottom border rows the box draws around the options. */
+  private static final int BORDER_ROWS = 2;
 
   private final CliConsole console;
-  private final ViewComponentBuilder viewComponentBuilder;
+
+  /**
+   * Driven directly rather than through {@code ViewComponent}, which looks like the obvious way to
+   * run one view and is not: it wires the view's event loop but never calls {@link
+   * TerminalUIBuilder}'s {@code TerminalUI.configure}, and {@code configure} is what calls {@code
+   * View.init()} — which is where {@code ListView} registers the key bindings for the arrow keys
+   * and Enter. Built through it, the box drew correctly and then ignored every key, with no way out
+   * but killing the process.
+   */
+  private final TerminalUIBuilder terminalUIBuilder;
+
+  /**
+   * The view currently on screen, so {@link #interrupt()} can take it down. Held because the loop
+   * below owns the terminal while it runs: the runner's Ctrl-C handler has nothing else to act on,
+   * and without this a user who did not want to answer had no way out but killing the process.
+   */
+  private final AtomicReference<TerminalUI> onScreen = new AtomicReference<>();
+
+  /** Takes down the question on screen, if there is one, leaving it unanswered. */
+  public void interrupt() {
+    final var ui = onScreen.get();
+    if (ui != null) {
+      ui.getEventLoop().dispatch(ShellMessageBuilder.ofInterrupt());
+    }
+  }
 
   @Override
   public Map<String, String> handle(final List<Question> questions) {
@@ -76,33 +102,53 @@ public class CliQuestionHandler implements QuestionHandler {
     }
 
     final var labels = options.stream().map(CliQuestionHandler::label).toList();
-    final var view = new ListView<>(labels, ItemStyle.RADIO);
+    // NOCHECK, though RADIO is what a one-of-many question looks like: ListView.enter() dispatches
+    // the event this method waits on only in the NOCHECK style. Under RADIO, Space ticks a box,
+    // Enter does nothing, and there is no event for "the user has decided" at all — the box just
+    // sits there. So the highlighted row is the answer and Enter takes it, which is the shape a
+    // coding agent's selector has anyway.
+    final var view = new ListView<>(labels, ItemStyle.NOCHECK);
     view.setShowBorder(true);
     view.setTitle(question.question());
-    // Height is fixed here rather than left to the component: the view is drawn inline, above the
-    // prompt, so it has to claim exactly the rows it needs and no more — a full-screen box would
-    // scroll the answer the user has just read off the top.
-    view.setRect(0, 0, console.width(), Math.min(options.size() + CHROME_ROWS, console.height()));
 
-    final var component = viewComponentBuilder.build(view);
-    component.setUseTerminalWidth(true);
+    // Above the box rather than inside it: a ListView draws its items and nothing else, and a hint
+    // added as an item would be selectable.
+    console.writeLine(console.dim("  ↑/↓ to move, enter to choose, ctrl-c to skip"));
+
+    final var ui = terminalUIBuilder.build();
+    // Before setRect and setRoot: it is what initialises the view, and an uninitialised one has no
+    // key bindings.
+    ui.configure(view);
+    // The size is fixed here rather than left to the framework: the box is drawn where the cursor
+    // already is, so it has to claim exactly the rows it needs — full screen would scroll the
+    // answer the user has just read off the top.
+    view.setRect(0, 0, console.width(), Math.min(options.size() + BORDER_ROWS, console.height()));
+    // false: not full screen. setRoot also gives the view focus, which is the other half of it
+    // receiving keys.
+    ui.setRoot(view, false);
 
     final var chosen = new AtomicReference<String>();
-    component
-        .getEventLoop()
+    ui.getEventLoop()
         .viewEvents(ListViewOpenSelectedItemEvent.class, view)
         .subscribe(
             event -> {
               chosen.set(String.valueOf(event.args().item()));
-              component.exit();
+              // The only way to end run() below; the loop has no notion of a view being finished.
+              ui.getEventLoop().dispatch(ShellMessageBuilder.ofInterrupt());
             });
-    component.runBlocking();
+    onScreen.set(ui);
+    try {
+      ui.run();
+    } finally {
+      onScreen.set(null);
+    }
 
     final var selected = chosen.get();
     if (selected == null) {
-      // The only way out of the view without choosing is a signal, and the run is about to be torn
-      // down anyway; say so rather than returning a label nobody picked.
-      return CANNOT_ASK;
+      // Interrupted rather than answered. Say so plainly rather than returning a label nobody
+      // picked; the run usually ends here anyway, since Ctrl-C cancels it in the same breath.
+      return "NOT ANSWERED. The user dismissed the question without choosing. Do not ask again and"
+          + " do not guess what they would have said: stop here and end your turn.";
     }
     // Back to the option's own label: what goes to the model should be the wording it offered, not
     // the line that was drawn with the description appended to it.
