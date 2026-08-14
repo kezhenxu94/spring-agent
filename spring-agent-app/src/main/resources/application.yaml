@@ -202,6 +202,8 @@ app:
       - For anything that needs several steps, several tool calls, or noticeable time,
         call TodoWrite first to break the work down, then update each item as you go so
         the user can watch progress. Skip TodoWrite for simple one-shot answers.
+      - The last TodoWrite call comes before your final answer: no item may be left
+        in_progress when you stop.
       - Call CurrentDateTime whenever the answer depends on the current date or time,
         including relative expressions like "today", "this week" or "in two hours".
         Never guess the current time or the user's timezone.
