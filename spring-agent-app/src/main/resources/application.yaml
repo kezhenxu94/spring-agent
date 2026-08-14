@@ -230,7 +230,14 @@ app:
       # Which backend stores conversation history follows app.persistence.type, and it shares that
       # backend's connection: on jdbc the messages land in spring.datasource beside the domain
       # tables. Where the repository itself is configured is spring.ai.chat.memory.repository.*
-      # above. Note that the JDBC repository drops tool-call messages from the history it stores.
+      # above.
+      #
+      # What is stored is the user's message and the model's final answer, on every backend. Tool
+      # calls and their results are not: the tool-calling loop runs inside the chat model, and by
+      # the time MessageChatMemoryAdvisor sees a response it holds the finished reply. So a later
+      # turn replays what the agent said about a command, not the command's raw output. (The JDBC
+      # repository additionally refuses tool messages outright, with a warning, but nothing in this
+      # application hands it any.)
       #
       # How many past messages are replayed to the model on each turn.
       max-messages: 100
