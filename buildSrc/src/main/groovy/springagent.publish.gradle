@@ -17,6 +17,19 @@ publishing {
       pom {
         name = project.name
         url = 'https://github.com/kezhenxu94/spring-agent'
+        licenses {
+          license {
+            name = 'The Apache License, Version 2.0'
+            url = 'https://www.apache.org/licenses/LICENSE-2.0.txt'
+          }
+        }
+        developers {
+          developer {
+            id = 'kezhenxu94'
+            name = 'kezhenxu94'
+            url = 'https://github.com/kezhenxu94'
+          }
+        }
         scm {
           url = 'https://github.com/kezhenxu94/spring-agent'
           connection = 'scm:git:https://github.com/kezhenxu94/spring-agent.git'
