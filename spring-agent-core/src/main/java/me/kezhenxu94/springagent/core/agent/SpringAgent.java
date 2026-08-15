@@ -12,7 +12,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
@@ -47,7 +46,6 @@ import reactor.core.publisher.Flux;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class SpringAgent {
 
   /**
@@ -58,7 +56,6 @@ public class SpringAgent {
       Map.of("threadId", "", "parentId", "", "mentions", "none");
 
   final ChatClient chatClient;
-  final ChatMemoryRepository chatMemoryRepository;
   final SpringAgentProperties appConfiguration;
   final AgentToolsProvider agentToolsProvider;
 
@@ -68,9 +65,39 @@ public class SpringAgent {
    */
   final ObjectProvider<AgentResponseListener> declaredListeners;
 
+  /**
+   * The conversation window, shared by the memory advisor and the note {@link #recording} leaves:
+   * both have to see the same messages, and {@code add} re-reads the repository, so a note written
+   * mid-run is still there when the advisor saves the answer at the end of it.
+   *
+   * <p>Built here rather than taken as a bean, which is not as odd as it looks: Spring AI's
+   * repository auto-configurations are conditional on there being no {@link ChatMemory} bean at all
+   * — declaring one reads to them as an application wiring its own memory, and the Redis repository
+   * quietly gives way to the in-memory one. It is stateless, so one for the life of this bean
+   * serves every run.
+   */
+  private final ChatMemory chatMemory;
+
   private final ConcurrentMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
   private final AtomicInteger inFlight = new AtomicInteger(0);
   private volatile boolean accepting = true;
+
+  public SpringAgent(
+      final ChatClient chatClient,
+      final ChatMemoryRepository chatMemoryRepository,
+      final SpringAgentProperties appConfiguration,
+      final AgentToolsProvider agentToolsProvider,
+      final ObjectProvider<AgentResponseListener> declaredListeners) {
+    this.chatClient = chatClient;
+    this.appConfiguration = appConfiguration;
+    this.agentToolsProvider = agentToolsProvider;
+    this.declaredListeners = declaredListeners;
+    this.chatMemory =
+        MessageWindowChatMemory.builder()
+            .chatMemoryRepository(chatMemoryRepository)
+            .maxMessages(appConfiguration.ai().chatMemory().maxMessages())
+            .build();
+  }
 
   public boolean isAccepting() {
     return accepting;
@@ -278,7 +305,7 @@ public class SpringAgent {
     return questions -> {
       final var answers = delegate.handle(questions);
       try {
-        chatMemory().add(conversationId, List.of(new AssistantMessage(asked(questions))));
+        chatMemory.add(conversationId, List.of(new AssistantMessage(asked(questions))));
       } catch (Exception e) {
         // The questions are in front of the user either way; a missing note costs a repeated ask
         // later, which is not worth failing the run that is asking.
@@ -353,18 +380,6 @@ public class SpringAgent {
     return variables;
   }
 
-  /**
-   * The conversation window, shared by the memory advisor and the note {@link #recording} leaves:
-   * both have to see the same messages, and {@code add} re-reads the repository, so a note written
-   * mid-run is still there when the advisor saves the answer at the end of it.
-   */
-  private ChatMemory chatMemory() {
-    return MessageWindowChatMemory.builder()
-        .chatMemoryRepository(chatMemoryRepository)
-        .maxMessages(appConfiguration.ai().chatMemory().maxMessages())
-        .build();
-  }
-
   private Flux<ChatResponse> rawStream(
       final AgentRequest request,
       final AgentComposition composition,
@@ -380,7 +395,7 @@ public class SpringAgent {
             .build());
     if (request.scenario().conversationMemory()) {
       advisors.add(
-          MessageChatMemoryAdvisor.builder(chatMemory())
+          MessageChatMemoryAdvisor.builder(chatMemory)
               .order(ToolCallingAdvisor.DEFAULT_ORDER + 100)
               .build());
     }
