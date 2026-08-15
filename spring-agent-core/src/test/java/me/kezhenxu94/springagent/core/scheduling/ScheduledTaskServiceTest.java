@@ -61,7 +61,7 @@ class ScheduledTaskServiceTest {
   }
 
   private String fireAndCaptureUserMessage(final String template) {
-    when(springAgent.isAccepting()).thenReturn(true);
+    when(springAgent.accepting()).thenReturn(true);
     final var service =
         new ScheduledTaskService(
             springAgent, repo, properties(template), mock(ThreadPoolTaskScheduler.class));

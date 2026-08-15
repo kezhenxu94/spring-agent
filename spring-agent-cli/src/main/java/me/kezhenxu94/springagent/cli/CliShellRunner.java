@@ -130,7 +130,7 @@ public class CliShellRunner implements ShellRunner {
   }
 
   private void ask(final String text) {
-    if (!springAgent.isAccepting()) {
+    if (!springAgent.accepting()) {
       console.writeLine(console.yellow(messages.get("shutting-down")));
       session.quit();
       return;

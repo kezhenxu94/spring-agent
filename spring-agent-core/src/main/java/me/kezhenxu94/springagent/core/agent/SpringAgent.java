@@ -12,6 +12,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
@@ -66,7 +68,6 @@ public class SpringAgent {
    * the real one.
    */
   final ChatMemory chatMemory;
-
   final SpringAgentProperties appConfiguration;
   final AgentToolsProvider agentToolsProvider;
 
@@ -84,11 +85,9 @@ public class SpringAgent {
 
   private final ConcurrentMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
   private final AtomicInteger inFlight = new AtomicInteger(0);
-  private volatile boolean accepting = true;
 
-  public boolean isAccepting() {
-    return accepting;
-  }
+  @Getter
+  private volatile boolean accepting = true;
 
   public boolean cancel(final String requestId) {
     final var flag = cancelFlags.get(requestId);

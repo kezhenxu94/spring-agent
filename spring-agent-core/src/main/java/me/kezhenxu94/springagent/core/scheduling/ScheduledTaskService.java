@@ -86,7 +86,7 @@ public class ScheduledTaskService {
   }
 
   void fire(final ScheduledTask task) {
-    if (!springAgent.isAccepting()) {
+    if (!springAgent.accepting()) {
       log.info("Shutting down, skipping scheduled task fire: {}", task.id());
       return;
     }
