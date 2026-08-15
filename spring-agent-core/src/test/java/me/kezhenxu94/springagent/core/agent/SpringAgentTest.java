@@ -48,7 +48,7 @@ import reactor.core.publisher.Flux;
 
 /**
  * Covers what {@link SpringAgent#fire} took over from its callers: assembling the run's identity,
- * and releasing the MCP clients exactly once however the run ends.
+ * recording what the agent asked, and releasing the MCP clients exactly once however the run ends.
  */
 class SpringAgentTest {
 

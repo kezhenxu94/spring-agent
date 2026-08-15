@@ -58,14 +58,9 @@ public class SpringAgent {
   final ChatClient chatClient;
 
   /**
-   * The conversation window, shared by the memory advisor and the note {@link #recording} leaves:
-   * both have to see the same messages, and {@code add} re-reads the repository, so a note written
-   * mid-run is still there when the advisor saves the answer at the end of it.
-   *
-   * <p>Spring AI's own, over whichever repository the backend wired, with the window it sets. The
-   * size is deliberately not configurable here: a bean of this type declared by the application is
-   * what Spring AI's repository auto-configurations back off from, and the in-memory repository
-   * then quietly stands in for the real one.
+   * Spring AI's own, deliberately: a {@link ChatMemory} bean declared by the application is what
+   * its repository auto-configurations back off from, leaving the in-memory repository in place of
+   * the real one.
    */
   final ChatMemory chatMemory;
 
@@ -271,14 +266,9 @@ public class SpringAgent {
   /**
    * The handler, plus a note in the conversation saying the questions were put to the user.
    *
-   * <p>Asking is a tool call, and a tool call is exactly what several chat memory repositories
-   * cannot store: {@code JdbcChatMemoryRepository} drops tool responses and any assistant message
-   * carrying tool calls outright, and the window replayed to the model is bounded besides. So a
-   * later run replaying the conversation sees the user's request and no sign that anything was ever
-   * asked about it — and asks the same questions again, and again each run after that.
-   *
-   * <p>The note is a plain assistant message, which every repository keeps, so what the tool call
-   * would have said survives in a form the next replay can see.
+   * <p>A plain assistant message because the tool call is not kept: {@code
+   * JdbcChatMemoryRepository} drops tool responses and assistant messages carrying tool calls, so a
+   * later run would replay the request with no sign anything had been asked — and ask again.
    */
   private QuestionHandler recording(final AgentRequest request, final QuestionHandler delegate) {
     final var conversationId = request.conversationId();
@@ -290,15 +280,14 @@ public class SpringAgent {
       try {
         chatMemory.add(conversationId, List.of(new AssistantMessage(asked(questions))));
       } catch (Exception e) {
-        // The questions are in front of the user either way; a missing note costs a repeated ask
-        // later, which is not worth failing the run that is asking.
+        // A missing note costs a repeated ask later, which is not worth failing the run over.
         log.warn("Failed to record the questions put to conversation {}", conversationId, e);
       }
       return answers;
     };
   }
 
-  /** The note itself, addressed to the model that will read it back on a later run. */
+  /** The note itself, addressed to the model that reads it back on a later run. */
   private static String asked(final List<Question> questions) {
     final var note =
         new StringBuilder(
