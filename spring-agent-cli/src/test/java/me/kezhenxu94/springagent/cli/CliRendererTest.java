@@ -26,6 +26,10 @@ class CliRendererTest {
 
   @Mock CliConsole console;
 
+  // The real English bundle, not a mock: these assert what a user sees, and a key that went missing
+  // from it should fail them.
+  private final CliMessages messages = CliMessagesTest.english();
+
   private final StringBuilder written = new StringBuilder();
   private CliRenderer renderer;
 
@@ -42,7 +46,7 @@ class CliRendererTest {
     // argument: what these tests assert is the text and its layout, not the escape sequences.
     when(console.green(anyString())).thenAnswer(passThrough());
     when(console.width()).thenReturn(80);
-    renderer = new CliRenderer(console);
+    renderer = new CliRenderer(console, messages);
   }
 
   private static org.mockito.stubbing.Answer<String> passThrough() {
@@ -200,7 +204,7 @@ class CliRendererTest {
   void usesPlainMarkersWithoutATerminal() {
     when(console.interactive()).thenReturn(false);
     when(console.green(anyString())).thenAnswer(passThrough());
-    final var plain = new CliRenderer(console);
+    final var plain = new CliRenderer(console, messages);
 
     plain.onContent("hello");
     plain.onFinished(AgentOutcome.COMPLETED);

@@ -16,7 +16,9 @@ class CliQuestionHandlerTest {
 
   private final CliConsole console = mock(CliConsole.class);
   private final TerminalUIBuilder terminalUIBuilder = mock(TerminalUIBuilder.class);
-  private final CliQuestionHandler handler = new CliQuestionHandler(console, terminalUIBuilder);
+  private final CliMessages messages = mock(CliMessages.class);
+  private final CliQuestionHandler handler =
+      new CliQuestionHandler(console, messages, terminalUIBuilder);
 
   @Test
   void answersEveryQuestionWhenThereIsNoTerminal() {

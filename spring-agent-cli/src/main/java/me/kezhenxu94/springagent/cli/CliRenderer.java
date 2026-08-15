@@ -39,6 +39,7 @@ public class CliRenderer implements AgentResponseListener, TodoEventHandler {
   private static final String INDENT = "  ";
 
   private final CliConsole console;
+  private final CliMessages messages;
   private final boolean glyphs;
 
   /** Released by {@link #onFinished}, so the prompt does not come back mid-answer. */
@@ -65,8 +66,9 @@ public class CliRenderer implements AgentResponseListener, TodoEventHandler {
 
   private volatile AgentOutcome outcome;
 
-  public CliRenderer(final CliConsole console) {
+  public CliRenderer(final CliConsole console, final CliMessages messages) {
     this.console = console;
+    this.messages = messages;
     this.glyphs = console.interactive();
   }
 
@@ -80,7 +82,7 @@ public class CliRenderer implements AgentResponseListener, TodoEventHandler {
 
   @Override
   public void onSubscribe() {
-    console.startSpinner("Thinking...");
+    console.startSpinner(messages.get("thinking"));
   }
 
   @Override
@@ -205,7 +207,7 @@ public class CliRenderer implements AgentResponseListener, TodoEventHandler {
     if (lines.size() > MAX_TOOL_RESULT_LINES) {
       write(
           "    "
-              + console.dim("… " + (lines.size() - MAX_TOOL_RESULT_LINES) + " more lines")
+              + console.dim(messages.get("more-lines", lines.size() - MAX_TOOL_RESULT_LINES))
               + "\n");
     }
     bulletOwed = true;
@@ -261,7 +263,7 @@ public class CliRenderer implements AgentResponseListener, TodoEventHandler {
     // would be noise on every turn.
     if (outcome == AgentOutcome.CANCELLED) {
       newBlock();
-      write(console.yellow(marker("●", "*") + " Stopped.") + "\n");
+      write(console.yellow(marker("●", "*") + " " + messages.get("stopped")) + "\n");
     } else if (!atLineStart) {
       write("\n");
     }

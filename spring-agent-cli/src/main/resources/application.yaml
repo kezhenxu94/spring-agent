@@ -1,4 +1,8 @@
 spring:
+  messages:
+    # English rather than the operating system's language when the user's locale has no bundle:
+    # the fallback is otherwise whatever the desktop is set to, which is rarely what they asked for.
+    fallback-to-system-locale: false
   main:
     banner-mode: off
     # Belt and braces with SpringAgentCliApplication's builder: the property also covers a context
@@ -116,6 +120,9 @@ app:
     # Colour and the marker glyphs. Turned off automatically when the terminal is dumb or output is
     # piped, so this is only for forcing plain text on a terminal that claims to support more.
     color: ${SPRING_AGENT_COLOR:true}
+    # Which language the command line speaks. Defaults to the operating system's; en and zh_CN ship
+    # with it, and any other is a messages_xx.properties on the classpath away.
+    locale: ${SPRING_AGENT_LOCALE:}
   persistence:
     # The only backend this module depends on. Left explicit rather than inferred so the value is
     # visible next to the datasource it uses.

@@ -22,10 +22,11 @@ public class CliRunListener implements AgentResponseListener {
 
   private final CliConsole console;
   private final CliQuestionHandler questionHandler;
+  private final CliMessages messages;
 
   @Override
   public void onStart(final AgentRunRegistry registry) {
-    final var renderer = new CliRenderer(console);
+    final var renderer = new CliRenderer(console, messages);
     registry.addResponseListener(renderer);
     registry.addTodoEventHandler(renderer);
     registry.addToolContext(CliRenderer.TOOL_CONTEXT_KEY.key(), renderer);

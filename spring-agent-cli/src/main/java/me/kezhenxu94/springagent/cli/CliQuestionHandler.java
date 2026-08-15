@@ -41,10 +41,11 @@ public class CliQuestionHandler implements QuestionHandler {
           + " be shown and no answer is coming. Carry on with what you know, and say which"
           + " assumption you made.";
 
-  /** The top and bottom border rows the box draws around the options. */
-  private static final int BORDER_ROWS = 2;
+  /** Lines the options up under the question, matching what CliRenderer indents an answer by. */
+  private static final String INDENT = "  ";
 
   private final CliConsole console;
+  private final CliMessages messages;
 
   /**
    * Driven directly rather than through {@code ViewComponent}, which looks like the way to run one
@@ -100,18 +101,25 @@ public class CliQuestionHandler implements QuestionHandler {
     // the event this method waits on only in the NOCHECK style, and under RADIO there is no event
     // for "the user has decided" at all. So the highlighted row is the answer and Enter takes it.
     final var view = new ListView<>(labels, ItemStyle.NOCHECK);
-    view.setShowBorder(true);
-    view.setTitle(question.question());
+    // No border, and so no title either: the framework lays a border out by counting characters,
+    // which a CJK label overruns because it prints two columns wide. Both are written here instead,
+    // where the terminal wraps them itself.
+    view.setShowBorder(false);
 
-    // Above the box rather than inside it: a hint added as an item would be selectable.
-    console.writeLine(console.dim("  ↑/↓ to move, enter to choose, ctrl-c to skip"));
+    console.writeLine("");
+    console.writeLine(INDENT + console.bold(question.question()));
+    console.writeLine(console.dim(INDENT + messages.get("question-hint")));
 
     final var ui = terminalUIBuilder.build();
     // Before setRect and setRoot: this is what initialises the view.
     ui.configure(view);
-    // The box is drawn where the cursor already is, so it claims exactly the rows it needs — full
-    // screen would scroll the answer the user has just read off the top.
-    view.setRect(0, 0, console.width(), Math.min(options.size() + BORDER_ROWS, console.height()));
+    // Drawn where the cursor already is, so it claims exactly the rows it needs — full screen
+    // would scroll the answer the user has just read off the top.
+    view.setRect(
+        INDENT.length(),
+        0,
+        console.width() - INDENT.length(),
+        Math.min(options.size(), console.height()));
     // false: not full screen. setRoot also focuses the view, the other half of it receiving keys.
     ui.setRoot(view, false);
 

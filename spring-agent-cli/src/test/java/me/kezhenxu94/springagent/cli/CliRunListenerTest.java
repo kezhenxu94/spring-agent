@@ -15,7 +15,8 @@ class CliRunListenerTest {
 
   private final CliConsole console = mock(CliConsole.class);
   private final CliQuestionHandler questionHandler = mock(CliQuestionHandler.class);
-  private final CliRunListener listener = new CliRunListener(console, questionHandler);
+  private final CliMessages messages = mock(CliMessages.class);
+  private final CliRunListener listener = new CliRunListener(console, questionHandler, messages);
 
   @Test
   void attachesEverythingAChatRunNeeds() {

@@ -53,6 +53,7 @@ public class CliShellRunner implements ShellRunner {
   private final CliSession session;
   private final CliProperties properties;
   private final CliQuestionHandler questionHandler;
+  private final CliMessages messages;
 
   /** The latch the loop is blocked on, so a second Ctrl-C can release it. Null between turns. */
   private final AtomicReference<CountDownLatch> waiting = new AtomicReference<>();
@@ -103,7 +104,7 @@ public class CliShellRunner implements ShellRunner {
     if (!console.interactive()) {
       return;
     }
-    console.writeLine(console.dim("spring-agent · type your question, or /help for commands"));
+    console.writeLine(console.dim(messages.get("greeting")));
   }
 
   /** Hands the line to Spring Shell, so its registry, parser and completion do the work. */
@@ -115,8 +116,8 @@ public class CliShellRunner implements ShellRunner {
     final var command = commandRegistry.getCommandByName(parsed.commandName());
     if (command == null) {
       console.writeLine(
-          console.red("Unknown command: " + COMMAND_PREFIX + parsed.commandName())
-              + console.dim("  (try " + COMMAND_PREFIX + "help)"));
+          console.red(messages.get("unknown-command", COMMAND_PREFIX + parsed.commandName()))
+              + console.dim(messages.get("unknown-command-hint", COMMAND_PREFIX + "help")));
       return;
     }
     try {
@@ -130,7 +131,7 @@ public class CliShellRunner implements ShellRunner {
 
   private void ask(final String text) {
     if (!springAgent.isAccepting()) {
-      console.writeLine(console.yellow("Shutting down."));
+      console.writeLine(console.yellow(messages.get("shutting-down")));
       session.quit();
       return;
     }
@@ -179,7 +180,7 @@ public class CliShellRunner implements ShellRunner {
       // Cancelling is cooperative — the run stops at the next thing it emits — so a run that has
       // stopped emitting cannot be cancelled at all, and the wait would never end.
       log.warn("Giving up waiting on run {} after a second interrupt", runId);
-      console.writeLine(console.yellow("\nStopped waiting. The run may still be finishing."));
+      console.writeLine(console.yellow("\n" + messages.get("stopped-waiting")));
       latch.countDown();
       return;
     }
