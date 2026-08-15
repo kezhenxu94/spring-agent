@@ -47,6 +47,8 @@ public class CliConsole {
             return thread;
           });
 
+  private volatile Runnable interruptAction;
+
   private ScheduledFuture<?> spinner;
   private int spinnerWidth;
 
@@ -55,9 +57,34 @@ public class CliConsole {
     // The property can only take styling away, never add it: on a dumb terminal, or when output is
     // a pipe, the escape sequences would be printed as literal rubbish rather than interpreted.
     this.styled = properties.color() && interactive();
-    // JLine only tracks the window size while something is handling the signal, so without this
-    // width() keeps returning whatever the terminal was when the process started.
+    installSignalHandlers();
+  }
+
+  /** What Ctrl-C should do. Set once by {@link CliShellRunner}, which owns the run it cancels. */
+  public void onInterrupt(final Runnable action) {
+    this.interruptAction = action;
+    installSignalHandlers();
+  }
+
+  /**
+   * (Re)claims the signals this application handles.
+   *
+   * <p>Called again after anything that runs its own terminal loop, because {@code Terminal.handle}
+   * replaces the handler rather than adding to it and Spring Shell's {@code TerminalUI} installs
+   * its own without putting the previous ones back. Left alone, the first question the agent asked
+   * would cost the rest of the session its Ctrl-C and its resize handling.
+   */
+  public void installSignalHandlers() {
+    // JLine only tracks the window size while something handles the signal; without this, width()
+    // keeps returning whatever the terminal was when the process started.
     terminal.handle(Terminal.Signal.WINCH, signal -> terminal.getSize());
+    terminal.handle(
+        Terminal.Signal.INT,
+        signal -> {
+          if (interruptAction != null) {
+            interruptAction.run();
+          }
+        });
   }
 
   /**

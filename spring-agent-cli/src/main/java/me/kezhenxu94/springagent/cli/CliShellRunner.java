@@ -66,7 +66,7 @@ public class CliShellRunner implements ShellRunner {
     // Ctrl-C while the agent is working cancels that run rather than killing the process, which is
     // what a user pressing it means: the answer is going the wrong way, not the session is over.
     // At an idle prompt JLine raises UserInterruptException instead and nothing arrives here.
-    terminal.handle(Terminal.Signal.INT, signal -> cancelActiveRun());
+    console.onInterrupt(this::cancelActiveRun);
 
     // Registered by Spring Shell itself rather than as a conditional bean, so unlike the other
     // built-ins (see spring.shell.command.* in application.yaml) no property takes it away. It

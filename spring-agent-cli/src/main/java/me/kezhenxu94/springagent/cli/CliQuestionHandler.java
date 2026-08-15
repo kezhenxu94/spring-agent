@@ -113,15 +113,16 @@ public class CliQuestionHandler implements QuestionHandler {
     final var ui = terminalUIBuilder.build();
     // Before setRect and setRoot: this is what initialises the view.
     ui.configure(view);
-    // Drawn where the cursor already is, so it claims exactly the rows it needs — full screen
-    // would scroll the answer the user has just read off the top.
-    view.setRect(
-        INDENT.length(),
-        0,
-        console.width() - INDENT.length(),
-        Math.min(options.size(), console.height()));
+    sizeToTerminal(view, options.size());
     // false: not full screen. setRoot also focuses the view, the other half of it receiving keys.
     ui.setRoot(view, false);
+
+    // The framework redraws on a resize but keeps the rectangle it was given, so the options are
+    // repainted at the old width into the new screen and the row repeats across it.
+    ui.getEventLoop()
+        .signalEvents()
+        .filter("WINCH"::equals)
+        .subscribe(signal -> sizeToTerminal(view, options.size()));
 
     final var chosen = new AtomicReference<String>();
     ui.getEventLoop()
@@ -137,6 +138,8 @@ public class CliQuestionHandler implements QuestionHandler {
       ui.run();
     } finally {
       onScreen.set(null);
+      // TerminalUI took the signals over and does not give them back.
+      console.installSignalHandlers();
     }
 
     final var selected = chosen.get();
@@ -149,6 +152,15 @@ public class CliQuestionHandler implements QuestionHandler {
     // the line that was drawn with the description appended to it.
     final var index = labels.indexOf(selected);
     return index >= 0 ? options.get(index).label() : selected;
+  }
+
+  /**
+   * Claims exactly the rows the options need, indented to line up under the question. Not full
+   * screen, which would scroll the answer the user has just read off the top.
+   */
+  private void sizeToTerminal(final ListView<String> view, final int options) {
+    view.setRect(
+        INDENT.length(), 0, console.width() - INDENT.length(), Math.min(options, console.height()));
   }
 
   /** The option, and its explanation when it has one, on the single line a list row gives us. */

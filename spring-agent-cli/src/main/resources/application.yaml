@@ -128,9 +128,9 @@ app:
     # visible next to the datasource it uses.
     type: jdbc
   ai:
-    # No system-prompt here: core's DEFAULT_SYSTEM_PROMPT already suits a terminal, and stating
-    # one would only restate it. Set app.ai.system-prompt to give the agent a persona, house rules
-    # or domain knowledge of its own.
+    # Blank takes core's DEFAULT_SYSTEM_PROMPT, which is written to suit any surface. Set this to
+    # give the agent a persona, house rules or domain knowledge of its own.
+    system-prompt: ""
     chat-memory:
       # How many past messages are replayed to the model on each turn.
       #
