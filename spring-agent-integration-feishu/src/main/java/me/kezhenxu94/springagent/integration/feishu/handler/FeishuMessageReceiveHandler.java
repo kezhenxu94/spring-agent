@@ -97,7 +97,7 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
         userOpenId,
         message.getContent());
 
-    if (!springAgent.isAccepting()) {
+    if (!springAgent.accepting()) {
       throw new IllegalStateException("Shutting down, ignoring message: " + messageId);
     }
 

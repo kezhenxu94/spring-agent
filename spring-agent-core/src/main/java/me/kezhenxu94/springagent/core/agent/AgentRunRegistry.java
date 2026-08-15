@@ -53,8 +53,9 @@ public final class AgentRunRegistry {
    * Offers a way to put questions to the user, which is what decides whether the agent is given the
    * tool to ask them at all: a run nobody registers one for cannot ask.
    *
-   * <p>Unlike the handlers above these do not fan out — a question has one answer — so the first
-   * registered wins and the rest are ignored.
+   * <p>These fan out as the handlers above do: every channel taking part puts the questions to the
+   * user, so an answer can come back from whichever of them the user is looking at. One unanswered
+   * ask per conversation is enforced by {@code SpringAgent} ahead of the fan-out, not here.
    */
   public void addQuestionHandler(final QuestionHandler handler) {
     questionHandlers.add(handler);
