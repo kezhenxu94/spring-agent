@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!--
-  Selected by LOG_APPENDER; see logback.xml. Not the default here, unlike in spring-agent-app: this
-  writes into the same stream the agent's answer streams to, so it is for debugging the command line
-  and nothing else.
--->
-<included>
-    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
-</included>

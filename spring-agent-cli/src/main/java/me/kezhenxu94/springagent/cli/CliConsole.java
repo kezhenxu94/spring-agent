@@ -10,6 +10,7 @@ import me.kezhenxu94.springagent.cli.config.CliProperties;
 import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
+import org.jline.utils.InfoCmp;
 import org.springframework.stereotype.Component;
 
 /**
@@ -24,6 +25,9 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class CliConsole {
+
+  private static final int DEFAULT_WIDTH = 80;
+  private static final int DEFAULT_HEIGHT = 24;
 
   private static final String[] SPINNER_FRAMES = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
   private static final long SPINNER_INTERVAL_MS = 80;
@@ -51,6 +55,9 @@ public class CliConsole {
     // The property can only take styling away, never add it: on a dumb terminal, or when output is
     // a pipe, the escape sequences would be printed as literal rubbish rather than interpreted.
     this.styled = properties.color() && interactive();
+    // JLine only tracks the window size while something is handling the signal, so without this
+    // width() keeps returning whatever the terminal was when the process started.
+    terminal.handle(Terminal.Signal.WINCH, signal -> terminal.getSize());
   }
 
   /**
@@ -65,16 +72,29 @@ public class CliConsole {
     return terminal;
   }
 
+  /**
+   * The terminal's current width, re-read on every call so a window resized mid-answer wraps the
+   * rest of it to the new width. A terminal that cannot say how big it is reports 0, which would
+   * make every layout calculation negative.
+   */
   public int width() {
     final var width = terminal.getWidth();
-    // A terminal that cannot say how big it is reports 0, and every layout calculation from that
-    // point on would be negative.
-    return width > 0 ? width : 80;
+    return width > 0 ? width : DEFAULT_WIDTH;
   }
 
   public int height() {
     final var height = terminal.getHeight();
-    return height > 0 ? height : 24;
+    return height > 0 ? height : DEFAULT_HEIGHT;
+  }
+
+  /** Wipes the screen and puts the cursor back at the top. */
+  public synchronized void clearScreen() {
+    if (!interactive()) {
+      return;
+    }
+    stopSpinnerLocked();
+    terminal.puts(InfoCmp.Capability.clear_screen);
+    terminal.flush();
   }
 
   /** Writes {@code text} as it stands, with no trailing newline of its own. */

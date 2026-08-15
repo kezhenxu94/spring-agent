@@ -2,12 +2,13 @@ package me.kezhenxu94.springagent.cli;
 
 import java.util.Comparator;
 import java.util.stream.Collectors;
+import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
-import me.kezhenxu94.springagent.core.tools.AgentTool;
-import org.springframework.context.ApplicationContext;
+import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
+import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
+import org.springframework.ai.model.openai.autoconfigure.OpenAiCommonProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.env.Environment;
 import org.springframework.shell.core.command.Command;
 import org.springframework.shell.core.command.CommandRegistry;
 
@@ -53,11 +54,10 @@ public class CliCommands {
         .name("clear")
         .group(messages.get("command-group"))
         .description(messages.get("command-clear"))
-        // Not the terminal's scrollback, which the user may still want to read: what this clears is
-        // the chat memory the next turn would have replayed.
         .execute(
             context -> {
               session.clear();
+              console.clearScreen();
               context.outputWriter().println(console.dim(messages.get("new-conversation")));
             });
   }
@@ -81,7 +81,10 @@ public class CliCommands {
 
   @Bean
   Command cliModelCommand(
-      final Environment environment, final CliConsole console, final CliMessages messages) {
+      final OpenAiChatProperties chatProperties,
+      final OpenAiCommonProperties connectionProperties,
+      final CliConsole console,
+      final CliMessages messages) {
     return Command.builder()
         .name("model")
         .group(messages.get("command-group"))
@@ -89,27 +92,31 @@ public class CliCommands {
         .execute(
             context -> {
               final var writer = context.outputWriter();
-              writer.println(
-                  label(console, messages, "label-model")
-                      + environment.getProperty("spring.ai.openai.chat.model", "-"));
-              writer.println(
-                  label(console, messages, "label-base")
-                      + environment.getProperty("spring.ai.openai.base-url", "-"));
+              writer.println(label(console, messages, "label-model") + chatProperties.getModel());
+              // The chat properties override the connection ones when set, which is the order
+              // Spring AI itself resolves them in.
+              final var baseUrl =
+                  chatProperties.getBaseUrl() == null || chatProperties.getBaseUrl().isBlank()
+                      ? connectionProperties.getBaseUrl()
+                      : chatProperties.getBaseUrl();
+              writer.println(label(console, messages, "label-base") + baseUrl);
             });
   }
 
   @Bean
-  Command cliToolsCommand(final ApplicationContext applicationContext, final CliMessages messages) {
+  Command cliToolsCommand(final AgentToolsProvider agentToolsProvider, final CliMessages messages) {
     return Command.builder()
         .name("tools")
         .group(messages.get("command-group"))
         .description(messages.get("command-tools"))
-        // The bean names, not the individual @Tool methods: which of those a turn is offered is
-        // decided per request by the tool-search advisor, so a fixed list here would be a lie.
+        // The tool sets a chat run is composed from, asked of the provider that composes them.
+        // Not the individual @Tool methods: which of those a turn is offered is narrowed per
+        // request by the tool-search advisor, so a fixed list of them would be a lie.
         .execute(
             context -> {
               final var names =
-                  applicationContext.getBeansWithAnnotation(AgentTool.class).keySet().stream()
+                  agentToolsProvider.resolveScenarioTools(AgentScenario.CHAT).stream()
+                      .map(tool -> tool.getClass().getSimpleName())
                       .sorted()
                       .collect(Collectors.joining("\n  "));
               context.outputWriter().println("  " + names);

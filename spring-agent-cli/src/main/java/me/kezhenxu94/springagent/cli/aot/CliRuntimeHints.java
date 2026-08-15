@@ -18,8 +18,7 @@ public class CliRuntimeHints implements RuntimeHintsRegistrar {
         .resources()
         // Boot's defaults and console-appender definitions.
         .registerPattern("org/springframework/boot/logging/logback/*.xml")
-        // Ours — both, since LOG_APPENDER picks between them when the binary runs.
-        .registerPattern("logback-appender-*.xml")
+        .registerPattern("logback-appender-FILE.xml")
         // The message bundles, whose locale is only known when the binary runs.
         .registerPattern("messages*.properties");
   }
