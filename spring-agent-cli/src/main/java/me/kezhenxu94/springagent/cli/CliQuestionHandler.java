@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.tools.QuestionNotAnsweredException;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springframework.shell.jline.tui.component.message.ShellMessageBuilder;
@@ -31,15 +32,6 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class CliQuestionHandler implements QuestionHandler {
-
-  /**
-   * Returned when there is no terminal to draw on. The agent has to be told plainly that no answer
-   * is coming, or it waits for one that cannot arrive.
-   */
-  private static final String CANNOT_ASK =
-      "COULD NOT ASK. There is no interactive terminal on this session, so the question could not"
-          + " be shown and no answer is coming. Carry on with what you know, and say which"
-          + " assumption you made.";
 
   /** Lines the options up under the question, matching what CliRenderer indents an answer by. */
   private static final String INDENT = "  ";
@@ -75,8 +67,10 @@ public class CliQuestionHandler implements QuestionHandler {
       return Map.of();
     }
     if (!console.interactive()) {
+      // Thrown rather than answered: the caller counts the channels that managed to put the
+      // questions somewhere, and tells the model that none did.
       log.info("Not asking {} question(s): no interactive terminal", questions.size());
-      return answerEach(questions, CANNOT_ASK);
+      throw new IllegalStateException("No interactive terminal to draw the question on");
     }
 
     final var answers = new LinkedHashMap<String, String>();
@@ -93,7 +87,7 @@ public class CliQuestionHandler implements QuestionHandler {
     if (options.isEmpty()) {
       // The tool's own validation should have rejected this, but a question with nothing to choose
       // between would otherwise draw an empty box the user cannot get out of.
-      return CANNOT_ASK;
+      throw new IllegalStateException("Question has no options to choose between");
     }
 
     final var labels = options.stream().map(CliQuestionHandler::label).toList();
@@ -145,8 +139,9 @@ public class CliQuestionHandler implements QuestionHandler {
     final var selected = chosen.get();
     if (selected == null) {
       // Interrupted rather than answered, so say so instead of returning a label nobody picked.
-      return "NOT ANSWERED. The user dismissed the question without choosing. Do not ask again and"
-          + " do not guess what they would have said: stop here and end your turn.";
+      // A decided outcome, not a channel that failed, so it carries its own note through: the
+      // questions still standing behind this one go down with it, which is what Ctrl-C meant.
+      throw new QuestionNotAnsweredException(messages.get("question-dismissed"));
     }
     // Back to the option's own label: what goes to the model should be the wording it offered, not
     // the line that was drawn with the description appended to it.
@@ -169,18 +164,5 @@ public class CliQuestionHandler implements QuestionHandler {
       return option.label();
     }
     return option.label() + " — " + option.description();
-  }
-
-  /**
-   * The tool validates that every question it was given comes back with a value, so each gets the
-   * same one rather than a single note that would fail that check.
-   */
-  private static Map<String, String> answerEach(
-      final List<Question> questions, final String value) {
-    final var answers = new LinkedHashMap<String, String>();
-    for (final var question : questions) {
-      answers.put(question.question(), value);
-    }
-    return answers;
   }
 }

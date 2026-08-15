@@ -31,6 +31,10 @@ import org.springframework.context.annotation.Conditional;
 @Conditional(PersistenceBackendCondition.class)
 public @interface ConditionalOnPersistenceBackend {
 
-  /** The backend the annotated configuration belongs to. */
-  PersistenceProperties.Type value();
+  /**
+   * The backends the annotated configuration belongs to; it matches when the selected one is among
+   * them. More than one is for what several backends have in common rather than for a backend's own
+   * wiring — a workaround for a limitation two of them share, say.
+   */
+  PersistenceProperties.Type[] value();
 }

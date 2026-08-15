@@ -1,12 +1,14 @@
 package me.kezhenxu94.springagent.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
 import java.util.List;
+import me.kezhenxu94.springagent.core.tools.QuestionNotAnsweredException;
 import org.junit.jupiter.api.Test;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question.Option;
@@ -21,19 +23,18 @@ class CliQuestionHandlerTest {
       new CliQuestionHandler(console, messages, terminalUIBuilder);
 
   @Test
-  void answersEveryQuestionWhenThereIsNoTerminal() {
+  void saysItCouldNotAskWhenThereIsNoTerminal() {
     when(console.interactive()).thenReturn(false);
     final var questions =
         List.of(
             question("Which namespace?", "prod-a", "prod-b"),
             question("Restart now?", "yes", "no"));
 
-    final var answers = handler.handle(questions);
-
-    // The tool rejects a result that does not answer every question it was given, so a single note
-    // would fail its validation however truthful it is.
-    assertThat(answers).hasSize(2).containsKeys("Which namespace?", "Restart now?");
-    assertThat(answers.values()).allSatisfy(value -> assertThat(value).startsWith("COULD NOT ASK"));
+    // Thrown rather than answered: SpringAgent counts the channels that managed to put the
+    // questions somewhere, and this one did not.
+    assertThatThrownBy(() -> handler.handle(questions))
+        .isInstanceOf(IllegalStateException.class)
+        .isNotInstanceOf(QuestionNotAnsweredException.class);
   }
 
   @Test
@@ -45,18 +46,20 @@ class CliQuestionHandlerTest {
     await()
         .atMost(Duration.ofSeconds(5))
         .untilAsserted(
-            () -> assertThat(handler.handle(List.of(question("Go?", "y", "n")))).hasSize(1));
+            () ->
+                assertThatThrownBy(() -> handler.handle(List.of(question("Go?", "y", "n"))))
+                    .isInstanceOf(IllegalStateException.class));
   }
 
   @Test
   void saysSoWhenAQuestionOffersNothingToChoose() {
     when(console.interactive()).thenReturn(true);
 
-    final var answers = handler.handle(List.of(new Question("Empty?", "Empty", List.of(), false)));
-
     // Otherwise this draws a box with no rows, which cannot be answered and cannot be left.
-    assertThat(answers).hasSize(1);
-    assertThat(answers.get("Empty?")).startsWith("COULD NOT ASK");
+    assertThatThrownBy(
+            () -> handler.handle(List.of(new Question("Empty?", "Empty", List.of(), false))))
+        .isInstanceOf(IllegalStateException.class)
+        .isNotInstanceOf(QuestionNotAnsweredException.class);
   }
 
   @Test

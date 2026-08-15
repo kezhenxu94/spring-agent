@@ -2,7 +2,6 @@ package me.kezhenxu94.springagent.integration.feishu.handler;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -25,11 +24,10 @@ import tools.jackson.databind.json.JsonMapper;
  * take an hour, or forget entirely.
  *
  * <p>So nothing waits. The questions go onto the card, a row records everything needed to pick the
- * conversation back up, and the run ends normally, with a note in chat memory saying what was asked
- * — see {@code SpringAgent.recording}. Whenever the answer arrives, {@link
- * FeishuQuestionAnswerHandler} starts a fresh run on the same conversation, which replays that
- * memory and carries on. An answer after a restart is no different from an answer after five
- * seconds.
+ * conversation back up, and the run ends normally. Whenever the answer arrives, {@link
+ * FeishuQuestionAnswerHandler} starts a fresh run on the same conversation, carrying the questions
+ * and the answers in as a new user message. An answer after a restart is no different from an
+ * answer after five seconds.
  *
  * <p>Per run rather than a bean: the tool's handler interface is handed nothing but the questions,
  * so which conversation they belong to has to be captured when the handler is built.
@@ -37,17 +35,6 @@ import tools.jackson.databind.json.JsonMapper;
 @Slf4j
 @RequiredArgsConstructor
 public class FeishuQuestionHandler implements QuestionHandler {
-
-  /**
-   * Stands in for the answer the tool expects, since there is not one yet. The tool wraps whatever
-   * comes back in "User has answered your questions", which is untrue here and cannot be changed
-   * from outside the library — so the value says plainly that it is not an answer, and what to do
-   * instead.
-   */
-  private static final String PENDING =
-      "NOT ANSWERED YET. The question has been put to the user, who may take a long time to answer"
-          + " or may never answer. Do not guess an answer and do not act as if one was given: stop"
-          + " here and end your turn. You will be started again with their answer if it comes.";
 
   private final AgentRequest request;
   private final FeishuCardUpdater cardUpdater;
@@ -83,8 +70,13 @@ public class FeishuQuestionHandler implements QuestionHandler {
       // Nothing to answer means nothing will ever answer it; leaving the row PENDING would only
       // block the next typed reply from being taken as the answer to something.
       pendingQuestionRepo.updateStatus(id, PendingQuestion.Status.EXPIRED);
-      log.warn("Could not put questions to user {}: cardId={}", request.userId(), cardId);
-      return failed(questions);
+      // Thrown rather than reported, because failing to put the questions anywhere is exactly what
+      // the caller counts to decide whether the ask reached the user on any channel at all.
+      throw new IllegalStateException(
+          "Could not insert the question form into card "
+              + cardId
+              + " for user "
+              + request.userId());
     }
 
     log.info(
@@ -93,30 +85,8 @@ public class FeishuQuestionHandler implements QuestionHandler {
         id,
         request.conversationId(),
         cardId);
-    return pending(questions);
-  }
-
-  private static Map<String, String> pending(final List<Question> questions) {
-    return answerEach(questions, PENDING);
-  }
-
-  private static Map<String, String> failed(final List<Question> questions) {
-    return answerEach(
-        questions,
-        "COULD NOT ASK. The question could not be shown to the user, so no answer is coming."
-            + " Carry on with what you know, and say which assumption you made.");
-  }
-
-  /**
-   * The tool validates that every question it was given comes back with a value, so each gets the
-   * same one rather than a single note that would fail that check.
-   */
-  private static Map<String, String> answerEach(
-      final List<Question> questions, final String value) {
-    final var answers = new LinkedHashMap<String, String>();
-    for (final var question : questions) {
-      answers.put(question.question(), value);
-    }
-    return answers;
+    // Nothing, because there is nothing yet: the caller turns an empty answer into the note telling
+    // the model to end its turn and wait to be started again.
+    return Map.of();
   }
 }
