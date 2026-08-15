@@ -2,8 +2,10 @@ package me.kezhenxu94.springagent.core.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -20,10 +22,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
+import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentComposition;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentTools;
@@ -63,6 +66,7 @@ class SpringAgentTest {
   private final AgentToolsProvider agentToolsProvider = mock(AgentToolsProvider.class);
   private final RecordingChatModel chatModel = new RecordingChatModel();
   private final ChatMemoryRepository chatMemoryRepository = mock(ChatMemoryRepository.class);
+  private final PendingQuestionRepo pendingQuestions = mock(PendingQuestionRepo.class);
 
   /** Stands in for an integration taking part in a run it did not initiate. */
   private AgentResponseListener declaredListener = new AgentResponseListener() {};
@@ -87,6 +91,7 @@ class SpringAgentTest {
             MessageWindowChatMemory.builder().chatMemoryRepository(chatMemoryRepository).build(),
             properties(),
             agentToolsProvider,
+            pendingQuestions,
             messagesIn(Locale.ENGLISH),
             listenerProvider());
   }
@@ -129,7 +134,7 @@ class SpringAgentTest {
 
     assertThat(listener.outcomes).containsExactly(AgentOutcome.COMPLETED);
     assertThat(listener.contents).containsExactly("hello ", "hello world");
-    verify(mcpClient, times(1)).close();
+    verify(mcpClient, timeout(5000).times(1)).close();
   }
 
   @Test
@@ -143,7 +148,7 @@ class SpringAgentTest {
     // The advisor chain wraps whatever the model threw, so the cause is what identifies it.
     assertThat(listener.errors.getFirst()).hasRootCauseMessage("model is down");
     assertThat(listener.outcomes).containsExactly(AgentOutcome.FAILED);
-    verify(mcpClient, times(1)).close();
+    verify(mcpClient, timeout(5000).times(1)).close();
   }
 
   @Test
@@ -169,7 +174,7 @@ class SpringAgentTest {
 
     assertThat(listener.contents).containsExactly("hello ");
     assertThat(listener.outcomes).containsExactly(AgentOutcome.CANCELLED);
-    verify(mcpClient, times(1)).close();
+    verify(mcpClient, timeout(5000).times(1)).close();
   }
 
   @Test
@@ -208,7 +213,7 @@ class SpringAgentTest {
 
     // Closing the clients is the first half of the same finally block that decrements the in-flight
     // count, which shutdown waits on.
-    verify(mcpClient, times(1)).close();
+    verify(mcpClient, timeout(5000).times(1)).close();
   }
 
   @Test
@@ -236,6 +241,7 @@ class SpringAgentTest {
             MessageWindowChatMemory.builder().chatMemoryRepository(chatMemoryRepository).build(),
             properties(),
             agentToolsProvider,
+            pendingQuestions,
             messagesIn(Locale.of("zh", "CN")),
             listenerProvider());
 
@@ -253,31 +259,74 @@ class SpringAgentTest {
   }
 
   @Test
-  @DisplayName("a handler that turned the ask away leaves no note claiming it was presented")
-  void askingIsNotRecordedWhenTheHandlerDidNotPresent() throws Exception {
+  @DisplayName("every registered handler is given the questions, not just the first")
+  void everyHandlerIsAsked() throws Exception {
+    final var second = new RecordingQuestionHandler("second");
     declaredListener =
         new AgentResponseListener() {
           @Override
           public void onStart(final AgentRunRegistry registry) {
-            registry.addQuestionHandler(new DecliningQuestionHandler(0));
+            registry.addQuestionHandler(new RecordingQuestionHandler("first"));
+            registry.addQuestionHandler(second);
           }
         };
     fireAndAwait(request());
 
-    final var composed = ArgumentCaptor.forClass(QuestionHandler.class);
-    verify(agentToolsProvider).compose(any(), any(), any(), any(), any(), composed.capture());
-    composed
-        .getValue()
-        .handle(
-            List.of(new Question("Which database should we use?", "Database", List.of(), false)));
+    handlerFromRun().handle(questions());
 
+    assertThat(second.asked).hasSize(1);
+  }
+
+  @Test
+  @DisplayName("a handler that throws does not cost the ask the channels that worked")
+  void oneBrokenHandlerDoesNotStopTheOthers() throws Exception {
+    final var working = new RecordingQuestionHandler("working");
+    declaredListener =
+        new AgentResponseListener() {
+          @Override
+          public void onStart(final AgentRunRegistry registry) {
+            registry.addQuestionHandler(
+                questions -> {
+                  throw new IllegalStateException("this channel is down");
+                });
+            registry.addQuestionHandler(working);
+          }
+        };
+    fireAndAwait(request());
+
+    final var answers = handlerFromRun().handle(questions());
+
+    assertThat(working.asked).hasSize(1);
+    assertThat(answers).containsValue("working");
+    assertThat(savedText()).anySatisfy(text -> assertThat(text).contains("already put these"));
+  }
+
+  @Test
+  @DisplayName("no channel managing to ask tells the model so, and leaves no note")
+  void noHandlerPresenting() throws Exception {
+    declaredListener =
+        new AgentResponseListener() {
+          @Override
+          public void onStart(final AgentRunRegistry registry) {
+            registry.addQuestionHandler(
+                questions -> {
+                  throw new IllegalStateException("this channel is down");
+                });
+          }
+        };
+    fireAndAwait(request());
+
+    assertThat(handlerFromRun().handle(questions()).values())
+        .allSatisfy(answer -> assertThat(answer).startsWith("COULD NOT ASK"));
     assertThat(savedText()).noneSatisfy(text -> assertThat(text).contains("already put these"));
   }
 
   @Test
-  @DisplayName("a model that asks the same thing twice leaves one note, not two")
-  void askingTwiceLeavesOneNote() throws Exception {
-    final var handler = new DecliningQuestionHandler(1);
+  @DisplayName("questions already waiting in the conversation are not put up a second time")
+  void outstandingAskIsNotRepeated() throws Exception {
+    final var handler = new RecordingQuestionHandler("feishu");
+    when(pendingQuestions.findByConversationIdAndStatus(any(), eq(PendingQuestion.Status.PENDING)))
+        .thenReturn(List.of(new PendingQuestion()));
     declaredListener =
         new AgentResponseListener() {
           @Override
@@ -287,16 +336,10 @@ class SpringAgentTest {
         };
     fireAndAwait(request());
 
-    final var composed = ArgumentCaptor.forClass(QuestionHandler.class);
-    verify(agentToolsProvider).compose(any(), any(), any(), any(), any(), composed.capture());
-    final var questions =
-        List.of(new Question("Which database should we use?", "Database", List.of(), false));
-    composed.getValue().handle(questions);
-    // The second ask, which a handler with a form already up answers without putting up another.
-    composed.getValue().handle(questions);
-
-    assertThat(savedText().stream().filter(text -> text.contains("already put these")).count())
-        .isEqualTo(1);
+    assertThat(handlerFromRun().handle(questions()).values())
+        .allSatisfy(answer -> assertThat(answer).startsWith("ALREADY ASKED"));
+    assertThat(handler.asked).isEmpty();
+    assertThat(savedText()).noneSatisfy(text -> assertThat(text).contains("already put these"));
   }
 
   @Test
@@ -326,6 +369,17 @@ class SpringAgentTest {
         .getValue()
         .handle(
             List.of(new Question("Which database should we use?", "Database", List.of(), false)));
+  }
+
+  /** The one handler the run composed out of everything registered. */
+  private QuestionHandler handlerFromRun() throws Exception {
+    final var composed = ArgumentCaptor.forClass(QuestionHandler.class);
+    verify(agentToolsProvider).compose(any(), any(), any(), any(), any(), composed.capture());
+    return composed.getValue();
+  }
+
+  private static List<Question> questions() {
+    return List.of(new Question("Which database should we use?", "Database", List.of(), false));
   }
 
   /** The text of every message saved to the conversation over the whole test. */
@@ -419,33 +473,22 @@ class SpringAgentTest {
         Locale.ENGLISH);
   }
 
-  /**
-   * Puts up the first {@code presentable} asks and turns the rest away, answering both the same way
-   * the Feishu handler does — which is what a model asking twice runs into.
-   */
-  private static final class DecliningQuestionHandler
-      implements QuestionHandler, QuestionPresentation {
+  /** A channel that puts the questions up and answers with its own name, so a merge is visible. */
+  private static final class RecordingQuestionHandler implements QuestionHandler {
 
-    private static final String PENDING = "NOT ANSWERED YET.";
-    private static final String NOT_ASKED = "ALREADY ASKED AND STILL UNANSWERED.";
+    private final String name;
+    private final List<List<Question>> asked = new ArrayList<>();
 
-    private final AtomicInteger presentable;
-
-    DecliningQuestionHandler(final int presentable) {
-      this.presentable = new AtomicInteger(presentable);
+    RecordingQuestionHandler(final String name) {
+      this.name = name;
     }
 
     @Override
     public Map<String, String> handle(final List<Question> questions) {
-      final var value = presentable.getAndDecrement() > 0 ? PENDING : NOT_ASKED;
+      asked.add(questions);
       final var answers = new LinkedHashMap<String, String>();
-      questions.forEach(question -> answers.put(question.question(), value));
+      questions.forEach(question -> answers.put(question.question(), name));
       return answers;
-    }
-
-    @Override
-    public boolean presented(final Map<String, String> answers) {
-      return !answers.containsValue(NOT_ASKED);
     }
   }
 

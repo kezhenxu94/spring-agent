@@ -9,7 +9,6 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
-import me.kezhenxu94.springagent.core.agent.QuestionPresentation;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
@@ -37,7 +36,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @Slf4j
 @RequiredArgsConstructor
-public class FeishuQuestionHandler implements QuestionHandler, QuestionPresentation {
+public class FeishuQuestionHandler implements QuestionHandler {
 
   /**
    * Stands in for the answer the tool expects, since there is not one yet. The tool wraps whatever
@@ -50,15 +49,6 @@ public class FeishuQuestionHandler implements QuestionHandler, QuestionPresentat
           + " or may never answer. Do not guess an answer and do not act as if one was given: stop"
           + " here and end your turn. You will be started again with their answer if it comes.";
 
-  /**
-   * Told to a second ask while a first is still unanswered. Firmer than {@link #PENDING}, because
-   * anything reaching this has already ignored that once.
-   */
-  private static final String ALREADY_ASKED =
-      "ALREADY ASKED AND STILL UNANSWERED. You have put this to the user and they have not replied"
-          + " yet. Asking again does nothing. Stop here and end your turn without calling any"
-          + " further tools; you will be started again with their answer if it comes.";
-
   private final AgentRequest request;
   private final FeishuCardUpdater cardUpdater;
   private final String cardId;
@@ -69,21 +59,6 @@ public class FeishuQuestionHandler implements QuestionHandler, QuestionPresentat
 
   @Override
   public Map<String, String> handle(final List<Question> questions) {
-    // One outstanding form per conversation. The agent is told to stop and wait when it asks, but a
-    // model that asks again anyway — or that cannot see it already asked, which is what happens on
-    // a backend whose chat memory drops tool calls — would otherwise stack a second form onto the
-    // card and go round again.
-    final var outstanding =
-        pendingQuestionRepo.findByConversationIdAndStatus(
-            request.conversationId(), PendingQuestion.Status.PENDING);
-    if (!outstanding.isEmpty()) {
-      log.info(
-          "Not asking again in conversation {}: {} question(s) already waiting",
-          request.conversationId(),
-          outstanding.size());
-      return answerEach(questions, ALREADY_ASKED);
-    }
-
     final var id = UUID.randomUUID().toString();
     final var now = Instant.now();
 
@@ -119,15 +94,6 @@ public class FeishuQuestionHandler implements QuestionHandler, QuestionPresentat
         request.conversationId(),
         cardId);
     return pending(questions);
-  }
-
-  /**
-   * Only {@link #pending} means the form went up: the other two answer a call this handler turned
-   * away, and core writes its note in the conversation off the back of this.
-   */
-  @Override
-  public boolean presented(final Map<String, String> answers) {
-    return !answers.isEmpty() && answers.values().stream().allMatch(PENDING::equals);
   }
 
   private static Map<String, String> pending(final List<Question> questions) {

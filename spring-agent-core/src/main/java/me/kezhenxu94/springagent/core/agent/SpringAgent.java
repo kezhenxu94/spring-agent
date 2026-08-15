@@ -16,6 +16,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
+import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentComposition;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.McpTools;
@@ -67,6 +69,9 @@ public class SpringAgent {
 
   final SpringAgentProperties appConfiguration;
   final AgentToolsProvider agentToolsProvider;
+
+  /** Read only to see whether a conversation already has questions out; the channels write it. */
+  final PendingQuestionRepo pendingQuestions;
 
   /** What the agent writes into a conversation itself, as opposed to what the model writes. */
   final CoreMessages messages;
@@ -146,17 +151,12 @@ public class SpringAgent {
     final var todoEventHandlers = new ArrayList<>(request.todoEventHandlers());
     todoEventHandlers.addAll(registry.todoEventHandlers());
 
-    // A question has one answer, so these cannot fan out the way the handlers above do: the first
-    // registered gets to ask, and none at all means the agent is not offered the tool.
+    // Every channel taking part gets to put the questions to the user, so an answer can come back
+    // from whichever the user is looking at. None registered means the agent is not offered the
+    // tool at all.
     final var questionHandlers = registry.questionHandlers();
-    if (questionHandlers.size() > 1) {
-      log.warn(
-          "Agent request {} has {} question handlers registered; using the first",
-          requestId,
-          questionHandlers.size());
-    }
     final var questionHandler =
-        questionHandlers.isEmpty() ? null : recording(request, questionHandlers.getFirst());
+        questionHandlers.isEmpty() ? null : asking(request, questionHandlers);
 
     final var cancelFlag = new AtomicBoolean(false);
     if (requestId != null) {
@@ -268,34 +268,102 @@ public class SpringAgent {
   }
 
   /**
-   * The handler, plus a note in the conversation saying the questions were put to the user.
+   * Every registered handler as one ask: each is given the questions, and what they answer with is
+   * merged into the one map the tool takes.
+   *
+   * <p>A handler that throws is logged and passed over rather than failing the ask, so a channel
+   * that is broken or unreachable does not cost the user the channels that are neither. Returning
+   * is therefore what counts as having put the questions somewhere, and if none of them managed it
+   * the model is told so instead of being left with an empty answer it would read as one.
+   *
+   * <p>Answers are merged first-one-wins per question, which only arises for a synchronous handler
+   * beside an asynchronous one — a combination no application composes today, the command line
+   * being alone in its own.
+   */
+  private QuestionHandler asking(final AgentRequest request, final List<QuestionHandler> handlers) {
+    return questions -> {
+      // One unanswered ask per conversation, whatever the channel: a model that asks again while a
+      // form is still up would otherwise put a second one in front of the user on every channel.
+      if (hasOutstandingAsk(request)) {
+        log.info(
+            "Not asking again in conversation {}: one is already waiting",
+            request.conversationId());
+        return answerEach(questions, messages.get("question-already-asked"));
+      }
+
+      final var answers = new LinkedHashMap<String, String>();
+      var presented = 0;
+      for (final var handler : handlers) {
+        try {
+          final var handlerAnswers = handler.handle(questions);
+          if (handlerAnswers != null) {
+            handlerAnswers.forEach(answers::putIfAbsent);
+          }
+          presented++;
+        } catch (Exception e) {
+          log.warn(
+              "Question handler {} could not put questions to the user",
+              handler.getClass().getSimpleName(),
+              e);
+        }
+      }
+      if (presented == 0) {
+        return answerEach(questions, messages.get("question-cannot-ask"));
+      }
+      record(request, questions);
+      return answers;
+    };
+  }
+
+  /** Whether the conversation already has questions out that nobody has answered. */
+  private boolean hasOutstandingAsk(final AgentRequest request) {
+    final var conversationId = request.conversationId();
+    if (Strings.isNullOrEmpty(conversationId)) {
+      return false;
+    }
+    try {
+      return !pendingQuestions
+          .findByConversationIdAndStatus(conversationId, PendingQuestion.Status.PENDING)
+          .isEmpty();
+    } catch (Exception e) {
+      // Asking twice is a smaller failure than not asking at all.
+      log.warn("Could not check for outstanding questions in conversation {}", conversationId, e);
+      return false;
+    }
+  }
+
+  /**
+   * The note in the conversation saying the questions were put to the user, written once however
+   * many channels put them there.
    *
    * <p>A plain assistant message because the tool call is not kept: {@code
    * JdbcChatMemoryRepository} drops tool responses and assistant messages carrying tool calls, so a
    * later run would replay the request with no sign anything had been asked — and ask again.
    */
-  private QuestionHandler recording(final AgentRequest request, final QuestionHandler delegate) {
+  private void record(final AgentRequest request, final List<Question> questions) {
     final var conversationId = request.conversationId();
     if (!request.scenario().conversationMemory() || Strings.isNullOrEmpty(conversationId)) {
-      return delegate;
+      return;
     }
-    return questions -> {
-      final var answers = delegate.handle(questions);
-      // Only what actually reached the user gets a note. A handler that declined to ask answers
-      // the call all the same, and noting that as an ask would say something untrue — twice over
-      // when a model asks again and the handler turns the second one away.
-      if (delegate instanceof QuestionPresentation presentation
-          && !presentation.presented(answers)) {
-        return answers;
-      }
-      try {
-        chatMemory.add(conversationId, List.of(new AssistantMessage(asked(questions))));
-      } catch (Exception e) {
-        // A missing note costs a repeated ask later, which is not worth failing the run over.
-        log.warn("Failed to record the questions put to conversation {}", conversationId, e);
-      }
-      return answers;
-    };
+    try {
+      chatMemory.add(conversationId, List.of(new AssistantMessage(asked(questions))));
+    } catch (Exception e) {
+      // A missing note costs a repeated ask later, which is not worth failing the run over.
+      log.warn("Failed to record the questions put to conversation {}", conversationId, e);
+    }
+  }
+
+  /**
+   * The tool validates that every question it was given comes back with a value, so each gets the
+   * same one rather than a single note that would fail that check.
+   */
+  private static Map<String, String> answerEach(
+      final List<Question> questions, final String value) {
+    final var answers = new LinkedHashMap<String, String>();
+    for (final var question : questions) {
+      answers.put(question.question(), value);
+    }
+    return answers;
   }
 
   /**
