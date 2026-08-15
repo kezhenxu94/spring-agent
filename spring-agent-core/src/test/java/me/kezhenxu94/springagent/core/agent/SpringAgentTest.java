@@ -46,6 +46,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.support.ResourceBundleMessageSource;
 import reactor.core.publisher.Flux;
 
 /**
@@ -84,7 +85,7 @@ class SpringAgentTest {
             MessageWindowChatMemory.builder().chatMemoryRepository(chatMemoryRepository).build(),
             properties(),
             agentToolsProvider,
-            new CoreMessages(properties()),
+            messagesIn(Locale.ENGLISH),
             listenerProvider());
   }
 
@@ -233,7 +234,7 @@ class SpringAgentTest {
             MessageWindowChatMemory.builder().chatMemoryRepository(chatMemoryRepository).build(),
             properties(),
             agentToolsProvider,
-            new CoreMessages(new SpringAgentProperties(null, null, Locale.of("zh", "CN"), false)),
+            messagesIn(Locale.of("zh", "CN")),
             listenerProvider());
 
     askIn(request());
@@ -346,6 +347,14 @@ class SpringAgentTest {
         .userMessage(user -> user.text("hi"));
   }
 
+  /** Core's notes, through a message source configured as an application's would be. */
+  private static CoreMessages messagesIn(final Locale locale) {
+    final var source = new ResourceBundleMessageSource();
+    source.setBasename(CoreMessages.BASENAME);
+    source.setDefaultEncoding("UTF-8");
+    return new CoreMessages(source, new SpringAgentProperties(null, null, locale));
+  }
+
   private static SpringAgentProperties properties() {
     return new SpringAgentProperties(
         null,
@@ -358,8 +367,7 @@ class SpringAgentTest {
             "You are {userId} in {chatId} ({chatType}), thread {threadId}, parent {parentId},"
                 + " mentions {mentions}.",
             null),
-        Locale.ENGLISH,
-        false);
+        Locale.ENGLISH);
   }
 
   private static final class RecordingListener implements AgentResponseListener {

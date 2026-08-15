@@ -1,6 +1,16 @@
 server:
   shutdown: graceful
 spring:
+  messages:
+    # What the agent writes into a conversation itself. CoreMessages reads through this message
+    # source rather than building one, so naming the bundle here is what makes those notes resolve
+    # — leave it out and they come out as bare message keys, which the context refuses to start on.
+    # This application has no messages.properties of its own, hence the one entry.
+    basename: core/messages
+    # English, not the host's language, when app.locale is set to one that ships no bundle: on a
+    # server the host's language is an accident of how the image was built rather than anybody's
+    # choice. spring-agent-cli sets this the other way, its host being the user's own machine.
+    fallback-to-system-locale: false
   main:
     banner-mode: off
   ai:
@@ -168,10 +178,6 @@ app:
   # saying so twice. en and zh_CN ship with it, and any other is a core/messages_xx.properties on
   # the classpath away.
   locale: ${SPRING_AGENT_LOCALE:${FEISHU_LOCALE:}}
-  # And where a locale set above lands when it ships no bundle: English, not the host's language,
-  # which on a server is an accident of how the image was built rather than anybody's choice.
-  # spring-agent-cli sets this the other way, its host being the user's own machine.
-  fallback-to-system-locale: ${SPRING_AGENT_LOCALE_FALLBACK_TO_SYSTEM:false}
   persistence:
     # Where the agent's own records live — MCP server configs, scheduled tasks, published resources,
     # shell credentials and the conversation history, all together. One of:

@@ -14,17 +14,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     rather than what the model writes. Defaults to the host's, so setting it is for a workspace
  *     whose language differs from the machine the agent runs on. Each surface states its own for
  *     what it says directly; see {@link CoreMessages} for what this one selects.
- * @param fallbackToSystemLocale which language to fall back to when {@link #locale} is set to one
- *     that ships no bundle. {@code false}, the default, falls back to English. This only comes up
- *     for a locale stated outright, since an unstated one is the host's already.
- *     <p>False suits a server, where the host's language is an accident of how the container was
- *     built and rarely the one anybody asked for. It is spring-agent-cli that sets this, because
- *     there the host is the user's own machine, and its language is a better guess at theirs than
- *     English is.
+ *     <p>Only which language, and not how the bundles behave: encoding, caching and the fallback
+ *     for a locale that ships no bundle are the application's {@code spring.messages} settings,
+ *     since {@link CoreMessages} reads through the application's own message source.
  */
 @ConfigurationProperties(prefix = "app")
-public record SpringAgentProperties(
-    Dashscope dashscope, Ai ai, Locale locale, boolean fallbackToSystemLocale) {
+public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
 
   public SpringAgentProperties {
     // An application that configures no DashScope at all is a legitimate one — spring-agent-cli is

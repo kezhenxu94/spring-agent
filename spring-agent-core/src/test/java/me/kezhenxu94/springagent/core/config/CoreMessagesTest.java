@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.core.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -10,6 +11,7 @@ import java.util.Properties;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.support.ResourceBundleMessageSource;
 
 /**
  * These read back to the model rather than to a person, so a key that resolves to nothing would not
@@ -23,8 +25,13 @@ class CoreMessagesTest {
     return messagesIn(locale, false);
   }
 
+  /** An application's message source, configured the way the shipped applications configure it. */
   static CoreMessages messagesIn(final Locale locale, final boolean fallbackToSystemLocale) {
-    return new CoreMessages(new SpringAgentProperties(null, null, locale, fallbackToSystemLocale));
+    final var source = new ResourceBundleMessageSource();
+    source.setBasename(CoreMessages.BASENAME);
+    source.setDefaultEncoding("UTF-8");
+    source.setFallbackToSystemLocale(fallbackToSystemLocale);
+    return new CoreMessages(source, new SpringAgentProperties(null, null, locale));
   }
 
   @Test
@@ -72,6 +79,20 @@ class CoreMessagesTest {
   @Test
   void answersWithTheKeyRatherThanThrowingOnOneItDoesNotHave() {
     assertThat(messagesIn(Locale.ENGLISH).get("no-such-key")).isEqualTo("no-such-key");
+  }
+
+  @Test
+  @DisplayName("an application whose message source cannot reach the bundle is told at startup")
+  void refusesToStartWithoutTheBundle() {
+    final var withoutTheBundle = new ResourceBundleMessageSource();
+    withoutTheBundle.setBasename("some/other/bundle");
+
+    assertThatThrownBy(
+            () ->
+                new CoreMessages(
+                    withoutTheBundle, new SpringAgentProperties(null, null, Locale.ENGLISH)))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("spring.messages.basename");
   }
 
   @Test
