@@ -145,14 +145,24 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     sendContent(content);
   }
 
+  /**
+   * Appends the failure below whatever the run had already said, rather than replacing it: the
+   * answer written before the error is usually most of one, and losing it costs the reader more
+   * than the error tells them.
+   *
+   * <p>The base content is left untouched, so a later update — a retry that resumes streaming —
+   * clears the failure instead of writing underneath it.
+   */
   private synchronized void showError(Throwable error) {
     final var summary = errorDisplay(error);
     log.warn("showError: cardId={}, error={}", cardId, summary);
-    final var quoted =
-        Arrays.stream(Throwables.getStackTraceAsString(error).split("\n"))
-            .map(line -> "> " + line)
-            .collect(Collectors.joining("\n"));
-    updateContent(messages.error(summary) + "\n\n" + quoted);
+    final var notice =
+        messages.error(summary)
+            + "\n\n```\n"
+            + Throwables.getStackTraceAsString(error).stripTrailing()
+            + "\n```";
+    final var base = Strings.nullToEmpty(lastBaseContent);
+    sendContent(base.isEmpty() ? notice : base + "\n\n" + notice);
   }
 
   private static String errorDisplay(Throwable error) {
