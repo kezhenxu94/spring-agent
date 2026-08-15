@@ -1,8 +1,14 @@
 spring:
   messages:
-    # English rather than the operating system's language when the user's locale has no bundle:
-    # the fallback is otherwise whatever the desktop is set to, which is rarely what they asked for.
-    fallback-to-system-locale: false
+    # Both bundles this application reads: its own words to the user, and core/messages, which is
+    # what the agent writes into a conversation itself. CoreMessages reads through this same
+    # message source rather than building one, so naming it here is what makes those notes resolve.
+    basename: messages,core/messages
+    # The operating system's language when the user's locale has no bundle of its own, rather than
+    # English: the desktop this runs on belongs to the user being spoken to, so its language is a
+    # better guess at theirs. Boot's own default, stated because spring-agent-app states the
+    # opposite and the difference between the two is deliberate.
+    fallback-to-system-locale: true
   main:
     banner-mode: off
     # Belt and braces with SpringAgentCliApplication's builder: the property also covers a context
@@ -113,6 +119,11 @@ share:
   # path on this machine.
   base-url: file://${user.home}/.spring-agent/
 app:
+  # Which language the agent's own text speaks — what it writes into a conversation itself, as
+  # opposed to what the model wrote or what a surface says directly. The note recording that the
+  # user has already been asked something is the one so far. Defaults to the host's language; en
+  # and zh_CN ship with it, and any other is a core/messages_xx.properties on the classpath away.
+  locale: ${SPRING_AGENT_LOCALE:}
   cli:
     # Who the agent thinks it is talking to. Scopes the workspace, the memories and the stored
     # credentials, so changing it is equivalent to starting again as somebody else.

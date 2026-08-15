@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import me.kezhenxu94.springagent.core.aot.AgentToolsRuntimeHints;
+import me.kezhenxu94.springagent.core.aot.CoreMessagesRuntimeHints;
 import me.kezhenxu94.springagent.core.aot.OpenAiSdkRuntimeHints;
 import me.kezhenxu94.springagent.core.aot.StoragePropertiesRuntimeHints;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
@@ -64,6 +65,7 @@ import org.springframework.web.client.RestTemplate;
 })
 @ImportRuntimeHints({
   AgentToolsRuntimeHints.class,
+  CoreMessagesRuntimeHints.class,
   OpenAiSdkRuntimeHints.class,
   StoragePropertiesRuntimeHints.class
 })
