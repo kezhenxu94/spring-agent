@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.core.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -28,9 +29,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
+import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
+import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
@@ -51,6 +56,7 @@ class SpringAgentTest {
   private final McpSyncClient mcpClient = mock(McpSyncClient.class);
   private final AgentToolsProvider agentToolsProvider = mock(AgentToolsProvider.class);
   private final RecordingChatModel chatModel = new RecordingChatModel();
+  private final ChatMemoryRepository chatMemoryRepository = mock(ChatMemoryRepository.class);
 
   /** Stands in for an integration taking part in a run it did not initiate. */
   private AgentResponseListener declaredListener = new AgentResponseListener() {};
@@ -72,7 +78,7 @@ class SpringAgentTest {
             // Real model options (OpenAI's) are ToolCallingChatOptions, which is the only kind
             // that carries a tool context; the plain default ones would silently drop it.
             ChatClient.builder(chatModel).defaultOptions(ToolCallingChatOptions.builder()).build(),
-            mock(ChatMemoryRepository.class),
+            chatMemoryRepository,
             properties(),
             agentToolsProvider,
             listenerProvider());
@@ -196,6 +202,60 @@ class SpringAgentTest {
     // Closing the clients is the first half of the same finally block that decrements the in-flight
     // count, which shutdown waits on.
     verify(mcpClient, times(1)).close();
+  }
+
+  @Test
+  @DisplayName("putting questions to the user leaves a note the next run can read back")
+  void askingIsRecordedInTheConversation() throws Exception {
+    final var answers = askIn(request());
+
+    // Whatever the integration answered with reaches the model unchanged.
+    assertThat(answers).containsEntry("Which database should we use?", "not answered yet");
+    assertThat(savedText())
+        .anySatisfy(
+            text ->
+                assertThat(text)
+                    .contains("already put these questions to the user")
+                    .contains("Database: Which database should we use?")
+                    .contains("Do not ask them again"));
+  }
+
+  @Test
+  @DisplayName("a run with no conversation memory has nothing to leave the note in")
+  void askingIsNotRecordedWithoutConversationMemory() throws Exception {
+    askIn(request().scenario(AgentScenario.SCHEDULED_TASK));
+
+    assertThat(savedText()).noneSatisfy(text -> assertThat(text).contains("already put these"));
+  }
+
+  /** Fires a run that registers a question handler, then asks through the handler it composed. */
+  private Map<String, String> askIn(final AgentRequest.AgentRequestBuilder request)
+      throws Exception {
+    declaredListener =
+        new AgentResponseListener() {
+          @Override
+          public void onStart(final AgentRunRegistry registry) {
+            registry.addQuestionHandler(
+                questions -> Map.of(questions.getFirst().question(), "not answered yet"));
+          }
+        };
+    fireAndAwait(request);
+
+    final var composed = ArgumentCaptor.forClass(QuestionHandler.class);
+    verify(agentToolsProvider).compose(any(), any(), any(), any(), any(), composed.capture());
+    return composed
+        .getValue()
+        .handle(
+            List.of(new Question("Which database should we use?", "Database", List.of(), false)));
+  }
+
+  /** The text of every message saved to the conversation over the whole test. */
+  @SuppressWarnings("unchecked")
+  private List<String> savedText() {
+    final var saved = ArgumentCaptor.forClass(List.class);
+    verify(chatMemoryRepository, atLeast(0)).saveAll(any(), saved.capture());
+    return ((List<List<Message>>) (List<?>) saved.getAllValues())
+        .stream().flatMap(List::stream).map(Message::getText).toList();
   }
 
   @Test

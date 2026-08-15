@@ -20,6 +20,8 @@ import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentComposition;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.McpTools;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.springaicommunity.agent.advisors.AutoMemoryToolsAdvisor;
+import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
+import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
@@ -29,6 +31,7 @@ import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
 import org.springframework.beans.factory.ObjectProvider;
@@ -143,7 +146,8 @@ public class SpringAgent {
           requestId,
           questionHandlers.size());
     }
-    final var questionHandler = questionHandlers.isEmpty() ? null : questionHandlers.getFirst();
+    final var questionHandler =
+        questionHandlers.isEmpty() ? null : recording(request, questionHandlers.getFirst());
 
     final var cancelFlag = new AtomicBoolean(false);
     if (requestId != null) {
@@ -254,6 +258,50 @@ public class SpringAgent {
         .subscribe();
   }
 
+  /**
+   * The handler, plus a note in the conversation saying the questions were put to the user.
+   *
+   * <p>Asking is a tool call, and a tool call is exactly what several chat memory repositories
+   * cannot store: {@code JdbcChatMemoryRepository} drops tool responses and any assistant message
+   * carrying tool calls outright, and the window replayed to the model is bounded besides. So a
+   * later run replaying the conversation sees the user's request and no sign that anything was ever
+   * asked about it — and asks the same questions again, and again each run after that.
+   *
+   * <p>The note is a plain assistant message, which every repository keeps, so what the tool call
+   * would have said survives in a form the next replay can see.
+   */
+  private QuestionHandler recording(final AgentRequest request, final QuestionHandler delegate) {
+    final var conversationId = request.conversationId();
+    if (!request.scenario().conversationMemory() || Strings.isNullOrEmpty(conversationId)) {
+      return delegate;
+    }
+    return questions -> {
+      final var answers = delegate.handle(questions);
+      try {
+        chatMemory().add(conversationId, List.of(new AssistantMessage(asked(questions))));
+      } catch (Exception e) {
+        // The questions are in front of the user either way; a missing note costs a repeated ask
+        // later, which is not worth failing the run that is asking.
+        log.warn("Failed to record the questions put to conversation {}", conversationId, e);
+      }
+      return answers;
+    };
+  }
+
+  /** The note itself, addressed to the model that will read it back on a later run. */
+  private static String asked(final List<Question> questions) {
+    final var note =
+        new StringBuilder(
+            "I have already put these questions to the user, and they have been presented:");
+    for (final var question : questions) {
+      note.append("\n- ").append(question.header()).append(": ").append(question.question());
+    }
+    return note.append(
+            "\nDo not ask them again. Any answer arrives as a later message in this conversation;"
+                + " if none has, carry on without one or say what you assumed.")
+        .toString();
+  }
+
   /** All handlers as one, fanning each update out to every handler. */
   private static TodoEventHandler fanOut(final List<TodoEventHandler> handlers) {
     return todos -> handlers.forEach(handler -> handler.handle(todos));
@@ -305,6 +353,18 @@ public class SpringAgent {
     return variables;
   }
 
+  /**
+   * The conversation window, shared by the memory advisor and the note {@link #recording} leaves:
+   * both have to see the same messages, and {@code add} re-reads the repository, so a note written
+   * mid-run is still there when the advisor saves the answer at the end of it.
+   */
+  private ChatMemory chatMemory() {
+    return MessageWindowChatMemory.builder()
+        .chatMemoryRepository(chatMemoryRepository)
+        .maxMessages(appConfiguration.ai().chatMemory().maxMessages())
+        .build();
+  }
+
   private Flux<ChatResponse> rawStream(
       final AgentRequest request,
       final AgentComposition composition,
@@ -320,11 +380,7 @@ public class SpringAgent {
             .build());
     if (request.scenario().conversationMemory()) {
       advisors.add(
-          MessageChatMemoryAdvisor.builder(
-                  MessageWindowChatMemory.builder()
-                      .chatMemoryRepository(chatMemoryRepository)
-                      .maxMessages(appConfiguration.ai().chatMemory().maxMessages())
-                      .build())
+          MessageChatMemoryAdvisor.builder(chatMemory())
               .order(ToolCallingAdvisor.DEFAULT_ORDER + 100)
               .build());
     }
