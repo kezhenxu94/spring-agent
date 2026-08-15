@@ -25,10 +25,11 @@ import tools.jackson.databind.json.JsonMapper;
  * take an hour, or forget entirely.
  *
  * <p>So nothing waits. The questions go onto the card, a row records everything needed to pick the
- * conversation back up, and the run ends normally with the tool call and its result in chat memory.
- * Whenever the answer arrives, {@link FeishuQuestionAnswerHandler} starts a fresh run on the same
- * conversation, which replays that memory and carries on. An answer after a restart is no different
- * from an answer after five seconds.
+ * conversation back up, and the run ends normally, with a note in chat memory saying what was asked
+ * — see {@code SpringAgent.recording}. Whenever the answer arrives, {@link
+ * FeishuQuestionAnswerHandler} starts a fresh run on the same conversation, which replays that
+ * memory and carries on. An answer after a restart is no different from an answer after five
+ * seconds.
  *
  * <p>Per run rather than a bean: the tool's handler interface is handed nothing but the questions,
  * so which conversation they belong to has to be captured when the handler is built.

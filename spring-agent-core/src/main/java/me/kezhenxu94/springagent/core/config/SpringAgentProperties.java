@@ -28,7 +28,6 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
       BotInterceptor botInterceptor,
       Set<String> admins,
       Map<String, ModelPricing> modelPricing,
-      ChatMemory chatMemory,
       VectorStore vectorstore,
       Tools tools,
       String systemPrompt,
@@ -127,9 +126,6 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
       if (modelPricing == null) {
         modelPricing = Map.of();
       }
-      if (chatMemory == null) {
-        chatMemory = new ChatMemory(0);
-      }
       if (vectorstore == null) {
         vectorstore = new VectorStore(null);
       }
@@ -188,24 +184,6 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
       public BotInterceptor {
         if (guideThreshold <= 0) {
           guideThreshold = DEFAULT_GUIDE_THRESHOLD;
-        }
-      }
-    }
-
-    /**
-     * How much conversation history is replayed to the model.
-     *
-     * <p>Where it is kept is not configured here at all. Every backend wires Spring AI's own chat
-     * memory repository, which reads its own {@code spring.ai.chat.memory.repository.*} properties
-     * and shares the backend's connection — for JDBC that means {@code spring.datasource}, and
-     * conversation history lands beside the domain tables.
-     *
-     * @param maxMessages size of the message window replayed on each turn
-     */
-    public record ChatMemory(int maxMessages) {
-      public ChatMemory {
-        if (maxMessages <= 0) {
-          maxMessages = 100;
         }
       }
     }

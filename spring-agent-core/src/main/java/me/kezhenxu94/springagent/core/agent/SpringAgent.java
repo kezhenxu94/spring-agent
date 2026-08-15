@@ -20,6 +20,8 @@ import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentComposition;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.McpTools;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.springaicommunity.agent.advisors.AutoMemoryToolsAdvisor;
+import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
+import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
@@ -27,8 +29,7 @@ import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.ChatMemoryRepository;
-import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
 import org.springframework.beans.factory.ObjectProvider;
@@ -55,7 +56,14 @@ public class SpringAgent {
       Map.of("threadId", "", "parentId", "", "mentions", "none");
 
   final ChatClient chatClient;
-  final ChatMemoryRepository chatMemoryRepository;
+
+  /**
+   * Spring AI's own, deliberately: a {@link ChatMemory} bean declared by the application is what
+   * its repository auto-configurations back off from, leaving the in-memory repository in place of
+   * the real one.
+   */
+  final ChatMemory chatMemory;
+
   final SpringAgentProperties appConfiguration;
   final AgentToolsProvider agentToolsProvider;
 
@@ -143,7 +151,8 @@ public class SpringAgent {
           requestId,
           questionHandlers.size());
     }
-    final var questionHandler = questionHandlers.isEmpty() ? null : questionHandlers.getFirst();
+    final var questionHandler =
+        questionHandlers.isEmpty() ? null : recording(request, questionHandlers.getFirst());
 
     final var cancelFlag = new AtomicBoolean(false);
     if (requestId != null) {
@@ -254,6 +263,44 @@ public class SpringAgent {
         .subscribe();
   }
 
+  /**
+   * The handler, plus a note in the conversation saying the questions were put to the user.
+   *
+   * <p>A plain assistant message because the tool call is not kept: {@code
+   * JdbcChatMemoryRepository} drops tool responses and assistant messages carrying tool calls, so a
+   * later run would replay the request with no sign anything had been asked — and ask again.
+   */
+  private QuestionHandler recording(final AgentRequest request, final QuestionHandler delegate) {
+    final var conversationId = request.conversationId();
+    if (!request.scenario().conversationMemory() || Strings.isNullOrEmpty(conversationId)) {
+      return delegate;
+    }
+    return questions -> {
+      final var answers = delegate.handle(questions);
+      try {
+        chatMemory.add(conversationId, List.of(new AssistantMessage(asked(questions))));
+      } catch (Exception e) {
+        // A missing note costs a repeated ask later, which is not worth failing the run over.
+        log.warn("Failed to record the questions put to conversation {}", conversationId, e);
+      }
+      return answers;
+    };
+  }
+
+  /** The note itself, addressed to the model that reads it back on a later run. */
+  private static String asked(final List<Question> questions) {
+    final var note =
+        new StringBuilder(
+            "I have already put these questions to the user, and they have been presented:");
+    for (final var question : questions) {
+      note.append("\n- ").append(question.header()).append(": ").append(question.question());
+    }
+    return note.append(
+            "\nDo not ask them again. Any answer arrives as a later message in this conversation;"
+                + " if none has, carry on without one or say what you assumed.")
+        .toString();
+  }
+
   /** All handlers as one, fanning each update out to every handler. */
   private static TodoEventHandler fanOut(final List<TodoEventHandler> handlers) {
     return todos -> handlers.forEach(handler -> handler.handle(todos));
@@ -320,11 +367,7 @@ public class SpringAgent {
             .build());
     if (request.scenario().conversationMemory()) {
       advisors.add(
-          MessageChatMemoryAdvisor.builder(
-                  MessageWindowChatMemory.builder()
-                      .chatMemoryRepository(chatMemoryRepository)
-                      .maxMessages(appConfiguration.ai().chatMemory().maxMessages())
-                      .build())
+          MessageChatMemoryAdvisor.builder(chatMemory)
               .order(ToolCallingAdvisor.DEFAULT_ORDER + 100)
               .build());
     }

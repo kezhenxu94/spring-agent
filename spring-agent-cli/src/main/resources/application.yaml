@@ -131,13 +131,6 @@ app:
     # Blank takes core's DEFAULT_SYSTEM_PROMPT, which is written to suit any surface. Set this to
     # give the agent a persona, house rules or domain knowledge of its own.
     system-prompt: ""
-    chat-memory:
-      # How many past messages are replayed to the model on each turn.
-      #
-      # Note that JdbcChatMemoryRepository refuses tool messages outright and keeps the rest, so
-      # what a past turn's tools returned is not replayed here — only the user's messages and the
-      # agent's answers.
-      max-messages: 100
     vectorstore:
       # Written on a graceful shutdown and reloaded on startup; if it is missing or unreadable the
       # index is rebuilt, at the cost of re-embedding the tool descriptions on the next start.

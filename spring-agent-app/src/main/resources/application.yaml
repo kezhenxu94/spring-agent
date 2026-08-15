@@ -6,9 +6,15 @@ spring:
   ai:
     chat:
       memory:
-        # Each of these is read only when app.persistence.type selects the matching backend; the
-        # others' auto-configurations are filtered out. How much history is replayed is a separate
-        # setting, app.ai.chat-memory.max-messages below.
+        # Each of these is read only when app.persistence.type selects the matching backend, which
+        # is also the connection the history shares: on jdbc the messages land in
+        # spring.datasource beside the domain tables. How much of it is replayed is not configured
+        # here at all — the window is Spring AI's own.
+        #
+        # Stored is the user's message, the model's answer and, the advisor being inside the
+        # tool-calling loop, the calls the turn made and what they returned. Except on jdbc, where
+        # JdbcChatMemoryRepository refuses tool messages and keeps the rest: anything that needs a
+        # past tool call to still be visible has to carry it in a message of its own there.
         repository:
           mongo:
             create-indices: true
@@ -257,22 +263,6 @@ app:
       # The task
       {taskText}
     admins: ${ADMINS:}
-    chat-memory:
-      # Which backend stores conversation history follows app.persistence.type, and it shares that
-      # backend's connection: on jdbc the messages land in spring.datasource beside the domain
-      # tables. Where the repository itself is configured is spring.ai.chat.memory.repository.*
-      # above.
-      #
-      # What is stored is the user's message, the model's answer, and — since the memory advisor was
-      # ordered inside the tool-calling loop — the calls the turn made and what they returned. So a
-      # later turn replays the command's own output, not only what the agent said about it.
-      #
-      # Except on jdbc: JdbcChatMemoryRepository refuses tool messages outright, with a warning, and
-      # keeps the rest. Anything relying on a past tool call still being visible — resuming a
-      # question the agent asked, say — has to carry what it needs in its own message there.
-      #
-      # How many past messages are replayed to the model on each turn.
-      max-messages: 100
     vectorstore:
       # Only read when spring.ai.vectorstore.type is simple. Written on a graceful shutdown and
       # reloaded on startup; if it is missing or unreadable the index is simply rebuilt, at the
