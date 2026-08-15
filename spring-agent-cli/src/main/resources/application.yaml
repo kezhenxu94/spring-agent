@@ -1,0 +1,161 @@
+spring:
+  messages:
+    # English rather than the operating system's language when the user's locale has no bundle:
+    # the fallback is otherwise whatever the desktop is set to, which is rarely what they asked for.
+    fallback-to-system-locale: false
+  main:
+    banner-mode: off
+    # Belt and braces with SpringAgentCliApplication's builder: the property also covers a context
+    # started by a test, which does not go through main().
+    web-application-type: none
+  shell:
+    config:
+      # Where the history file lands. Spring Shell otherwise writes it into the working directory,
+      # which for a binary on the PATH means one history per project, each remembering a fraction.
+      location: ${user.home}/.spring-agent
+    history:
+      name: history
+    interactive:
+      # Spring Shell's own runners are replaced by CliShellRunner — see its javadoc for why a
+      # command shell cannot host free-typed prompts. This stays true so the command
+      # infrastructure (registry, parser, completion, theming) is still configured.
+      enabled: true
+    command:
+      # The built-ins this module replaces or has no use for. Left on, two commands answer to the
+      # same name and which one the registry returns is luck.
+      #
+      # `quit` is the exception: it is not a bean and has no property, so CliShellRunner
+      # unregisters it by hand.
+      help:
+        enabled: false
+      clear:
+        # Ours forgets the conversation, which is what /clear means to anyone arriving from a
+        # coding agent. The built-in clears the screen, and taking away the scrollback of an
+        # answer just read is not what they would be asking for.
+        enabled: false
+      history:
+        # It lists the commands run, which here is only the slash commands — the prompts, which
+        # are the interesting half, never reach the registry. Arrow-up still walks all of it.
+        enabled: false
+      script:
+        enabled: false
+      version:
+        enabled: false
+  ai:
+    chat:
+      memory:
+        repository:
+          jdbc:
+            # `always`, not the default: Spring AI gates the schema initializer on Boot's
+            # embedded-database check, and SQLite does not count as embedded, so the
+            # SPRING_AI_CHAT_MEMORY tables would never be created.
+            initialize-schema: always
+      client:
+        tool-search-advisor:
+          enabled: true
+          tool-index-type: vector
+          max-results: 5
+    openai:
+      base-url: ${OPENAI_BASE_URL}
+      api-key: ${OPENAI_API_KEY}
+      chat:
+        model: ${OPENAI_MODEL}
+        temperature: 0
+        timeout: 5m
+        stream-options:
+          include-usage: true
+      image:
+        enabled: false
+      embedding:
+        base-url: ${EMBEDDING_BASE_URL}
+        api-key: ${EMBEDDING_API_KEY}
+        model: ${EMBEDDING_MODEL}
+        dimensions: 1024
+    vectorstore:
+      # `simple` and nothing else here: it keeps the tool-search index in the heap and mirrors it to
+      # a JSON file, so a laptop needs no server. Milvus is a deployment concern and its starter is
+      # not on this module's classpath.
+      type: simple
+  datasource:
+    # Under the user's home rather than ./data, unlike spring-agent-app: a per-directory database
+    # would silently give them a different agent in each directory they ran from.
+    #
+    # WAL and a busy timeout because a run writes while the next question is being typed, and SQLite
+    # serialises writers: without them a second writer fails immediately with SQLITE_BUSY.
+    url: ${DATASOURCE_URL:jdbc:sqlite:${user.home}/.spring-agent/spring-agent-cli.db?journal_mode=WAL&busy_timeout=5000}
+    username: ${DATASOURCE_USERNAME:}
+    password: ${DATASOURCE_PASSWORD:}
+  jpa:
+    hibernate:
+      # The schema is owned by the application: these are the agent's own tables and there is no
+      # migration tool in the picture. `update` adds tables and columns as the models gain them and
+      # never drops anything.
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    # SQLite lives in hibernate-community-dialects rather than core, so Hibernate cannot infer it
+    # from the JDBC metadata the way it does for the databases it ships.
+    database-platform: ${JPA_DIALECT:org.hibernate.community.dialect.SQLiteDialect}
+    open-in-view: false
+logging:
+  level:
+    # Spring AI logs every document it embeds at INFO while the tool index is built, which on a
+    # cold start is one line per tool. Harmless in a server log, but this is the file a user opens
+    # when something went wrong, and it buries everything else.
+    org.springframework.ai.vectorstore.SimpleVectorStore: WARN
+storage:
+  location: ${user.home}/.spring-agent/
+  # Validated as non-blank though nothing here reads them: they are for a deployment serving files
+  # over HTTP. Pointed at the directory the files are actually in, so any that gets printed leads
+  # somewhere the user can look.
+  base-url: file://${user.home}/.spring-agent/%s
+  cdn-url: file://${user.home}/.spring-agent/%s
+share:
+  # Where PublishFileTool says it put a file. No server to serve it, so the honest answer is the
+  # path on this machine.
+  base-url: file://${user.home}/.spring-agent/
+app:
+  cli:
+    # Who the agent thinks it is talking to. Scopes the workspace, the memories and the stored
+    # credentials, so changing it is equivalent to starting again as somebody else.
+    user-id: ${SPRING_AGENT_USER:${user.name}}
+    # Colour and the marker glyphs. Turned off automatically when the terminal is dumb or output is
+    # piped, so this is only for forcing plain text on a terminal that claims to support more.
+    color: ${SPRING_AGENT_COLOR:true}
+    # Which language the command line speaks. Defaults to the operating system's; en and zh_CN ship
+    # with it, and any other is a messages_xx.properties on the classpath away.
+    locale: ${SPRING_AGENT_LOCALE:}
+  persistence:
+    # The only backend this module depends on. Left explicit rather than inferred so the value is
+    # visible next to the datasource it uses.
+    type: jdbc
+  ai:
+    # Blank takes core's DEFAULT_SYSTEM_PROMPT, which is written to suit any surface. Set this to
+    # give the agent a persona, house rules or domain knowledge of its own.
+    system-prompt: ""
+    chat-memory:
+      # How many past messages are replayed to the model on each turn.
+      #
+      # Note that JdbcChatMemoryRepository refuses tool messages outright and keeps the rest, so
+      # what a past turn's tools returned is not replayed here — only the user's messages and the
+      # agent's answers.
+      max-messages: 100
+    vectorstore:
+      # Written on a graceful shutdown and reloaded on startup; if it is missing or unreadable the
+      # index is rebuilt, at the cost of re-embedding the tool descriptions on the next start.
+      file: ${VECTORSTORE_FILE:${user.home}/.spring-agent/vectorstore.json}
+    tools:
+      ask-user-question:
+        # Whether the agent may stop and ask a multiple-choice question rather than guessing. The
+        # questions are drawn in the terminal and the run waits for the answer, so unlike the chat
+        # integrations there is no expiry to configure — CliQuestionHandler explains why.
+        enabled: ${ASK_USER_QUESTION_ENABLED:true}
+      shell:
+        # `local`: Spring AI's own ShellTools, in this process as this user, with their filesystem,
+        # secrets and network. That is what makes the tool useful on a laptop and it is also the
+        # whole of the risk — there is no sandbox, and a command the agent runs is a command the
+        # user ran. Set TOOLS_SHELL_TYPE=none to take the Bash tool away entirely.
+        #
+        # `kubernetes` and `docker` are not options here: selecting them needs their modules, and
+        # this one depends on neither.
+        type: ${TOOLS_SHELL_TYPE:local}
+      mcp:
+        trusted-hosts: []

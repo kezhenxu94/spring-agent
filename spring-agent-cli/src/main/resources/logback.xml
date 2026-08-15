@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!--
+      A file, and only ever a file. Standard output here is the user's conversation with the
+      agent, so there is no appender to switch to: a log line written into the middle of a
+      streaming answer corrupts what they are reading. LOG_FILE says where it goes.
+    -->
+    <include resource="logback-appender-FILE.xml"/>
+
+    <root level="${LOG_LEVEL:-INFO}">
+        <appender-ref ref="FILE"/>
+    </root>
+</configuration>

@@ -104,8 +104,8 @@ public class AgentToolsProvider {
         agentTools, tools.toArray(), callbacks.toArray(new ToolCallback[0]), memoriesRootDirectory);
   }
 
-  // Package-private for AgentToolsProviderScenarioTest.
-  List<Object> resolveScenarioTools(final AgentScenario scenario) {
+  /** The {@code @AgentTool} beans a run in {@code scenario} is offered, in registration order. */
+  public List<Object> resolveScenarioTools(final AgentScenario scenario) {
     // findAnnotationOnBean, not findAnnotation on the bean's class: @AgentTool may sit on a @Bean
     // factory method. It is also the lookup getBeansWithAnnotation performs, so the two agree.
     return applicationContext.getBeansWithAnnotation(AgentTool.class).entrySet().stream()
