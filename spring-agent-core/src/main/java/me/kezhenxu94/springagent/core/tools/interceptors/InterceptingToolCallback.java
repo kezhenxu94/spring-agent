@@ -4,6 +4,7 @@ import java.util.List;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.ai.tool.metadata.ToolMetadata;
 
 public class InterceptingToolCallback implements ToolCallback {
 
@@ -18,6 +19,16 @@ public class InterceptingToolCallback implements ToolCallback {
   @Override
   public ToolDefinition getToolDefinition() {
     return delegate.getToolDefinition();
+  }
+
+  /**
+   * Delegated like the definition, and for a sharper reason: {@code ToolCallback} defaults this to
+   * metadata with {@code returnDirect} off, and every callback a run carries passes through here.
+   * Not forwarding it silently turned a tool that ends the turn into one that does not.
+   */
+  @Override
+  public ToolMetadata getToolMetadata() {
+    return delegate.getToolMetadata();
   }
 
   @Override

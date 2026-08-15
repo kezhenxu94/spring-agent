@@ -39,6 +39,7 @@ import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentTools;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.McpTools;
 import me.kezhenxu94.springagent.core.tools.QuestionNotAnsweredException;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallback;
 import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallbackResolver;
 import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallingManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,6 +66,8 @@ import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.ai.tool.metadata.ToolMetadata;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import reactor.core.publisher.Flux;
@@ -582,6 +585,41 @@ class SpringAgentTest {
     assertThat(history).containsExactly("NOT ANSWERED YET. End your turn.");
     // Once, not once per interceptor or per round of the manager.
     assertThat(asked).hasValue(1);
+  }
+
+  @Test
+  @DisplayName("a tool that ends the turn still ends it after the interceptors have wrapped it")
+  void returnDirectSurvivesTheInterceptingWrapper() {
+    // InterceptingToolCallingManager wraps every callback a run carries, and ToolCallback defaults
+    // returnDirect to off: a wrapper that does not forward the metadata silently turns a tool that
+    // ends the turn into one that does not, which is invisible until a model declines to stop.
+    final var tool =
+        AskUserQuestionTool.builder()
+            .answersValidation(false)
+            .questionHandler(questions -> Map.of())
+            .build();
+    final var endsTurn =
+        new InterceptingToolCallback(new EndsTurnCallback(ToolCallbacks.from(tool)[0]), List.of());
+
+    assertThat(endsTurn.getToolMetadata().returnDirect()).isTrue();
+  }
+
+  /** Stands in for the ask as AgentToolsProvider offers it when the turn ends there. */
+  private record EndsTurnCallback(ToolCallback delegate) implements ToolCallback {
+    @Override
+    public ToolDefinition getToolDefinition() {
+      return delegate.getToolDefinition();
+    }
+
+    @Override
+    public ToolMetadata getToolMetadata() {
+      return ToolMetadata.builder().returnDirect(true).build();
+    }
+
+    @Override
+    public String call(final String toolInput) {
+      return delegate.call(toolInput);
+    }
   }
 
   @Test
