@@ -6,8 +6,10 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 
 import java.nio.file.Path;
+import java.util.Locale;
 import me.kezhenxu94.springagent.core.tools.UserHome;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -40,7 +42,8 @@ class FeishuToolsTest {
             null,
             userWorkspaceFactory,
             objectMapper,
-            new FeishuProperties(null, null, null, null, null, null, null, null, null));
+            new FeishuMessages(
+                new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH)));
     tools.feishuReplyCard = new ClassPathResource("feishu/reply-card.json");
   }
 

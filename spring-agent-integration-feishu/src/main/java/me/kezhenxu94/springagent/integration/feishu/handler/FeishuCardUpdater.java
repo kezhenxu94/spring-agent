@@ -41,7 +41,7 @@ import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.ToolContextKey;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
-import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springaicommunity.agent.tools.TodoWriteTool;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
 import org.springaicommunity.agent.tools.TodoWriteTool.Todos;
@@ -75,7 +75,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   private final RestTemplate restTemplate;
   private final UserWorkspaceFactory userWorkspaceFactory;
   private final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing;
-  private final FeishuProperties.CardText text;
+  private final FeishuMessages messages;
   private final Instant startedAt = Instant.now();
   private final AtomicInteger sequence = new AtomicInteger(2);
   private final ConcurrentMap<String, String> imageKeysBySource = new ConcurrentHashMap<>();
@@ -89,7 +89,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       final RestTemplate restTemplate,
       final UserWorkspaceFactory userWorkspaceFactory,
       final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing,
-      final FeishuProperties.CardText text) {
+      final FeishuMessages messages) {
     this.feishu = feishu;
     this.om = om;
     this.cardId = cardId;
@@ -97,7 +97,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     this.restTemplate = restTemplate;
     this.userWorkspaceFactory = userWorkspaceFactory;
     this.modelPricing = modelPricing != null ? modelPricing : Map.of();
-    this.text = text;
+    this.messages = messages;
   }
 
   private static boolean isThinkingMode(Usage usage) {
@@ -152,7 +152,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         Arrays.stream(Throwables.getStackTraceAsString(error).split("\n"))
             .map(line -> "> " + line)
             .collect(Collectors.joining("\n"));
-    updateContent(text.error(summary) + "\n\n" + quoted);
+    updateContent(messages.error(summary) + "\n\n" + quoted);
   }
 
   private static String errorDisplay(Throwable error) {
@@ -165,7 +165,11 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       String toolName, String toolInput, ToolContext toolContext) {
     final var quotedInput = quoteToolInput(toolInput);
     log.info("Tool call: cardId={}, tool={}", cardId, toolName);
-    sendContent(lastBaseContent + "\n" + text.callingTool(toolName) + quotedInput);
+    sendContent(
+        lastBaseContent
+            + "\n"
+            + messages.get("card-calling-tool", Strings.nullToEmpty(toolName))
+            + quotedInput);
   }
 
   private String quoteToolInput(String toolInput) {
@@ -462,7 +466,9 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       final var imageKey =
           imageKeysBySource.computeIfAbsent(source, it -> Strings.nullToEmpty(uploadImage(it)));
       final var replacement =
-          imageKey.isEmpty() ? text.imageUnavailable() : "![" + imageName + "](" + imageKey + ")";
+          imageKey.isEmpty()
+              ? messages.get("card-image-unavailable")
+              : "![" + imageName + "](" + imageKey + ")";
       matcher.appendReplacement(out, Matcher.quoteReplacement(replacement));
     }
     matcher.appendTail(out);
@@ -547,7 +553,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         todos == null || todos.todos() == null
             ? ""
             : todos.todos().stream().map(this::formatTodoItem).collect(Collectors.joining("\n"));
-    final var markdown = items.isEmpty() ? "" : "---\n" + text.todoHeading() + "\n" + items;
+    final var markdown =
+        items.isEmpty() ? "" : "---\n" + messages.get("card-todo-heading") + "\n" + items;
     log.info(
         "updateTodoList: cardId={}, itemCount={}",
         cardId,

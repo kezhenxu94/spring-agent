@@ -7,7 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
-import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
@@ -32,7 +32,7 @@ import tools.jackson.databind.node.ObjectNode;
 public class FeishuQuestionForm {
 
   private final JsonMapper om;
-  private final FeishuProperties feishuProperties;
+  private final FeishuMessages messages;
 
   // Not final, matching FeishuCardListener#feishuReplyCard: @Value on a field is an injection point
   // in its own right, and AOT generates a plain field assignment for it, which cannot target a
@@ -192,7 +192,7 @@ public class FeishuQuestionForm {
       summary.append("**").append(question.header()).append("** ").append(question.question());
       summary.append('\n');
     }
-    summary.append(feishuProperties.questionText().superseded());
+    summary.append(messages.get("question-superseded"));
     return replacement(summary.toString(), pendingQuestionId);
   }
 
@@ -322,7 +322,7 @@ public class FeishuQuestionForm {
     } catch (Exception e) {
       throw new IllegalStateException("Failed to read the question form template", e);
     }
-    final var root = (ObjectNode) om.readTree(feishuProperties.questionText().render(json));
+    final var root = (ObjectNode) om.readTree(messages.renderQuestionForm(json));
     final var fragments = new LinkedHashMap<String, ObjectNode>();
     root.propertyStream()
         .filter(entry -> entry.getValue() instanceof ObjectNode)

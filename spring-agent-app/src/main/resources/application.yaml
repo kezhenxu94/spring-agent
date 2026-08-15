@@ -413,19 +413,11 @@ app:
     # language. A classpath location other than the default needs its own native-image resource
     # hint; see FeishuRuntimeHints.
     reply-card: ${FEISHU_REPLY_CARD:classpath:/feishu/reply-card.json}
-    # The card's own words, as opposed to anything the model wrote. Set these to write cards in the
-    # language of your workspace; the defaults are English. The first three fill the {generating},
-    # {stop} and {conversationHint} placeholders of the card template above, so a translation needs
-    # nothing but these keys — no card file of your own:
-    # card-text:
-    #   generating: "正在生成..."                        # until the first of the answer arrives
-    #   stop: "停止"                                    # the button that cancels the run
-    #   conversation-hint: "..."                        # the footer under the answer
-    #   error-format: "Something went wrong: {error}"   # {error} is the failure's message
-    #   unknown-error: "Unknown error"                  # stands in when there is no message
-    #   calling-tool: "Calling {tool} ..."              # {tool} is the tool's name
-    #   image-unavailable: "(image unavailable)"        # an image Feishu would not accept
-    #   todo-heading: "**To do**"
+    # Which language the cards speak — their own words, as opposed to anything the model wrote:
+    # the labels on the reply card and the question form, and the toasts a button answers with.
+    # Defaults to the host's language; en and zh_CN ship with it, and any other is a
+    # feishu/messages_xx.properties on the classpath away.
+    locale: ${FEISHU_LOCALE:}
     appId: ${FEISHU_APP_ID}
     appSecret: ${FEISHU_APP_SECRET}
     encrypt-key: ${FEISHU_ENCRYPT_KEY}
