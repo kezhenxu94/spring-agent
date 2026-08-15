@@ -201,8 +201,7 @@ class DockerShellToolsIntegrationTest {
   private static SpringAgentProperties appProperties() {
     return new SpringAgentProperties(
         null,
-        new SpringAgentProperties.Ai(
-            null, Set.of(), null, null, null, null, "system prompt", null));
+        new SpringAgentProperties.Ai(null, Set.of(), null, null, null, "system prompt", null));
   }
 
   /**

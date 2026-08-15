@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
@@ -28,8 +29,6 @@ import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.ChatMemoryRepository;
-import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
@@ -46,6 +45,7 @@ import reactor.core.publisher.Flux;
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class SpringAgent {
 
   /**
@@ -56,6 +56,19 @@ public class SpringAgent {
       Map.of("threadId", "", "parentId", "", "mentions", "none");
 
   final ChatClient chatClient;
+
+  /**
+   * The conversation window, shared by the memory advisor and the note {@link #recording} leaves:
+   * both have to see the same messages, and {@code add} re-reads the repository, so a note written
+   * mid-run is still there when the advisor saves the answer at the end of it.
+   *
+   * <p>Spring AI's own, over whichever repository the backend wired, with the window it sets. The
+   * size is deliberately not configurable here: a bean of this type declared by the application is
+   * what Spring AI's repository auto-configurations back off from, and the in-memory repository
+   * then quietly stands in for the real one.
+   */
+  final ChatMemory chatMemory;
+
   final SpringAgentProperties appConfiguration;
   final AgentToolsProvider agentToolsProvider;
 
@@ -65,39 +78,9 @@ public class SpringAgent {
    */
   final ObjectProvider<AgentResponseListener> declaredListeners;
 
-  /**
-   * The conversation window, shared by the memory advisor and the note {@link #recording} leaves:
-   * both have to see the same messages, and {@code add} re-reads the repository, so a note written
-   * mid-run is still there when the advisor saves the answer at the end of it.
-   *
-   * <p>Built here rather than taken as a bean, which is not as odd as it looks: Spring AI's
-   * repository auto-configurations are conditional on there being no {@link ChatMemory} bean at all
-   * — declaring one reads to them as an application wiring its own memory, and the Redis repository
-   * quietly gives way to the in-memory one. It is stateless, so one for the life of this bean
-   * serves every run.
-   */
-  private final ChatMemory chatMemory;
-
   private final ConcurrentMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
   private final AtomicInteger inFlight = new AtomicInteger(0);
   private volatile boolean accepting = true;
-
-  public SpringAgent(
-      final ChatClient chatClient,
-      final ChatMemoryRepository chatMemoryRepository,
-      final SpringAgentProperties appConfiguration,
-      final AgentToolsProvider agentToolsProvider,
-      final ObjectProvider<AgentResponseListener> declaredListeners) {
-    this.chatClient = chatClient;
-    this.appConfiguration = appConfiguration;
-    this.agentToolsProvider = agentToolsProvider;
-    this.declaredListeners = declaredListeners;
-    this.chatMemory =
-        MessageWindowChatMemory.builder()
-            .chatMemoryRepository(chatMemoryRepository)
-            .maxMessages(appConfiguration.ai().chatMemory().maxMessages())
-            .build();
-  }
 
   public boolean isAccepting() {
     return accepting;

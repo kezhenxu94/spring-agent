@@ -34,6 +34,7 @@ import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatModel;
@@ -78,7 +79,7 @@ class SpringAgentTest {
             // Real model options (OpenAI's) are ToolCallingChatOptions, which is the only kind
             // that carries a tool context; the plain default ones would silently drop it.
             ChatClient.builder(chatModel).defaultOptions(ToolCallingChatOptions.builder()).build(),
-            chatMemoryRepository,
+            MessageWindowChatMemory.builder().chatMemoryRepository(chatMemoryRepository).build(),
             properties(),
             agentToolsProvider,
             listenerProvider());
@@ -324,7 +325,6 @@ class SpringAgentTest {
             null,
             Set.of(),
             Map.of(),
-            new SpringAgentProperties.Ai.ChatMemory(10),
             null,
             null,
             "You are {userId} in {chatId} ({chatType}), thread {threadId}, parent {parentId},"
