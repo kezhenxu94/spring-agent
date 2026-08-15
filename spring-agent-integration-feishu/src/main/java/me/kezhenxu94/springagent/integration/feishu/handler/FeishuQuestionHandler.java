@@ -70,8 +70,7 @@ public class FeishuQuestionHandler implements QuestionHandler {
       // Nothing to answer means nothing will ever answer it; leaving the row PENDING would only
       // block the next typed reply from being taken as the answer to something.
       pendingQuestionRepo.updateStatus(id, PendingQuestion.Status.EXPIRED);
-      // Thrown rather than reported, because failing to put the questions anywhere is exactly what
-      // the caller counts to decide whether the ask reached the user on any channel at all.
+      // Thrown: the caller counts the channels that managed to ask, and this one did not.
       throw new IllegalStateException(
           "Could not insert the question form into card "
               + cardId
@@ -85,8 +84,7 @@ public class FeishuQuestionHandler implements QuestionHandler {
         id,
         request.conversationId(),
         cardId);
-    // Nothing, because there is nothing yet: the caller turns an empty answer into the note telling
-    // the model to end its turn and wait to be started again.
+    // Nothing yet: the caller turns an empty answer into the note that ends the model's turn.
     return Map.of();
   }
 }

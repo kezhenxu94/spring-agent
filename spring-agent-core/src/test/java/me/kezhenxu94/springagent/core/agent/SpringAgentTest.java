@@ -111,8 +111,7 @@ class SpringAgentTest {
             pendingQuestions,
             messagesIn(Locale.ENGLISH),
             listenerProvider(),
-            // Present, as it is on a JDBC or MongoDB deployment; the tests below that assert on the
-            // note are asserting what those backends need and Redis does not.
+            // Present, as on a JDBC or MongoDB deployment; Redis has no such bean.
             recorderProvider(new AskedQuestionsRecorder(chatMemory, messagesIn(Locale.ENGLISH))));
   }
 
@@ -285,9 +284,14 @@ class SpringAgentTest {
   }
 
   @Test
-  @DisplayName("putting questions to the user leaves a note the next run can read back")
-  void askingIsRecordedInTheConversation() throws Exception {
-    assertThat(askIn(request())).containsEntry("Which database should we use?", "not answered yet");
+  @DisplayName("an ask nobody answered leaves a note the next run can read back")
+  void unansweredAskIsRecorded() throws Exception {
+    // What a later run reads instead of the tool call JdbcChatMemoryRepository drops.
+    fireAndAwait(unansweredAsk());
+
+    final var handler = handlerFromRun();
+    assertThatThrownBy(() -> handler.handle(questions()))
+        .isInstanceOf(QuestionNotAnsweredException.class);
 
     assertThat(savedText())
         .anySatisfy(
@@ -299,25 +303,13 @@ class SpringAgentTest {
   }
 
   @Test
-  @DisplayName("an ask nobody answered is still recorded, which is the case that repeats")
-  void unansweredAskIsRecordedToo() throws Exception {
-    // The note is what a later run reads instead of the tool call, which JdbcChatMemoryRepository
-    // drops — and an unanswered ask is exactly the one a later run would otherwise put up again.
-    declaredListener =
-        new AgentResponseListener() {
-          @Override
-          public void onStart(final AgentRunRegistry registry) {
-            registry.addQuestionHandler(questions -> Map.of());
-          }
-        };
-    fireAndAwait(request());
-
-    final var handler = handlerFromRun();
-    assertThatThrownBy(() -> handler.handle(questions()))
-        .isInstanceOf(QuestionNotAnsweredException.class);
+  @DisplayName("an answered ask leaves no note telling a later run to wait for the answer")
+  void answeredAskIsNotRecorded() throws Exception {
+    // The note says to wait rather than ask again, which is untrue once the answer is in hand.
+    assertThat(askIn(request())).containsEntry("Which database should we use?", "not answered yet");
 
     assertThat(savedText())
-        .anySatisfy(text -> assertThat(text).contains("already been presented to the user"));
+        .noneSatisfy(text -> assertThat(text).contains("already been presented to the user"));
   }
 
   @Test
@@ -346,10 +338,26 @@ class SpringAgentTest {
   @Test
   @DisplayName("a run with no conversation memory has nothing to leave the note in")
   void askingIsNotRecordedWithoutConversationMemory() throws Exception {
-    askIn(request().scenario(AgentScenario.SCHEDULED_TASK));
+    fireAndAwait(unansweredAsk().scenario(AgentScenario.SCHEDULED_TASK));
+
+    final var handler = handlerFromRun();
+    assertThatThrownBy(() -> handler.handle(questions()))
+        .isInstanceOf(QuestionNotAnsweredException.class);
 
     assertThat(savedText())
         .noneSatisfy(text -> assertThat(text).contains("already been presented to the user"));
+  }
+
+  /** A run whose one channel puts the questions up and comes back with nothing. */
+  private AgentRequest.AgentRequestBuilder unansweredAsk() {
+    declaredListener =
+        new AgentResponseListener() {
+          @Override
+          public void onStart(final AgentRunRegistry registry) {
+            registry.addQuestionHandler(questions -> Map.of());
+          }
+        };
+    return request();
   }
 
   /** The text of every message saved to the conversation over the whole test. */
@@ -475,14 +483,10 @@ class SpringAgentTest {
   @Test
   @DisplayName("the note a handler throws is what the model reads as the tool's result")
   void noteReachesTheModelAsTheToolResult() {
-    // The whole design rests on this: Spring AI hands a tool exception's message to the model
-    // verbatim, which is the only way a note reaches it as itself rather than wrapped in the
-    // tool's "User has answered your questions". A library upgrade that changes it, or a
-    // spring.ai.tools.throw-exception-on-error naming this type, breaks the ask silently.
-    //
-    // Driven through the manager SpringAgentCoreAutoConfiguration actually builds, rather than the
-    // exception processor alone: the interceptors sit between the tool and that processor, and it
-    // is what the run really uses that has to deliver the note.
+    // The whole design rests on this, so it is driven through the manager
+    // SpringAgentCoreAutoConfiguration actually builds rather than the exception processor alone.
+    // A library upgrade, or a spring.ai.tools.throw-exception-on-error naming this type, breaks
+    // the ask silently.
     final var asked = new AtomicInteger();
     final var tool =
         AskUserQuestionTool.builder()
@@ -511,11 +515,9 @@ class SpringAgentTest {
   @Test
   @DisplayName("an ask left out of an iteration's callbacks is not put to the user at all")
   void askMissingFromTheIterationIsNotPresented() {
-    // The tool-search advisor rebuilds the callbacks before every iteration, and
-    // AskUserQuestionTool
-    // is a per-request tool that no resolver can find by name. What the model reads then is the
-    // resolver's recovery message, which tells it to call the tool again — so a repeat here is the
-    // framework's doing, not the model ignoring the note, and no question reaches the user.
+    // The tool-search advisor rebuilds the callbacks every iteration, and AskUserQuestionTool is a
+    // per-request tool no resolver can find by name. The model then reads the resolver's recovery
+    // message, which tells it to call the tool again — and no question reaches the user.
     final var manager =
         new InterceptingToolCallingManager(
             DefaultToolCallingManager.builder()

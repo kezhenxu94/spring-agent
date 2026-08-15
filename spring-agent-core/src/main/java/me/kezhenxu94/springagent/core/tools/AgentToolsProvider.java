@@ -90,9 +90,8 @@ public class AgentToolsProvider {
     // the user, so offering the tool would only invite the agent to ask into the void; the property
     // is how a deployment turns the whole interaction off whatever the channel can do.
     if (questionHandler != null && appConfiguration.ai().tools().askUserQuestion().enabled()) {
-      // Validation off, because it checks that every question came back with a value and most asks
-      // come back with none at all: a channel that cannot answer within the call returns nothing
-      // and says so by throwing, rather than inventing a value per question to satisfy the check.
+      // Validation off: it wants a value per question, and most asks come back with none at all.
+      // A channel that cannot answer within the call returns nothing and says so by throwing.
       tools.add(
           AskUserQuestionTool.builder()
               .answersValidation(false)

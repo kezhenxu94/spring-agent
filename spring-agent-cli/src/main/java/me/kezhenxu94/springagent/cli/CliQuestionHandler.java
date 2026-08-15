@@ -67,8 +67,7 @@ public class CliQuestionHandler implements QuestionHandler {
       return Map.of();
     }
     if (!console.interactive()) {
-      // Thrown rather than answered: the caller counts the channels that managed to put the
-      // questions somewhere, and tells the model that none did.
+      // Thrown: the caller counts the channels that managed to ask, and this one did not.
       log.info("Not asking {} question(s): no interactive terminal", questions.size());
       throw new IllegalStateException("No interactive terminal to draw the question on");
     }
@@ -139,8 +138,7 @@ public class CliQuestionHandler implements QuestionHandler {
     final var selected = chosen.get();
     if (selected == null) {
       // Interrupted rather than answered, so say so instead of returning a label nobody picked.
-      // A decided outcome, not a channel that failed, so it carries its own note through: the
-      // questions still standing behind this one go down with it, which is what Ctrl-C meant.
+      // Its own note, not a failure to ask; the questions behind this one go down with it.
       throw new QuestionNotAnsweredException(messages.get("question-dismissed"));
     }
     // Back to the option's own label: what goes to the model should be the wording it offered, not

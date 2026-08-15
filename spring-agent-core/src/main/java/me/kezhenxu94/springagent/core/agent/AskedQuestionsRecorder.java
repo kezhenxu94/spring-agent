@@ -13,15 +13,13 @@ import org.springframework.stereotype.Component;
 /**
  * Leaves a plain assistant message in the conversation saying the questions were put to the user.
  *
- * <p>A workaround, and only for the backends that need one. Asking is a tool call, and {@code
+ * <p>A workaround for the backends that need one. Asking is a tool call, and {@code
  * JdbcChatMemoryRepository} and the MongoDB repository keep neither the tool response nor the
- * assistant message carrying the call — the JDBC one says so on every write ("does not support tool
- * call messages"). A later run replaying the conversation would see the user's request and no sign
- * that anything had been asked about it, so it asks again; the outstanding-ask guard then refuses,
- * and the model is left with a question it believes it never put and no way to make progress.
+ * assistant message carrying it. A later run replaying the conversation would see no sign anything
+ * had been asked and ask again, which the outstanding-ask guard then refuses — leaving the model
+ * with a question it believes it never put and no way forward.
  *
- * <p>Redis keeps tool messages, so no bean exists there and the run records nothing — the history
- * already says what this would.
+ * <p>Redis keeps tool messages, so no bean exists there.
  */
 @Slf4j
 @Component
@@ -35,9 +33,8 @@ public class AskedQuestionsRecorder {
   private final CoreMessages messages;
 
   /**
-   * The same words the model was given when the ask went out, so there is one note to keep in step
-   * and one to translate. The questions themselves are not in it: what a later run has to know is
-   * that it already asked, not what it asked, and the conversation it is replaying carries that.
+   * The same words the model was given when the ask went out, so there is one wording to keep in
+   * step. The questions are not in it: a later run has to know that it asked, not what it asked.
    */
   public void record(final String conversationId) {
     try {

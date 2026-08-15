@@ -273,9 +273,7 @@ public class SpringAgent {
    *
    * <p>Most asks come back with no answer at all — the user has an hour to think about it, and the
    * run cannot be held open for that. So this is also where it is decided what the model reads in
-   * place of one, thrown as a {@link QuestionNotAnsweredException} because that is the only way to
-   * put a note in front of the model as itself rather than wrapped in the tool's "User has answered
-   * your questions".
+   * place of one, thrown as a {@link QuestionNotAnsweredException}.
    *
    * <p>A handler that throws anything else is logged and passed over rather than failing the ask,
    * so a channel that is broken or unreachable does not cost the user the channels that are
@@ -308,9 +306,8 @@ public class SpringAgent {
           }
           presented++;
         } catch (QuestionNotAnsweredException e) {
-          // A settled outcome rather than a broken channel: the handler put the questions up and
-          // came back with a note instead of an answer — the user dismissed them, say. Kept rather
-          // than rethrown here, so the channels after this one still get their turn.
+          // Put up and settled without an answer — the user dismissed them, say. Kept rather than
+          // rethrown, so the channels after this one still get their turn.
           if (settled == null) {
             settled = e;
           }
@@ -326,14 +323,15 @@ public class SpringAgent {
         throw new QuestionNotAnsweredException(messages.get("question-cannot-ask"));
       }
 
-      // Recorded here, where the questions are known to have reached someone, and not on the two
-      // paths above that never put anything up.
-      recordAsked(request);
-
       // A real answer from any channel beats a note from another: the user did reply somewhere.
       if (!answers.isEmpty()) {
         return answers;
       }
+
+      // Only with no answer to them: the note says to wait rather than ask again, which is false
+      // once an answer is in hand.
+      recordAsked(request);
+
       if (settled != null) {
         throw settled;
       }
@@ -341,11 +339,7 @@ public class SpringAgent {
     };
   }
 
-  /**
-   * Leaves a note in the conversation saying the questions were put to the user, on the backends
-   * whose chat memory cannot keep the tool call that would otherwise say it. Absent on the ones
-   * that can.
-   */
+  /** Only on the backends whose chat memory cannot keep the tool call that would say this. */
   private void recordAsked(final AgentRequest request) {
     final var conversationId = request.conversationId();
     if (!request.scenario().conversationMemory() || Strings.isNullOrEmpty(conversationId)) {
