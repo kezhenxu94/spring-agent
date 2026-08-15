@@ -3,7 +3,9 @@ package me.kezhenxu94.springagent.integration.feishu.handler;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,9 +30,10 @@ class FeishuQuestionFormTest {
   private final JsonMapper om = new JsonMapper();
 
   private FeishuQuestionForm form() {
-    final var properties =
-        new FeishuProperties(null, null, null, null, null, null, null, null, null);
-    final var form = new FeishuQuestionForm(om, properties);
+    final var messages =
+        new FeishuMessages(
+            new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH));
+    final var form = new FeishuQuestionForm(om, messages);
     form.questionForm = new ClassPathResource("feishu/question-form.json");
     return form;
   }

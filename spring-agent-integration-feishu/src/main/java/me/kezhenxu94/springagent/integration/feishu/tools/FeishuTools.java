@@ -36,7 +36,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
-import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -56,7 +56,7 @@ public class FeishuTools {
   final Client feishu;
   final UserWorkspaceFactory userWorkspaceFactory;
   final JsonMapper objectMapper;
-  final FeishuProperties feishuProperties;
+  final FeishuMessages messages;
 
   @Value("${app.feishu.reply-card:classpath:/feishu/reply-card.json}")
   Resource feishuReplyCard;
@@ -242,9 +242,7 @@ public class FeishuTools {
     final var card =
         (ObjectNode)
             objectMapper.readTree(
-                feishuProperties
-                    .cardText()
-                    .render(feishuReplyCard.getContentAsString(StandardCharsets.UTF_8)));
+                messages.renderCard(feishuReplyCard.getContentAsString(StandardCharsets.UTF_8)));
     final var config = card.path("config");
     if (config instanceof ObjectNode configNode) {
       configNode.put("streaming_mode", false);

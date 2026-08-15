@@ -71,9 +71,12 @@ public class FeishuRuntimeHints implements RuntimeHintsRegistrar {
    */
   private static final String REPLY_CARD = "feishu/reply-card.json";
 
+  /** The card's own words, whose locale is only known when the binary runs. */
+  private static final String MESSAGES_BUNDLE = "feishu.messages";
+
   @Override
   public void registerHints(final RuntimeHints hints, final ClassLoader classLoader) {
-    hints.resources().registerPattern(REPLY_CARD);
+    hints.resources().registerPattern(REPLY_CARD).registerResourceBundle(MESSAGES_BUNDLE);
 
     // The parameterized form, not the raw class: it is the generic type that carries the payload's
     // own property hints down from FeishuResponse#data.

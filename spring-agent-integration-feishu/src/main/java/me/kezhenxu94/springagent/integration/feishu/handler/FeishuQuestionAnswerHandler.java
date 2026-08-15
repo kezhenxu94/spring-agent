@@ -16,7 +16,7 @@ import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
-import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskExecutor;
@@ -49,7 +49,7 @@ public class FeishuQuestionAnswerHandler {
   private final FeishuQuestionForm questionForm;
   private final FeishuQuestionFormCloser formCloser;
   private final SpringAgent springAgent;
-  private final FeishuProperties feishuProperties;
+  private final FeishuMessages messages;
 
   /**
    * Boot's general-purpose executor by name, since {@code taskScheduler} is a {@code TaskExecutor}
@@ -62,12 +62,11 @@ public class FeishuQuestionAnswerHandler {
   public P2CardActionTriggerResponse handle(final P2CardActionTrigger event) {
     final var action = event.getEvent().getAction();
     final var id = String.valueOf(action.getValue().get(VALUE_PENDING_QUESTION_ID));
-    final var text = feishuProperties.questionText();
 
     final var pending = pendingQuestionRepo.findById(id).orElse(null);
     if (pending == null) {
       log.warn("Answer for unknown pending question {}", id);
-      return toast("warning", text.alreadyAnswered());
+      return toast("warning", messages.get("question-already-answered"));
     }
     if (pending.status() != PendingQuestion.Status.PENDING) {
       log.info("Answer for {} which is already {}", id, pending.status());
@@ -75,9 +74,9 @@ public class FeishuQuestionAnswerHandler {
       // taken it away failed, or this press was already in flight. Say which of the two it is,
       // since "already answered" is not true of questions a later message overtook.
       return switch (pending.status()) {
-        case SUPERSEDED -> toast("info", text.superseded());
-        case EXPIRED -> toast("warning", text.expired());
-        default -> toast("info", text.alreadyAnswered());
+        case SUPERSEDED -> toast("info", messages.get("question-superseded"));
+        case EXPIRED -> toast("warning", messages.get("question-expired"));
+        default -> toast("info", messages.get("question-already-answered"));
       };
     }
     // Cards are shared, so in a group chat everyone can see and press this form. Only the person
@@ -85,11 +84,11 @@ public class FeishuQuestionAnswerHandler {
     final var operator = event.getEvent().getOperator().getOpenId();
     if (!Objects.equals(operator, pending.userId())) {
       log.info("Answer for {} from {}, who is not {}", id, operator, pending.userId());
-      return toast("warning", text.notYours());
+      return toast("warning", messages.get("question-not-yours"));
     }
     if (pending.expiresAt() != null && Instant.now().isAfter(pending.expiresAt())) {
       pendingQuestionRepo.updateStatus(id, PendingQuestion.Status.EXPIRED);
-      return toast("warning", text.expired());
+      return toast("warning", messages.get("question-expired"));
     }
 
     final var questions = questions(pending);
@@ -97,13 +96,13 @@ public class FeishuQuestionAnswerHandler {
     if (answers.isEmpty()) {
       // Nothing was chosen, so there is nothing to tell the agent. The form is deliberately left
       // as it is, so they can answer properly rather than having to start over.
-      return toast("warning", text.nothingChosen());
+      return toast("warning", messages.get("question-nothing-chosen"));
     }
 
     pendingQuestionRepo.updateStatus(id, PendingQuestion.Status.ANSWERED);
     final var replyTo = event.getEvent().getContext().getOpenMessageId();
     taskExecutor.execute(() -> deliver(pending, questions, answers, replyTo));
-    return toast("success", text.submitted());
+    return toast("success", messages.get("question-submitted"));
   }
 
   /** The slow half, off the callback's three-second budget. */
@@ -146,7 +145,7 @@ public class FeishuQuestionAnswerHandler {
    * would be an answer to nothing.
    */
   private String message(final List<Question> questions, final Map<String, String> answers) {
-    final var message = new StringBuilder(feishuProperties.questionText().answerHeading());
+    final var message = new StringBuilder(messages.get("question-answer-heading"));
     for (final var question : questions) {
       final var answer = answers.get(question.question());
       if (Strings.isNullOrEmpty(answer)) {

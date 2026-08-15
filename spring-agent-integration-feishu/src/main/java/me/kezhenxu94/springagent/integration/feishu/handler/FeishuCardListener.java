@@ -18,7 +18,7 @@ import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
-import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
@@ -43,7 +43,7 @@ public class FeishuCardListener implements AgentResponseListener {
   final JsonMapper om;
   final SpringAgentProperties appConfiguration;
   final RestTemplate restTemplate;
-  final FeishuProperties feishuProperties;
+  final FeishuMessages messages;
   final UserWorkspaceFactory userWorkspaceFactory;
   final PendingQuestionRepo pendingQuestionRepo;
   final FeishuQuestionForm questionForm;
@@ -102,7 +102,7 @@ public class FeishuCardListener implements AgentResponseListener {
               restTemplate,
               userWorkspaceFactory,
               appConfiguration.ai().modelPricing(),
-              feishuProperties.cardText());
+              messages);
       registry.addResponseListener(cardUpdater);
       registry.addTodoEventHandler(cardUpdater);
       registry.addToolContext(FeishuCardUpdater.TOOL_CONTEXT_KEY.key(), cardUpdater);
@@ -157,9 +157,7 @@ public class FeishuCardListener implements AgentResponseListener {
 
   private String createCard(final String runId) throws Exception {
     final var cardJson =
-        feishuProperties
-            .cardText()
-            .render(feishuReplyCard.getContentAsString(StandardCharsets.UTF_8));
+        messages.renderCard(feishuReplyCard.getContentAsString(StandardCharsets.UTF_8));
     final var response =
         feishu
             .cardkit()

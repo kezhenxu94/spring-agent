@@ -16,9 +16,11 @@ import com.lark.oapi.service.im.v1.model.CreateImageResp;
 import com.lark.oapi.service.im.v1.model.CreateImageRespBody;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import me.kezhenxu94.springagent.core.tools.UserHome;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
-import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties.CardText;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -72,7 +74,8 @@ class FeishuCardUpdaterImageTest {
             restTemplate,
             userWorkspaceFactory,
             null,
-            new CardText(null, null, null, null, null, null, "[image unavailable]", null, null));
+            new FeishuMessages(
+                new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH)));
   }
 
   @Test
@@ -107,7 +110,7 @@ class FeishuCardUpdaterImageTest {
     final var image = Files.write(elsewhere.resolve("someone-elses.png"), new byte[] {1, 2, 3});
 
     assertThat(updater.reuploadImages("![secret](" + image.toUri() + ")"))
-        .isEqualTo("[image unavailable]");
+        .isEqualTo("(image unavailable)");
 
     verify(feishu.im().v1().image(), never()).create(any(CreateImageReq.class));
   }

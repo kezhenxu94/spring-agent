@@ -23,6 +23,7 @@ import org.springframework.context.annotation.Configuration;
 @RequiredArgsConstructor
 public class FeishuEventHandler {
   final FeishuProperties feishuProperties;
+  final FeishuMessages messages;
   final FeishuMessageReceiveHandler feishuMessageReceiveHandler;
   final SpringAgent springAgent;
   final FeishuCardListener feishuCardListener;
@@ -73,8 +74,7 @@ public class FeishuEventHandler {
                         run.runId(),
                         operator,
                         run.userId());
-                    return FeishuToasts.toast(
-                        "warning", feishuProperties.cardText().stopNotYours());
+                    return FeishuToasts.toast("warning", messages.get("card-stop-not-yours"));
                   }
                   springAgent.cancel(run.runId());
                 } else if (FeishuQuestionAnswerHandler.ACTION.equals(button)) {
