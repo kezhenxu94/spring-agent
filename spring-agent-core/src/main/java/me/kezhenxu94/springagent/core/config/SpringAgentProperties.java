@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.core.config;
 
 import java.time.Duration;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import lombok.Getter;
@@ -8,8 +9,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.Accessors;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+/**
+ * @param locale which language the agent's own text speaks — what core writes into a conversation
+ *     rather than what the model writes. Defaults to the host's, so setting it is for a workspace
+ *     whose language differs from the machine the agent runs on. Each surface states its own for
+ *     what it says directly; see {@link CoreMessages} for what this one selects.
+ */
 @ConfigurationProperties(prefix = "app")
-public record SpringAgentProperties(Dashscope dashscope, Ai ai) {
+public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
 
   public SpringAgentProperties {
     // An application that configures no DashScope at all is a legitimate one — spring-agent-cli is

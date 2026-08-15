@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentComposition;
@@ -66,6 +67,9 @@ public class SpringAgent {
 
   final SpringAgentProperties appConfiguration;
   final AgentToolsProvider agentToolsProvider;
+
+  /** What the agent writes into a conversation itself, as opposed to what the model writes. */
+  final CoreMessages messages;
 
   /**
    * The listeners that take part in every run. Resolved lazily rather than injected as a list, so
@@ -287,18 +291,17 @@ public class SpringAgent {
     };
   }
 
-  /** The note itself, addressed to the model that reads it back on a later run. */
-  private static String asked(final List<Question> questions) {
-    final var note =
-        new StringBuilder(
-            "I have already put these questions to the user, and they have been presented:");
+  /**
+   * The note itself, addressed to the model that reads it back on a later run — in the workspace's
+   * language, so that a conversation held in one language does not carry a turn in another.
+   */
+  private String asked(final List<Question> questions) {
+    final var note = new StringBuilder(messages.get("questions-asked-heading"));
     for (final var question : questions) {
-      note.append("\n- ").append(question.header()).append(": ").append(question.question());
+      note.append("\n")
+          .append(messages.get("questions-asked-item", question.header(), question.question()));
     }
-    return note.append(
-            "\nDo not ask them again. Any answer arrives as a later message in this conversation;"
-                + " if none has, carry on without one or say what you assumed.")
-        .toString();
+    return note.append("\n").append(messages.get("questions-asked-footer")).toString();
   }
 
   /** All handlers as one, fanning each update out to every handler. */

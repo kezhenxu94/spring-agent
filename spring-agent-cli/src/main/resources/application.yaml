@@ -113,6 +113,11 @@ share:
   # path on this machine.
   base-url: file://${user.home}/.spring-agent/
 app:
+  # Which language the agent's own text speaks — what it writes into a conversation itself, as
+  # opposed to what the model wrote or what a surface says directly. The note recording that the
+  # user has already been asked something is the one so far. Defaults to the host's language; en
+  # and zh_CN ship with it, and any other is a core/messages_xx.properties on the classpath away.
+  locale: ${SPRING_AGENT_LOCALE:}
   cli:
     # Who the agent thinks it is talking to. Scopes the workspace, the memories and the stored
     # credentials, so changing it is equivalent to starting again as somebody else.

@@ -13,12 +13,14 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentComposition;
@@ -82,6 +84,7 @@ class SpringAgentTest {
             MessageWindowChatMemory.builder().chatMemoryRepository(chatMemoryRepository).build(),
             properties(),
             agentToolsProvider,
+            new CoreMessages(properties()),
             listenerProvider());
   }
 
@@ -222,6 +225,31 @@ class SpringAgentTest {
   }
 
   @Test
+  @DisplayName("the note is left in the workspace's language, not always in English")
+  void theNoteSpeaksTheConfiguredLocale() throws Exception {
+    agent =
+        new SpringAgent(
+            ChatClient.builder(chatModel).defaultOptions(ToolCallingChatOptions.builder()).build(),
+            MessageWindowChatMemory.builder().chatMemoryRepository(chatMemoryRepository).build(),
+            properties(),
+            agentToolsProvider,
+            new CoreMessages(new SpringAgentProperties(null, null, Locale.of("zh", "CN"))),
+            listenerProvider());
+
+    askIn(request());
+
+    assertThat(savedText())
+        .anySatisfy(
+            text ->
+                assertThat(text)
+                    .contains("我已经向用户提出了以下问题")
+                    // The questions themselves are the user's own words, so they are not
+                    // translated.
+                    .contains("Database：Which database should we use?")
+                    .doesNotContain("already put these questions"));
+  }
+
+  @Test
   @DisplayName("a run with no conversation memory has nothing to leave the note in")
   void askingIsNotRecordedWithoutConversationMemory() throws Exception {
     askIn(request().scenario(AgentScenario.SCHEDULED_TASK));
@@ -329,7 +357,8 @@ class SpringAgentTest {
             null,
             "You are {userId} in {chatId} ({chatType}), thread {threadId}, parent {parentId},"
                 + " mentions {mentions}.",
-            null));
+            null),
+        Locale.ENGLISH);
   }
 
   private static final class RecordingListener implements AgentResponseListener {

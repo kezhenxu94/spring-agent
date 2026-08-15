@@ -161,6 +161,13 @@ storage:
 share:
   base-url: http://localhost:8080
 app:
+  # Which language the agent's own text speaks — what it writes into a conversation itself, as
+  # opposed to what the model wrote or what a surface says directly. The note recording that the
+  # user has already been asked something is the one so far. Defaults to app.feishu.locale, so a
+  # deployment that has already picked a language for its cards gets the same one here without
+  # saying so twice. en and zh_CN ship with it, and any other is a core/messages_xx.properties on
+  # the classpath away.
+  locale: ${SPRING_AGENT_LOCALE:${FEISHU_LOCALE:}}
   persistence:
     # Where the agent's own records live — MCP server configs, scheduled tasks, published resources,
     # shell credentials and the conversation history, all together. One of:
