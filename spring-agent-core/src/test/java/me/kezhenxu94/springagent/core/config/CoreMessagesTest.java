@@ -1,7 +1,6 @@
 package me.kezhenxu94.springagent.core.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -77,22 +76,16 @@ class CoreMessagesTest {
   }
 
   @Test
+  @DisplayName("a key the bundles do not have, or cannot be reached, answers with the key itself")
   void answersWithTheKeyRatherThanThrowingOnOneItDoesNotHave() {
     assertThat(messagesIn(Locale.ENGLISH).get("no-such-key")).isEqualTo("no-such-key");
-  }
 
-  @Test
-  @DisplayName("an application whose message source cannot reach the bundle is told at startup")
-  void refusesToStartWithoutTheBundle() {
     final var withoutTheBundle = new ResourceBundleMessageSource();
     withoutTheBundle.setBasename("some/other/bundle");
+    final var unreachable =
+        new CoreMessages(withoutTheBundle, new SpringAgentProperties(null, null, Locale.ENGLISH));
 
-    assertThatThrownBy(
-            () ->
-                new CoreMessages(
-                    withoutTheBundle, new SpringAgentProperties(null, null, Locale.ENGLISH)))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("spring.messages.basename");
+    assertThat(unreachable.get("questions-asked-heading")).isEqualTo("questions-asked-heading");
   }
 
   @Test

@@ -2,8 +2,7 @@ spring:
   messages:
     # Both bundles this application reads: its own words to the user, and core/messages, which is
     # what the agent writes into a conversation itself. CoreMessages reads through this same
-    # message source rather than building one, so naming it here is what makes those notes resolve
-    # — leave it out and they come out as bare message keys, which the context refuses to start on.
+    # message source rather than building one, so naming it here is what makes those notes resolve.
     basename: messages,core/messages
     # The operating system's language when the user's locale has no bundle of its own, rather than
     # English: the desktop this runs on belongs to the user being spoken to, so its language is a

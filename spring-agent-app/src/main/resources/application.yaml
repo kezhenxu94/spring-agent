@@ -3,8 +3,7 @@ server:
 spring:
   messages:
     # What the agent writes into a conversation itself. CoreMessages reads through this message
-    # source rather than building one, so naming the bundle here is what makes those notes resolve
-    # — leave it out and they come out as bare message keys, which the context refuses to start on.
+    # source rather than building one, so naming the bundle here is what makes those notes resolve.
     # This application has no messages.properties of its own, hence the one entry.
     basename: core/messages
     # English, not the host's language, when app.locale is set to one that ships no bundle: on a
