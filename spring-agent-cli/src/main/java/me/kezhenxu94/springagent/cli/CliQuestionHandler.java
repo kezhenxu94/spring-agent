@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.agent.SynchronousQuestionHandler;
 import me.kezhenxu94.springagent.core.tools.QuestionNotAnsweredException;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
@@ -26,12 +27,14 @@ import org.springframework.stereotype.Component;
  * follows it in one turn.
  *
  * <p>A bean rather than per-run: unlike the Feishu handler it captures nothing about the
- * conversation, since the answer goes straight back as the tool's result.
+ * conversation, since the answer goes straight back as the tool's result. {@link
+ * SynchronousQuestionHandler} for the same reason: the answer arrives inside the call, so the turn
+ * has to carry on to act on it.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class CliQuestionHandler implements QuestionHandler {
+public class CliQuestionHandler implements QuestionHandler, SynchronousQuestionHandler {
 
   /** Lines the options up under the question, matching what CliRenderer indents an answer by. */
   private static final String INDENT = "  ";

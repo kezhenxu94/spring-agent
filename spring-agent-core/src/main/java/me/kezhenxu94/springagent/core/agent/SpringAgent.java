@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +26,7 @@ import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.McpTools;
 import me.kezhenxu94.springagent.core.tools.QuestionNotAnsweredException;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.springaicommunity.agent.advisors.AutoMemoryToolsAdvisor;
+import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
 import org.springframework.ai.chat.client.ChatClient;
@@ -155,8 +157,12 @@ public class SpringAgent {
     // from whichever the user is looking at. None registered means the agent is not offered the
     // tool at all.
     final var questionHandlers = registry.questionHandlers();
+    // No channel answers inside the call, so there is nothing for the model to do once the
+    // questions are up and the run ends at the ask itself rather than asking the model to stop.
+    final var askEndsTurn =
+        questionHandlers.stream().noneMatch(SynchronousQuestionHandler.class::isInstance);
     final var questionHandler =
-        questionHandlers.isEmpty() ? null : asking(request, questionHandlers);
+        questionHandlers.isEmpty() ? null : asking(request, questionHandlers, askEndsTurn);
 
     final var cancelFlag = new AtomicBoolean(false);
     if (requestId != null) {
@@ -179,7 +185,8 @@ public class SpringAgent {
                         request.chatType(),
                         request.scenario(),
                         fanOut(todoEventHandlers),
-                        questionHandler);
+                        questionHandler,
+                        askEndsTurn);
                 mcpTools.set(composition.agentTools().mcpTools());
                 return rawStream(request, composition, toolContextFor(request, registry));
               } catch (Exception e) {
@@ -284,7 +291,8 @@ public class SpringAgent {
    * beside an asynchronous one — a combination no application composes today, the command line
    * being alone in its own.
    */
-  private QuestionHandler asking(final AgentRequest request, final List<QuestionHandler> handlers) {
+  private QuestionHandler asking(
+      final AgentRequest request, final List<QuestionHandler> handlers, final boolean askEndsTurn) {
     return questions -> {
       // One unanswered ask per conversation, whatever the channel: a model that asks again while a
       // form is still up would otherwise put a second one in front of the user on every channel.
@@ -335,7 +343,11 @@ public class SpringAgent {
       if (settled != null) {
         throw settled;
       }
-      throw new QuestionNotAnsweredException(messages.get("question-asked"));
+      // With the turn ending here the model never reads this, and the user does: the tool's result
+      // is what Spring AI returns to the application in place of a reply. The headers are the
+      // model's own short labels for what it just put in front of them.
+      throw new QuestionNotAnsweredException(
+          askEndsTurn ? headersOf(questions) : messages.get("question-asked"));
     };
   }
 
@@ -346,6 +358,14 @@ public class SpringAgent {
       return;
     }
     askedQuestionsRecorder.ifAvailable(recorder -> recorder.record(conversationId));
+  }
+
+  /**
+   * What the user reads in place of a reply when the turn ends at the ask: the model's own short
+   * label for each question, which is already written for them and sits above the form itself.
+   */
+  private static String headersOf(final List<Question> questions) {
+    return questions.stream().map(Question::header).collect(Collectors.joining(", "));
   }
 
   /** Whether the conversation already has questions out that nobody has answered. */

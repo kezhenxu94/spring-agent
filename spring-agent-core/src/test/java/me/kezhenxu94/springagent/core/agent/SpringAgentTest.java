@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.InstanceOfAssertFactories.STRING;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
@@ -90,7 +91,7 @@ class SpringAgentTest {
 
   @BeforeEach
   void setUp() throws Exception {
-    when(agentToolsProvider.compose(any(), any(), any(), any(), any(), any()))
+    when(agentToolsProvider.compose(any(), any(), any(), any(), any(), any(), anyBoolean()))
         .thenReturn(
             new AgentComposition(
                 new AgentTools(
@@ -173,7 +174,7 @@ class SpringAgentTest {
   @Test
   @DisplayName("a run that cannot be composed reports FAILED rather than failing silently")
   void compositionFailureRun() throws Exception {
-    when(agentToolsProvider.compose(any(), any(), any(), any(), any(), any()))
+    when(agentToolsProvider.compose(any(), any(), any(), any(), any(), any(), anyBoolean()))
         .thenThrow(new IOException("no workspace"));
 
     final var listener = fireAndAwait(request());
@@ -212,7 +213,8 @@ class SpringAgentTest {
     assertThat(listener.outcomes).containsExactly(AgentOutcome.FAILED);
     assertThat(listener.errors).hasSize(1);
     assertThat(listener.errors.getFirst()).hasMessage("nowhere to put the answer");
-    verify(agentToolsProvider, times(0)).compose(any(), any(), any(), any(), any(), any());
+    verify(agentToolsProvider, times(0))
+        .compose(any(), any(), any(), any(), any(), any(), anyBoolean());
   }
 
   @Test
@@ -297,7 +299,7 @@ class SpringAgentTest {
         .anySatisfy(
             text ->
                 assertThat(text)
-                    .contains("already been presented to the user")
+                    .contains("now in front of the user")
                     // The questions are not repeated: the conversation being replayed carries them.
                     .doesNotContain("Which database should we use?"));
   }
@@ -309,7 +311,7 @@ class SpringAgentTest {
     assertThat(askIn(request())).containsEntry("Which database should we use?", "not answered yet");
 
     assertThat(savedText())
-        .noneSatisfy(text -> assertThat(text).contains("already been presented to the user"));
+        .noneSatisfy(text -> assertThat(text).contains("now in front of the user"));
   }
 
   @Test
@@ -332,7 +334,7 @@ class SpringAgentTest {
         .isInstanceOf(QuestionNotAnsweredException.class);
 
     assertThat(savedText())
-        .noneSatisfy(text -> assertThat(text).contains("already been presented to the user"));
+        .noneSatisfy(text -> assertThat(text).contains("now in front of the user"));
   }
 
   @Test
@@ -345,7 +347,7 @@ class SpringAgentTest {
         .isInstanceOf(QuestionNotAnsweredException.class);
 
     assertThat(savedText())
-        .noneSatisfy(text -> assertThat(text).contains("already been presented to the user"));
+        .noneSatisfy(text -> assertThat(text).contains("now in front of the user"));
   }
 
   /** A run whose one channel puts the questions up and comes back with nothing. */
@@ -367,6 +369,73 @@ class SpringAgentTest {
     verify(chatMemoryRepository, atLeast(0)).saveAll(any(), saved.capture());
     return ((List<List<Message>>) (List<?>) saved.getAllValues())
         .stream().flatMap(List::stream).map(Message::getText).toList();
+  }
+
+  @Test
+  @DisplayName("an ask no channel can answer within the call ends the turn itself")
+  void askEndsTheTurnWhenNoChannelAnswersWithinTheCall() throws Exception {
+    // returnDirect: Spring AI hands the result to the application instead of the model, so the run
+    // stops without the model having to stop itself — which it does not reliably do.
+    fireAndAwait(unansweredAsk());
+
+    assertThat(askEndsTurnFromRun()).isTrue();
+  }
+
+  @Test
+  @DisplayName("a channel that answers within the call keeps the turn going")
+  void askDoesNotEndTheTurnForASynchronousChannel() throws Exception {
+    // Ending it would throw away the answer the channel just collected.
+    declaredListener =
+        new AgentResponseListener() {
+          @Override
+          public void onStart(final AgentRunRegistry registry) {
+            registry.addQuestionHandler(new SynchronousRecordingHandler());
+          }
+        };
+    fireAndAwait(request());
+
+    assertThat(askEndsTurnFromRun()).isFalse();
+  }
+
+  @Test
+  @DisplayName("what the user reads when the turn ends at the ask is the question's own header")
+  void headersAreWhatTheDirectReturnCarries() throws Exception {
+    // The model never reads this: the result goes to the application, and from there onto the card
+    // above the form. So it is the model's short label for the question, not an instruction to it.
+    fireAndAwait(unansweredAsk());
+
+    final var handler = handlerFromRun();
+    assertThatThrownBy(() -> handler.handle(questions()))
+        .isInstanceOf(QuestionNotAnsweredException.class)
+        .hasMessage("Database");
+  }
+
+  /** Whether the run asked for the ask to be built so that it ends the turn. */
+  private boolean askEndsTurnFromRun() throws Exception {
+    final var endsTurn = ArgumentCaptor.forClass(Boolean.class);
+    verify(agentToolsProvider)
+        .compose(any(), any(), any(), any(), any(), any(), endsTurn.capture());
+    return endsTurn.getValue();
+  }
+
+  /** Synchronous, but this time with nothing to show for it. */
+  private static final class EmptySynchronousHandler
+      implements QuestionHandler, SynchronousQuestionHandler {
+    @Override
+    public Map<String, String> handle(final List<Question> questions) {
+      return Map.of();
+    }
+  }
+
+  /** A channel of the command line's kind: the answer arrives inside the call. */
+  private static final class SynchronousRecordingHandler
+      implements QuestionHandler, SynchronousQuestionHandler {
+    @Override
+    public Map<String, String> handle(final List<Question> questions) {
+      final var answers = new LinkedHashMap<String, String>();
+      questions.forEach(question -> answers.put(question.question(), "cli"));
+      return answers;
+    }
   }
 
   @Test
@@ -393,11 +462,14 @@ class SpringAgentTest {
   @Test
   @DisplayName("an ask that is out but unanswered tells the model to end its turn")
   void presentedButUnanswered() throws Exception {
+    // A channel that answers within the call, so the turn carries on and the model is the one
+    // reading this. Where the turn ends at the ask instead, the user reads it — see the headers
+    // test below.
     declaredListener =
         new AgentResponseListener() {
           @Override
           public void onStart(final AgentRunRegistry registry) {
-            registry.addQuestionHandler(questions -> Map.of());
+            registry.addQuestionHandler(new EmptySynchronousHandler());
           }
         };
     fireAndAwait(request());
@@ -405,7 +477,7 @@ class SpringAgentTest {
     final var handler = handlerFromRun();
     assertThatThrownBy(() -> handler.handle(questions()))
         .isInstanceOf(QuestionNotAnsweredException.class)
-        .hasMessageContaining("already been presented to the user");
+        .hasMessageContaining("now in front of the user");
   }
 
   @Test
@@ -574,7 +646,8 @@ class SpringAgentTest {
     fireAndAwait(request);
 
     final var composed = ArgumentCaptor.forClass(QuestionHandler.class);
-    verify(agentToolsProvider).compose(any(), any(), any(), any(), any(), composed.capture());
+    verify(agentToolsProvider)
+        .compose(any(), any(), any(), any(), any(), composed.capture(), anyBoolean());
     return composed
         .getValue()
         .handle(
@@ -584,7 +657,8 @@ class SpringAgentTest {
   /** The one handler the run composed out of everything registered. */
   private QuestionHandler handlerFromRun() throws Exception {
     final var composed = ArgumentCaptor.forClass(QuestionHandler.class);
-    verify(agentToolsProvider).compose(any(), any(), any(), any(), any(), composed.capture());
+    verify(agentToolsProvider)
+        .compose(any(), any(), any(), any(), any(), composed.capture(), anyBoolean());
     return composed.getValue();
   }
 
@@ -601,7 +675,8 @@ class SpringAgentTest {
     agent.fire(request().listener(listener).build());
 
     assertThat(listener.outcomes).isEmpty();
-    verify(agentToolsProvider, times(0)).compose(any(), any(), any(), any(), any(), any());
+    verify(agentToolsProvider, times(0))
+        .compose(any(), any(), any(), any(), any(), any(), anyBoolean());
   }
 
   private RecordingListener fireAndAwait(final AgentRequest.AgentRequestBuilder request) {
