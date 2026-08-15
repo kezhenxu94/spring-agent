@@ -11,22 +11,14 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Makes the OpenAI SDK's model classes invocable in a native image, not merely visible.
  *
- * <p>openai-java ships its own {@code META-INF/native-image/reflect-config.json}, twelve thousand
- * entries of it, and every one declares {@code queryAllDeclaredMethods} — enough to reflect over a
- * class and see what it has, not enough to call any of it. The SDK deserializes by calling a
- * private {@code putAdditionalProperty} on each model, so the first embedding of the first turn
- * fails with
+ * <p>openai-java ships twelve thousand reflection entries and every one declares only {@code
+ * queryAllDeclaredMethods}: enough to see what a class has, not to call it. Deserialization calls a
+ * private {@code putAdditionalProperty} on each model, so without this the first embedding fails —
+ * on a reactor scheduler thread, where no listener hears it and a caller waiting on the run hangs.
  *
- * <pre>MissingReflectionRegistrationError: Cannot reflectively invoke method 'private final void
- * com.openai.models.embeddings.CreateEmbeddingResponse.putAdditionalProperty'</pre>
- *
- * <p>Which is worse than it sounds: the error surfaces on a reactor scheduler thread as a fatal
- * exception, so nothing reports the run as finished and a command line waiting on it simply hangs.
- *
- * <p>Rather than name the classes — they are generated, there are thousands, and the next model
- * added would need another one — this reads the SDK's own list at build time and upgrades the
- * entries under {@link #PACKAGES} to invocable. Those are the APIs this project calls; registering
- * all twelve thousand would carry the whole of OpenAI's API surface into every binary.
+ * <p>The classes are generated and there are thousands, so this reads the SDK's own list at build
+ * time and upgrades the entries under {@link #PACKAGES} rather than naming any. Registering all
+ * twelve thousand would carry the whole of OpenAI's API surface into every binary.
  */
 public class OpenAiSdkRuntimeHints implements RuntimeHintsRegistrar {
 
@@ -78,9 +70,9 @@ public class OpenAiSdkRuntimeHints implements RuntimeHintsRegistrar {
         }
       }
     } catch (IOException | RuntimeException e) {
-      // Deliberately not fatal. A build without the SDK on its classpath is a legitimate one, and
-      // a build whose file this cannot read should fail at run time with the specific missing
-      // registration rather than here with a parse error nobody can act on.
+      // Not fatal: a build without the SDK on its classpath is a legitimate one, and an unreadable
+      // file is better reported as the specific missing registration at run time than as a parse
+      // error here that nobody can act on.
       return List.of();
     }
     return List.copyOf(names);

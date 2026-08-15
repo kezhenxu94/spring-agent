@@ -101,16 +101,13 @@ public class CliRenderer implements AgentResponseListener, TodoEventHandler {
 
   /**
    * Indents continuation lines under the bullet and breaks the ones that would run past the right
-   * edge, so the gutter holds all the way down a paragraph.
+   * edge, so the gutter holds all the way down a paragraph. The terminal's own wrapping knows
+   * nothing about the indent and would return every wrapped line to column zero.
    *
-   * <p>Done here rather than left to the terminal's own wrapping, which knows nothing about the
-   * indent and would return every wrapped line to column zero.
-   *
-   * <p>Deciding where to break needs the whole of the word that is about to be placed, and the text
-   * arrives a few characters at a time, so {@link #word} holds the one being typed until its end
-   * arrives — output lags the model by at most one word. {@link #column} likewise survives between
-   * chunks, so a word split across two of them is measured against the line it will actually land
-   * on.
+   * <p>Text arrives a few characters at a time but a break needs the whole of the next word, so
+   * {@link #word} holds it until its end arrives — output lags the model by at most one word — and
+   * {@link #column} survives between chunks so a word split across two is measured against the line
+   * it will land on.
    */
   private String wrap(final String chunk) {
     final var out = new StringBuilder(chunk.length() + 8);
@@ -130,10 +127,8 @@ public class CliRenderer implements AgentResponseListener, TodoEventHandler {
           column++;
         }
       } else if (WCWidth.wcwidth(codePoint) > 1) {
-        // A wide character is a unit of its own. Chinese and Japanese are written without spaces,
-        // so waiting for one means a whole paragraph arrives as a single unbreakable word and no
-        // line ever wraps — which is how a CJK answer ended up wrapped by the terminal instead,
-        // with the gutter lost.
+        // A wide character is a unit of its own: Chinese and Japanese are written without spaces,
+        // so waiting for one would make a whole paragraph a single unbreakable word.
         place(out);
         word.appendCodePoint(codePoint);
         place(out);
@@ -151,12 +146,11 @@ public class CliRenderer implements AgentResponseListener, TodoEventHandler {
     }
     final var limit = console.width() - 1;
     final var wordWidth = displayWidth(word);
-    // Only when there is already something on the line: a word longer than the whole terminal
-    // would otherwise loop, and breaking it up would ruin the one thing — a path, a URL — most
-    // likely to be that long and most likely to be copied whole.
+    // Only when the line already has something on it, so a word wider than the terminal is left
+    // over-long rather than broken up: a path or a URL is what tends to be that long, and it is
+    // what a user copies whole.
     if (column > INDENT.length() && column + 1 + wordWidth > limit) {
-      // The trailing space written for the previous word is now at the end of a line, so take it
-      // back rather than leaving it to be wrapped onto the next one.
+      // Take back the previous word's trailing space rather than wrap it onto the next line.
       if (!out.isEmpty() && out.charAt(out.length() - 1) == ' ') {
         out.setLength(out.length() - 1);
       }
@@ -170,9 +164,8 @@ public class CliRenderer implements AgentResponseListener, TodoEventHandler {
 
   /**
    * How many columns {@code text} occupies, which is not how many characters it has: a CJK
-   * character takes two, and a combining mark none. Without this a line of Chinese wrapped at twice
-   * the terminal's width and the terminal broke it wherever it liked, losing the gutter — which
-   * matters here, because the agent answers in whatever language it was asked in.
+   * character takes two and a combining mark none. The agent answers in whatever language it was
+   * asked in, so the difference is not an edge case.
    */
   private static int displayWidth(final CharSequence text) {
     var width = 0;

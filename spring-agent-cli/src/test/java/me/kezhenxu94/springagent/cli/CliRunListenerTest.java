@@ -60,8 +60,7 @@ class CliRunListenerTest {
 
   /**
    * The registry's accessors are package-private to core, so a test outside that package reads the
-   * fields directly. Reflection rather than moving the assertions into core: what is being tested
-   * is this integration's wiring, not the registry.
+   * fields directly. What is under test is this integration's wiring, not the registry.
    */
   @SuppressWarnings("unchecked")
   private static <T> T field(final AgentRunRegistry registry, final String name) {

@@ -28,16 +28,14 @@ public class SpringAgentCliApplication {
           .web(WebApplicationType.NONE)
           .run(args);
     } catch (Exception e) {
-      // The AOT processor runs this same main method at build time, and stops it by throwing once
-      // it has the context it came for — so catching everything here turned a successful
-      // processAot into a build failure reporting "could not start: null". A build-time failure
-      // also belongs at the build, with its stack trace, rather than as one tidy line.
+      // The AOT processor runs this same main at build time and stops it by throwing once it has
+      // the context it came for, so catching that would turn a successful processAot into a build
+      // failure. A build-time failure belongs at the build with its stack trace anyway.
       if (Boolean.getBoolean("spring.aot.processing")) {
         throw e;
       }
-      // Boot reports a failed start through the logger, and this application's logger writes to a
-      // file. Without this the user gets a prompt back, no output at all, and no reason to think
-      // anything happened — so the one thing they need, plus where the rest of it went.
+      // Boot reports a failed start through the logger, which here writes to a file — so without
+      // this the user gets their prompt back with no output and no reason to think anything ran.
       final var cause = rootCause(e);
       System.err.println(
           "spring-agent could not start: "

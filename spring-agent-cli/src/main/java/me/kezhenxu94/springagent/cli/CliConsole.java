@@ -15,11 +15,10 @@ import org.springframework.stereotype.Component;
 /**
  * The one thing allowed to write to the terminal.
  *
- * <p>Everything that appears during a run — the answer as it streams, the tool the agent is
- * running, its todo list, the spinner, errors — arrives from the reactor thread driving the run,
- * while the spinner ticks on a scheduler and the question views take the terminal over entirely. So
- * every write funnels through the {@code synchronized} methods here, in the same spirit as {@code
- * FeishuCardUpdater} funnelling every card write through one sequence counter.
+ * <p>A run's output arrives on the reactor thread driving it, the spinner ticks on a scheduler, and
+ * a question view takes the terminal over entirely — so every write funnels through the {@code
+ * synchronized} methods here, as {@code FeishuCardUpdater} funnels every card write through one
+ * sequence counter.
  *
  * <p>It also decides once whether this terminal gets colour and glyphs, so no caller has to.
  */

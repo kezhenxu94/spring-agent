@@ -19,12 +19,10 @@ import org.springframework.stereotype.Component;
 /**
  * Puts the agent's questions to the user and waits for the answers.
  *
- * <p>Blocking, which is the opposite of what {@code FeishuQuestionHandler} does — and its javadoc
- * explains why it must not: a chat user may take an hour, and a thread held that long costs a card,
- * a pool slot, and the question itself if the process restarts. None of that holds here. The user
- * is at the keyboard the run is printing to, there is one run at a time, and if they walk away the
- * session ends with the terminal. Blocking is what keeps the question, the answer and the work that
- * follows it in a single turn, instead of ending the run and asking the user to start it again.
+ * <p>Blocking, which is the opposite of {@code FeishuQuestionHandler} and for the reasons its
+ * javadoc gives: none of them hold at a keyboard, where the user is watching the run and the
+ * session ends with the terminal anyway. Blocking keeps the question, the answer and the work that
+ * follows it in one turn.
  *
  * <p>A bean rather than per-run: unlike the Feishu handler it captures nothing about the
  * conversation, since the answer goes straight back as the tool's result.
@@ -35,9 +33,8 @@ import org.springframework.stereotype.Component;
 public class CliQuestionHandler implements QuestionHandler {
 
   /**
-   * Returned when there is no terminal to draw on — output is piped, or input is a file. Worded the
-   * way {@code FeishuQuestionHandler} words its failure: the agent has to be told plainly that no
-   * answer is coming, or it waits for one that cannot arrive.
+   * Returned when there is no terminal to draw on. The agent has to be told plainly that no answer
+   * is coming, or it waits for one that cannot arrive.
    */
   private static final String CANNOT_ASK =
       "COULD NOT ASK. There is no interactive terminal on this session, so the question could not"
@@ -50,19 +47,16 @@ public class CliQuestionHandler implements QuestionHandler {
   private final CliConsole console;
 
   /**
-   * Driven directly rather than through {@code ViewComponent}, which looks like the obvious way to
-   * run one view and is not: it wires the view's event loop but never calls {@link
-   * TerminalUIBuilder}'s {@code TerminalUI.configure}, and {@code configure} is what calls {@code
-   * View.init()} — which is where {@code ListView} registers the key bindings for the arrow keys
-   * and Enter. Built through it, the box drew correctly and then ignored every key, with no way out
-   * but killing the process.
+   * Driven directly rather than through {@code ViewComponent}, which looks like the way to run one
+   * view and is not: it never calls {@code TerminalUI.configure}, and that is what calls {@code
+   * View.init()} — where {@code ListView} registers its key bindings. Through it the box draws and
+   * then ignores every key.
    */
   private final TerminalUIBuilder terminalUIBuilder;
 
   /**
-   * The view currently on screen, so {@link #interrupt()} can take it down. Held because the loop
-   * below owns the terminal while it runs: the runner's Ctrl-C handler has nothing else to act on,
-   * and without this a user who did not want to answer had no way out but killing the process.
+   * The view currently on screen, so {@link #interrupt()} can take it down. The loop below owns the
+   * terminal while it runs, so the runner's Ctrl-C handler has nothing else to act on.
    */
   private final AtomicReference<TerminalUI> onScreen = new AtomicReference<>();
 
@@ -103,28 +97,22 @@ public class CliQuestionHandler implements QuestionHandler {
 
     final var labels = options.stream().map(CliQuestionHandler::label).toList();
     // NOCHECK, though RADIO is what a one-of-many question looks like: ListView.enter() dispatches
-    // the event this method waits on only in the NOCHECK style. Under RADIO, Space ticks a box,
-    // Enter does nothing, and there is no event for "the user has decided" at all — the box just
-    // sits there. So the highlighted row is the answer and Enter takes it, which is the shape a
-    // coding agent's selector has anyway.
+    // the event this method waits on only in the NOCHECK style, and under RADIO there is no event
+    // for "the user has decided" at all. So the highlighted row is the answer and Enter takes it.
     final var view = new ListView<>(labels, ItemStyle.NOCHECK);
     view.setShowBorder(true);
     view.setTitle(question.question());
 
-    // Above the box rather than inside it: a ListView draws its items and nothing else, and a hint
-    // added as an item would be selectable.
+    // Above the box rather than inside it: a hint added as an item would be selectable.
     console.writeLine(console.dim("  ↑/↓ to move, enter to choose, ctrl-c to skip"));
 
     final var ui = terminalUIBuilder.build();
-    // Before setRect and setRoot: it is what initialises the view, and an uninitialised one has no
-    // key bindings.
+    // Before setRect and setRoot: this is what initialises the view.
     ui.configure(view);
-    // The size is fixed here rather than left to the framework: the box is drawn where the cursor
-    // already is, so it has to claim exactly the rows it needs — full screen would scroll the
-    // answer the user has just read off the top.
+    // The box is drawn where the cursor already is, so it claims exactly the rows it needs — full
+    // screen would scroll the answer the user has just read off the top.
     view.setRect(0, 0, console.width(), Math.min(options.size() + BORDER_ROWS, console.height()));
-    // false: not full screen. setRoot also gives the view focus, which is the other half of it
-    // receiving keys.
+    // false: not full screen. setRoot also focuses the view, the other half of it receiving keys.
     ui.setRoot(view, false);
 
     final var chosen = new AtomicReference<String>();
@@ -145,8 +133,7 @@ public class CliQuestionHandler implements QuestionHandler {
 
     final var selected = chosen.get();
     if (selected == null) {
-      // Interrupted rather than answered. Say so plainly rather than returning a label nobody
-      // picked; the run usually ends here anyway, since Ctrl-C cancels it in the same breath.
+      // Interrupted rather than answered, so say so instead of returning a label nobody picked.
       return "NOT ANSWERED. The user dismissed the question without choosing. Do not ask again and"
           + " do not guess what they would have said: stop here and end your turn.";
     }

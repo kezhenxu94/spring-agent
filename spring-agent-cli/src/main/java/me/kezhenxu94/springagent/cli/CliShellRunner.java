@@ -26,15 +26,14 @@ import org.springframework.stereotype.Component;
 /**
  * The read-eval-print loop, and the reason this integration does not simply use Spring Shell's own.
  *
- * <p>A shell reads a command name and its options. What a user says to an agent is a sentence, and
- * Spring Shell has no catch-all or default command to route one to — so a plain interactive shell
- * would make every question look like {@code chat "what is failing in prod"}, quoting and all. The
- * loop below reads a line instead: anything starting with {@code /} is handed to Spring Shell's
- * parser and registry, and everything else goes to the agent.
+ * <p>A shell reads a command name and its options, and Spring Shell has no catch-all to route a
+ * sentence to — so every question would have to be typed as {@code chat "..."}, quoting and all.
+ * This reads a line instead: anything starting with {@code /} goes to Spring Shell's parser and
+ * registry, everything else to the agent.
  *
  * <p>{@link Primary} because Spring Shell's own runner bean is conditional on properties rather
  * than on a missing bean, so both exist; this is the one {@code springShellApplicationRunner} picks
- * up, and the other is never run.
+ * up.
  */
 @Slf4j
 @Primary
@@ -68,9 +67,8 @@ public class CliShellRunner implements ShellRunner {
     // At an idle prompt JLine raises UserInterruptException instead and nothing arrives here.
     terminal.handle(Terminal.Signal.INT, signal -> cancelActiveRun());
 
-    // Spring Shell registers this one itself rather than declaring it as a conditional bean, so
-    // unlike the other built-ins (see spring.shell.command.* in application.yaml) there is no
-    // property that takes it away. Two commands answering to `exit` is the problem: the built-in
+    // Registered by Spring Shell itself rather than as a conditional bean, so unlike the other
+    // built-ins (see spring.shell.command.* in application.yaml) no property takes it away. It
     // ends the shell by throwing, which this loop would report as a failed command.
     commandRegistry.unregisterCommand(Utils.QUIT_COMMAND);
 
@@ -177,11 +175,9 @@ public class CliShellRunner implements ShellRunner {
     }
     final var latch = waiting.get();
     if (abandoned && latch != null) {
-      // A second Ctrl-C. Cancelling is cooperative — the run stops at the next thing it emits — so
-      // a run that has stopped emitting at all never ends and the prompt never comes back. That is
-      // not hypothetical: a missing native-image registration surfaced as a fatal error on a
-      // reactor scheduler thread, which no listener hears, and the command line waited for ever.
-      // Stop waiting and hand the prompt back; the run is left to finish or not on its own.
+      // A second Ctrl-C hands the prompt back and leaves the run to finish or not on its own.
+      // Cancelling is cooperative — the run stops at the next thing it emits — so a run that has
+      // stopped emitting cannot be cancelled at all, and the wait would never end.
       log.warn("Giving up waiting on run {} after a second interrupt", runId);
       console.writeLine(console.yellow("\nStopped waiting. The run may still be finishing."));
       latch.countDown();

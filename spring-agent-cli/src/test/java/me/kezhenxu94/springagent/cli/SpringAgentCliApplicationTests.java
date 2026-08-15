@@ -13,9 +13,9 @@ import org.springframework.test.context.TestPropertySource;
  * That the command line starts, and that it starts as a command line: no server, no management
  * endpoints, no chat integration. The shape of {@code FeishuDisabledTest} in spring-agent-app.
  *
- * <p>The shell runner does run here, as it would in production — Boot invokes {@code
- * ApplicationRunner}s in a test context too. It reads a line, the test JVM's stdin is empty, and it
- * takes that end-of-file as the user leaving, which is the same path Ctrl-D takes.
+ * <p>The shell runner does run here, since Boot invokes {@code ApplicationRunner}s in a test
+ * context too. The test JVM's stdin is empty, so it takes the end-of-file as the user leaving — the
+ * same path Ctrl-D takes.
  */
 @SpringBootTest
 @TestPropertySource(
@@ -46,8 +46,8 @@ class SpringAgentCliApplicationTests {
 
   @Test
   void hasNoManagementEndpoints() {
-    // The module depends on no actuator starter; this is what would notice one arriving
-    // transitively, which is how a CLI quietly grows an HTTP port.
+    // No actuator starter is declared; this notices one arriving transitively, which is how a
+    // command line quietly grows an HTTP port.
     assertThat(context.getBeanNamesForType(Object.class))
         .filteredOn(name -> name.toLowerCase().contains("actuator") || name.contains("Endpoint"))
         .isEmpty();
@@ -62,9 +62,8 @@ class SpringAgentCliApplicationTests {
 
   @Test
   void runsItsOwnShellRunner() {
-    // Spring Shell's own runner bean is conditional on properties rather than on a missing bean, so
-    // both exist and @Primary is what decides. If that ever stops being true, the command line
-    // silently becomes a command shell that cannot take a question.
+    // Both runners exist and @Primary is what decides. Should that stop being true, the command
+    // line silently becomes a command shell that cannot take a question.
     assertThat(context.getBean(ShellRunner.class)).isInstanceOf(CliShellRunner.class);
   }
 }

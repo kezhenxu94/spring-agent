@@ -6,10 +6,8 @@ spring:
     web-application-type: none
   shell:
     config:
-      # Where the history file lands. Without this Spring Shell writes spring-shell.log into the
-      # working directory, and a binary on the PATH is run from wherever the user happens to be —
-      # so it would scatter a history file through every project they used it in, and each one
-      # would only remember what they typed in that directory.
+      # Where the history file lands. Spring Shell otherwise writes it into the working directory,
+      # which for a binary on the PATH means one history per project, each remembering a fraction.
       location: ${user.home}/.spring-agent
     history:
       name: history
@@ -19,10 +17,8 @@ spring:
       # infrastructure (registry, parser, completion, theming) is still configured.
       enabled: true
     command:
-      # The built-ins this module replaces or has no use for. Without turning them off, two
-      # commands answer to the same name and which one the registry hands back is luck — `/help`
-      # printed Spring Shell's own listing, with bare names, for commands only reachable with a
-      # leading slash.
+      # The built-ins this module replaces or has no use for. Left on, two commands answer to the
+      # same name and which one the registry returns is luck.
       #
       # `quit` is the exception: it is not a bean and has no property, so CliShellRunner
       # unregisters it by hand.
@@ -77,9 +73,8 @@ spring:
       # not on this module's classpath.
       type: simple
   datasource:
-    # Under the user's home rather than ./data, unlike spring-agent-app: a binary on the PATH is run
-    # from whatever directory the user happens to be in, and a per-directory database would silently
-    # give them a different agent in each one.
+    # Under the user's home rather than ./data, unlike spring-agent-app: a per-directory database
+    # would silently give them a different agent in each directory they ran from.
     #
     # WAL and a busy timeout because a run writes while the next question is being typed, and SQLite
     # serialises writers: without them a second writer fails immediately with SQLITE_BUSY.
@@ -104,9 +99,9 @@ logging:
     org.springframework.ai.vectorstore.SimpleVectorStore: WARN
 storage:
   location: ${user.home}/.spring-agent/
-  # Both are validated as non-blank, and nothing on this path reads them: they exist for a
-  # deployment that serves its files over HTTP, which this is not. Pointed at the directory the
-  # files are genuinely in, so anything that does print one prints somewhere the user can look.
+  # Validated as non-blank though nothing here reads them: they are for a deployment serving files
+  # over HTTP. Pointed at the directory the files are actually in, so any that gets printed leads
+  # somewhere the user can look.
   base-url: file://${user.home}/.spring-agent/%s
   cdn-url: file://${user.home}/.spring-agent/%s
 share:
