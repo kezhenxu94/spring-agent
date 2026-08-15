@@ -20,7 +20,11 @@ class CoreMessagesTest {
   private static final Locale CHINESE = Locale.of("zh", "CN");
 
   static CoreMessages messagesIn(final Locale locale) {
-    return new CoreMessages(new SpringAgentProperties(null, null, locale));
+    return messagesIn(locale, false);
+  }
+
+  static CoreMessages messagesIn(final Locale locale, final boolean fallbackToSystemLocale) {
+    return new CoreMessages(new SpringAgentProperties(null, null, locale, fallbackToSystemLocale));
   }
 
   @Test
@@ -40,6 +44,23 @@ class CoreMessagesTest {
   @DisplayName("an unconfigured locale is the host's, not a failure")
   void defaultsToTheHostLocale() {
     assertThat(messagesIn(null).locale()).isEqualTo(Locale.getDefault());
+  }
+
+  @Test
+  @DisplayName("the command line's fallback lands on the host's language, not on English")
+  void fallsBackToTheSystemLocaleWhenAskedTo() {
+    // Only observable with a host that has a bundle of its own, which the CI machine need not
+    // have; asserting on the requested-locale case would pass either way and prove nothing.
+    final var host = Locale.getDefault();
+    try {
+      Locale.setDefault(CHINESE);
+      assertThat(messagesIn(Locale.JAPANESE, true).get("questions-asked-heading"))
+          .startsWith("我已经向用户提出了以下问题");
+      assertThat(messagesIn(Locale.JAPANESE, false).get("questions-asked-heading"))
+          .startsWith("I have already put these questions");
+    } finally {
+      Locale.setDefault(host);
+    }
   }
 
   @Test

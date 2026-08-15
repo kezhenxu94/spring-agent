@@ -168,6 +168,10 @@ app:
   # saying so twice. en and zh_CN ship with it, and any other is a core/messages_xx.properties on
   # the classpath away.
   locale: ${SPRING_AGENT_LOCALE:${FEISHU_LOCALE:}}
+  # And where a locale set above lands when it ships no bundle: English, not the host's language,
+  # which on a server is an accident of how the image was built rather than anybody's choice.
+  # spring-agent-cli sets this the other way, its host being the user's own machine.
+  fallback-to-system-locale: ${SPRING_AGENT_LOCALE_FALLBACK_TO_SYSTEM:false}
   persistence:
     # Where the agent's own records live — MCP server configs, scheduled tasks, published resources,
     # shell credentials and the conversation history, all together. One of:

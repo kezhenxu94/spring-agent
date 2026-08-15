@@ -233,7 +233,7 @@ class SpringAgentTest {
             MessageWindowChatMemory.builder().chatMemoryRepository(chatMemoryRepository).build(),
             properties(),
             agentToolsProvider,
-            new CoreMessages(new SpringAgentProperties(null, null, Locale.of("zh", "CN"))),
+            new CoreMessages(new SpringAgentProperties(null, null, Locale.of("zh", "CN"), false)),
             listenerProvider());
 
     askIn(request());
@@ -358,7 +358,8 @@ class SpringAgentTest {
             "You are {userId} in {chatId} ({chatType}), thread {threadId}, parent {parentId},"
                 + " mentions {mentions}.",
             null),
-        Locale.ENGLISH);
+        Locale.ENGLISH,
+        false);
   }
 
   private static final class RecordingListener implements AgentResponseListener {

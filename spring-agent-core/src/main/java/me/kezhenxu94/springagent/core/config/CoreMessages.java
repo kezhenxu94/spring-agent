@@ -31,9 +31,10 @@ public class CoreMessages {
     final var source = new ResourceBundleMessageSource();
     source.setBasename(BASENAME);
     source.setDefaultEncoding("UTF-8");
-    // English rather than the server's language when the configured locale has no bundle: the
-    // fallback is otherwise whatever the host is set to, which is rarely what was asked for.
-    source.setFallbackToSystemLocale(false);
+    // Which language a configured locale with no bundle of its own falls back to. English by
+    // default, since on a server the host's language is rarely the one anybody asked for; the
+    // command line turns this on, the host there being the user's own machine.
+    source.setFallbackToSystemLocale(properties.fallbackToSystemLocale());
     this.messageSource = source;
     this.locale = properties.locale() == null ? Locale.getDefault() : properties.locale();
   }
