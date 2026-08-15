@@ -47,6 +47,7 @@ public class FeishuCardListener implements AgentResponseListener {
   final UserWorkspaceFactory userWorkspaceFactory;
   final PendingQuestionRepo pendingQuestionRepo;
   final FeishuQuestionForm questionForm;
+  final FeishuCardSequences sequences;
 
   // Not final, matching FeishuTools#feishuReplyCard: @Value on a field is an injection point in its
   // own right, and AOT generates a plain field assignment for it, which cannot target a final field
@@ -102,7 +103,8 @@ public class FeishuCardListener implements AgentResponseListener {
               restTemplate,
               userWorkspaceFactory,
               appConfiguration.ai().modelPricing(),
-              messages);
+              messages,
+              sequences);
       registry.addResponseListener(cardUpdater);
       registry.addTodoEventHandler(cardUpdater);
       registry.addToolContext(FeishuCardUpdater.TOOL_CONTEXT_KEY.key(), cardUpdater);

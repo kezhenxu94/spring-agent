@@ -3,7 +3,6 @@ package me.kezhenxu94.springagent.integration.feishu.handler;
 import com.lark.oapi.Client;
 import com.lark.oapi.service.cardkit.v1.model.UpdateCardElementReq;
 import com.lark.oapi.service.cardkit.v1.model.UpdateCardElementReqBody;
-import java.time.Instant;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
@@ -30,6 +29,7 @@ public class FeishuQuestionFormCloser {
 
   private final Client feishu;
   private final FeishuQuestionForm questionForm;
+  private final FeishuCardSequences sequences;
 
   /** Leaves what was asked and what was chosen. */
   public void answered(final PendingQuestion pending, final Map<String, String> answers) {
@@ -44,16 +44,31 @@ public class FeishuQuestionFormCloser {
   }
 
   /**
-   * The sequence is taken from the clock rather than continued from the run's counter, which ended
-   * with the run and cannot be recovered. The card only requires that each operation's sequence be
-   * higher than the last, and seconds since the epoch is far past any count a run could have
-   * reached while still fitting the field.
+   * The sequence comes from {@link FeishuCardSequences}, shared with the run's {@link
+   * FeishuCardUpdater}, because the run this is closing a form on may still be streaming: a user
+   * can answer before the model has finished saying it will wait. Counting from the clock here
+   * instead left every write that run had still to make below what the card had seen, and so
+   * refused.
    *
    * @param reason also distinguishes the two closings as idempotency keys, so a form closed one way
    *     is not mistaken for a retry of the other and silently dropped
    */
-  @SneakyThrows
   private void replace(final PendingQuestion pending, final String element, final String reason) {
+    if (!write(pending, element, reason, sequences.next(pending.cardId()))) {
+      // The run that put the form up may be streaming on another replica, whose counter this one
+      // cannot see. The card says only that this was too low, never what it has, so catch up on
+      // the clock and try once more.
+      write(pending, element, reason, sequences.resync(pending.cardId()));
+    }
+  }
+
+  /** Writes the element, answering whether the card took it. */
+  @SneakyThrows
+  private boolean write(
+      final PendingQuestion pending,
+      final String element,
+      final String reason,
+      final int sequence) {
     final var response =
         feishu
             .cardkit()
@@ -66,17 +81,20 @@ public class FeishuQuestionFormCloser {
                     .updateCardElementReqBody(
                         UpdateCardElementReqBody.newBuilder()
                             .uuid(pending.id() + "-" + reason)
-                            .sequence((int) Instant.now().getEpochSecond())
+                            .sequence(sequence)
                             .element(element)
                             .build())
                     .build());
     if (response.getCode() != 0) {
       log.warn(
-          "Failed to close the question form as {}: cardId={}, code={}, msg={}",
+          "Failed to close the question form as {}: cardId={}, seq={}, code={}, msg={}",
           reason,
           pending.cardId(),
+          sequence,
           response.getCode(),
           response.getMsg());
+      return false;
     }
+    return true;
   }
 }

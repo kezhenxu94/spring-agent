@@ -75,7 +75,8 @@ class FeishuCardUpdaterImageTest {
             userWorkspaceFactory,
             null,
             new FeishuMessages(
-                new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH)));
+                new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH)),
+            new FeishuCardSequences());
   }
 
   @Test

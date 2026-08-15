@@ -29,7 +29,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -58,6 +57,9 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
 
   private static final int CODE_STREAMING_MODE_CLOSED = 300309;
 
+  /** The card has already seen a sequence at or above the one just sent. */
+  private static final int CODE_SEQUENCE_TOO_LOW = 300317;
+
   /**
    * The divider above the card's footer, and so the anchor anything added mid-run is placed before:
    * it keeps the usage line and the conversation hint at the bottom where a reader expects them.
@@ -76,8 +78,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   private final UserWorkspaceFactory userWorkspaceFactory;
   private final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing;
   private final FeishuMessages messages;
+  private final FeishuCardSequences sequences;
   private final Instant startedAt = Instant.now();
-  private final AtomicInteger sequence = new AtomicInteger(2);
   private final ConcurrentMap<String, String> imageKeysBySource = new ConcurrentHashMap<>();
   private String lastBaseContent = "";
 
@@ -89,7 +91,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       final RestTemplate restTemplate,
       final UserWorkspaceFactory userWorkspaceFactory,
       final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing,
-      final FeishuMessages messages) {
+      final FeishuMessages messages,
+      final FeishuCardSequences sequences) {
     this.feishu = feishu;
     this.om = om;
     this.cardId = cardId;
@@ -98,6 +101,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     this.userWorkspaceFactory = userWorkspaceFactory;
     this.modelPricing = modelPricing != null ? modelPricing : Map.of();
     this.messages = messages;
+    this.sequences = sequences;
   }
 
   private static boolean isThinkingMode(Usage usage) {
@@ -224,15 +228,15 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   /**
    * Adds elements to the card, above the footer, and returns whether they landed.
    *
-   * <p>Here rather than in the caller because {@link #sequence} is: the card rejects an operation
-   * whose sequence did not strictly increase, so everything writing to one card has to draw from
-   * the same counter, and this is where it lives.
+   * <p>Here rather than in the caller so that it draws its sequence from {@link
+   * FeishuCardSequences} like every other write to this card: the card rejects an operation whose
+   * sequence did not strictly increase, and this run is not the only thing writing to it.
    *
    * @param uuid an idempotency key, so a retry cannot leave the card holding two copies
    */
   @SneakyThrows
   public synchronized boolean insertBeforeFooter(final String elementsJson, final String uuid) {
-    final var seq = sequence.getAndIncrement();
+    final var seq = sequences.next(cardId);
     final var response =
         feishu
             .cardkit()
@@ -270,7 +274,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   @SneakyThrows
   private synchronized void sendElementContent(
       String elementId, String content, boolean allowRetry) {
-    final var seq = sequence.getAndIncrement();
+    final var seq = sequences.next(cardId);
     final var response =
         feishu
             .cardkit()
@@ -298,6 +302,13 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         log.info("Streaming mode closed for cardId={}, re-enabling and retrying", cardId);
         reenableStreaming();
         sendElementContent(elementId, content, false);
+      } else if (allowRetry && response.getCode() == CODE_SEQUENCE_TOO_LOW) {
+        // Something else wrote to this card — a form closing on another replica — and left it past
+        // where this run had counted to. Catch up and write again, rather than losing the rest of
+        // the answer and the card's own tidying up.
+        final var resynced = sequences.resync(cardId);
+        log.info("Card {} is ahead of this run; resyncing to {} and retrying", cardId, resynced);
+        sendElementContent(elementId, content, false);
       }
     }
   }
@@ -314,7 +325,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
                     .cardId(cardId)
                     .settingsCardReqBody(
                         SettingsCardReqBody.newBuilder()
-                            .sequence(sequence.getAndIncrement())
+                            .sequence(sequences.next(cardId))
                             .settings(
                                 """
                                 {
@@ -383,7 +394,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
                     .elementId("stop")
                     .deleteCardElementReqBody(
                         DeleteCardElementReqBody.newBuilder()
-                            .sequence(sequence.getAndIncrement())
+                            .sequence(sequences.next(cardId))
                             .build())
                     .build());
     if (removeActionsResponse.getCode() != 0) {
@@ -403,7 +414,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
                     .cardId(cardId)
                     .settingsCardReqBody(
                         SettingsCardReqBody.newBuilder()
-                            .sequence(sequence.getAndIncrement())
+                            .sequence(sequences.next(cardId))
                             .settings(
                                 """
                                 {
