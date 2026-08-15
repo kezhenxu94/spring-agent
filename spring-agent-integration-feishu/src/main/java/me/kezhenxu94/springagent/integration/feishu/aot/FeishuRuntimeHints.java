@@ -66,17 +66,19 @@ public class FeishuRuntimeHints implements RuntimeHintsRegistrar {
           MediaMessageContent.class);
 
   /**
-   * Read through {@code @Value("classpath:/feishu/reply-card.json")}, which gets no hint of its
-   * own.
+   * The card templates, each read through a {@code @Value("classpath:/feishu/...")} that gets no
+   * hint of its own.
    */
-  private static final String REPLY_CARD = "feishu/reply-card.json";
+  private static final List<String> CARD_TEMPLATES =
+      List.of("feishu/reply-card.json", "feishu/question-form.json");
 
-  /** The card's own words, whose locale is only known when the binary runs. */
+  /** The cards' own words, whose locale is only known when the binary runs. */
   private static final String MESSAGES_BUNDLE = "feishu.messages";
 
   @Override
   public void registerHints(final RuntimeHints hints, final ClassLoader classLoader) {
-    hints.resources().registerPattern(REPLY_CARD).registerResourceBundle(MESSAGES_BUNDLE);
+    CARD_TEMPLATES.forEach(hints.resources()::registerPattern);
+    hints.resources().registerResourceBundle(MESSAGES_BUNDLE);
 
     // The parameterized form, not the raw class: it is the generic type that carries the payload's
     // own property hints down from FeishuResponse#data.
