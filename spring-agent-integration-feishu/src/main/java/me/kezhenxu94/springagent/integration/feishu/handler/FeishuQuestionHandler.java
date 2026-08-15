@@ -9,6 +9,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
+import me.kezhenxu94.springagent.core.agent.QuestionPresentation;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
@@ -36,7 +37,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @Slf4j
 @RequiredArgsConstructor
-public class FeishuQuestionHandler implements QuestionHandler {
+public class FeishuQuestionHandler implements QuestionHandler, QuestionPresentation {
 
   /**
    * Stands in for the answer the tool expects, since there is not one yet. The tool wraps whatever
@@ -118,6 +119,15 @@ public class FeishuQuestionHandler implements QuestionHandler {
         request.conversationId(),
         cardId);
     return pending(questions);
+  }
+
+  /**
+   * Only {@link #pending} means the form went up: the other two answer a call this handler turned
+   * away, and core writes its note in the conversation off the back of this.
+   */
+  @Override
+  public boolean presented(final Map<String, String> answers) {
+    return !answers.isEmpty() && answers.values().stream().allMatch(PENDING::equals);
   }
 
   private static Map<String, String> pending(final List<Question> questions) {

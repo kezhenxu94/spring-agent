@@ -12,6 +12,7 @@ import io.modelcontextprotocol.client.McpSyncClient;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -19,6 +20,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
@@ -251,6 +253,53 @@ class SpringAgentTest {
   }
 
   @Test
+  @DisplayName("a handler that turned the ask away leaves no note claiming it was presented")
+  void askingIsNotRecordedWhenTheHandlerDidNotPresent() throws Exception {
+    declaredListener =
+        new AgentResponseListener() {
+          @Override
+          public void onStart(final AgentRunRegistry registry) {
+            registry.addQuestionHandler(new DecliningQuestionHandler(0));
+          }
+        };
+    fireAndAwait(request());
+
+    final var composed = ArgumentCaptor.forClass(QuestionHandler.class);
+    verify(agentToolsProvider).compose(any(), any(), any(), any(), any(), composed.capture());
+    composed
+        .getValue()
+        .handle(
+            List.of(new Question("Which database should we use?", "Database", List.of(), false)));
+
+    assertThat(savedText()).noneSatisfy(text -> assertThat(text).contains("already put these"));
+  }
+
+  @Test
+  @DisplayName("a model that asks the same thing twice leaves one note, not two")
+  void askingTwiceLeavesOneNote() throws Exception {
+    final var handler = new DecliningQuestionHandler(1);
+    declaredListener =
+        new AgentResponseListener() {
+          @Override
+          public void onStart(final AgentRunRegistry registry) {
+            registry.addQuestionHandler(handler);
+          }
+        };
+    fireAndAwait(request());
+
+    final var composed = ArgumentCaptor.forClass(QuestionHandler.class);
+    verify(agentToolsProvider).compose(any(), any(), any(), any(), any(), composed.capture());
+    final var questions =
+        List.of(new Question("Which database should we use?", "Database", List.of(), false));
+    composed.getValue().handle(questions);
+    // The second ask, which a handler with a form already up answers without putting up another.
+    composed.getValue().handle(questions);
+
+    assertThat(savedText().stream().filter(text -> text.contains("already put these")).count())
+        .isEqualTo(1);
+  }
+
+  @Test
   @DisplayName("a run with no conversation memory has nothing to leave the note in")
   void askingIsNotRecordedWithoutConversationMemory() throws Exception {
     askIn(request().scenario(AgentScenario.SCHEDULED_TASK));
@@ -368,6 +417,36 @@ class SpringAgentTest {
                 + " mentions {mentions}.",
             null),
         Locale.ENGLISH);
+  }
+
+  /**
+   * Puts up the first {@code presentable} asks and turns the rest away, answering both the same way
+   * the Feishu handler does — which is what a model asking twice runs into.
+   */
+  private static final class DecliningQuestionHandler
+      implements QuestionHandler, QuestionPresentation {
+
+    private static final String PENDING = "NOT ANSWERED YET.";
+    private static final String NOT_ASKED = "ALREADY ASKED AND STILL UNANSWERED.";
+
+    private final AtomicInteger presentable;
+
+    DecliningQuestionHandler(final int presentable) {
+      this.presentable = new AtomicInteger(presentable);
+    }
+
+    @Override
+    public Map<String, String> handle(final List<Question> questions) {
+      final var value = presentable.getAndDecrement() > 0 ? PENDING : NOT_ASKED;
+      final var answers = new LinkedHashMap<String, String>();
+      questions.forEach(question -> answers.put(question.question(), value));
+      return answers;
+    }
+
+    @Override
+    public boolean presented(final Map<String, String> answers) {
+      return !answers.containsValue(NOT_ASKED);
+    }
   }
 
   private static final class RecordingListener implements AgentResponseListener {

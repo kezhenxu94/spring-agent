@@ -281,6 +281,13 @@ public class SpringAgent {
     }
     return questions -> {
       final var answers = delegate.handle(questions);
+      // Only what actually reached the user gets a note. A handler that declined to ask answers
+      // the call all the same, and noting that as an ask would say something untrue — twice over
+      // when a model asks again and the handler turns the second one away.
+      if (delegate instanceof QuestionPresentation presentation
+          && !presentation.presented(answers)) {
+        return answers;
+      }
       try {
         chatMemory.add(conversationId, List.of(new AssistantMessage(asked(questions))));
       } catch (Exception e) {
