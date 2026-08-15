@@ -100,6 +100,15 @@ public class CliConsole {
   }
 
   /**
+   * Whether colour and glyphs are on. Decided once in the constructor, so anything drawing its own
+   * escape sequences — {@link CliHighlighter}, which JLine calls rather than this class — asks here
+   * instead of consulting the property and the terminal again.
+   */
+  public boolean styled() {
+    return styled;
+  }
+
+  /**
    * The terminal's current width, re-read on every call so a window resized mid-answer wraps the
    * rest of it to the new width. A terminal that cannot say how big it is reports 0, which would
    * make every layout calculation negative.
