@@ -43,7 +43,7 @@ class VectorStoreSimpleTest extends AbstractIntegrationTest {
 
   @DynamicPropertySource
   static void vectorStoreProperties(DynamicPropertyRegistry registry) {
-    registry.add("app.ai.vectorstore.file", indexFile::toString);
+    registry.add("app.ai.vectorstore.simple.file", indexFile::toString);
   }
 
   @Test

@@ -207,13 +207,26 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
      * setting Spring AI has no property for, because it has no auto-configuration for the simple
      * store.
      *
-     * @param file where {@code VectorStoreConfiguration} mirrors the in-memory index; ignored by
-     *     the other backends, which keep their own storage
+     * @param simple settings for the {@code simple} store only, nested under its own name so that a
+     *     backend added here later cannot be mistaken for it
      */
-    public record VectorStore(String file) {
+    public record VectorStore(Simple simple) {
       public VectorStore {
-        if (file == null || file.isBlank()) {
-          file = "data/vectorstore.json";
+        if (simple == null) {
+          simple = new Simple(null);
+        }
+      }
+
+      /**
+       * @param file where {@code VectorStoreConfiguration} mirrors the in-memory index; read only
+       *     when {@code spring.ai.vectorstore.type} is {@code simple}, the other backends keeping
+       *     their own storage
+       */
+      public record Simple(String file) {
+        public Simple {
+          if (file == null || file.isBlank()) {
+            file = "data/vectorstore.json";
+          }
         }
       }
     }

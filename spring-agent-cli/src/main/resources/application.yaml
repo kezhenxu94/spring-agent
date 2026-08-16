@@ -143,9 +143,10 @@ app:
     # give the agent a persona, house rules or domain knowledge of its own.
     system-prompt: ""
     vectorstore:
-      # Written on a graceful shutdown and reloaded on startup; if it is missing or unreadable the
-      # index is rebuilt, at the cost of re-embedding the tool descriptions on the next start.
-      file: ${VECTORSTORE_FILE:${user.home}/.spring-agent/vectorstore.json}
+      simple:
+        # Written on a graceful shutdown and reloaded on startup; if it is missing or unreadable the
+        # index is rebuilt, at the cost of re-embedding the tool descriptions on the next start.
+        file: ${VECTORSTORE_FILE:${user.home}/.spring-agent/vectorstore.json}
     tools:
       ask-user-question:
         # Whether the agent may stop and ask a multiple-choice question rather than guessing. The
