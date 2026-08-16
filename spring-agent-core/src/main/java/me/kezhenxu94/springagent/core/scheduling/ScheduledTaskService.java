@@ -98,12 +98,10 @@ public class ScheduledTaskService {
     }
     log.info("Firing scheduled task {}: {}", task.id(), task.taskText());
 
-    // Task firings do not accumulate conversation history across runs, which
-    // AgentScenario
-    // .SCHEDULED_TASK expresses; conversationId is still passed as it is required
-    // as the
-    // ToolSearchToolCallingAdvisor's tool-index cache key (autoconfigured, see
-    // ToolSearchAdvisorAutoConfiguration).
+    // A firing carries the conversation of the thread the task was created in, so each run reads
+    // back the ones before it — and the user's own messages in that thread, as the thread reads
+    // back the firings. The same id is the ToolSearchToolCallingAdvisor's tool-index cache key
+    // (autoconfigured, see ToolSearchAdvisorAutoConfiguration).
     springAgent.fire(
         AgentRequest.builder()
             .requestId(task.id())
