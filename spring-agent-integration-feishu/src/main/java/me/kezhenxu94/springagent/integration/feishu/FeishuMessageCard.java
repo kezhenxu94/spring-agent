@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.integration.feishu;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import lombok.RequiredArgsConstructor;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
@@ -19,24 +20,19 @@ import tools.jackson.databind.node.ObjectNode;
  * with {@code FeishuSendMessage} or the runtime sent it on the model's behalf.
  */
 @Component
+@RequiredArgsConstructor
 public class FeishuMessageCard {
 
   private final JsonMapper objectMapper;
   private final FeishuMessages messages;
-  private final Resource feishuReplyCard;
 
-  // The template comes in through the constructor rather than a @Value field, which is what the
-  // classes that inject it themselves have to do: a field is an injection point of its own, and
-  // AOT writes a plain assignment for it that cannot target a final field.
-  public FeishuMessageCard(
-      final JsonMapper objectMapper,
-      final FeishuMessages messages,
-      @Value("${app.feishu.reply-card:classpath:/feishu/reply-card.json}")
-          final Resource feishuReplyCard) {
-    this.objectMapper = objectMapper;
-    this.messages = messages;
-    this.feishuReplyCard = feishuReplyCard;
-  }
+  // The template arrives as a constructor argument, not through a @Value field the way the classes
+  // that read it for themselves have to do it: a field is an injection point of its own, and AOT
+  // writes a plain assignment for it that cannot target a final field. This stays final because
+  // lombok.config lists @Value as copyable, so the generated constructor carries it to the
+  // parameter — remove that line and this silently becomes an unresolved placeholder.
+  @Value("${app.feishu.reply-card:classpath:/feishu/reply-card.json}")
+  private final Resource feishuReplyCard;
 
   /** The card JSON to send as an {@code interactive} message, carrying {@code markdown}. */
   public String render(final String markdown) throws IOException {
