@@ -6,6 +6,13 @@ dependencies {
   implementation project(':spring-agent-core')
   implementation libs.larksuite.oapi
 
+  // Core's domain models carry `@Enumerated(EnumType.STRING)`, and core declares the JPA API
+  // compileOnly so no backend leaks to consumers. javac resolves an annotation's enum arguments
+  // when it reads those classes, so without the API here every module that touches a model
+  // compiles with `unknown enum constant EnumType.STRING`. compileOnly, not implementation: this
+  // is only to let javac read the annotation, nothing runs against it.
+  compileOnly 'jakarta.persistence:jakarta.persistence-api'
+
   implementation 'org.springframework.boot:spring-boot-starter'
   implementation 'org.springframework.boot:spring-boot-starter-webmvc'
   implementation 'org.springframework.boot:spring-boot-starter-restclient'
