@@ -2,6 +2,8 @@ plugins {
   id 'springagent.java-library-conventions'
 }
 
+description = 'Feishu/Lark integration for spring-agent-core: chats and cards as an agent surface.'
+
 dependencies {
   implementation project(':spring-agent-core')
   implementation libs.larksuite.oapi

@@ -1,3 +1,34 @@
+plugins {
+  // No version: the plugin jar comes from buildSrc's classpath, which every build script here
+  // inherits. See buildSrc/build.gradle.
+  id 'com.gradleup.nmcp.aggregation'
+}
+
+// The Central Portal accepts one deployment for the whole release, not one per module, so the
+// upload is a root-project task that collects every module's publications into a single zip. The
+// modules contributing them apply `com.gradleup.nmcp` through springagent.publish.
+nmcpAggregation {
+  centralPortal {
+    // From the environment, matching the GitHub Packages credentials in springagent.publish: a
+    // token passed as -P shows up in the process arguments of every build. Create the token pair
+    // under "Generate User Token" at https://central.sonatype.com/.
+    username = providers.environmentVariable('CENTRAL_PORTAL_USERNAME')
+    password = providers.environmentVariable('CENTRAL_PORTAL_PASSWORD')
+    publicationName = "spring-agent ${version}"
+    // Uploaded and validated, but not released: the deployment waits in the portal until it is
+    // released by hand. Maven Central is append-only — a released version can never be replaced or
+    // withdrawn — so the last step before it becomes permanent is deliberately a human one.
+    publishingType = 'USER_MANAGED'
+  }
+}
+
+dependencies {
+  // Lenient by design: a project that does not apply com.gradleup.nmcp (spring-agent-app and
+  // spring-agent-cli, which ship as images and binaries rather than as artifacts) contributes
+  // nothing and is silently skipped, so this list does not have to be maintained.
+  subprojects.each { nmcpAggregation project(it.path) }
+}
+
 allprojects {
   ext {
     // Only used to tag container images (see springagent.docker.gradle). Tolerate a

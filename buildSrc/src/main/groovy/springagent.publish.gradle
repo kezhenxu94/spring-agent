@@ -1,7 +1,15 @@
-// GitHub Packages serves Maven from maven.pkg.github.com; ghcr.io is the container registry only.
+// Two destinations, deliberately different mechanisms. GitHub Packages is an ordinary Maven
+// repository, so `maven-publish` uploads to it directly (it serves Maven from
+// maven.pkg.github.com; ghcr.io is the container registry only). Maven Central is not: the Central
+// Portal takes a single signed zip of the whole multi-module deployment over its own API, which is
+// what `com.gradleup.nmcp` builds here and the root project uploads.
 
 plugins {
   id 'maven-publish'
+  id 'signing'
+  // Exposes this project's publications as an outgoing variant that the root project's
+  // com.gradleup.nmcp.aggregation collects. Applying it does not by itself publish anything.
+  id 'com.gradleup.nmcp'
 }
 
 java {
@@ -16,6 +24,10 @@ publishing {
 
       pom {
         name = project.name
+        // Maven Central rejects a deployment whose POM has no description, so every module
+        // applying this convention must set one in its own build.gradle. A provider because the
+        // module's `description = ...` is assigned after this convention plugin is applied.
+        description = project.provider { project.description }
         url = 'https://github.com/kezhenxu94/spring-agent'
         licenses {
           license {
@@ -50,6 +62,19 @@ publishing {
       }
     }
   }
+}
+
+// Maven Central requires a detached PGP signature next to every artifact; GitHub Packages does not
+// care. `required` is therefore conditional on the key being present, so a local build and the
+// GitHub Packages job — neither of which has the key — do not have to carry one.
+def signingKey = providers.environmentVariable('SIGNING_KEY')
+def signingPassword = providers.environmentVariable('SIGNING_PASSWORD')
+signing {
+  required { signingKey.present }
+  // The armoured key itself rather than a keyring file or the gpg agent: a CI runner has neither,
+  // and a secret is the only thing GitHub Actions can hand a build.
+  useInMemoryPgpKeys(signingKey.orNull, signingPassword.orNull)
+  sign publishing.publications.maven
 }
 
 // Javadoc reads source and has no `-proc` option on any current JDK, so Lombok never runs for it

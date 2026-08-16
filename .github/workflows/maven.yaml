@@ -25,8 +25,25 @@ concurrency:
   group: maven-${{ github.ref }}
 jobs:
   publish:
-    name: Publish to GitHub Packages
+    name: Publish to ${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      # Not fail-fast: the two registries are independent, and cancelling a half-uploaded
+      # publication to one because the other rejected something only widens the damage the
+      # concurrency comment above describes.
+      fail-fast: false
+      matrix:
+        include:
+          # GitHub Packages is a plain Maven repository, so the same task covers both cases; the
+          # Central Portal has one endpoint for releases and another for snapshots.
+          - target: github
+            name: GitHub Packages
+            release-task: publishAllPublicationsToGitHubPackagesRepository
+            snapshot-task: publishAllPublicationsToGitHubPackagesRepository
+          - target: central
+            name: Maven Central
+            release-task: publishAggregationToCentralPortal
+            snapshot-task: publishAggregationToCentralSnapshots
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v5
@@ -38,11 +55,20 @@ jobs:
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+          CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+          # Maven Central requires signed artifacts. Absent — as it is in the GitHub Packages job —
+          # springagent.publish makes signing optional, so nothing here has to be conditional.
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
         run: |
           # A tag publishes its own version; anything else publishes the -SNAPSHOT in
-          # gradle.properties, which GitHub Packages accepts repeatedly.
+          # gradle.properties, which both registries accept repeatedly.
           args=()
           if [ "${{ github.ref_type }}" = tag ]; then
             args+=("-Pversion=${GITHUB_REF_NAME#v}")
+            task='${{ matrix.release-task }}'
+          else
+            task='${{ matrix.snapshot-task }}'
           fi
-          ./gradlew publish "${args[@]}"
+          ./gradlew "$task" "${args[@]}"

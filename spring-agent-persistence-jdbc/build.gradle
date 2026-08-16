@@ -3,6 +3,8 @@ plugins {
   id 'springagent.classpath-isolation'
 }
 
+description = 'JDBC/JPA persistence backend for spring-agent-core, SQLite by default.'
+
 // One of the two backends a consumer of spring-agent-core picks between. It owns the whole JDBC
 // story: the JPA repository implementations, the chat memory repository, the SQLite driver and the
 // Hibernate dialect that reads it, and the native-image hints for all of them. That set is not

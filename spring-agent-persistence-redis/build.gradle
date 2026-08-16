@@ -3,6 +3,8 @@ plugins {
   id 'springagent.classpath-isolation'
 }
 
+description = 'Redis persistence backend for spring-agent-core.'
+
 // The third of the backends a consumer of spring-agent-core picks between. Unlike the other two it
 // stores the agent's records in a server that can be configured to throw them away: see the javadoc
 // on RedisPersistenceAutoConfiguration for what a deployment owes this module in return.

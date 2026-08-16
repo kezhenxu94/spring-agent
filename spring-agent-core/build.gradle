@@ -3,6 +3,8 @@ plugins {
   id 'springagent.classpath-isolation'
 }
 
+description = 'The backend-agnostic agent runtime: one entry point for running the agent, tool composition, system prompt rendering and the persistence contracts.'
+
 dependencies {
   // api: types that appear in signatures integration modules compile against.
   api 'org.springframework.boot:spring-boot-starter'

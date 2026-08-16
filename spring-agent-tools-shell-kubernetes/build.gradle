@@ -2,6 +2,8 @@ plugins {
   id 'springagent.java-library-conventions'
 }
 
+description = 'Shell tools for spring-agent-core that run commands in a Kubernetes pod.'
+
 dependencies {
   api project(':spring-agent-core')
 

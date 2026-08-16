@@ -3,6 +3,8 @@ plugins {
   id 'springagent.classpath-isolation'
 }
 
+description = 'MongoDB persistence backend for spring-agent-core.'
+
 // The MongoDB half of the pair; see spring-agent-persistence-jdbc for the shape. Thinner than its
 // counterpart because Spring AI's MongoDB chat memory ships an auto-configuration that does the
 // right thing, whereas the JDBC one has to be assembled by hand.

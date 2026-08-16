@@ -5,4 +5,8 @@ repositories { gradlePluginPortal() }
 dependencies {
   implementation "com.diffplug.spotless:spotless-plugin-gradle:8.8.0"
   implementation "org.gradle:test-retry-gradle-plugin:1.6.5"
+  // One jar carrying all three of nmcp's plugin ids. On buildSrc's classpath rather than declared
+  // with a version in a `plugins` block, because springagent.publish.gradle is a precompiled script
+  // plugin and those cannot name a plugin version themselves.
+  implementation "com.gradleup.nmcp:nmcp:1.6.1"
 }
