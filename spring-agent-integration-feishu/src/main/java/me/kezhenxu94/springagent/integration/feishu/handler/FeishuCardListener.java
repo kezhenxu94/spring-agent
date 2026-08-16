@@ -7,6 +7,7 @@ import com.lark.oapi.service.cardkit.v1.model.CreateCardReqBody;
 import com.lark.oapi.service.im.v1.model.ReplyMessageReq;
 import com.lark.oapi.service.im.v1.model.ReplyMessageReqBody;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.RequiredArgsConstructor;
@@ -26,13 +27,20 @@ import org.springframework.web.client.RestTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Gives every Feishu-originated agent run a card to stream into, whichever way the run was started:
- * it creates a card, replies it onto the message the run answers, and attaches a {@link
+ * Gives a Feishu-originated agent run a card to stream into, whichever way the run was started: it
+ * creates a card, replies it onto the message the run answers, and attaches a {@link
  * FeishuCardUpdater} to the run. A chat message and a scheduled task firing differ only in which
  * message the card is replied onto, so both go through here rather than each building its own.
  *
  * <p>A bean rather than something the message handler or the scheduler calls, so neither has to
  * know that cards exist and core does not have to know that Feishu does.
+ *
+ * <p>A background run is the exception and gets no card at all: it is unattended by definition, so
+ * there is nobody the card would be streaming to. Such a run says whatever it has to say by sending
+ * a message itself, and a card announcing the run is a second message on top of that — or, for a
+ * task that decided it had nothing to say, the only one, which is exactly the message its author
+ * did not want. The one thing still reported here is a failure, since a run that fell over is the
+ * one thing it cannot report for itself.
  */
 @Slf4j
 @Component
@@ -84,6 +92,12 @@ public class FeishuCardListener implements AgentResponseListener {
       return;
     }
     final var runId = request.requestId();
+    // No card, and so no stop button either: a background run is not on screen to be stopped, and
+    // the scheduled task behind it is cancelled by name with CancelScheduledTask.
+    if (request.background()) {
+      registry.addResponseListener(new BackgroundRun(runId, replyTo));
+      return;
+    }
     try {
       final var cardId = createCard(runId);
       final var cardMessageId = cardId == null ? null : replyCard(runId, replyTo, cardId);
@@ -152,6 +166,61 @@ public class FeishuCardListener implements AgentResponseListener {
       // The map is what the stop button reads to find a run by the card it was pressed on, so a
       // finished run has to leave it or the entry outlives the run it names.
       runsByCardMessage.remove(cardMessageId);
+    }
+  }
+
+  /**
+   * The whole of a background run's reporting: silence, unless the run failed. The error is kept
+   * from {@code onError} because {@link AgentOutcome} says only that the run failed, and a notice
+   * that cannot say what went wrong is barely worth sending.
+   */
+  @RequiredArgsConstructor
+  private final class BackgroundRun implements AgentResponseListener {
+    private final String runId;
+    private final String replyTo;
+    private volatile Throwable error;
+
+    @Override
+    public void onError(final Throwable error) {
+      this.error = error;
+    }
+
+    @Override
+    public void onFinished(final AgentOutcome outcome) {
+      log.info("Background run {} finished: outcome={}", runId, outcome);
+      if (outcome != AgentOutcome.FAILED) {
+        return;
+      }
+      final var reason =
+          error == null || Strings.isNullOrEmpty(error.getMessage())
+              ? messages.get("card-unknown-error")
+              : error.getMessage();
+      replyText(runId, replyTo, messages.get("background-run-failed", reason));
+    }
+  }
+
+  /** Replies plain text onto {@code replyTo}; a failure notice does not need a card to stream. */
+  private void replyText(final String runId, final String replyTo, final String text) {
+    try {
+      final var response =
+          feishu
+              .im()
+              .v1()
+              .message()
+              .reply(
+                  ReplyMessageReq.newBuilder()
+                      .messageId(replyTo)
+                      .replyMessageReqBody(
+                          ReplyMessageReqBody.newBuilder()
+                              .msgType("text")
+                              .content(om.writeValueAsString(Map.of("text", text)))
+                              .build())
+                      .build());
+      if (response.getCode() != 0) {
+        log.error("Failed to reply to {} for run {}: {}", replyTo, runId, response.getMsg());
+      }
+    } catch (Exception e) {
+      log.error("Failed to reply to {} for run {}", replyTo, runId, e);
     }
   }
 

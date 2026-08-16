@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 
 class AgentRunRegistryTest {
 
@@ -61,6 +62,27 @@ class AgentRunRegistryTest {
   void requestIsExposed() {
     assertThat(registry.request().scenario()).isEqualTo(AgentScenario.SCHEDULED_TASK);
     assertThat(registry.request().requestId()).isEqualTo("request-1");
+  }
+
+  @Test
+  @DisplayName("a question handler is kept for an attended run and dropped for a background one")
+  void backgroundRunCannotBeAskedQuestions() {
+    final QuestionHandler handler = questions -> Map.of();
+
+    registry.addQuestionHandler(handler);
+    assertThat(registry.questionHandlers()).containsExactly(handler);
+
+    final var background =
+        new AgentRunRegistry(
+            AgentRequest.builder()
+                .requestId("request-2")
+                .scenario(AgentScenario.SCHEDULED_TASK)
+                .background(true)
+                .userMessage(user -> user.text("hi"))
+                .build());
+    background.addQuestionHandler(handler);
+
+    assertThat(background.questionHandlers()).isEmpty();
   }
 
   private static final class RecordingListener implements AgentResponseListener {}

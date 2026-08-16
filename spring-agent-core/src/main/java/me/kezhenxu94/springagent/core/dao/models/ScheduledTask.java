@@ -58,6 +58,21 @@ public class ScheduledTask {
   private Instant scheduledAt;
   private Instant expiresAt;
 
+  // Whether a firing runs unattended, out of sight of the thread the task was created in. A
+  // background firing posts no answer of its own: what it did is in the log, and the user hears
+  // about it only if the task itself sends a message. A foreground one, the default, streams into a
+  // reply on that thread as any other run does.
+  //
+  // What it is for: a task that decides for itself whether anything is worth saying — "check X, and
+  // only if Y send a summary to Z" — or one that already sends its own message. A reply for the
+  // firing is a second message on top of those, and in the "otherwise do nothing" case it is the
+  // only message, which is the opposite of what was asked for.
+  //
+  // Boxed, and read as null-means-false: the schema is ddl-auto with no migrations, so this column
+  // arrives on a table that already has rows, and a primitive would make Hibernate declare it not
+  // null and then read those rows' nulls into it.
+  private Boolean background;
+
   // STRING so the stored value matches what MongoDB writes, and so the column stays readable and
   // stable if the enum is ever reordered.
   //

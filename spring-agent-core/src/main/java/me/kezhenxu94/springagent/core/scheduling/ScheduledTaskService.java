@@ -112,6 +112,7 @@ public class ScheduledTaskService {
             .conversationId(task.rootMessageId())
             .rootMessageId(task.rootMessageId())
             .replyMessageId(task.rootMessageId())
+            .background(Boolean.TRUE.equals(task.background()))
             .userMessage(spec -> spec.text(firingPrompt(task)))
             .listener(new TaskLifecycleListener(task, task.cronExpression() != null))
             .build());

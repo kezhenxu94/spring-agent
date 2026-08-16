@@ -20,6 +20,12 @@ import org.springframework.ai.chat.client.ChatClient;
  * @param conversationId groups runs that share chat memory
  * @param rootMessageId opaque thread identifier minted by the integration, never interpreted here
  * @param replyMessageId opaque identifier of the message this run responds to
+ * @param background whether the run is unattended: a background run is not shown anywhere and its
+ *     answer is not delivered — no reply, no card, no progress, nothing to stop it with — so it
+ *     reaches a person only through what it sends while running, say a message tool it calls
+ *     itself. The default is a foreground run, whose answer a surface streams back to whoever it is
+ *     for. A surface may still report a run that failed, which is the one thing a background run
+ *     cannot report for itself.
  * @param promptVariables extra system-prompt variables; the identity ones are filled in by core,
  *     and {@code threadId}, {@code parentId} and {@code mentions} default to empty when not given
  * @param toolContext extra tool-context entries; the {@link
@@ -36,6 +42,7 @@ public record AgentRequest(
     String conversationId,
     String rootMessageId,
     String replyMessageId,
+    boolean background,
     Map<String, Object> promptVariables,
     Consumer<ChatClient.PromptUserSpec> userMessage,
     Map<String, Object> toolContext,

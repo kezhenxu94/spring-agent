@@ -47,7 +47,8 @@ class ScheduledTaskToolTest {
   @DisplayName("a cron task is saved with an id, since no backend generates one")
   void cronTaskCarriesAnId() {
     final var result =
-        tool.createScheduledTask("summarise the thread", "0 0 9 * * MON", null, null, context);
+        tool.createScheduledTask(
+            "summarise the thread", "0 0 9 * * MON", null, null, null, context);
 
     assertThat(saved().id()).isNotBlank();
     assertThat(result).contains(saved().id());
@@ -59,7 +60,7 @@ class ScheduledTaskToolTest {
   void oneShotTaskCarriesAnId() {
     final var fireAt = Instant.now().plus(1, ChronoUnit.HOURS);
 
-    tool.createScheduledTask("ping me", null, fireAt.toString(), null, context);
+    tool.createScheduledTask("ping me", null, fireAt.toString(), null, null, context);
 
     assertThat(saved().id()).isNotBlank();
     verify(service).schedule(any());
@@ -68,8 +69,8 @@ class ScheduledTaskToolTest {
   @Test
   @DisplayName("two tasks do not share an id")
   void idsAreDistinct() {
-    tool.createScheduledTask("first", "0 0 9 * * MON", null, null, context);
-    tool.createScheduledTask("second", "0 0 9 * * MON", null, null, context);
+    tool.createScheduledTask("first", "0 0 9 * * MON", null, null, null, context);
+    tool.createScheduledTask("second", "0 0 9 * * MON", null, null, null, context);
 
     final var captor = ArgumentCaptor.forClass(ScheduledTask.class);
     verify(repo, org.mockito.Mockito.times(2)).save(captor.capture());
@@ -79,7 +80,8 @@ class ScheduledTaskToolTest {
   @Test
   @DisplayName("an invalid cron is refused, not stored as if it were an expression")
   void invalidCronIsRefused() {
-    final var result = tool.createScheduledTask("summarise", "not a cron", null, null, context);
+    final var result =
+        tool.createScheduledTask("summarise", "not a cron", null, null, null, context);
 
     assertThat(result).startsWith("Error:");
     verify(repo, never()).save(any());
@@ -89,10 +91,34 @@ class ScheduledTaskToolTest {
   @Test
   @DisplayName("a sub-minute cron is raised to the minimum interval rather than refused")
   void subMinuteCronIsRaised() {
-    final var result = tool.createScheduledTask("poll", "0 */1 * * * *", null, null, context);
+    final var result = tool.createScheduledTask("poll", "0 */1 * * * *", null, null, null, context);
 
     assertThat(saved().cronExpression()).isEqualTo("0 */5 * * * *");
     assertThat(result).contains("raised to the smallest one allowed");
+  }
+
+  @Test
+  @DisplayName("a task is only background when it was asked to be, on either schedule")
+  void backgroundIsCarriedOntoTheTask() {
+    tool.createScheduledTask("say nothing unless X", "0 0 9 * * MON", null, null, true, context);
+    assertThat(saved().background()).isTrue();
+
+    final var fireAt = Instant.now().plus(1, ChronoUnit.HOURS);
+    tool.createScheduledTask("send the report", null, fireAt.toString(), null, true, context);
+    assertThat(saved().background()).isTrue();
+
+    tool.createScheduledTask("summarise the thread", "0 0 9 * * MON", null, null, null, context);
+    assertThat(saved().background()).isNotEqualTo(true);
+  }
+
+  @Test
+  @DisplayName("a background task says so, so the model can tell the user what it made")
+  void backgroundIsMentionedInTheConfirmation() {
+    final var result =
+        tool.createScheduledTask(
+            "say nothing unless X", "0 0 9 * * MON", null, null, true, context);
+
+    assertThat(result).contains("runs in the background");
   }
 
   private ScheduledTask saved() {

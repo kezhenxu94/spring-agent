@@ -60,6 +60,20 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
                       + " omit it to expire in 7 days.",
               required = false)
           final String expiresAt,
+      @ToolParam(
+              description =
+                  "Run each firing in the background, out of sight: nothing is posted for it and"
+                      + " what you write is delivered nowhere, so the user hears about it only"
+                      + " through a message the task itself sends. Only a firing that failed is"
+                      + " reported. Set this when the task decides for itself whether anything is"
+                      + " worth saying (\"check X, and only if Y send a summary to Z\") or when it"
+                      + " already sends its own message (\"every morning send me the numbers\") —"
+                      + " otherwise the user gets that message and a report of the run on top of"
+                      + " it. Say in taskText who to send to. Leave this out for a task whose"
+                      + " answer is the point: the firing then replies in the conversation it was"
+                      + " created in, as a normal run does.",
+              required = false)
+          final Boolean background,
       final ToolContext context) {
 
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
@@ -101,6 +115,12 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
             ? "It never expires."
             : "It expires at " + resolvedExpiresAt + ".";
 
+    final var backgroundNote =
+        Boolean.TRUE.equals(background)
+            ? " It runs in the background: nothing is posted when it fires, so anything you should"
+                + " see it has to send itself, and only a failure is reported."
+            : "";
+
     if (hasCron) {
       try {
         CronExpression.parse(cronExpression);
@@ -119,6 +139,7 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
                   .taskText(taskText)
                   .cronExpression(validated)
                   .expiresAt(resolvedExpiresAt)
+                  .background(background)
                   .status(ScheduledTask.Status.ACTIVE)
                   .build());
       scheduledTaskService.schedule(task);
@@ -135,6 +156,7 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
           + ". "
           + expiryNote
           + overrideNote
+          + backgroundNote
           + " Cancel it early with CancelScheduledTask and that id.";
     } else {
       final Instant fireAt;
@@ -158,6 +180,7 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
                   .taskText(taskText)
                   .scheduledAt(fireAt)
                   .expiresAt(resolvedExpiresAt)
+                  .background(background)
                   .status(ScheduledTask.Status.ACTIVE)
                   .build());
       scheduledTaskService.schedule(task);
@@ -169,6 +192,7 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
           + task.id()
           + ". "
           + expiryNote
+          + backgroundNote
           + " Cancel it early with CancelScheduledTask and that id.";
     }
   }
@@ -191,7 +215,8 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
                     + " | task="
                     + t.taskText()
                     + " | schedule="
-                    + (t.cronExpression() != null ? t.cronExpression() : t.scheduledAt()))
+                    + (t.cronExpression() != null ? t.cronExpression() : t.scheduledAt())
+                    + (Boolean.TRUE.equals(t.background()) ? " | background" : ""))
         .collect(Collectors.joining("\n"));
   }
 
