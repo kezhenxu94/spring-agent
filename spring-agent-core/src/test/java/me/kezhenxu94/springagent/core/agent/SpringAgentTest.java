@@ -341,9 +341,24 @@ class SpringAgentTest {
   }
 
   @Test
-  @DisplayName("a run with no conversation memory has nothing to leave the note in")
-  void askingIsNotRecordedWithoutConversationMemory() throws Exception {
+  @DisplayName("a scheduled task's unanswered ask is noted like any other run's")
+  void askingIsRecordedForAScheduledTask() throws Exception {
+    // A firing shares the conversation of the thread the task was created in, so the note reaches
+    // the user's own history as well as the next firing's.
     fireAndAwait(unansweredAsk().scenario(AgentScenario.SCHEDULED_TASK));
+
+    final var handler = handlerFromRun();
+    assertThatThrownBy(() -> handler.handle(questions()))
+        .isInstanceOf(QuestionNotAnsweredException.class);
+
+    assertThat(savedText())
+        .anySatisfy(text -> assertThat(text).contains("now in front of the user"));
+  }
+
+  @Test
+  @DisplayName("a run with no conversation has nothing to leave the note in")
+  void askingIsNotRecordedWithoutAConversation() throws Exception {
+    fireAndAwait(unansweredAsk().conversationId(null));
 
     final var handler = handlerFromRun();
     assertThatThrownBy(() -> handler.handle(questions()))

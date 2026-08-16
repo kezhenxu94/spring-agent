@@ -7,7 +7,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum AgentScenario {
   CHAT(true),
-  SCHEDULED_TASK(false),
+  SCHEDULED_TASK(true),
   ALL(true);
 
   private final boolean conversationMemory;
