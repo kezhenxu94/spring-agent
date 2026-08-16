@@ -35,15 +35,15 @@ class CoreMessagesTest {
 
   @Test
   void speaksTheLocaleItWasGiven() {
-    assertThat(messagesIn(Locale.ENGLISH).get("questions-asked-heading"))
-        .isEqualTo("I have already put these questions to the user, and they have been presented:");
-    assertThat(messagesIn(CHINESE).get("questions-asked-heading")).startsWith("我已经向用户提出了以下问题");
+    assertThat(messagesIn(Locale.ENGLISH).get("question-already-asked"))
+        .startsWith("ALREADY ASKED AND STILL UNANSWERED.");
+    assertThat(messagesIn(CHINESE).get("question-already-asked")).startsWith("已经提问且仍未得到回答");
   }
 
   @Test
   void fallsBackToEnglishForALanguageThatDoesNotShip() {
-    assertThat(messagesIn(Locale.JAPANESE).get("questions-asked-heading"))
-        .startsWith("I have already put these questions");
+    assertThat(messagesIn(Locale.JAPANESE).get("question-already-asked"))
+        .startsWith("ALREADY ASKED");
   }
 
   @Test
@@ -60,19 +60,13 @@ class CoreMessagesTest {
     final var host = Locale.getDefault();
     try {
       Locale.setDefault(CHINESE);
-      assertThat(messagesIn(Locale.JAPANESE, true).get("questions-asked-heading"))
-          .startsWith("我已经向用户提出了以下问题");
-      assertThat(messagesIn(Locale.JAPANESE, false).get("questions-asked-heading"))
-          .startsWith("I have already put these questions");
+      assertThat(messagesIn(Locale.JAPANESE, true).get("question-already-asked"))
+          .startsWith("已经提问且仍未得到回答");
+      assertThat(messagesIn(Locale.JAPANESE, false).get("question-already-asked"))
+          .startsWith("ALREADY ASKED");
     } finally {
       Locale.setDefault(host);
     }
-  }
-
-  @Test
-  void fillsInArguments() {
-    assertThat(messagesIn(Locale.ENGLISH).get("questions-asked-item", "Auth method", "Which one?"))
-        .isEqualTo("- Auth method: Which one?");
   }
 
   @Test
@@ -85,7 +79,7 @@ class CoreMessagesTest {
     final var unreachable =
         new CoreMessages(withoutTheBundle, new SpringAgentProperties(null, null, Locale.ENGLISH));
 
-    assertThat(unreachable.get("questions-asked-heading")).isEqualTo("questions-asked-heading");
+    assertThat(unreachable.get("question-already-asked")).isEqualTo("question-already-asked");
   }
 
   @Test

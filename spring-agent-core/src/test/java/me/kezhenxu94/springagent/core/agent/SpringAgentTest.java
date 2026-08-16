@@ -1,7 +1,11 @@
 package me.kezhenxu94.springagent.core.agent;
 
+import static org.assertj.core.api.Assertions.as;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.InstanceOfAssertFactories.STRING;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
@@ -22,6 +26,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
@@ -31,12 +37,17 @@ import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentComposition;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentTools;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.McpTools;
+import me.kezhenxu94.springagent.core.tools.QuestionNotAnsweredException;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallback;
+import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallbackResolver;
+import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallingManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
+import org.springaicommunity.agent.tools.AskUserQuestionTool;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springframework.ai.chat.client.ChatClient;
@@ -44,19 +55,27 @@ import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.DefaultToolCallingManager;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.ai.tool.metadata.ToolMetadata;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import reactor.core.publisher.Flux;
 
 /**
  * Covers what {@link SpringAgent#fire} took over from its callers: assembling the run's identity,
- * recording what the agent asked, and releasing the MCP clients exactly once however the run ends.
+ * putting questions to every channel, and releasing the MCP clients exactly once however the run
+ * ends.
  */
 class SpringAgentTest {
 
@@ -75,7 +94,7 @@ class SpringAgentTest {
 
   @BeforeEach
   void setUp() throws Exception {
-    when(agentToolsProvider.compose(any(), any(), any(), any(), any(), any()))
+    when(agentToolsProvider.compose(any(), any(), any(), any(), any(), any(), anyBoolean()))
         .thenReturn(
             new AgentComposition(
                 new AgentTools(
@@ -83,17 +102,21 @@ class SpringAgentTest {
                 new Object[0],
                 new ToolCallback[0],
                 memoriesDirectory.toString()));
+    final var chatMemory =
+        MessageWindowChatMemory.builder().chatMemoryRepository(chatMemoryRepository).build();
     agent =
         new SpringAgent(
             // Real model options (OpenAI's) are ToolCallingChatOptions, which is the only kind
             // that carries a tool context; the plain default ones would silently drop it.
             ChatClient.builder(chatModel).defaultOptions(ToolCallingChatOptions.builder()).build(),
-            MessageWindowChatMemory.builder().chatMemoryRepository(chatMemoryRepository).build(),
+            chatMemory,
             properties(),
             agentToolsProvider,
             pendingQuestions,
             messagesIn(Locale.ENGLISH),
-            listenerProvider());
+            listenerProvider(),
+            // Present, as on a JDBC or MongoDB deployment; Redis has no such bean.
+            recorderProvider(new AskedQuestionsRecorder(chatMemory, messagesIn(Locale.ENGLISH))));
   }
 
   @Test
@@ -154,7 +177,7 @@ class SpringAgentTest {
   @Test
   @DisplayName("a run that cannot be composed reports FAILED rather than failing silently")
   void compositionFailureRun() throws Exception {
-    when(agentToolsProvider.compose(any(), any(), any(), any(), any(), any()))
+    when(agentToolsProvider.compose(any(), any(), any(), any(), any(), any(), anyBoolean()))
         .thenThrow(new IOException("no workspace"));
 
     final var listener = fireAndAwait(request());
@@ -193,7 +216,8 @@ class SpringAgentTest {
     assertThat(listener.outcomes).containsExactly(AgentOutcome.FAILED);
     assertThat(listener.errors).hasSize(1);
     assertThat(listener.errors.getFirst()).hasMessage("nowhere to put the answer");
-    verify(agentToolsProvider, times(0)).compose(any(), any(), any(), any(), any(), any());
+    verify(agentToolsProvider, times(0))
+        .compose(any(), any(), any(), any(), any(), any(), anyBoolean());
   }
 
   @Test
@@ -217,45 +241,9 @@ class SpringAgentTest {
   }
 
   @Test
-  @DisplayName("putting questions to the user leaves a note the next run can read back")
-  void askingIsRecordedInTheConversation() throws Exception {
-    final var answers = askIn(request());
-
-    // Whatever the integration answered with reaches the model unchanged.
-    assertThat(answers).containsEntry("Which database should we use?", "not answered yet");
-    assertThat(savedText())
-        .anySatisfy(
-            text ->
-                assertThat(text)
-                    .contains("already put these questions to the user")
-                    .contains("Database: Which database should we use?")
-                    .contains("Do not ask them again"));
-  }
-
-  @Test
-  @DisplayName("the note is left in the workspace's language, not always in English")
-  void theNoteSpeaksTheConfiguredLocale() throws Exception {
-    agent =
-        new SpringAgent(
-            ChatClient.builder(chatModel).defaultOptions(ToolCallingChatOptions.builder()).build(),
-            MessageWindowChatMemory.builder().chatMemoryRepository(chatMemoryRepository).build(),
-            properties(),
-            agentToolsProvider,
-            pendingQuestions,
-            messagesIn(Locale.of("zh", "CN")),
-            listenerProvider());
-
-    askIn(request());
-
-    assertThat(savedText())
-        .anySatisfy(
-            text ->
-                assertThat(text)
-                    .contains("我已经向用户提出了以下问题")
-                    // The questions themselves are the user's own words, so they are not
-                    // translated.
-                    .contains("Database：Which database should we use?")
-                    .doesNotContain("already put these questions"));
+  @DisplayName("whatever the channel answered with reaches the model unchanged")
+  void answersReachTheModelUnchanged() throws Exception {
+    assertThat(askIn(request())).containsEntry("Which database should we use?", "not answered yet");
   }
 
   @Test
@@ -298,11 +286,165 @@ class SpringAgentTest {
 
     assertThat(working.asked).hasSize(1);
     assertThat(answers).containsValue("working");
-    assertThat(savedText()).anySatisfy(text -> assertThat(text).contains("already put these"));
   }
 
   @Test
-  @DisplayName("no channel managing to ask tells the model so, and leaves no note")
+  @DisplayName("an ask nobody answered leaves a note the next run can read back")
+  void unansweredAskIsRecorded() throws Exception {
+    // What a later run reads instead of the tool call JdbcChatMemoryRepository drops.
+    fireAndAwait(unansweredAsk());
+
+    final var handler = handlerFromRun();
+    assertThatThrownBy(() -> handler.handle(questions()))
+        .isInstanceOf(QuestionNotAnsweredException.class);
+
+    assertThat(savedText())
+        .anySatisfy(
+            text ->
+                assertThat(text)
+                    .contains("now in front of the user")
+                    // The questions are not repeated: the conversation being replayed carries them.
+                    .doesNotContain("Which database should we use?"));
+  }
+
+  @Test
+  @DisplayName("an answered ask leaves no note telling a later run to wait for the answer")
+  void answeredAskIsNotRecorded() throws Exception {
+    // The note says to wait rather than ask again, which is untrue once the answer is in hand.
+    assertThat(askIn(request())).containsEntry("Which database should we use?", "not answered yet");
+
+    assertThat(savedText())
+        .noneSatisfy(text -> assertThat(text).contains("now in front of the user"));
+  }
+
+  @Test
+  @DisplayName("an ask that reached nobody leaves no note claiming it did")
+  void refusedAskIsNotRecorded() throws Exception {
+    declaredListener =
+        new AgentResponseListener() {
+          @Override
+          public void onStart(final AgentRunRegistry registry) {
+            registry.addQuestionHandler(
+                questions -> {
+                  throw new IllegalStateException("this channel is down");
+                });
+          }
+        };
+    fireAndAwait(request());
+
+    final var handler = handlerFromRun();
+    assertThatThrownBy(() -> handler.handle(questions()))
+        .isInstanceOf(QuestionNotAnsweredException.class);
+
+    assertThat(savedText())
+        .noneSatisfy(text -> assertThat(text).contains("now in front of the user"));
+  }
+
+  @Test
+  @DisplayName("a run with no conversation memory has nothing to leave the note in")
+  void askingIsNotRecordedWithoutConversationMemory() throws Exception {
+    fireAndAwait(unansweredAsk().scenario(AgentScenario.SCHEDULED_TASK));
+
+    final var handler = handlerFromRun();
+    assertThatThrownBy(() -> handler.handle(questions()))
+        .isInstanceOf(QuestionNotAnsweredException.class);
+
+    assertThat(savedText())
+        .noneSatisfy(text -> assertThat(text).contains("now in front of the user"));
+  }
+
+  /** A run whose one channel puts the questions up and comes back with nothing. */
+  private AgentRequest.AgentRequestBuilder unansweredAsk() {
+    declaredListener =
+        new AgentResponseListener() {
+          @Override
+          public void onStart(final AgentRunRegistry registry) {
+            registry.addQuestionHandler(questions -> Map.of());
+          }
+        };
+    return request();
+  }
+
+  /** The text of every message saved to the conversation over the whole test. */
+  @SuppressWarnings("unchecked")
+  private List<String> savedText() {
+    final var saved = ArgumentCaptor.forClass(List.class);
+    verify(chatMemoryRepository, atLeast(0)).saveAll(any(), saved.capture());
+    return ((List<List<Message>>) (List<?>) saved.getAllValues())
+        .stream().flatMap(List::stream).map(Message::getText).toList();
+  }
+
+  @Test
+  @DisplayName("an ask no channel can answer within the call ends the turn and skips validation")
+  void askEndsTheTurnWhenNoChannelAnswersWithinTheCall() throws Exception {
+    // returnDirect: Spring AI hands the result to the application instead of the model, so the run
+    // stops without the model having to stop itself — which it does not reliably do. The same flag
+    // turns off the answer-per-question check, which an ask that comes back empty cannot pass.
+    fireAndAwait(unansweredAsk());
+
+    assertThat(answersArriveLaterFromRun()).isTrue();
+  }
+
+  @Test
+  @DisplayName("a channel that answers within the call keeps the turn going and is validated")
+  void askDoesNotEndTheTurnForASynchronousChannel() throws Exception {
+    // Ending it would throw away the answer the channel just collected, and an answer is expected
+    // here, so the tool's own check that every question got one is worth keeping.
+    declaredListener =
+        new AgentResponseListener() {
+          @Override
+          public void onStart(final AgentRunRegistry registry) {
+            registry.addQuestionHandler(new SynchronousRecordingHandler());
+          }
+        };
+    fireAndAwait(request());
+
+    assertThat(answersArriveLaterFromRun()).isFalse();
+  }
+
+  @Test
+  @DisplayName("what the user reads when the turn ends at the ask is the question's own header")
+  void headersAreWhatTheDirectReturnCarries() throws Exception {
+    // The model never reads this: the result goes to the application, and from there onto the card
+    // above the form. So it is the model's short label for the question, not an instruction to it.
+    fireAndAwait(unansweredAsk());
+
+    final var handler = handlerFromRun();
+    assertThatThrownBy(() -> handler.handle(questions()))
+        .isInstanceOf(QuestionNotAnsweredException.class)
+        .hasMessage("Database");
+  }
+
+  /** What the run told compose() about whether an answer can arrive inside the call. */
+  private boolean answersArriveLaterFromRun() throws Exception {
+    final var endsTurn = ArgumentCaptor.forClass(Boolean.class);
+    verify(agentToolsProvider)
+        .compose(any(), any(), any(), any(), any(), any(), endsTurn.capture());
+    return endsTurn.getValue();
+  }
+
+  /** Synchronous, but this time with nothing to show for it. */
+  private static final class EmptySynchronousHandler
+      implements QuestionHandler, SynchronousQuestionHandler {
+    @Override
+    public Map<String, String> handle(final List<Question> questions) {
+      return Map.of();
+    }
+  }
+
+  /** A channel of the command line's kind: the answer arrives inside the call. */
+  private static final class SynchronousRecordingHandler
+      implements QuestionHandler, SynchronousQuestionHandler {
+    @Override
+    public Map<String, String> handle(final List<Question> questions) {
+      final var answers = new LinkedHashMap<String, String>();
+      questions.forEach(question -> answers.put(question.question(), "cli"));
+      return answers;
+    }
+  }
+
+  @Test
+  @DisplayName("no channel managing to ask tells the model so")
   void noHandlerPresenting() throws Exception {
     declaredListener =
         new AgentResponseListener() {
@@ -316,9 +458,81 @@ class SpringAgentTest {
         };
     fireAndAwait(request());
 
-    assertThat(handlerFromRun().handle(questions()).values())
-        .allSatisfy(answer -> assertThat(answer).startsWith("COULD NOT ASK"));
-    assertThat(savedText()).noneSatisfy(text -> assertThat(text).contains("already put these"));
+    final var handler = handlerFromRun();
+    assertThatThrownBy(() -> handler.handle(questions()))
+        .isInstanceOf(QuestionNotAnsweredException.class)
+        .hasMessageStartingWith("COULD NOT ASK");
+  }
+
+  @Test
+  @DisplayName("an ask that is out but unanswered tells the model to end its turn")
+  void presentedButUnanswered() throws Exception {
+    // A channel that answers within the call, so the turn carries on and the model is the one
+    // reading this. Where the turn ends at the ask instead, the user reads it — see the headers
+    // test below.
+    declaredListener =
+        new AgentResponseListener() {
+          @Override
+          public void onStart(final AgentRunRegistry registry) {
+            registry.addQuestionHandler(new EmptySynchronousHandler());
+          }
+        };
+    fireAndAwait(request());
+
+    final var handler = handlerFromRun();
+    assertThatThrownBy(() -> handler.handle(questions()))
+        .isInstanceOf(QuestionNotAnsweredException.class)
+        .hasMessageContaining("now in front of the user");
+  }
+
+  @Test
+  @DisplayName("a channel settling the ask with its own note still leaves the others their turn")
+  void handlerNoteDoesNotSkipTheChannelsAfterIt() throws Exception {
+    final var afterwards = new RecordingQuestionHandler("afterwards");
+    declaredListener =
+        new AgentResponseListener() {
+          @Override
+          public void onStart(final AgentRunRegistry registry) {
+            registry.addQuestionHandler(
+                questions -> {
+                  throw new QuestionNotAnsweredException("THE USER DISMISSED IT");
+                });
+            registry.addQuestionHandler(afterwards);
+          }
+        };
+    fireAndAwait(request());
+
+    // The second channel answered, and a real answer beats the first channel's note.
+    assertThat(handlerFromRun().handle(questions())).containsValue("afterwards");
+    assertThat(afterwards.asked).hasSize(1);
+  }
+
+  @Test
+  @DisplayName("a channel's own note is what the model reads when no channel came back with one")
+  void handlerNoteIsNotSwallowed() throws Exception {
+    final var quiet = new ArrayList<List<Question>>();
+    declaredListener =
+        new AgentResponseListener() {
+          @Override
+          public void onStart(final AgentRunRegistry registry) {
+            registry.addQuestionHandler(
+                questions -> {
+                  throw new QuestionNotAnsweredException("THE USER DISMISSED IT");
+                });
+            registry.addQuestionHandler(
+                questions -> {
+                  quiet.add(questions);
+                  return Map.of();
+                });
+          }
+        };
+    fireAndAwait(request());
+
+    final var handler = handlerFromRun();
+    assertThatThrownBy(() -> handler.handle(questions()))
+        .isInstanceOf(QuestionNotAnsweredException.class)
+        .hasMessage("THE USER DISMISSED IT");
+    assertThat(quiet).hasSize(1);
   }
 
   @Test
@@ -336,18 +550,126 @@ class SpringAgentTest {
         };
     fireAndAwait(request());
 
-    assertThat(handlerFromRun().handle(questions()).values())
-        .allSatisfy(answer -> assertThat(answer).startsWith("ALREADY ASKED"));
+    final var composed = handlerFromRun();
+    assertThatThrownBy(() -> composed.handle(questions()))
+        .isInstanceOf(QuestionNotAnsweredException.class)
+        .hasMessageStartingWith("ALREADY ASKED");
     assertThat(handler.asked).isEmpty();
-    assertThat(savedText()).noneSatisfy(text -> assertThat(text).contains("already put these"));
   }
 
   @Test
-  @DisplayName("a run with no conversation memory has nothing to leave the note in")
-  void askingIsNotRecordedWithoutConversationMemory() throws Exception {
-    askIn(request().scenario(AgentScenario.SCHEDULED_TASK));
+  @DisplayName("the note a handler throws is what the model reads as the tool's result")
+  void noteReachesTheModelAsTheToolResult() {
+    // The whole design rests on this, so it is driven through the manager
+    // SpringAgentCoreAutoConfiguration actually builds rather than the exception processor alone.
+    // A library upgrade, or a spring.ai.tools.throw-exception-on-error naming this type, breaks
+    // the ask silently.
+    final var asked = new AtomicInteger();
+    final var tool =
+        AskUserQuestionTool.builder()
+            .answersValidation(false)
+            .questionHandler(
+                questions -> {
+                  asked.incrementAndGet();
+                  throw new QuestionNotAnsweredException("NOT ANSWERED YET. End your turn.");
+                })
+            .build();
+    final var manager =
+        new InterceptingToolCallingManager(
+            DefaultToolCallingManager.builder()
+                .toolCallbackResolver(
+                    new InterceptingToolCallbackResolver(toolName -> null, List.of()))
+                .build(),
+            List.of());
 
-    assertThat(savedText()).noneSatisfy(text -> assertThat(text).contains("already put these"));
+    final var history = executeAsk(manager, ToolCallbacks.from(tool));
+
+    assertThat(history).containsExactly("NOT ANSWERED YET. End your turn.");
+    // Once, not once per interceptor or per round of the manager.
+    assertThat(asked).hasValue(1);
+  }
+
+  @Test
+  @DisplayName("a tool that ends the turn still ends it after the interceptors have wrapped it")
+  void returnDirectSurvivesTheInterceptingWrapper() {
+    // InterceptingToolCallingManager wraps every callback a run carries, and ToolCallback defaults
+    // returnDirect to off: a wrapper that does not forward the metadata silently turns a tool that
+    // ends the turn into one that does not, which is invisible until a model declines to stop.
+    final var tool =
+        AskUserQuestionTool.builder()
+            .answersValidation(false)
+            .questionHandler(questions -> Map.of())
+            .build();
+    final var endsTurn =
+        new InterceptingToolCallback(new EndsTurnCallback(ToolCallbacks.from(tool)[0]), List.of());
+
+    assertThat(endsTurn.getToolMetadata().returnDirect()).isTrue();
+  }
+
+  /** Stands in for the ask as AgentToolsProvider offers it when the turn ends there. */
+  private record EndsTurnCallback(ToolCallback delegate) implements ToolCallback {
+    @Override
+    public ToolDefinition getToolDefinition() {
+      return delegate.getToolDefinition();
+    }
+
+    @Override
+    public ToolMetadata getToolMetadata() {
+      return ToolMetadata.builder().returnDirect(true).build();
+    }
+
+    @Override
+    public String call(final String toolInput) {
+      return delegate.call(toolInput);
+    }
+  }
+
+  @Test
+  @DisplayName("an ask left out of an iteration's callbacks is not put to the user at all")
+  void askMissingFromTheIterationIsNotPresented() {
+    // The tool-search advisor rebuilds the callbacks every iteration, and AskUserQuestionTool is a
+    // per-request tool no resolver can find by name. The model then reads the resolver's recovery
+    // message, which tells it to call the tool again — and no question reaches the user.
+    final var manager =
+        new InterceptingToolCallingManager(
+            DefaultToolCallingManager.builder()
+                .toolCallbackResolver(
+                    new InterceptingToolCallbackResolver(toolName -> null, List.of()))
+                .build(),
+            List.of());
+
+    final var history = executeAsk(manager, new ToolCallback[0]);
+
+    assertThat(history).singleElement(as(STRING)).contains("was not offered to this call");
+  }
+
+  /** The tool responses one AskUserQuestionTool call produces, as the model would read them. */
+  private static List<String> executeAsk(
+      final ToolCallingManager manager, final ToolCallback[] callbacks) {
+    final var toolCall =
+        new AssistantMessage.ToolCall("call_1", "function", "AskUserQuestionTool", toolInput());
+    final var response =
+        new ChatResponse(
+            List.of(
+                new Generation(
+                    AssistantMessage.builder().content("").toolCalls(List.of(toolCall)).build())));
+    final var prompt =
+        new Prompt(
+            List.of(new UserMessage("hi")),
+            ToolCallingChatOptions.builder().toolCallbacks(callbacks).build());
+
+    final var last = manager.executeToolCalls(prompt, response).conversationHistory().getLast();
+    assertThat(last).isInstanceOf(ToolResponseMessage.class);
+    return ((ToolResponseMessage) last)
+        .getResponses().stream().map(ToolResponseMessage.ToolResponse::responseData).toList();
+  }
+
+  private static String toolInput() {
+    return """
+    {"questions":[{"question":"Which database should we use?","header":"Database",\
+    "options":[{"label":"Postgres","description":"The one we already run"},\
+    {"label":"MySQL","description":"The one we do not"}],"multiSelect":false}]}\
+    """;
   }
 
   /** Fires a run that registers a question handler, then asks through the handler it composed. */
@@ -364,7 +686,8 @@ class SpringAgentTest {
     fireAndAwait(request);
 
     final var composed = ArgumentCaptor.forClass(QuestionHandler.class);
-    verify(agentToolsProvider).compose(any(), any(), any(), any(), any(), composed.capture());
+    verify(agentToolsProvider)
+        .compose(any(), any(), any(), any(), any(), composed.capture(), anyBoolean());
     return composed
         .getValue()
         .handle(
@@ -374,21 +697,13 @@ class SpringAgentTest {
   /** The one handler the run composed out of everything registered. */
   private QuestionHandler handlerFromRun() throws Exception {
     final var composed = ArgumentCaptor.forClass(QuestionHandler.class);
-    verify(agentToolsProvider).compose(any(), any(), any(), any(), any(), composed.capture());
+    verify(agentToolsProvider)
+        .compose(any(), any(), any(), any(), any(), composed.capture(), anyBoolean());
     return composed.getValue();
   }
 
   private static List<Question> questions() {
     return List.of(new Question("Which database should we use?", "Database", List.of(), false));
-  }
-
-  /** The text of every message saved to the conversation over the whole test. */
-  @SuppressWarnings("unchecked")
-  private List<String> savedText() {
-    final var saved = ArgumentCaptor.forClass(List.class);
-    verify(chatMemoryRepository, atLeast(0)).saveAll(any(), saved.capture());
-    return ((List<List<Message>>) (List<?>) saved.getAllValues())
-        .stream().flatMap(List::stream).map(Message::getText).toList();
   }
 
   @Test
@@ -400,7 +715,8 @@ class SpringAgentTest {
     agent.fire(request().listener(listener).build());
 
     assertThat(listener.outcomes).isEmpty();
-    verify(agentToolsProvider, times(0)).compose(any(), any(), any(), any(), any(), any());
+    verify(agentToolsProvider, times(0))
+        .compose(any(), any(), any(), any(), any(), any(), anyBoolean());
   }
 
   private RecordingListener fireAndAwait(final AgentRequest.AgentRequestBuilder request) {
@@ -423,6 +739,21 @@ class SpringAgentTest {
   }
 
   /** The bean listener under test, resolved the way Spring resolves the whole set of them. */
+  private static ObjectProvider<AskedQuestionsRecorder> recorderProvider(
+      final AskedQuestionsRecorder recorder) {
+    return new ObjectProvider<>() {
+      @Override
+      public AskedQuestionsRecorder getObject() {
+        return recorder;
+      }
+
+      @Override
+      public void ifAvailable(final Consumer<AskedQuestionsRecorder> action) {
+        action.accept(recorder);
+      }
+    };
+  }
+
   private ObjectProvider<AgentResponseListener> listenerProvider() {
     return new ObjectProvider<>() {
       @Override

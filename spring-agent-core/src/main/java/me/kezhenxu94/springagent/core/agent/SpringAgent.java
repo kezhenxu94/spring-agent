@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-
+import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +23,7 @@ import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentComposition;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.McpTools;
+import me.kezhenxu94.springagent.core.tools.QuestionNotAnsweredException;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.springaicommunity.agent.advisors.AutoMemoryToolsAdvisor;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
@@ -34,7 +35,6 @@ import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
 import org.springframework.beans.factory.ObjectProvider;
@@ -68,6 +68,7 @@ public class SpringAgent {
    * the real one.
    */
   final ChatMemory chatMemory;
+
   final SpringAgentProperties appConfiguration;
   final AgentToolsProvider agentToolsProvider;
 
@@ -83,11 +84,13 @@ public class SpringAgent {
    */
   final ObjectProvider<AgentResponseListener> declaredListeners;
 
+  /** Only present on a backend whose chat memory cannot keep tool calls. */
+  final ObjectProvider<AskedQuestionsRecorder> askedQuestionsRecorder;
+
   private final ConcurrentMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
   private final AtomicInteger inFlight = new AtomicInteger(0);
 
-  @Getter
-  private volatile boolean accepting = true;
+  @Getter private volatile boolean accepting = true;
 
   public boolean cancel(final String requestId) {
     final var flag = cancelFlags.get(requestId);
@@ -154,8 +157,12 @@ public class SpringAgent {
     // from whichever the user is looking at. None registered means the agent is not offered the
     // tool at all.
     final var questionHandlers = registry.questionHandlers();
+    // Whether an answer can come back inside the call at all. Two things follow: what the ask is
+    // validated against, and whether the run ends at it rather than asking the model to stop.
+    final var answersArriveLater =
+        questionHandlers.stream().noneMatch(SynchronousQuestionHandler.class::isInstance);
     final var questionHandler =
-        questionHandlers.isEmpty() ? null : asking(request, questionHandlers);
+        questionHandlers.isEmpty() ? null : asking(request, questionHandlers, answersArriveLater);
 
     final var cancelFlag = new AtomicBoolean(false);
     if (requestId != null) {
@@ -178,7 +185,8 @@ public class SpringAgent {
                         request.chatType(),
                         request.scenario(),
                         fanOut(todoEventHandlers),
-                        questionHandler);
+                        questionHandler,
+                        answersArriveLater);
                 mcpTools.set(composition.agentTools().mcpTools());
                 return rawStream(request, composition, toolContextFor(request, registry));
               } catch (Exception e) {
@@ -270,16 +278,23 @@ public class SpringAgent {
    * Every registered handler as one ask: each is given the questions, and what they answer with is
    * merged into the one map the tool takes.
    *
-   * <p>A handler that throws is logged and passed over rather than failing the ask, so a channel
-   * that is broken or unreachable does not cost the user the channels that are neither. Returning
-   * is therefore what counts as having put the questions somewhere, and if none of them managed it
-   * the model is told so instead of being left with an empty answer it would read as one.
+   * <p>Most asks come back with no answer at all — the user has an hour to think about it, and the
+   * run cannot be held open for that. So this is also where it is decided what the model reads in
+   * place of one, thrown as a {@link QuestionNotAnsweredException}.
+   *
+   * <p>A handler that throws anything else is logged and passed over rather than failing the ask,
+   * so a channel that is broken or unreachable does not cost the user the channels that are
+   * neither. Returning is therefore what counts as having put the questions somewhere, and if none
+   * of them managed it the model is told so.
    *
    * <p>Answers are merged first-one-wins per question, which only arises for a synchronous handler
    * beside an asynchronous one — a combination no application composes today, the command line
    * being alone in its own.
    */
-  private QuestionHandler asking(final AgentRequest request, final List<QuestionHandler> handlers) {
+  private QuestionHandler asking(
+      final AgentRequest request,
+      final List<QuestionHandler> handlers,
+      final boolean answersArriveLater) {
     return questions -> {
       // One unanswered ask per conversation, whatever the channel: a model that asks again while a
       // form is still up would otherwise put a second one in front of the user on every channel.
@@ -287,16 +302,24 @@ public class SpringAgent {
         log.info(
             "Not asking again in conversation {}: one is already waiting",
             request.conversationId());
-        return answerEach(questions, messages.get("question-already-asked"));
+        throw new QuestionNotAnsweredException(messages.get("question-already-asked"));
       }
 
       final var answers = new LinkedHashMap<String, String>();
+      QuestionNotAnsweredException settled = null;
       var presented = 0;
       for (final var handler : handlers) {
         try {
           final var handlerAnswers = handler.handle(questions);
           if (handlerAnswers != null) {
             handlerAnswers.forEach(answers::putIfAbsent);
+          }
+          presented++;
+        } catch (QuestionNotAnsweredException e) {
+          // Put up and settled without an answer — the user dismissed them, say. Kept rather than
+          // rethrown, so the channels after this one still get their turn.
+          if (settled == null) {
+            settled = e;
           }
           presented++;
         } catch (Exception e) {
@@ -307,11 +330,44 @@ public class SpringAgent {
         }
       }
       if (presented == 0) {
-        return answerEach(questions, messages.get("question-cannot-ask"));
+        throw new QuestionNotAnsweredException(messages.get("question-cannot-ask"));
       }
-      record(request, questions);
-      return answers;
+
+      // A real answer from any channel beats a note from another: the user did reply somewhere.
+      if (!answers.isEmpty()) {
+        return answers;
+      }
+
+      // Only with no answer to them: the note says to wait rather than ask again, which is false
+      // once an answer is in hand.
+      recordAsked(request);
+
+      if (settled != null) {
+        throw settled;
+      }
+      // With the turn ending here the model never reads this, and the user does: the tool's result
+      // is what Spring AI returns to the application in place of a reply. The headers are the
+      // model's own short labels for what it just put in front of them.
+      throw new QuestionNotAnsweredException(
+          answersArriveLater ? headersOf(questions) : messages.get("question-asked"));
     };
+  }
+
+  /** Only on the backends whose chat memory cannot keep the tool call that would say this. */
+  private void recordAsked(final AgentRequest request) {
+    final var conversationId = request.conversationId();
+    if (!request.scenario().conversationMemory() || Strings.isNullOrEmpty(conversationId)) {
+      return;
+    }
+    askedQuestionsRecorder.ifAvailable(recorder -> recorder.record(conversationId));
+  }
+
+  /**
+   * What the user reads in place of a reply when the turn ends at the ask: the model's own short
+   * label for each question, which is already written for them and sits above the form itself.
+   */
+  private static String headersOf(final List<Question> questions) {
+    return questions.stream().map(Question::header).collect(Collectors.joining(", "));
   }
 
   /** Whether the conversation already has questions out that nobody has answered. */
@@ -329,53 +385,6 @@ public class SpringAgent {
       log.warn("Could not check for outstanding questions in conversation {}", conversationId, e);
       return false;
     }
-  }
-
-  /**
-   * The note in the conversation saying the questions were put to the user, written once however
-   * many channels put them there.
-   *
-   * <p>A plain assistant message because the tool call is not kept: {@code
-   * JdbcChatMemoryRepository} drops tool responses and assistant messages carrying tool calls, so a
-   * later run would replay the request with no sign anything had been asked — and ask again.
-   */
-  private void record(final AgentRequest request, final List<Question> questions) {
-    final var conversationId = request.conversationId();
-    if (!request.scenario().conversationMemory() || Strings.isNullOrEmpty(conversationId)) {
-      return;
-    }
-    try {
-      chatMemory.add(conversationId, List.of(new AssistantMessage(asked(questions))));
-    } catch (Exception e) {
-      // A missing note costs a repeated ask later, which is not worth failing the run over.
-      log.warn("Failed to record the questions put to conversation {}", conversationId, e);
-    }
-  }
-
-  /**
-   * The tool validates that every question it was given comes back with a value, so each gets the
-   * same one rather than a single note that would fail that check.
-   */
-  private static Map<String, String> answerEach(
-      final List<Question> questions, final String value) {
-    final var answers = new LinkedHashMap<String, String>();
-    for (final var question : questions) {
-      answers.put(question.question(), value);
-    }
-    return answers;
-  }
-
-  /**
-   * The note itself, addressed to the model that reads it back on a later run — in the workspace's
-   * language, so that a conversation held in one language does not carry a turn in another.
-   */
-  private String asked(final List<Question> questions) {
-    final var note = new StringBuilder(messages.get("questions-asked-heading"));
-    for (final var question : questions) {
-      note.append("\n")
-          .append(messages.get("questions-asked-item", question.header(), question.question()));
-    }
-    return note.append("\n").append(messages.get("questions-asked-footer")).toString();
   }
 
   /** All handlers as one, fanning each update out to every handler. */

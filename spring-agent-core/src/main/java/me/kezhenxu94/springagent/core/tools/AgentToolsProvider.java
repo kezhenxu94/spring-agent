@@ -21,8 +21,12 @@ import org.springaicommunity.agent.tools.FileSystemTools;
 import org.springaicommunity.agent.tools.SkillsTool;
 import org.springaicommunity.agent.tools.TodoWriteTool;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
+import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.ai.tool.metadata.ToolMetadata;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
@@ -77,7 +81,8 @@ public class AgentToolsProvider {
       final String chatType,
       final AgentScenario scenario,
       final TodoEventHandler todoEventHandler,
-      final QuestionHandler questionHandler)
+      final QuestionHandler questionHandler,
+      final boolean answersArriveLater)
       throws IOException {
     final var agentTools = build(userId, chatId);
     final var memoriesRootDirectory = userWorkspaceFactory.forOwner(userId).memories().toString();
@@ -89,11 +94,24 @@ public class AgentToolsProvider {
     // Two independent gates, and both have to open. No handler means the run has no way to reach
     // the user, so offering the tool would only invite the agent to ask into the void; the property
     // is how a deployment turns the whole interaction off whatever the channel can do.
+    final var callbacks = new ArrayList<ToolCallback>();
     if (questionHandler != null && appConfiguration.ai().tools().askUserQuestion().enabled()) {
-      tools.add(AskUserQuestionTool.builder().questionHandler(questionHandler).build());
+      // Both of these follow from the same fact. Where the answer only arrives later there is
+      // nothing to validate — the ask comes back empty by design — and nothing to hand the model,
+      // so the turn ends here. Where a channel answers within the call, validation is a real check
+      // that every question came back with something, and the turn has to carry on to use it.
+      final var askTool =
+          AskUserQuestionTool.builder()
+              .answersValidation(!answersArriveLater)
+              .questionHandler(questionHandler)
+              .build();
+      if (answersArriveLater) {
+        callbacks.add(endsTurnCallback(askTool));
+      } else {
+        tools.add(askTool);
+      }
     }
 
-    final var callbacks = new ArrayList<ToolCallback>();
     agentTools.skillsTool().ifPresent(callbacks::add);
     final var mcpCallbacks = agentTools.mcpTools().callbacks();
     if (mcpCallbacks != null) {
@@ -102,6 +120,45 @@ public class AgentToolsProvider {
 
     return new AgentComposition(
         agentTools, tools.toArray(), callbacks.toArray(new ToolCallback[0]), memoriesRootDirectory);
+  }
+
+  /**
+   * The ask, built to end the turn as soon as it has run.
+   *
+   * <p>Spring AI returns a {@code returnDirect} tool's result to the application instead of looping
+   * it back to the model, which is what stops the run without asking the model to stop itself —
+   * something it does not reliably do, however plainly the result says to. The library's
+   * {@code @Tool} annotation does not set it, and metadata is fixed once a callback is built, so
+   * the library's own callback is wrapped rather than rebuilt: everything but the one flag
+   * delegates, and nothing here needs the tool method's name or signature.
+   *
+   * <p>The result also becomes what the user reads, so what the ask returns on this path is written
+   * for them rather than for the model.
+   */
+  private static ToolCallback endsTurnCallback(final AskUserQuestionTool askTool) {
+    final var delegate = ToolCallbacks.from(askTool)[0];
+    final var endsTurn = ToolMetadata.builder().returnDirect(true).build();
+    return new ToolCallback() {
+      @Override
+      public ToolDefinition getToolDefinition() {
+        return delegate.getToolDefinition();
+      }
+
+      @Override
+      public ToolMetadata getToolMetadata() {
+        return endsTurn;
+      }
+
+      @Override
+      public String call(final String toolInput) {
+        return delegate.call(toolInput);
+      }
+
+      @Override
+      public String call(final String toolInput, final ToolContext toolContext) {
+        return delegate.call(toolInput, toolContext);
+      }
+    };
   }
 
   /** The {@code @AgentTool} beans a run in {@code scenario} is offered, in registration order. */

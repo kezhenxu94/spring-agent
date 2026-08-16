@@ -1,5 +1,7 @@
 package me.kezhenxu94.springagent.core.config;
 
+import java.util.List;
+import java.util.stream.Collectors;
 import me.kezhenxu94.springagent.core.config.PersistenceProperties.Type;
 import org.springframework.boot.autoconfigure.condition.ConditionOutcome;
 import org.springframework.boot.autoconfigure.condition.SpringBootCondition;
@@ -21,28 +23,35 @@ class PersistenceBackendCondition extends SpringBootCondition {
       final ConditionContext context, final AnnotatedTypeMetadata metadata) {
     final var attributes =
         metadata.getAnnotationAttributes(ConditionalOnPersistenceBackend.class.getName());
-    final var wanted = (Type) attributes.get("value");
+    final var wanted = List.of((Type[]) attributes.get("value"));
     final var classLoader = context.getClassLoader();
 
     // Named a backend whose module was never added: say so, rather than letting it surface later as
     // an unexplained missing repository bean. The message reaches the condition evaluation report.
     final var configured = PersistenceBackendResolver.configured(context.getEnvironment());
-    if (configured == wanted && !PersistenceBackendResolver.present(wanted, classLoader)) {
+    if (wanted.contains(configured)
+        && !PersistenceBackendResolver.present(configured, classLoader)) {
       return ConditionOutcome.noMatch(
           "%s is %s but %s is not on the classpath"
               .formatted(
                   PersistenceBackendResolver.TYPE_PROPERTY,
-                  wanted.name().toLowerCase(),
-                  PersistenceBackendResolver.moduleOf(wanted)));
+                  configured.name().toLowerCase(),
+                  PersistenceBackendResolver.moduleOf(configured)));
     }
 
     final var selected = PersistenceBackendResolver.resolve(context.getEnvironment(), classLoader);
-    if (selected != wanted) {
+    if (!wanted.contains(selected)) {
       return ConditionOutcome.noMatch(
           "the persistence backend is %s, not %s"
-              .formatted(selected.name().toLowerCase(), wanted.name().toLowerCase()));
+              .formatted(selected.name().toLowerCase(), names(wanted)));
     }
     return ConditionOutcome.match(
-        "the persistence backend is %s".formatted(wanted.name().toLowerCase()));
+        "the persistence backend is %s".formatted(selected.name().toLowerCase()));
+  }
+
+  private static String names(final List<Type> types) {
+    return types.stream()
+        .map(type -> type.name().toLowerCase())
+        .collect(Collectors.joining(" or "));
   }
 }
