@@ -89,9 +89,9 @@ spring:
           api-key: ${TRANSCRIPTION_OPENAI_API_KEY}
     vectorstore:
       # Which vector store backs the tool search index. `simple` keeps that index in the heap and
-      # mirrors it to a local JSON file (app.ai.vector-store.file) — no server to run, at the cost
-      # of a linear scan per search and an index private to each replica. `milvus` needs a reachable
-      # Milvus and is what a multi-replica deployment wants. Spring AI reads this property itself;
+      # mirrors it to a local JSON file (app.ai.vectorstore.simple.file) — no server to run, at
+      # the cost of a linear scan per search and an index private to each replica. `milvus` needs a
+      # reachable Milvus and is what a multi-replica deployment wants. Spring AI reads this itself;
       # each vector store auto-configuration backs off unless it names the one selected here.
       type: ${VECTORSTORE_TYPE:simple}
       milvus:
@@ -280,10 +280,13 @@ app:
       {taskText}
     admins: ${ADMINS:}
     vectorstore:
-      # Only read when spring.ai.vectorstore.type is simple. Written on a graceful shutdown and
-      # reloaded on startup; if it is missing or unreadable the index is simply rebuilt, at the
-      # cost of re-embedding the tool descriptions.
-      file: ${VECTORSTORE_FILE:data/vectorstore.json}
+      # Nested under the store's own name, as spring.ai.vectorstore.milvus above is: what is here
+      # belongs to the simple store alone and is ignored by every other backend.
+      simple:
+        # Only read when spring.ai.vectorstore.type is simple. Written on a graceful shutdown and
+        # reloaded on startup; if it is missing or unreadable the index is simply rebuilt, at the
+        # cost of re-embedding the tool descriptions.
+        file: ${VECTORSTORE_FILE:data/vectorstore.json}
     tools:
       ask-user-question:
         # Whether the agent may stop and ask the user a multiple-choice question when a request is

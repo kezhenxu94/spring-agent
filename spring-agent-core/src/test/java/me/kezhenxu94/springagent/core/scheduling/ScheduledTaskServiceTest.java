@@ -60,6 +60,26 @@ class ScheduledTaskServiceTest {
     assertThat(message).isEqualTo("summarise yesterday's thread");
   }
 
+  @Test
+  @DisplayName("a firing tells the surface whether the task is background, unset meaning it is not")
+  void backgroundIsCarriedOntoTheRequest() {
+    assertThat(fireAndCaptureRequest(task).background()).isFalse();
+    assertThat(fireAndCaptureRequest(task.toBuilder().background(true).build()).background())
+        .isTrue();
+  }
+
+  /** A mock of its own per firing, so a test may fire twice and still verify a single call. */
+  private AgentRequest fireAndCaptureRequest(final ScheduledTask task) {
+    final var agent = mock(SpringAgent.class);
+    when(agent.accepting()).thenReturn(true);
+    new ScheduledTaskService(agent, repo, properties(null), mock(ThreadPoolTaskScheduler.class))
+        .fire(task);
+
+    final var captor = ArgumentCaptor.forClass(AgentRequest.class);
+    verify(agent).fire(captor.capture());
+    return captor.getValue();
+  }
+
   private String fireAndCaptureUserMessage(final String template) {
     when(springAgent.accepting()).thenReturn(true);
     final var service =

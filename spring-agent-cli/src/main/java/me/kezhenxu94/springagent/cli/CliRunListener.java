@@ -14,6 +14,11 @@ import org.springframework.stereotype.Component;
  * reason {@code FeishuCardListener} is one: a scheduled task the agent set up earlier fires through
  * {@code ScheduledTaskService}, not through anything the command line calls, and without this its
  * output would go nowhere while the user watched an idle prompt.
+ *
+ * <p>Every run, a background one included, which is where this parts company with {@code
+ * FeishuCardListener}. A background run is one that says what it has to say by sending a message
+ * itself, and the command line has nothing to send one with: honouring the flag here would leave
+ * such a run with no way at all to be seen. The terminal is the log.
  */
 @Slf4j
 @Component

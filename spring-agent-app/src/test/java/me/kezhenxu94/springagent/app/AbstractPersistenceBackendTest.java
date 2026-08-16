@@ -131,6 +131,7 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
             .userId(owner())
             .taskText("summarise the thread")
             .cronExpression("0 0 9 * * MON")
+            .background(true)
             .status(ScheduledTask.Status.ACTIVE)
             .build());
 
@@ -146,6 +147,7 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
     // The fields the update did not name must survive it.
     assertThat(reloaded.get().taskText()).isEqualTo("summarise the thread");
     assertThat(reloaded.get().cronExpression()).isEqualTo("0 0 9 * * MON");
+    assertThat(reloaded.get().background()).isTrue();
     assertThat(scheduledTaskRepo.findByUserIdAndStatus(owner(), ScheduledTask.Status.ACTIVE))
         .extracting(ScheduledTask::id)
         .doesNotContain(id);

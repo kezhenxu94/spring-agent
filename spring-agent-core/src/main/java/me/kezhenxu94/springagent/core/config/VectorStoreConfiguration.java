@@ -56,7 +56,7 @@ public class VectorStoreConfiguration {
     observationRegistry.ifAvailable(builder::observationRegistry);
     final var store = new ConcurrentSimpleVectorStore(builder);
 
-    final var file = new File(properties.ai().vectorstore().file());
+    final var file = new File(properties.ai().vectorstore().simple().file());
     if (file.isFile()) {
       try {
         store.load(file);
@@ -78,7 +78,7 @@ public class VectorStoreConfiguration {
   ApplicationListener<ContextClosedEvent> vectorStorePersister(
       final SpringAgentProperties properties, final SimpleVectorStore simpleVectorStore) {
     return event -> {
-      final var file = new File(properties.ai().vectorstore().file());
+      final var file = new File(properties.ai().vectorstore().simple().file());
       try {
         createParentDirectory(file);
         simpleVectorStore.save(file);

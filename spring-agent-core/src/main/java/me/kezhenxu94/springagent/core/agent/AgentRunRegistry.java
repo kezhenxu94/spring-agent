@@ -56,8 +56,16 @@ public final class AgentRunRegistry {
    * <p>These fan out as the handlers above do: every channel taking part puts the questions to the
    * user, so an answer can come back from whichever of them the user is looking at. One unanswered
    * ask per conversation is enforced by {@code SpringAgent} ahead of the fan-out, not here.
+   *
+   * <p>A background run keeps none of them, so the agent is not offered the tool at all: such a run
+   * is unattended by definition, and a question nobody is going to see would only stop it dead —
+   * asking ends the turn. Dropped here rather than left to each surface to remember, since the
+   * reason is the run's, not the channel's.
    */
   public void addQuestionHandler(final QuestionHandler handler) {
+    if (request.background()) {
+      return;
+    }
     questionHandlers.add(handler);
   }
 
