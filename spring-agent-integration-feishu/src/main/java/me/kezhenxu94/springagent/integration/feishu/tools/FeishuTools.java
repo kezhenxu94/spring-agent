@@ -21,7 +21,6 @@ import com.lark.oapi.service.im.v1.model.GetMessageResp;
 import com.lark.oapi.service.im.v1.model.ListMessageResp;
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -36,16 +35,13 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
+import me.kezhenxu94.springagent.integration.feishu.FeishuMessageCard;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ArrayNode;
-import tools.jackson.databind.node.ObjectNode;
 
 @Slf4j
 @AgentTool
@@ -57,9 +53,7 @@ public class FeishuTools {
   final UserWorkspaceFactory userWorkspaceFactory;
   final JsonMapper objectMapper;
   final FeishuMessages messages;
-
-  @Value("${app.feishu.reply-card:classpath:/feishu/reply-card.json}")
-  Resource feishuReplyCard;
+  final FeishuMessageCard messageCard;
 
   @Builder
   @Jacksonized
@@ -211,7 +205,7 @@ public class FeishuTools {
       @ToolParam(description = "The markdown body, dropped into the message template")
           String content) {
 
-    final var cardContent = buildCardContent(content);
+    final var cardContent = messageCard.render(content);
 
     final var resp =
         feishu
@@ -236,29 +230,6 @@ public class FeishuTools {
     }
     log.info("Sent Feishu message to {} ({})", receiveId, receiveIdType);
     return "Message sent successfully to " + receiveId + ".";
-  }
-
-  String buildCardContent(final String markdown) throws IOException {
-    final var card =
-        (ObjectNode)
-            objectMapper.readTree(
-                messages.renderCard(feishuReplyCard.getContentAsString(StandardCharsets.UTF_8)));
-    final var config = card.path("config");
-    if (config instanceof ObjectNode configNode) {
-      configNode.put("streaming_mode", false);
-    }
-    final var elements = (ArrayNode) card.path("body").path("elements");
-    final var iterator = elements.iterator();
-    while (iterator.hasNext()) {
-      final var el = iterator.next();
-      final var elementId = el.path("element_id").asString();
-      if ("stop".equals(elementId) || "usage".equals(elementId)) {
-        iterator.remove();
-      } else if ("message".equals(elementId)) {
-        ((ObjectNode) el).put("content", markdown);
-      }
-    }
-    return objectMapper.writeValueAsString(card);
   }
 
   @Tool(

@@ -18,6 +18,7 @@ import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.agent.AgentRunRegistry;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
+import me.kezhenxu94.springagent.integration.feishu.FeishuMessageCard;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,6 +31,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.client.RestTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -49,17 +51,23 @@ class FeishuCardListenerBackgroundTest {
 
   @BeforeEach
   void setUp() {
+    final var messages =
+        new FeishuMessages(
+            new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH));
+    final var messageCard =
+        new FeishuMessageCard(
+            new JsonMapper(), messages, new ClassPathResource("feishu/reply-card.json"));
     listener =
         new FeishuCardListener(
             feishu,
             new JsonMapper(),
             null,
             mock(RestTemplate.class),
-            new FeishuMessages(
-                new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH)),
+            messages,
             mock(UserWorkspaceFactory.class),
             null,
-            null);
+            null,
+            messageCard);
   }
 
   private AgentRunRegistry registryFor(final boolean background) {
@@ -98,8 +106,11 @@ class FeishuCardListenerBackgroundTest {
     verify(feishu.im().v1().message()).reply(captor.capture());
     assertThat(captor.getValue().getMessageId()).isEqualTo("om_root");
     final var body = captor.getValue().getReplyMessageReqBody();
-    assertThat(body.getMsgType()).isEqualTo("text");
-    assertThat(body.getContent()).contains("the tool blew up");
+    assertThat(body.getMsgType()).isEqualTo("interactive");
+    // The same card an answer arrives in, with the failure quoted rather than passed off as prose
+    // the agent wrote.
+    assertThat(body.getContent()).contains("> the tool blew up");
+    assertThat(body.getContent()).contains("\"streaming_mode\":false");
   }
 
   @Test

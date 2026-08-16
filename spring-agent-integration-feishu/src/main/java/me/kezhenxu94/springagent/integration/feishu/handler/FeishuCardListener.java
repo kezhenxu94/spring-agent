@@ -7,9 +7,9 @@ import com.lark.oapi.service.cardkit.v1.model.CreateCardReqBody;
 import com.lark.oapi.service.im.v1.model.ReplyMessageReq;
 import com.lark.oapi.service.im.v1.model.ReplyMessageReqBody;
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
@@ -19,6 +19,7 @@ import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
+import me.kezhenxu94.springagent.integration.feishu.FeishuMessageCard;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
@@ -55,6 +56,7 @@ public class FeishuCardListener implements AgentResponseListener {
   final UserWorkspaceFactory userWorkspaceFactory;
   final PendingQuestionRepo pendingQuestionRepo;
   final FeishuQuestionForm questionForm;
+  final FeishuMessageCard messageCard;
 
   // Not final, matching FeishuTools#feishuReplyCard: @Value on a field is an injection point in its
   // own right, and AOT generates a plain field assignment for it, which cannot target a final field
@@ -195,12 +197,24 @@ public class FeishuCardListener implements AgentResponseListener {
           error == null || Strings.isNullOrEmpty(error.getMessage())
               ? messages.get("card-unknown-error")
               : error.getMessage();
-      replyText(runId, replyTo, messages.get("background-run-failed", reason));
+      replyMessage(runId, replyTo, messages.get("background-run-failed", blockQuoted(reason)));
     }
   }
 
-  /** Replies plain text onto {@code replyTo}; a failure notice does not need a card to stream. */
-  private void replyText(final String runId, final String replyTo, final String text) {
+  /**
+   * The reason as a Markdown quote, so a failure that runs to several lines reads as one quoted
+   * passage rather than as prose the agent wrote.
+   */
+  private static String blockQuoted(final String reason) {
+    return reason.lines().map(line -> "> " + line).collect(Collectors.joining("\n"));
+  }
+
+  /**
+   * Replies {@code markdown} onto {@code replyTo} as a finished card. The same card the agent's
+   * answers arrive in, because this is one of them in every way that matters to the reader: it is
+   * the run talking about itself, just written by the runtime rather than the model.
+   */
+  private void replyMessage(final String runId, final String replyTo, final String markdown) {
     try {
       final var response =
           feishu
@@ -212,8 +226,8 @@ public class FeishuCardListener implements AgentResponseListener {
                       .messageId(replyTo)
                       .replyMessageReqBody(
                           ReplyMessageReqBody.newBuilder()
-                              .msgType("text")
-                              .content(om.writeValueAsString(Map.of("text", text)))
+                              .msgType("interactive")
+                              .content(messageCard.render(markdown))
                               .build())
                       .build());
       if (response.getCode() != 0) {

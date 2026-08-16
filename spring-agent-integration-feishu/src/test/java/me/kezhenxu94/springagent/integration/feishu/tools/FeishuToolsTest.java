@@ -18,7 +18,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.core.io.ClassPathResource;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
@@ -43,49 +42,8 @@ class FeishuToolsTest {
             userWorkspaceFactory,
             objectMapper,
             new FeishuMessages(
-                new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH)));
-    tools.feishuReplyCard = new ClassPathResource("feishu/reply-card.json");
-  }
-
-  @Test
-  @DisplayName("buildCardContent injects markdown into the message element")
-  void injectsMarkdown() throws Exception {
-    final var json = tools.buildCardContent("hello **world**");
-
-    final var card = objectMapper.readTree(json);
-    final var elements = card.path("body").path("elements");
-    final var message =
-        java.util.stream.StreamSupport.stream(elements.spliterator(), false)
-            .filter(e -> "message".equals(e.path("element_id").asString()))
-            .findFirst()
-            .orElseThrow();
-    assertThat(message.path("content").asString()).isEqualTo("hello **world**");
-  }
-
-  @Test
-  @DisplayName("buildCardContent disables streaming_mode for one-shot sends")
-  void disablesStreamingMode() throws Exception {
-    final var json = tools.buildCardContent("anything");
-
-    final var card = objectMapper.readTree(json);
-    assertThat(card.path("config").path("streaming_mode").asBoolean()).isFalse();
-  }
-
-  @Test
-  @DisplayName("buildCardContent strips message_actions and usage (stop button + footer)")
-  void stripsMessageActions() throws Exception {
-    final var json = tools.buildCardContent("anything");
-
-    final var card = objectMapper.readTree(json);
-    final var elements = card.path("body").path("elements");
-    assertThat(elements.isArray()).isTrue();
-    final var elementIds =
-        java.util.stream.StreamSupport.stream(elements.spliterator(), false)
-            .map(e -> e.path("element_id").asString())
-            .toList();
-    assertThat(elementIds).doesNotContain("message_actions", "usage");
-
-    assertThat(json).doesNotContain("\"Stop\"").doesNotContain("\"element_id\":\"stop\"");
+                new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH)),
+            null);
   }
 
   @Test
