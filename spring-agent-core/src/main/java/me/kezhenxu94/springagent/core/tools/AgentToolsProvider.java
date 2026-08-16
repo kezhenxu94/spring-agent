@@ -82,7 +82,7 @@ public class AgentToolsProvider {
       final AgentScenario scenario,
       final TodoEventHandler todoEventHandler,
       final QuestionHandler questionHandler,
-      final boolean askEndsTurn)
+      final boolean answersArriveLater)
       throws IOException {
     final var agentTools = build(userId, chatId);
     final var memoriesRootDirectory = userWorkspaceFactory.forOwner(userId).memories().toString();
@@ -96,14 +96,16 @@ public class AgentToolsProvider {
     // is how a deployment turns the whole interaction off whatever the channel can do.
     final var callbacks = new ArrayList<ToolCallback>();
     if (questionHandler != null && appConfiguration.ai().tools().askUserQuestion().enabled()) {
-      // Validation off: it wants a value per question, and most asks come back with none at all.
-      // A channel that cannot answer within the call returns nothing and says so by throwing.
+      // Both of these follow from the same fact. Where the answer only arrives later there is
+      // nothing to validate — the ask comes back empty by design — and nothing to hand the model,
+      // so the turn ends here. Where a channel answers within the call, validation is a real check
+      // that every question came back with something, and the turn has to carry on to use it.
       final var askTool =
           AskUserQuestionTool.builder()
-              .answersValidation(false)
+              .answersValidation(!answersArriveLater)
               .questionHandler(questionHandler)
               .build();
-      if (askEndsTurn) {
+      if (answersArriveLater) {
         callbacks.add(endsTurnCallback(askTool));
       } else {
         tools.add(askTool);

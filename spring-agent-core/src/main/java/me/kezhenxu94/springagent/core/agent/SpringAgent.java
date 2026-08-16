@@ -157,12 +157,12 @@ public class SpringAgent {
     // from whichever the user is looking at. None registered means the agent is not offered the
     // tool at all.
     final var questionHandlers = registry.questionHandlers();
-    // No channel answers inside the call, so there is nothing for the model to do once the
-    // questions are up and the run ends at the ask itself rather than asking the model to stop.
-    final var askEndsTurn =
+    // Whether an answer can come back inside the call at all. Two things follow: what the ask is
+    // validated against, and whether the run ends at it rather than asking the model to stop.
+    final var answersArriveLater =
         questionHandlers.stream().noneMatch(SynchronousQuestionHandler.class::isInstance);
     final var questionHandler =
-        questionHandlers.isEmpty() ? null : asking(request, questionHandlers, askEndsTurn);
+        questionHandlers.isEmpty() ? null : asking(request, questionHandlers, answersArriveLater);
 
     final var cancelFlag = new AtomicBoolean(false);
     if (requestId != null) {
@@ -186,7 +186,7 @@ public class SpringAgent {
                         request.scenario(),
                         fanOut(todoEventHandlers),
                         questionHandler,
-                        askEndsTurn);
+                        answersArriveLater);
                 mcpTools.set(composition.agentTools().mcpTools());
                 return rawStream(request, composition, toolContextFor(request, registry));
               } catch (Exception e) {
@@ -292,7 +292,9 @@ public class SpringAgent {
    * being alone in its own.
    */
   private QuestionHandler asking(
-      final AgentRequest request, final List<QuestionHandler> handlers, final boolean askEndsTurn) {
+      final AgentRequest request,
+      final List<QuestionHandler> handlers,
+      final boolean answersArriveLater) {
     return questions -> {
       // One unanswered ask per conversation, whatever the channel: a model that asks again while a
       // form is still up would otherwise put a second one in front of the user on every channel.
@@ -347,7 +349,7 @@ public class SpringAgent {
       // is what Spring AI returns to the application in place of a reply. The headers are the
       // model's own short labels for what it just put in front of them.
       throw new QuestionNotAnsweredException(
-          askEndsTurn ? headersOf(questions) : messages.get("question-asked"));
+          answersArriveLater ? headersOf(questions) : messages.get("question-asked"));
     };
   }
 

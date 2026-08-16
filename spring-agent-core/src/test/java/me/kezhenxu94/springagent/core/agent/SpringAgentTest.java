@@ -375,19 +375,21 @@ class SpringAgentTest {
   }
 
   @Test
-  @DisplayName("an ask no channel can answer within the call ends the turn itself")
+  @DisplayName("an ask no channel can answer within the call ends the turn and skips validation")
   void askEndsTheTurnWhenNoChannelAnswersWithinTheCall() throws Exception {
     // returnDirect: Spring AI hands the result to the application instead of the model, so the run
-    // stops without the model having to stop itself — which it does not reliably do.
+    // stops without the model having to stop itself — which it does not reliably do. The same flag
+    // turns off the answer-per-question check, which an ask that comes back empty cannot pass.
     fireAndAwait(unansweredAsk());
 
-    assertThat(askEndsTurnFromRun()).isTrue();
+    assertThat(answersArriveLaterFromRun()).isTrue();
   }
 
   @Test
-  @DisplayName("a channel that answers within the call keeps the turn going")
+  @DisplayName("a channel that answers within the call keeps the turn going and is validated")
   void askDoesNotEndTheTurnForASynchronousChannel() throws Exception {
-    // Ending it would throw away the answer the channel just collected.
+    // Ending it would throw away the answer the channel just collected, and an answer is expected
+    // here, so the tool's own check that every question got one is worth keeping.
     declaredListener =
         new AgentResponseListener() {
           @Override
@@ -397,7 +399,7 @@ class SpringAgentTest {
         };
     fireAndAwait(request());
 
-    assertThat(askEndsTurnFromRun()).isFalse();
+    assertThat(answersArriveLaterFromRun()).isFalse();
   }
 
   @Test
@@ -413,8 +415,8 @@ class SpringAgentTest {
         .hasMessage("Database");
   }
 
-  /** Whether the run asked for the ask to be built so that it ends the turn. */
-  private boolean askEndsTurnFromRun() throws Exception {
+  /** What the run told compose() about whether an answer can arrive inside the call. */
+  private boolean answersArriveLaterFromRun() throws Exception {
     final var endsTurn = ArgumentCaptor.forClass(Boolean.class);
     verify(agentToolsProvider)
         .compose(any(), any(), any(), any(), any(), any(), endsTurn.capture());
