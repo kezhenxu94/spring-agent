@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.core.tools.interceptors;
 
 import java.util.List;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ToolContext;
@@ -11,16 +12,11 @@ import org.springframework.ai.tool.resolution.ToolCallbackResolver;
 import org.springframework.ai.tool.toolsearch.ToolSearchTool;
 
 @Slf4j
+@RequiredArgsConstructor
 public class InterceptingToolCallbackResolver implements ToolCallbackResolver {
 
   private final ToolCallbackResolver delegate;
   private final List<ToolCallInterceptor> interceptors;
-
-  public InterceptingToolCallbackResolver(
-      ToolCallbackResolver delegate, List<ToolCallInterceptor> interceptors) {
-    this.delegate = delegate;
-    this.interceptors = interceptors;
-  }
 
   @Override
   public ToolCallback resolve(String toolName) {
