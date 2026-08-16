@@ -54,6 +54,19 @@ public class FeishuQuestionFormCloser {
    */
   @SneakyThrows
   private void replace(final PendingQuestion pending, final String element, final String reason) {
+    final var elementId = FeishuQuestionForm.formElementId(pending.id());
+    final var uuid = pending.id() + "-" + reason;
+    final var sequence = (int) Instant.now().getEpochSecond();
+    log.info(
+        "Closing question form: pendingQuestionId={}, cardId={}, elementId={}, uuid={}, "
+            + "sequence={}, reason={}, element={}",
+        pending.id(),
+        pending.cardId(),
+        elementId,
+        uuid,
+        sequence,
+        reason,
+        element);
     final var response =
         feishu
             .cardkit()
@@ -62,21 +75,37 @@ public class FeishuQuestionFormCloser {
             .update(
                 UpdateCardElementReq.newBuilder()
                     .cardId(pending.cardId())
-                    .elementId(FeishuQuestionForm.formElementId(pending.id()))
+                    .elementId(elementId)
                     .updateCardElementReqBody(
                         UpdateCardElementReqBody.newBuilder()
-                            .uuid(pending.id() + "-" + reason)
-                            .sequence((int) Instant.now().getEpochSecond())
+                            .uuid(uuid)
+                            .sequence(sequence)
                             .element(element)
                             .build())
                     .build());
     if (response.getCode() != 0) {
       log.warn(
-          "Failed to close the question form as {}: cardId={}, code={}, msg={}",
+          "Failed to close the question form as {}: pendingQuestionId={}, cardId={}, "
+              + "elementId={}, uuid={}, sequence={}, code={}, msg={}",
           reason,
+          pending.id(),
           pending.cardId(),
+          elementId,
+          uuid,
+          sequence,
           response.getCode(),
           response.getMsg());
+    } else {
+      log.info(
+          "Closed question form as {}: pendingQuestionId={}, cardId={}, elementId={}, uuid={}, "
+              + "sequence={}, requestId={}",
+          reason,
+          pending.id(),
+          pending.cardId(),
+          elementId,
+          uuid,
+          sequence,
+          response.getRequestId());
     }
   }
 }

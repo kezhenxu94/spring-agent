@@ -5,6 +5,7 @@ import static me.kezhenxu94.springagent.integration.feishu.handler.FeishuToasts.
 import com.google.common.base.Strings;
 import com.lark.oapi.event.cardcallback.model.P2CardActionTrigger;
 import com.lark.oapi.event.cardcallback.model.P2CardActionTriggerResponse;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -30,10 +31,13 @@ import org.springframework.stereotype.Component;
  * which replays the chat memory holding the question and its tool call, and the agent picks up
  * where it left off.
  *
- * <p>Feishu drops a callback that takes more than three seconds, and only the checks below are fast
- * enough to sit inside that. Starting the run is not — it creates and replies a card before
- * returning — so it is handed to an executor, along with rewriting the card, which the card service
- * would refuse anyway while this callback is still in flight.
+ * <p>Feishu drops a callback that takes more than three seconds, and closing the question's form is
+ * fast enough to sit inside that — so it happens here, synchronously. It also has to: a callback
+ * response with no {@code card} field of its own is read as "leave the card as it was", and Feishu
+ * applies that once the callback finishes even to element updates that landed while it was still in
+ * flight, silently undoing a form-close fired from off-thread a moment earlier. Starting the run is
+ * not fast enough to sit inside the budget — it creates and replies a card before returning — so
+ * that alone is handed to an executor.
  */
 @Slf4j
 @Component
@@ -62,14 +66,33 @@ public class FeishuQuestionAnswerHandler {
   public P2CardActionTriggerResponse handle(final P2CardActionTrigger event) {
     final var action = event.getEvent().getAction();
     final var id = String.valueOf(action.getValue().get(VALUE_PENDING_QUESTION_ID));
+    final var token = event.getEvent().getToken();
+    final var requestId = event.getRequestId();
+    final var receivedAt = Instant.now();
+    log.info(
+        "Answer callback received: pendingQuestionId={}, token={}, requestId={}, "
+            + "receivedAt={}, formValueKeys={}",
+        id,
+        token,
+        requestId,
+        receivedAt,
+        action.getFormValue() == null ? null : action.getFormValue().keySet());
 
     final var pending = pendingQuestionRepo.findById(id).orElse(null);
     if (pending == null) {
-      log.warn("Answer for unknown pending question {}", id);
+      log.warn("Answer for unknown pending question {}: token={}", id, token);
       return toast("warning", messages.get("question-already-answered"));
     }
+    log.info(
+        "Pending question {} loaded: status={}, cardId={}, userId={}, expiresAt={}, token={}",
+        id,
+        pending.status(),
+        pending.cardId(),
+        pending.userId(),
+        pending.expiresAt(),
+        token);
     if (pending.status() != PendingQuestion.Status.PENDING) {
-      log.info("Answer for {} which is already {}", id, pending.status());
+      log.info("Answer for {} which is already {}: token={}", id, pending.status(), token);
       // A form left standing after the row behind it closed — the card update that should have
       // taken it away failed, or this press was already in flight. Say which of the two it is,
       // since "already answered" is not true of questions a later message overtook.
@@ -100,8 +123,29 @@ public class FeishuQuestionAnswerHandler {
     }
 
     pendingQuestionRepo.updateStatus(id, PendingQuestion.Status.ANSWERED);
+    log.info("Pending question {} marked ANSWERED: token={}, answers={}", id, token, answers);
+    // Synchronous, and ahead of the toast: Feishu appears to treat a card-callback response
+    // carrying no `card` field as "leave the card exactly as it was", and applies that once the
+    // callback finishes — even to element updates that landed while it was still in flight. Doing
+    // this update on the executor raced that finish and got silently overwritten a moment later.
+    // A single element replace comfortably fits the callback's three-second budget, so it does not
+    // need to be off-thread; only the agent run below does.
+    final var closeStartedAt = Instant.now();
+    try {
+      formCloser.answered(pending, answers);
+      log.info(
+          "Question form closed for {}: token={}, elapsedMs={}",
+          id,
+          token,
+          Duration.between(closeStartedAt, Instant.now()).toMillis());
+    } catch (Exception e) {
+      // The agent has the answers either way; a form left on screen is untidy, not broken, and the
+      // row is already ANSWERED so pressing it again is refused.
+      log.warn(
+          "Failed to close the question form on card {}: token={}", pending.cardId(), token, e);
+    }
     final var replyTo = event.getEvent().getContext().getOpenMessageId();
-    taskExecutor.execute(() -> deliver(pending, questions, answers, replyTo));
+    taskExecutor.execute(() -> deliver(pending, questions, answers, replyTo, token));
     return toast("success", messages.get("question-submitted"));
   }
 
@@ -110,14 +154,15 @@ public class FeishuQuestionAnswerHandler {
       final PendingQuestion pending,
       final List<Question> questions,
       final Map<String, String> answers,
-      final String replyTo) {
-    try {
-      formCloser.answered(pending, answers);
-    } catch (Exception e) {
-      // The agent has the answers either way; a form left on screen is untidy, not broken, and the
-      // row is already ANSWERED so pressing it again is refused.
-      log.warn("Failed to close the question form on card {}", pending.cardId(), e);
-    }
+      final String replyTo,
+      final String token) {
+    final var startedAt = Instant.now();
+    log.info(
+        "Delivering answer for {} on thread {}: startedAt={}, token={}",
+        pending.id(),
+        Thread.currentThread().getName(),
+        startedAt,
+        token);
     try {
       springAgent.fire(
           AgentRequest.builder()
@@ -131,6 +176,12 @@ public class FeishuQuestionAnswerHandler {
               .replyMessageId(replyTo)
               .userMessage(user -> user.text(message(questions, answers)))
               .build());
+      log.info(
+          "Resumed conversation {} with answers for {}: token={}, totalElapsedMs={}",
+          pending.conversationId(),
+          pending.id(),
+          token,
+          Duration.between(startedAt, Instant.now()).toMillis());
     } catch (Exception e) {
       log.error("Failed to resume conversation {} with answers", pending.conversationId(), e);
     }
