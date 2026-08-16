@@ -28,8 +28,12 @@ class PersistenceBackendCondition extends SpringBootCondition {
 
     // Named a backend whose module was never added: say so, rather than letting it surface later as
     // an unexplained missing repository bean. The message reaches the condition evaluation report.
+    //
+    // Null means the property is unset, which is a question this check was not asked rather than a
+    // value to compare against — and `wanted` is a List.of, whose contains(null) throws by design.
     final var configured = PersistenceBackendResolver.configured(context.getEnvironment());
-    if (wanted.contains(configured)
+    if (configured != null
+        && wanted.contains(configured)
         && !PersistenceBackendResolver.present(configured, classLoader)) {
       return ConditionOutcome.noMatch(
           "%s is %s but %s is not on the classpath"
