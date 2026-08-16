@@ -87,6 +87,14 @@ public class SpringAgent {
   /** Only present on a backend whose chat memory cannot keep tool calls. */
   final ObjectProvider<AskedQuestionsRecorder> askedQuestionsRecorder;
 
+  /**
+   * The tool advisor's own builder, which is the tool-search one where that advisor is configured
+   * (see {@code ToolSearchAdvisorAutoConfiguration}, which registers it under this type so it
+   * replaces the plain {@code ToolCallingAdvisor}). Taken so the advisor can be registered here
+   * rather than left to {@code ChatClient} to register — see {@link #rawStream} for why.
+   */
+  final ObjectProvider<ToolCallingAdvisor.Builder<?>> toolCallingAdvisorBuilder;
+
   private final ConcurrentMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
   private final AtomicInteger inFlight = new AtomicInteger(0);
 
@@ -452,10 +460,25 @@ public class SpringAgent {
             .memoriesRootDirectory(composition.memoriesRootDirectory())
             .build());
     if (request.scenario().conversationMemory()) {
+      // Ordered after the tool advisor, so it sits inside the tool-calling loop and sees each
+      // iteration: the assistant message carrying the tool calls, and the tool responses that
+      // answer them. That is what puts a turn's tool calls into chat memory at all.
       advisors.add(
           MessageChatMemoryAdvisor.builder(chatMemory)
               .order(ToolCallingAdvisor.DEFAULT_ORDER + 100)
               .build());
+      // And the tool advisor is registered here rather than left to ChatClient, purely to keep its
+      // own conversation history on. ChatClient registers it for us only when we have not, and
+      // turns that history off whenever a memory advisor sits downstream — on the assumption that
+      // chat memory will carry the loop's messages instead. No repository keeps tool messages
+      // (JdbcChatMemoryRepository refuses them outright, logging a warning as it drops them), so on
+      // that assumption the loop loses its own working messages between iterations: it forwards
+      // only the system message and the last one, and reads back a history with every tool call
+      // and result missing. Enough survives to answer with a single tool, never enough to carry
+      // one tool's result into the next call — a run that repeats tools instead of finishing.
+      // Keeping the history on makes the loop carry its own messages, whatever the store keeps.
+      toolCallingAdvisorBuilder.ifAvailable(
+          builder -> advisors.add(builder.copy().conversationHistoryEnabled(true).build()));
     }
     advisors.add(SimpleLoggerAdvisor.builder().build());
 

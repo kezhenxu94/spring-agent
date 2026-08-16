@@ -51,6 +51,7 @@ import org.springaicommunity.agent.tools.AskUserQuestionTool;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -60,6 +61,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.DefaultToolCallingManager;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
@@ -116,7 +118,11 @@ class SpringAgentTest {
             messagesIn(Locale.ENGLISH),
             listenerProvider(),
             // Present, as on a JDBC or MongoDB deployment; Redis has no such bean.
-            recorderProvider(new AskedQuestionsRecorder(chatMemory, messagesIn(Locale.ENGLISH))));
+            recorderProvider(new AskedQuestionsRecorder(chatMemory, messagesIn(Locale.ENGLISH))),
+            // The plain advisor rather than the tool-search one an application configures: what is
+            // under test here is the conversation history the agent turns back on, which both
+            // carry the same way.
+            providerOf(ToolCallingAdvisor.builder()));
   }
 
   @Test
@@ -769,6 +775,21 @@ class SpringAgentTest {
     };
   }
 
+  /** A bean that is there, resolved the way Spring resolves an optional one. */
+  private static <T> ObjectProvider<T> providerOf(final T value) {
+    return new ObjectProvider<>() {
+      @Override
+      public T getObject() {
+        return value;
+      }
+
+      @Override
+      public void ifAvailable(final Consumer<T> action) {
+        action.accept(value);
+      }
+    };
+  }
+
   private ObjectProvider<AgentResponseListener> listenerProvider() {
     return new ObjectProvider<>() {
       @Override
@@ -817,6 +838,123 @@ class SpringAgentTest {
                 + " mentions {mentions}.",
             null),
         Locale.ENGLISH);
+  }
+
+  @Test
+  @DisplayName("the loop keeps its own messages when chat memory drops the tool ones")
+  void theLoopCarriesItsOwnMessagesWhenMemoryIsLossy() throws Exception {
+    // A repository that drops tool messages the way JdbcChatMemoryRepository does. The loop leaves
+    // its working messages to chat memory unless the agent keeps the tool advisor's own history on,
+    // and against a store like this that is a model which never reads back what it just did: it
+    // repeats a tool instead of carrying its result into the next call.
+    final var repository = new ToolMessageDroppingRepository();
+    final var chatMemory =
+        MessageWindowChatMemory.builder().chatMemoryRepository(repository).build();
+    when(agentToolsProvider.compose(any(), any(), any(), any(), any(), any(), anyBoolean()))
+        .thenReturn(
+            new AgentComposition(
+                new AgentTools(
+                    null, Optional.empty(), new McpTools(List.of(mcpClient), new ToolCallback[0])),
+                new Object[0],
+                new ToolCallback[] {toolCallback("CurrentDateTime", "2026-08-16T10:00:00+08:00")},
+                memoriesDirectory.toString()));
+    agent =
+        new SpringAgent(
+            ChatClient.builder(chatModel).defaultOptions(ToolCallingChatOptions.builder()).build(),
+            chatMemory,
+            properties(),
+            agentToolsProvider,
+            pendingQuestions,
+            messagesIn(Locale.ENGLISH),
+            listenerProvider(),
+            recorderProvider(new AskedQuestionsRecorder(chatMemory, messagesIn(Locale.ENGLISH))),
+            providerOf(ToolCallingAdvisor.builder()));
+    chatModel.callToolOnce("CurrentDateTime");
+
+    fireAndAwait(request());
+
+    assertThat(chatModel.prompts).as("the loop never came back for a second call").hasSize(2);
+    final var second = chatModel.prompts.get(1).getInstructions();
+    // What the tool did has to still be there, or the next call has nothing to work from.
+    assertThat(second)
+        .anySatisfy(
+            message ->
+                assertThat(message)
+                    .isInstanceOfSatisfying(
+                        ToolResponseMessage.class,
+                        tool ->
+                            assertThat(tool.getResponses())
+                                .anySatisfy(
+                                    response ->
+                                        assertThat(response.responseData())
+                                            .contains("2026-08-16T10:00:00+08:00"))));
+    assertThat(second)
+        .anySatisfy(
+            message ->
+                assertThat(message)
+                    .isInstanceOfSatisfying(
+                        AssistantMessage.class,
+                        assistant -> assertThat(assistant.hasToolCalls()).isTrue()));
+    // And carried once: memory is prepended on every iteration beside the loop's own history, so a
+    // turn appearing twice is the failure this arrangement could otherwise introduce.
+    assertThat(second.stream().filter(m -> "hi".equals(m.getText())).count()).isEqualTo(1);
+  }
+
+  /** Keeps everything a JDBC deployment's repository would, and drops everything it would not. */
+  private static final class ToolMessageDroppingRepository implements ChatMemoryRepository {
+    private final Map<String, List<Message>> conversations = new LinkedHashMap<>();
+
+    @Override
+    public List<String> findConversationIds() {
+      return List.copyOf(conversations.keySet());
+    }
+
+    @Override
+    public List<Message> findByConversationId(final String conversationId) {
+      return List.copyOf(conversations.getOrDefault(conversationId, List.of()));
+    }
+
+    @Override
+    public void saveAll(final String conversationId, final List<Message> messages) {
+      conversations.put(
+          conversationId,
+          messages.stream()
+              .filter(
+                  m ->
+                      !(m instanceof ToolResponseMessage)
+                          && !(m instanceof AssistantMessage a && a.hasToolCalls()))
+              .toList());
+    }
+
+    @Override
+    public void deleteByConversationId(final String conversationId) {
+      conversations.remove(conversationId);
+    }
+  }
+
+  private static ToolCallback toolCallback(final String name, final String result) {
+    final var definition =
+        ToolDefinition.builder()
+            .name(name)
+            .description(name)
+            .inputSchema("{\"type\":\"object\",\"properties\":{}}")
+            .build();
+    return new ToolCallback() {
+      @Override
+      public ToolDefinition getToolDefinition() {
+        return definition;
+      }
+
+      @Override
+      public String call(final String toolInput) {
+        return result;
+      }
+
+      @Override
+      public String call(final String toolInput, final ToolContext toolContext) {
+        return result;
+      }
+    };
   }
 
   /** A channel that puts the questions up and answers with its own name, so a merge is visible. */
@@ -870,7 +1008,16 @@ class SpringAgentTest {
   /** Streams two chunks and remembers the tool context it was called with. */
   private static final class RecordingChatModel implements ChatModel {
     private volatile Prompt lastPrompt;
+    private final List<Prompt> prompts = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private volatile String callToolOnce;
+    private final java.util.concurrent.atomic.AtomicBoolean toolCalled =
+        new java.util.concurrent.atomic.AtomicBoolean();
     private RuntimeException failure;
+
+    /** Makes the first response a call to {@code toolName}, and every one after it plain text. */
+    void callToolOnce(final String toolName) {
+      this.callToolOnce = toolName;
+    }
 
     void failWith(final RuntimeException failure) {
       this.failure = failure;
@@ -898,10 +1045,26 @@ class SpringAgentTest {
     @Override
     public Flux<ChatResponse> stream(final Prompt prompt) {
       lastPrompt = prompt;
+      prompts.add(prompt);
       if (failure != null) {
         return Flux.error(failure);
       }
+      if (callToolOnce != null && toolCalled.compareAndSet(false, true)) {
+        return Flux.just(toolCallResponse(callToolOnce));
+      }
       return Flux.just(response("hello "), response("world"));
+    }
+
+    private static ChatResponse toolCallResponse(final String toolName) {
+      return new ChatResponse(
+          List.of(
+              new Generation(
+                  AssistantMessage.builder()
+                      .content("")
+                      .toolCalls(
+                          List.of(
+                              new AssistantMessage.ToolCall("call-1", "function", toolName, "{}")))
+                      .build())));
     }
 
     private static ChatResponse response(final String text) {
