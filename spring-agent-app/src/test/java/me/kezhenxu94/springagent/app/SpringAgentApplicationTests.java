@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
 import java.util.Map;
+import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -12,14 +13,28 @@ import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.env.Environment;
 
 @SpringBootTest
 class SpringAgentApplicationTests extends AbstractIntegrationTest {
 
   @Autowired SpringAgentProperties properties;
+  @Autowired Environment environment;
 
   @Test
   void contextLoads() {}
+
+  @Test
+  @DisplayName("the tool index key core defaults reaches the application without any configuration")
+  void toolIndexKeyIsDefaulted() {
+    // Nothing here sets it, so a registration core got wrong leaves the advisor reading the
+    // conversation id and re-embedding every tool description per thread — a cost, not a failure,
+    // which is why no run would complain.
+    assertThat(
+            environment.getProperty(
+                "spring.ai.chat.client.tool-search-advisor.session-id-key-name"))
+        .isEqualTo(SpringAgent.TOOL_INDEX_KEY);
+  }
 
   @Test
   @DisplayName(

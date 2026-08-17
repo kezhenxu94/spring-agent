@@ -61,10 +61,6 @@ spring:
           enabled: true
           tool-index-type: vector
           max-results: 5
-          # Per user rather than per conversation — see spring-agent-app's application.yaml for why,
-          # and note it matters here too: a terminal session is one conversation, so keyed by
-          # conversation every `spring-agent` invocation would re-embed every tool description.
-          session-id-key-name: toolIndexKey
     openai:
       base-url: ${OPENAI_BASE_URL}
       api-key: ${OPENAI_API_KEY}
