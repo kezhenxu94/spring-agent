@@ -12,6 +12,7 @@ import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
+import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,12 +26,17 @@ import org.springframework.beans.factory.annotation.Autowired;
  * findAccessibleTo} and {@code findBySharedWithIn} are hand-written per backend — MongoDB's query
  * language, JPQL over a collection table, and a union of indexed reads on Redis — and {@code
  * updateStatus} is a partial update expressed differently on each.
+ *
+ * <p>{@code claim} is the same story taken further: it is not a query at all on any backend, but a
+ * conditional insert, a refused insert and a {@code SET NX}, and a message answered twice is what a
+ * disagreement between them looks like.
  */
 abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
 
   @Autowired McpServerConfigRepo mcpServerConfigRepo;
   @Autowired ScheduledTaskRepo scheduledTaskRepo;
   @Autowired PendingQuestionRepo pendingQuestionRepo;
+  @Autowired ProcessedMessageRepo processedMessageRepo;
 
   /**
    * The owner is per-subclass so the two backends cannot collide on the ownerId+name constraint.
@@ -197,5 +203,22 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
     assertThat(reloaded.get().status()).isEqualTo(PendingQuestion.Status.ANSWERED);
     assertThat(reloaded.get().cardId()).isEqualTo("7355439197428236291");
     assertThat(reloaded.get().conversationId()).isEqualTo(conversation);
+  }
+
+  @Test
+  @DisplayName("a message can only be claimed once, and claiming again after release succeeds")
+  void aMessageIsClaimedOnce() {
+    final var messageId = owner() + "-om_claimed_once";
+
+    // The whole point of the operation: the second caller has to be told no. This is what stops a
+    // redelivered Feishu message from being answered a second time, and each backend expresses it
+    // differently — a conditional insert, a refused insert, and SET NX.
+    assertThat(processedMessageRepo.claim(messageId)).isTrue();
+    assertThat(processedMessageRepo.claim(messageId)).isFalse();
+
+    // And a claim let go of is a message that can be taken up again, which is what keeps a failure
+    // between claiming and answering from dropping the message for good.
+    processedMessageRepo.release(messageId);
+    assertThat(processedMessageRepo.claim(messageId)).isTrue();
   }
 }

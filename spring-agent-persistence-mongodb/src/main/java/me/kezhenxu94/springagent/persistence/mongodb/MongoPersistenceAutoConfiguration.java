@@ -2,9 +2,12 @@ package me.kezhenxu94.springagent.persistence.mongodb;
 
 import me.kezhenxu94.springagent.core.config.ConditionalOnPersistenceBackend;
 import me.kezhenxu94.springagent.core.config.PersistenceProperties.Type;
+import me.kezhenxu94.springagent.persistence.mongodb.repo.MongoProcessedMessageRepo;
 import me.kezhenxu94.springagent.persistence.mongodb.repo.MongoScheduledTaskRepo;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.data.mongodb.config.EnableMongoAuditing;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
 
 /**
@@ -23,4 +26,14 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
 @ConditionalOnPersistenceBackend(Type.MONGODB)
 @EnableMongoRepositories(basePackageClasses = MongoScheduledTaskRepo.class)
 @EnableMongoAuditing
-public class MongoPersistenceAutoConfiguration {}
+public class MongoPersistenceAutoConfiguration {
+
+  /**
+   * Declared rather than found by the repository scan above, because it is a class and not a Spring
+   * Data interface — see {@link MongoProcessedMessageRepo} for why it is one.
+   */
+  @Bean
+  MongoProcessedMessageRepo mongoProcessedMessageRepo(final MongoTemplate mongoTemplate) {
+    return new MongoProcessedMessageRepo(mongoTemplate);
+  }
+}
