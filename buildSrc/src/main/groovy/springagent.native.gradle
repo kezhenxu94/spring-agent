@@ -34,7 +34,7 @@ pluginManager.withPlugin('org.graalvm.buildtools.native') {
       .getOrElse(project.findProperty('nativeDefaultBackends') ?: '')
       .split(',').collect { it.trim().toLowerCase() }.findAll { it }
   def persistenceType = backends.contains('mongodb') ? 'mongodb'
-      : backends.contains('redis') ? 'redis' : 'jdbc'
+      : backends.contains('redis') ? 'redis' : 'jpa'
   def vectorStoreType = backends.contains('milvus') ? 'milvus' : 'simple'
   def shellType = backends.contains('shell-kubernetes') ? 'kubernetes'
       : backends.contains('shell-docker') ? 'docker'

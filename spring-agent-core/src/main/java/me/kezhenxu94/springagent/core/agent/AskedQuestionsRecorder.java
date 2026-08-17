@@ -24,7 +24,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@ConditionalOnPersistenceBackend({Type.JDBC, Type.MONGODB})
+@ConditionalOnPersistenceBackend({Type.JPA, Type.MONGODB})
 public class AskedQuestionsRecorder {
 
   private final ChatMemory chatMemory;

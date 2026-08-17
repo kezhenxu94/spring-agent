@@ -18,15 +18,15 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
- * Selecting jdbc swaps the whole conversation store, here into the SQLite file {@code
+ * Selecting jpa swaps the whole conversation store, here into the SQLite file {@code
  * spring.datasource} names — the same database the domain repositories use.
  *
  * <p>The round trip is what proves the schema was created: Spring AI gates its schema initializer
  * on Boot's embedded-database check, which SQLite fails, so this passes only because {@code
  * application.yaml} asks for {@code initialize-schema: always}.
  */
-@SpringBootTest(properties = "app.persistence.type=jdbc")
-class ChatMemoryJdbcTest extends AbstractIntegrationTest {
+@SpringBootTest(properties = "app.persistence.type=jpa")
+class ChatMemoryJpaTest extends AbstractIntegrationTest {
 
   @Autowired ApplicationContext context;
   @Autowired ChatMemoryRepository chatMemoryRepository;
@@ -34,7 +34,7 @@ class ChatMemoryJdbcTest extends AbstractIntegrationTest {
 
   @Test
   @DisplayName("the only chat memory repository is the JDBC one, and it round trips messages")
-  void jdbcBacksTheChatMemory() {
+  void jpaBacksTheChatMemory() {
     assertThat(context.getBeansOfType(ChatMemoryRepository.class)).hasSize(1);
     assertThat(chatMemoryRepository).isInstanceOf(JdbcChatMemoryRepository.class);
 

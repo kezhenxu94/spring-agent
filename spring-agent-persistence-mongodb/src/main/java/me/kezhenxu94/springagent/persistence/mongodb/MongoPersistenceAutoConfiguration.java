@@ -9,7 +9,7 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
 
 /**
  * Registers the MongoDB implementations of the repository contracts {@code spring-agent-core}
- * declares. The counterpart of {@code JdbcPersistenceAutoConfiguration}; see it for the reasoning
+ * declares. The counterpart of {@code JpaPersistenceAutoConfiguration}; see it for the reasoning
  * this pair shares.
  *
  * <p>This class doubles as the marker that tells {@code spring-agent-core} the MongoDB backend is

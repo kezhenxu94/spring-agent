@@ -54,9 +54,9 @@ def patchJvmArgs = [
 dependencies {
   implementation project(':spring-agent-core')
   // All of them, deliberately. An SDK consumer picks one and configures nothing; this application is
-  // the runtime-switchable case app.persistence.type exists for, and PersistenceJdbcTest,
+  // the runtime-switchable case app.persistence.type exists for, and PersistenceJpaTest,
   // PersistenceMongoTest and PersistenceRedisTest assert each backend from a single JVM classpath.
-  implementation project(':spring-agent-persistence-jdbc')
+  implementation project(':spring-agent-persistence-jpa')
   implementation project(':spring-agent-persistence-mongodb')
   implementation project(':spring-agent-persistence-redis')
   // Optional for an SDK consumer. Depending on it decides nothing: app.ai.tools.shell.type does,

@@ -10,9 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 
-/**
- * Selecting mongodb swaps the whole conversation store, leaving the JDBC one out of the context.
- */
+/** Selecting mongodb swaps the whole conversation store, leaving the JPA one out of the context. */
 @SpringBootTest(properties = "app.persistence.type=mongodb")
 class ChatMemoryMongoTest extends AbstractIntegrationTest {
 

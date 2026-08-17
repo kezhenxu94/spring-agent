@@ -14,7 +14,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * ConditionalOnPersistenceBackend} reads the answer off the classpath. The property is for the
  * deployment that carries more than one and wants to choose at startup.
  *
- * @param type which backend stores them. The default, {@link Type#JDBC}, is configured through the
+ * @param type which backend stores them. The default, {@link Type#JPA}, is configured through the
  *     standard {@code spring.datasource} properties and needs no server; {@link Type#MONGODB} and
  *     {@link Type#REDIS} are for a deployment that already runs one.
  */
@@ -23,12 +23,18 @@ public record PersistenceProperties(Type type) {
 
   public PersistenceProperties {
     if (type == null) {
-      type = Type.JDBC;
+      type = Type.JPA;
     }
   }
 
   public enum Type {
-    JDBC,
+    /**
+     * Any relational database Hibernate has a dialect for, reached through Spring Data JPA and
+     * defaulting to SQLite. Named for the mapping layer rather than for JDBC because that is what
+     * the backend module implements the repository contracts with; the conversation history is the
+     * one part of it that goes through plain JDBC, being Spring AI's own repository.
+     */
+    JPA,
     MONGODB,
     /**
      * Needs Redis 8 or Redis Stack — the chat memory repository is built on RedisJSON and

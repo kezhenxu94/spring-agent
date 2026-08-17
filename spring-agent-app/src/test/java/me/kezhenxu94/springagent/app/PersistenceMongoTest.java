@@ -2,7 +2,7 @@ package me.kezhenxu94.springagent.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import me.kezhenxu94.springagent.persistence.jdbc.repo.JpaMcpServerConfigRepo;
+import me.kezhenxu94.springagent.persistence.jpa.repo.JpaMcpServerConfigRepo;
 import me.kezhenxu94.springagent.persistence.mongodb.repo.MongoMcpServerConfigRepo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

@@ -26,7 +26,7 @@ dependencies {
   // Only this one, unlike spring-agent-app which carries all three: a command line run from a
   // laptop should need no server, and SQLite under the user's home is the whole of its storage.
   // Selecting a different backend means adding its module here, not flipping a property.
-  implementation project(':spring-agent-persistence-jdbc')
+  implementation project(':spring-agent-persistence-jpa')
 
   implementation libs.spring.shell.starter
   implementation 'org.springframework.ai:spring-ai-starter-model-openai'

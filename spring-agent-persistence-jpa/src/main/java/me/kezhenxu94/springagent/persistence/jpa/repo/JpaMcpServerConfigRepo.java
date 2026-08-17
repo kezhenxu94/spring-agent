@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.persistence.jdbc.repo;
+package me.kezhenxu94.springagent.persistence.jpa.repo;
 
 import java.util.Collection;
 import java.util.List;

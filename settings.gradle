@@ -21,7 +21,7 @@ dependencyResolutionManagement {
 rootProject.name = 'spring-agent'
 
 include 'spring-agent-core'
-include 'spring-agent-persistence-jdbc'
+include 'spring-agent-persistence-jpa'
 include 'spring-agent-persistence-mongodb'
 include 'spring-agent-persistence-redis'
 include 'spring-agent-tools-shell-kubernetes'

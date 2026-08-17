@@ -12,7 +12,7 @@ dependencies {
   // api: the repository interfaces here implement spring-agent-core's neutral contracts, and the
   // domain models appear in their signatures.
   api project(':spring-agent-core')
-  // The starter, like the MongoDB module and unlike the JDBC one: Spring AI's own auto-configuration
+  // The starter, like the MongoDB module and unlike the JPA one: Spring AI's own auto-configuration
   // is the wiring we want, and PersistenceAutoConfigurationFilter is what keeps it out of an
   // application that carries several backend modules and selected another. It also brings
   // spring-boot-starter-data-redis, which is where the repository support below comes from.

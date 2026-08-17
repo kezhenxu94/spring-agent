@@ -5,17 +5,17 @@ plugins {
 
 description = 'MongoDB persistence backend for spring-agent-core.'
 
-// The MongoDB half of the pair; see spring-agent-persistence-jdbc for the shape. Thinner than its
+// The MongoDB half of the pair; see spring-agent-persistence-jpa for the shape. Thinner than its
 // counterpart because Spring AI's MongoDB chat memory ships an auto-configuration that does the
-// right thing, whereas the JDBC one has to be assembled by hand.
+// right thing, whereas the JPA one has to be assembled by hand.
 dependencies {
   api project(':spring-agent-core')
   // api: MongoMcpServerConfigRepo and friends extend MongoRepository, part of their public type.
   api 'org.springframework.boot:spring-boot-starter-data-mongodb'
-  // The starter, unlike the JDBC side: here Spring AI's own auto-configuration is the wiring we
+  // The starter, unlike the JPA side: here Spring AI's own auto-configuration is the wiring we
   // want. It guards its bean with @ConditionalOnMissingBean on the concrete repository type, so it
-  // would not back off in front of the JDBC one — PersistenceAutoConfigurationFilter is what keeps
-  // it out of an application that carries both modules and selected JDBC.
+  // would not back off in front of the JPA one — PersistenceAutoConfigurationFilter is what keeps
+  // it out of an application that carries both modules and selected JPA.
   api 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-mongodb'
 
   // Not used by anything here, and deliberately compileOnly so it stays off the runtime classpath.

@@ -117,7 +117,7 @@ class SpringAgentTest {
             pendingQuestions,
             messagesIn(Locale.ENGLISH),
             listenerProvider(),
-            // Present, as on a JDBC or MongoDB deployment; Redis has no such bean.
+            // Present, as on a JPA or MongoDB deployment; Redis has no such bean.
             recorderProvider(new AskedQuestionsRecorder(chatMemory, messagesIn(Locale.ENGLISH))),
             // The plain advisor rather than the tool-search one an application configures: what is
             // under test here is the conversation history the agent turns back on, which both
@@ -900,7 +900,7 @@ class SpringAgentTest {
     assertThat(second.stream().filter(m -> "hi".equals(m.getText())).count()).isEqualTo(1);
   }
 
-  /** Keeps everything a JDBC deployment's repository would, and drops everything it would not. */
+  /** Keeps everything a JPA deployment's repository would, and drops everything it would not. */
   private static final class ToolMessageDroppingRepository implements ChatMemoryRepository {
     private final Map<String, List<Message>> conversations = new LinkedHashMap<>();
 

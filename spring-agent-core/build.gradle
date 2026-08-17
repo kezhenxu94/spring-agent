@@ -16,7 +16,7 @@ dependencies {
   // belonging to the others.
   //
   // This is the whole point of the split: promoting any of these back to api or implementation puts
-  // Hibernate on every MongoDB deployment, or the Mongo driver on every JDBC one. The
+  // Hibernate on every MongoDB deployment, or the Mongo driver on every JPA one. The
   // checkRuntimeClasspathIsolation task below is what catches that happening by accident.
   compileOnly 'jakarta.persistence:jakarta.persistence-api'
   compileOnly 'org.springframework.data:spring-data-mongodb'

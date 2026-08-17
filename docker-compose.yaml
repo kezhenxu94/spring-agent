@@ -2,10 +2,10 @@
 #
 # The two axes the application chooses between at startup each have a compose profile per value:
 #
-#   persistence   jdbc (default) | mongodb | redis     app.persistence.type
+#   persistence   jpa (default) | mongodb | redis      app.persistence.type
 #   vector store  simple (default) | milvus            spring.ai.vectorstore.type
 #
-# `jdbc` and `simple` name no service on purpose — they are the two that need no server, which is
+# `jpa` and `simple` name no service on purpose — they are the two that need no server, which is
 # the reason they are the defaults — so their profiles start nothing and exist only so the commands
 # below read the same whichever pair you pick.
 #
@@ -52,7 +52,7 @@
 x-app-env: &app-env
   # Defaults matching application.yaml, so `docker compose up` with no variables set runs the
   # combination that needs no server at all.
-  PERSISTENCE_TYPE: ${PERSISTENCE_TYPE:-jdbc}
+  PERSISTENCE_TYPE: ${PERSISTENCE_TYPE:-jpa}
   VECTORSTORE_TYPE: ${VECTORSTORE_TYPE:-simple}
   # Service names rather than localhost: these are only read when the matching profile is active,
   # and are harmless otherwise.
@@ -81,7 +81,7 @@ services:
       # /workspace is the buildpack image's working directory, and the SQLite database
       # (data/spring-agent.db) and the simple vector store's index (data/vectorstore.json) are both
       # written relative to it. Without this they live inside the container and vanish with it,
-      # which would make the jdbc and simple profiles lose everything on every restart.
+      # which would make the jpa and simple profiles lose everything on every restart.
       - agent-data:/workspace/data
       # Uncomment for TOOLS_SHELL_TYPE=docker, which runs the agent's Bash tool in sibling
       # containers. Reaching the Docker socket is equivalent to root on the host, so this is left

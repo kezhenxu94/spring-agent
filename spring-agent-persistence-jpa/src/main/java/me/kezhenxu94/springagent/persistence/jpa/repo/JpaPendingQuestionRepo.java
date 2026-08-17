@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.persistence.jdbc.repo;
+package me.kezhenxu94.springagent.persistence.jpa.repo;
 
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;

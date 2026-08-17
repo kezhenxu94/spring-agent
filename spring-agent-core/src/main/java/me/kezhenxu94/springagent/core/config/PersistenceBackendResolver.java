@@ -34,8 +34,8 @@ final class PersistenceBackendResolver {
   private static final Map<Type, String> MARKERS =
       new EnumMap<>(
           Map.of(
-              Type.JDBC,
-              "me.kezhenxu94.springagent.persistence.jdbc.JdbcPersistenceAutoConfiguration",
+              Type.JPA,
+              "me.kezhenxu94.springagent.persistence.jpa.JpaPersistenceAutoConfiguration",
               Type.MONGODB,
               "me.kezhenxu94.springagent.persistence.mongodb.MongoPersistenceAutoConfiguration",
               Type.REDIS,
@@ -44,7 +44,7 @@ final class PersistenceBackendResolver {
   private static final Map<Type, String> ARTIFACTS =
       new EnumMap<>(
           Map.of(
-              Type.JDBC, "spring-agent-persistence-jdbc",
+              Type.JPA, "spring-agent-persistence-jpa",
               Type.MONGODB, "spring-agent-persistence-mongodb",
               Type.REDIS, "spring-agent-persistence-redis"));
 
@@ -86,8 +86,8 @@ final class PersistenceBackendResolver {
    * <p>Deliberately "exactly one present" rather than "the first one present in enum order": the
    * latter would make a deployment that already carried two modules and set no property change
    * backend the day a third was added to the enum. With more than one present and no property the
-   * answer stays {@link Type#JDBC} — the default this project has always had, and the one that
-   * needs no server.
+   * answer stays {@link Type#JPA} — the default this project has always had, and the one that needs
+   * no server.
    */
   static Type resolve(final Environment environment, final ClassLoader classLoader) {
     final var configured = configured(environment);
@@ -95,6 +95,6 @@ final class PersistenceBackendResolver {
       return configured;
     }
     final var present = present(classLoader);
-    return present.size() == 1 ? present.iterator().next() : Type.JDBC;
+    return present.size() == 1 ? present.iterator().next() : Type.JPA;
   }
 }

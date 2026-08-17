@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
 
 /**
  * The condition with {@code app.persistence.type} left unset, which is the path neither application
- * in this repository takes: {@code spring-agent-app} defaults the property to {@code jdbc} and
+ * in this repository takes: {@code spring-agent-app} defaults the property to {@code jpa} and
  * {@code spring-agent-cli} sets it outright, so both always hand the condition a value. An SDK
  * consumer that depends on one backend module and configures nothing — the arrangement {@link
  * ConditionalOnPersistenceBackend} documents as the ordinary one — is the only caller that reaches
@@ -21,7 +21,7 @@ class PersistenceBackendConditionTest {
 
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
-          .withConfiguration(AutoConfigurations.of(JdbcOnly.class, MongoOnly.class));
+          .withConfiguration(AutoConfigurations.of(JpaOnly.class, MongoOnly.class));
 
   /**
    * The property being absent means "let the classpath decide", not "no backend", so the condition
@@ -38,10 +38,10 @@ class PersistenceBackendConditionTest {
 
   /** No backend module is on this module's test classpath, so the fallback stands. */
   @Test
-  void fallsBackToJdbcWithTheTypePropertyUnset() {
+  void fallsBackToJpaWithTheTypePropertyUnset() {
     runner.run(
         context -> {
-          assertThat(context).hasBean("jdbcMarker");
+          assertThat(context).hasBean("jpaMarker");
           assertThat(context).doesNotHaveBean("mongoMarker");
         });
   }
@@ -62,12 +62,12 @@ class PersistenceBackendConditionTest {
   }
 
   @Configuration(proxyBeanMethods = false)
-  @ConditionalOnPersistenceBackend(Type.JDBC)
-  static class JdbcOnly {
+  @ConditionalOnPersistenceBackend(Type.JPA)
+  static class JpaOnly {
 
     @Bean
-    String jdbcMarker() {
-      return "jdbc";
+    String jpaMarker() {
+      return "jpa";
     }
   }
 

@@ -1,10 +1,10 @@
-package me.kezhenxu94.springagent.persistence.jdbc;
+package me.kezhenxu94.springagent.persistence.jpa;
 
 import me.kezhenxu94.springagent.core.config.ConditionalOnPersistenceBackend;
 import me.kezhenxu94.springagent.core.config.PersistenceProperties.Type;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
-import me.kezhenxu94.springagent.persistence.jdbc.aot.PersistenceRuntimeHints;
-import me.kezhenxu94.springagent.persistence.jdbc.repo.JpaScheduledTaskRepo;
+import me.kezhenxu94.springagent.persistence.jpa.aot.PersistenceRuntimeHints;
+import me.kezhenxu94.springagent.persistence.jpa.repo.JpaScheduledTaskRepo;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.ImportRuntimeHints;
@@ -13,7 +13,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 /**
  * Registers the JPA implementations of the repository contracts {@code spring-agent-core} declares.
  *
- * <p>This class doubles as the marker that tells {@code spring-agent-core} the JDBC backend is
+ * <p>This class doubles as the marker that tells {@code spring-agent-core} the JPA backend is
  * available at all — see {@code PersistenceBackendResolver}. Renaming or moving it changes the
  * classpath-based selection, so do both together.
  *
@@ -30,8 +30,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
  * plugin's auto-detection a library module has no persistence unit root to scan.
  */
 @AutoConfiguration
-@ConditionalOnPersistenceBackend(Type.JDBC)
+@ConditionalOnPersistenceBackend(Type.JPA)
 @ImportRuntimeHints(PersistenceRuntimeHints.class)
 @EnableJpaRepositories(basePackageClasses = JpaScheduledTaskRepo.class)
 @EntityScan(basePackageClasses = McpServerConfig.class)
-public class JdbcPersistenceAutoConfiguration {}
+public class JpaPersistenceAutoConfiguration {}

@@ -16,12 +16,12 @@ spring:
     chat:
       memory:
         # Each of these is read only when app.persistence.type selects the matching backend, which
-        # is also the connection the history shares: on jdbc the messages land in
+        # is also the connection the history shares: on jpa the messages land in
         # spring.datasource beside the domain tables. How much of it is replayed is not configured
         # here at all — the window is Spring AI's own.
         #
         # Stored is the user's message, the model's answer and, the advisor being inside the
-        # tool-calling loop, the calls the turn made and what they returned. Except on jdbc, where
+        # tool-calling loop, the calls the turn made and what they returned. Except on jpa, where
         # JdbcChatMemoryRepository refuses tool messages and keeps the rest: anything that needs a
         # past tool call to still be visible has to carry it in a message of its own there.
         repository:
@@ -181,7 +181,7 @@ app:
     # Where the agent's own records live — MCP server configs, scheduled tasks, published resources,
     # shell credentials and the conversation history, all together. One of:
     #
-    #   jdbc     spring.datasource above, so the default deployment needs no server at all.
+    #   jpa      spring.datasource above, so the default deployment needs no server at all.
     #   mongodb  spring.data.mongodb, for a deployment that already runs one.
     #   redis    spring.data.redis. Needs Redis 8 or Redis Stack, because the chat memory
     #            repository stores messages as RedisJSON and reads them through a RediSearch
@@ -193,7 +193,7 @@ app:
     #
     # This selects which repositories exist, so it is a build-time decision in a native image: see
     # -PnativeBackends in springagent.native.gradle. Changing it does not migrate existing data.
-    type: ${PERSISTENCE_TYPE:jdbc}
+    type: ${PERSISTENCE_TYPE:jpa}
   ai:
     # The agent's system prompt. Rendered per request with these variables:
     # {userId} {chatId} {chatType} {threadId} {parentId} {mentions} — referencing any

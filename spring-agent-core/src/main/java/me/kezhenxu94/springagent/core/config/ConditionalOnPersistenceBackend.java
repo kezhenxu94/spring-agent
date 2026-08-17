@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Conditional;
  * Matches when the annotated backend is the one this deployment uses.
  *
  * <p>Which one that is comes from the classpath first and {@code app.persistence.type} second. A
- * consumer of this SDK adds exactly one of {@code spring-agent-persistence-jdbc} or {@code
+ * consumer of this SDK adds exactly one of {@code spring-agent-persistence-jpa} or {@code
  * spring-agent-persistence-mongodb} and configures nothing; the module they chose is the answer.
  * {@code app.persistence.type} exists for the deployment that carries both — {@code
  * spring-agent-app} does, so that a single image can be pointed at either — and it wins whenever it

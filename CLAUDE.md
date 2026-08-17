@@ -31,7 +31,7 @@ Other tasks:
 
 `-Pnative` is required for any native task: the GraalVM plugin is applied conditionally so that a plain `bootBuildImage` does not silently turn into a native build (see the comment in `spring-agent-app/build.gradle`).
 
-Tests need a running Docker daemon — `AbstractIntegrationTest` starts MongoDB and Redis containers via Testcontainers. Unit tests sit beside the class they cover; cross-cutting integration tests live in `spring-agent-app/src/test`. A behaviour that must hold for every persistence backend goes in `AbstractPersistenceBackendTest`, which is run once per backend by `PersistenceJdbcTest`/`PersistenceMongoTest`/`PersistenceRedisTest` — add the assertion there rather than to one backend's test.
+Tests need a running Docker daemon — `AbstractIntegrationTest` starts MongoDB and Redis containers via Testcontainers. Unit tests sit beside the class they cover; cross-cutting integration tests live in `spring-agent-app/src/test`. A behaviour that must hold for every persistence backend goes in `AbstractPersistenceBackendTest`, which is run once per backend by `PersistenceJpaTest`/`PersistenceMongoTest`/`PersistenceRedisTest` — add the assertion there rather than to one backend's test.
 
 There is **no CI workflow that builds or tests**. The three workflows publish only. Verification is local; run `make build` before pushing.
 
@@ -46,11 +46,11 @@ There is **no CI workflow that builds or tests**. The three workflows publish on
 
 ```
 spring-agent-core              the agent runtime; backend-agnostic
-spring-agent-persistence-{jdbc,mongodb,redis}
+spring-agent-persistence-{jpa,mongodb,redis}
 spring-agent-tools-shell-{kubernetes,docker}
 spring-agent-integration-feishu
 spring-agent-app               deployable server; depends on every backend module
-spring-agent-cli               laptop command line; jdbc + local shell only
+spring-agent-cli               laptop command line; jpa + local shell only
 ```
 
 `spring-agent-core` must stay free of any persistence backend. This is enforced by `checkRuntimeClasspathIsolation` (wired into `check`, defined in `buildSrc/.../springagent.classpath-isolation.gradle`, configured at the bottom of `spring-agent-core/build.gradle`): it fails the build if Hibernate, the Mongo driver, Jedis, Milvus, fabric8 and friends reach core's runtime classpath. If that task fails, a dependency became `api` or grew a new transitive — fix the dependency, do not widen the allow-list.
@@ -65,7 +65,7 @@ spring-agent-cli               laptop command line; jdbc + local shell only
 
 **Two runtime switches select beans by condition**, not by classpath alone:
 
-- `app.persistence.type` — `jdbc` (default, SQLite) | `mongodb` | `redis`, via `@ConditionalOnPersistenceBackend`. Chooses repositories *and* the Spring AI chat memory repository together.
+- `app.persistence.type` — `jpa` (default, SQLite) | `mongodb` | `redis`, via `@ConditionalOnPersistenceBackend`. Chooses repositories *and* the Spring AI chat memory repository together.
 - `app.ai.tools.shell.type` — `none` (default) | `kubernetes` | `docker` | `local`, via `@ConditionalOnShellBackend`.
 
 Both are evaluated during AOT, so in a **native image they are build-time decisions** baked by `-PnativeBackends` (see `springagent.native.gradle`); the environment variable is inert at runtime and must be set to agree with what was baked.
@@ -101,4 +101,4 @@ PERSISTENCE_TYPE=redis VECTORSTORE_TYPE=milvus \
   COMPOSE_PROFILES=$PERSISTENCE_TYPE,$VECTORSTORE_TYPE docker compose up   # backends only
 ```
 
-Add `app` to `COMPOSE_PROFILES` to run everything in containers. The defaults (`jdbc` + `simple`) need no server at all.
+Add `app` to `COMPOSE_PROFILES` to run everything in containers. The defaults (`jpa` + `simple`) need no server at all.

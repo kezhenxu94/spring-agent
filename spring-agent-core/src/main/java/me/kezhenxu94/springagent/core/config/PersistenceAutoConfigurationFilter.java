@@ -18,7 +18,7 @@ import org.springframework.core.env.Environment;
  * deployment that carries both.
  *
  * <p>Spring Boot's auto-configurations activate on classpath presence. For MongoDB that is merely
- * wasteful, but for JDBC it is fatal: the JPA starter brings HikariCP, which switches {@code
+ * wasteful, but for JPA it is fatal: the JPA starter brings HikariCP, which switches {@code
  * DataSourceAutoConfiguration} on, which then fails a MongoDB deployment that has no {@code
  * spring.datasource.url}. That invariant used to be enforced by keeping every connection pool off
  * the classpath, and this filter is what enforces it now.
@@ -34,8 +34,8 @@ import org.springframework.core.env.Environment;
 public class PersistenceAutoConfigurationFilter
     implements AutoConfigurationImportFilter, EnvironmentAware, BeanClassLoaderAware {
 
-  /** Dropped unless the JDBC backend is selected. */
-  private static final Set<String> JDBC_AUTO_CONFIGURATIONS =
+  /** Dropped unless the JPA backend is selected. */
+  private static final Set<String> JPA_AUTO_CONFIGURATIONS =
       Set.of(
           "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration",
           "org.springframework.boot.jdbc.autoconfigure.DataSourceInitializationAutoConfiguration",
@@ -49,7 +49,7 @@ public class PersistenceAutoConfigurationFilter
           "org.springframework.boot.hibernate.autoconfigure.metrics.HibernateMetricsAutoConfiguration",
           "org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration",
           // Spring AI's JDBC chat memory. Its bean method takes JdbcTemplate and DataSource, and
-          // the entries above have already removed both from a non-JDBC deployment, so leaving it
+          // the entries above have already removed both from a non-JPA deployment, so leaving it
           // in would fail startup outright rather than merely wire the wrong repository.
           "org.springframework.ai.model.chat.memory.repository.jdbc.autoconfigure.JdbcChatMemoryRepositoryAutoConfiguration");
 
@@ -92,7 +92,7 @@ public class PersistenceAutoConfigurationFilter
   private static final Map<Type, Set<String>> AUTO_CONFIGURATIONS =
       new EnumMap<>(
           Map.of(
-              Type.JDBC, JDBC_AUTO_CONFIGURATIONS,
+              Type.JPA, JPA_AUTO_CONFIGURATIONS,
               Type.MONGODB, MONGODB_AUTO_CONFIGURATIONS,
               Type.REDIS, REDIS_AUTO_CONFIGURATIONS));
 

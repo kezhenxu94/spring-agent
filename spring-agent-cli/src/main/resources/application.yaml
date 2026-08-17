@@ -137,7 +137,7 @@ app:
   persistence:
     # The only backend this module depends on. Left explicit rather than inferred so the value is
     # visible next to the datasource it uses.
-    type: jdbc
+    type: jpa
   ai:
     # Blank takes core's DEFAULT_SYSTEM_PROMPT, which is written to suit any surface. Set this to
     # give the agent a persona, house rules or domain knowledge of its own.

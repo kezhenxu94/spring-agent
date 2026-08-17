@@ -3,9 +3,9 @@ plugins {
   id 'springagent.classpath-isolation'
 }
 
-description = 'JDBC/JPA persistence backend for spring-agent-core, SQLite by default.'
+description = 'JPA persistence backend for spring-agent-core, SQLite by default.'
 
-// One of the two backends a consumer of spring-agent-core picks between. It owns the whole JDBC
+// One of the backends a consumer of spring-agent-core picks between. It owns the whole relational
 // story: the JPA repository implementations, the chat memory repository, the SQLite driver and the
 // Hibernate dialect that reads it, and the native-image hints for all of them. That set is not
 // obvious — the exclusion and the plain-module choice below each exist for a specific reason — which
@@ -26,7 +26,7 @@ dependencies {
   // beans, so conversation history shares spring.datasource with the domain tables and cannot be
   // pointed at a database of its own.
   //
-  // api: ChatMemoryJdbcTest asserts `instanceof JdbcChatMemoryRepository`, and a consumer may
+  // api: ChatMemoryJpaTest asserts `instanceof JdbcChatMemoryRepository`, and a consumer may
   // reasonably want to as well.
   api 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-jdbc'
 
