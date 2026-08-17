@@ -5,8 +5,12 @@ import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.SimpleVectorStore;
 import org.springframework.ai.vectorstore.SpringAIVectorStoreTypes;
@@ -29,9 +33,9 @@ import org.springframework.core.io.Resource;
  * PersistenceAutoConfigurationFilter}. Reusing Spring AI's property rather than adding one of ours
  * is what buys that.
  *
- * <p>What this store is asked to hold is the tool search index: Spring AI's {@code VectorToolIndex}
- * keyed by conversation, evicted by LRU and TTL. That is a cache of tool-description embeddings,
- * not a corpus, which sets the trade-offs below.
+ * <p>What this store is asked to hold is the tool search index: {@link
+ * me.kezhenxu94.springagent.core.tools.toolsearch.StatelessVectorToolIndex}, one per user. That is
+ * a cache of tool-description embeddings, not a corpus, which sets the trade-offs below.
  *
  * <p>Its limits, all acceptable for that cache and none of them for a real corpus: the whole index
  * sits in the heap and every search scans it linearly; the file is written on a graceful shutdown
@@ -44,9 +48,6 @@ import org.springframework.core.io.Resource;
 @ConditionalOnProperty(name = SpringAIVectorStoreTypes.TYPE, havingValue = "simple")
 public class VectorStoreConfiguration {
 
-  // No BatchingStrategy here, unlike the other stores: SimpleVectorStore embeds one document per
-  // call and never consults it. That also means indexing costs one embedding request per tool
-  // rather than one per batch of ten, which is the price of not running a vector database.
   @Bean
   SimpleVectorStore simpleVectorStore(
       final SpringAgentProperties properties,
@@ -102,17 +103,57 @@ public class VectorStoreConfiguration {
   }
 
   /**
-   * Restores the concurrent map that {@link SimpleVectorStore#load} drops.
+   * Two corrections to {@link SimpleVectorStore}, both of which only matter because concurrent
+   * agent runs index a few hundred tool descriptions at a time into it.
    *
-   * <p>{@code SimpleVectorStore} starts life with a {@link ConcurrentHashMap}, but {@code load}
-   * assigns the deserialised {@code HashMap} straight over it, and none of the store's methods
-   * synchronise. Concurrent agent streams index their tools independently, so from the first load
-   * onwards those writes would race on a map that cannot take them. Re-wrapping restores the
+   * <p>The first is the concurrent map that {@link SimpleVectorStore#load} drops. The store starts
+   * life with a {@link ConcurrentHashMap}, but {@code load} assigns the deserialised {@code
+   * HashMap} straight over it, and none of the store's methods synchronise. From the first load
+   * onwards those writes would race on a map that cannot take them, so re-wrapping restores the
    * invariant the constructor established.
+   *
+   * <p>The second is that the superclass adds documents one at a time, waiting for each embedding
+   * before asking for the next — and unlike every server-backed store it consults no {@code
+   * BatchingStrategy} to do otherwise. A tool set is a few hundred documents, so a cold index costs
+   * a few hundred round trips end to end, which is most of a minute before the model has been asked
+   * anything. Running them concurrently is all that is done about it: the store is a concurrent
+   * map, so the superclass's own add is safe to call from several threads at once.
    */
   static class ConcurrentSimpleVectorStore extends SimpleVectorStore {
+
+    /**
+     * Enough to make a cold index build quick, low enough not to arrive at the embedding endpoint
+     * as a burst of hundreds. Batching would be gentler still, but the superclass embeds and stores
+     * in one step and what it stores is package private, so there is no batch for us to hand it.
+     */
+    private static final int CONCURRENCY = 8;
+
     ConcurrentSimpleVectorStore(final SimpleVectorStoreBuilder builder) {
       super(builder);
+    }
+
+    @Override
+    public void doAdd(final List<Document> documents) {
+      if (documents.isEmpty()) {
+        // Returning rather than throwing the IllegalArgumentException the superclass would: an
+        // empty tool set is a deployment with no tools, not a programming error.
+        return;
+      }
+      final var executor = Executors.newFixedThreadPool(CONCURRENCY);
+      try {
+        // join, not get: every document has to be waited for, and join keeps waiting through an
+        // interrupt rather than leaving the store half filled.
+        CompletableFuture.allOf(
+                documents.stream()
+                    .map(
+                        document ->
+                            CompletableFuture.runAsync(
+                                () -> super.doAdd(List.of(document)), executor))
+                    .toArray(CompletableFuture[]::new))
+            .join();
+      } finally {
+        executor.shutdown();
+      }
     }
 
     @Override

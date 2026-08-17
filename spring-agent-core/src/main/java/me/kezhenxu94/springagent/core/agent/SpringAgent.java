@@ -42,6 +42,7 @@ import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
 
 /**
  * The one way to run the agent. Integrations describe a run as an {@link AgentRequest} and hand it
@@ -59,6 +60,14 @@ public class SpringAgent {
    */
   private static final Map<String, Object> OPTIONAL_PROMPT_VARIABLES =
       Map.of("threadId", "", "parentId", "", "mentions", "none");
+
+  /**
+   * Where the tool search looks for the index to use. Has to agree with {@code
+   * spring.ai.chat.client.tool-search-advisor.session-id-key-name}, which is what the advisor reads
+   * the advisor context by; the two are set apart because the advisor's default is the conversation
+   * id and this deliberately is not. See {@link #toolIndexKeyFor}.
+   */
+  public static final String TOOL_INDEX_KEY = "toolIndexKey";
 
   final ChatClient chatClient;
 
@@ -94,6 +103,21 @@ public class SpringAgent {
    * rather than left to {@code ChatClient} to register — see {@link #rawStream} for why.
    */
   final ObjectProvider<ToolCallingAdvisor.Builder<?>> toolCallingAdvisorBuilder;
+
+  /**
+   * The one tool advisor every run shares, built on first use.
+   *
+   * <p>Load-bearing that it is one instance and not one per run. The tool-search advisor keeps the
+   * fingerprint of the tool set it last indexed per index key, and skips re-indexing while that
+   * fingerprint holds; it also holds the eviction strategy deciding when an index is dropped. Both
+   * live on the instance, so a fresh advisor per run starts out knowing nothing and re-indexes
+   * every tool on every request — which with a few hundred MCP tools is an embedding call per tool
+   * before the model is even asked anything.
+   *
+   * <p>Resolved lazily rather than in the constructor, so that the builder bean is not required to
+   * exist before this one and a deployment with no tool advisor configured still starts.
+   */
+  private final AtomicReference<Advisor> toolCallingAdvisor = new AtomicReference<>();
 
   private final ConcurrentMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
   private final AtomicInteger inFlight = new AtomicInteger(0);
@@ -201,6 +225,13 @@ public class SpringAgent {
                 return Flux.<ChatResponse>error(e);
               }
             })
+        // Without this, "returns immediately" above is false: subscribing runs everything up to the
+        // model's first asynchronous boundary on whatever thread called fire(), and that includes
+        // all of assembly — the MCP handshakes, one per server, and the tool-index build. The
+        // callers are event dispatchers with delivery deadlines; Feishu concludes a message it is
+        // still waiting on was never delivered and sends it again, so a slow assembly turned into
+        // duplicate answers. boundedElastic because everything being moved is blocking.
+        .subscribeOn(Schedulers.boundedElastic())
         .doOnSubscribe(
             $ -> {
               final var current = inFlight.incrementAndGet();
@@ -467,18 +498,26 @@ public class SpringAgent {
           MessageChatMemoryAdvisor.builder(chatMemory)
               .order(ToolCallingAdvisor.DEFAULT_ORDER + 100)
               .build());
-      // And the tool advisor is registered here rather than left to ChatClient, purely to keep its
-      // own conversation history on. ChatClient registers it for us only when we have not, and
-      // turns that history off whenever a memory advisor sits downstream — on the assumption that
-      // chat memory will carry the loop's messages instead. No repository keeps tool messages
-      // (JdbcChatMemoryRepository refuses them outright, logging a warning as it drops them), so on
-      // that assumption the loop loses its own working messages between iterations: it forwards
-      // only the system message and the last one, and reads back a history with every tool call
-      // and result missing. Enough survives to answer with a single tool, never enough to carry
-      // one tool's result into the next call — a run that repeats tools instead of finishing.
-      // Keeping the history on makes the loop carry its own messages, whatever the store keeps.
-      toolCallingAdvisorBuilder.ifAvailable(
-          builder -> advisors.add(builder.copy().conversationHistoryEnabled(true).build()));
+    }
+    // The tool advisor is registered here rather than left to ChatClient for two reasons.
+    //
+    // One, to keep its own conversation history on. ChatClient registers it for us only when we
+    // have not, and turns that history off whenever a memory advisor sits downstream — on the
+    // assumption that chat memory will carry the loop's messages instead. No repository keeps tool
+    // messages (JdbcChatMemoryRepository refuses them outright, logging a warning as it drops
+    // them), so on that assumption the loop loses its own working messages between iterations: it
+    // forwards only the system message and the last one, and reads back a history with every tool
+    // call and result missing. Enough survives to answer with a single tool, never enough to carry
+    // one tool's result into the next call — a run that repeats tools instead of finishing. Keeping
+    // the history on makes the loop carry its own messages, whatever the store keeps.
+    //
+    // Two, so that every run shares one advisor instance and therefore one tool index — see
+    // toolCallingAdvisor. ChatClient builds a new one from the builder for every prompt, which is
+    // exactly what has to stop, so this registration covers the runs without conversation memory
+    // as well: ChatClient skips its own registration once a tool advisor is in the list.
+    final var toolAdvisor = toolCallingAdvisor();
+    if (toolAdvisor != null) {
+      advisors.add(toolAdvisor);
     }
     advisors.add(SimpleLoggerAdvisor.builder().build());
 
@@ -490,8 +529,41 @@ public class SpringAgent {
         .tools((Object[]) composition.toolCallbacks())
         .toolContext(toolContext)
         .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, request.conversationId()))
+        .advisors(a -> a.param(TOOL_INDEX_KEY, toolIndexKeyFor(request)))
         .advisors(advisors.toArray(new Advisor[0]))
         .stream()
         .chatResponse();
+  }
+
+  /** The shared tool advisor, or null where no tool advisor builder is configured. */
+  private Advisor toolCallingAdvisor() {
+    final var existing = toolCallingAdvisor.get();
+    if (existing != null) {
+      return existing;
+    }
+    final var builder = toolCallingAdvisorBuilder.getIfAvailable();
+    if (builder == null) {
+      return null;
+    }
+    // Racing callers may each build one; only the first is kept, and the losers are discarded
+    // before they have indexed anything.
+    final var built = builder.copy().conversationHistoryEnabled(true).build();
+    return toolCallingAdvisor.compareAndSet(null, built) ? built : toolCallingAdvisor.get();
+  }
+
+  /**
+   * Which index the tool search reads and writes, named by {@code
+   * spring.ai.chat.client.tool-search-advisor.session-id-key-name}.
+   *
+   * <p>The user rather than the conversation, because what the index holds is the descriptions of
+   * the tools that user's MCP servers offer. Those are the same in every conversation they have, so
+   * keying the index per conversation would embed the same few hundred descriptions again for every
+   * new thread. The conversation is the fallback only because the advisor rejects a run with no key
+   * at all, and a run without a user id has nothing better to be keyed by.
+   */
+  private static String toolIndexKeyFor(final AgentRequest request) {
+    return Strings.isNullOrEmpty(request.userId())
+        ? Strings.nullToEmpty(request.conversationId())
+        : request.userId();
   }
 }

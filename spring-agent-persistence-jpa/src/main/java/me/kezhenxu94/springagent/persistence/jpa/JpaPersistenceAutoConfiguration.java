@@ -1,12 +1,15 @@
 package me.kezhenxu94.springagent.persistence.jpa;
 
+import jakarta.persistence.EntityManager;
 import me.kezhenxu94.springagent.core.config.ConditionalOnPersistenceBackend;
 import me.kezhenxu94.springagent.core.config.PersistenceProperties.Type;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.persistence.jpa.aot.PersistenceRuntimeHints;
+import me.kezhenxu94.springagent.persistence.jpa.repo.JpaProcessedMessageRepo;
 import me.kezhenxu94.springagent.persistence.jpa.repo.JpaScheduledTaskRepo;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
@@ -34,4 +37,14 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @ImportRuntimeHints(PersistenceRuntimeHints.class)
 @EnableJpaRepositories(basePackageClasses = JpaScheduledTaskRepo.class)
 @EntityScan(basePackageClasses = McpServerConfig.class)
-public class JpaPersistenceAutoConfiguration {}
+public class JpaPersistenceAutoConfiguration {
+
+  /**
+   * Declared rather than found by the repository scan above, because it is a class and not a Spring
+   * Data interface — see {@link JpaProcessedMessageRepo} for why it is one.
+   */
+  @Bean
+  JpaProcessedMessageRepo jpaProcessedMessageRepo(final EntityManager entityManager) {
+    return new JpaProcessedMessageRepo(entityManager);
+  }
+}

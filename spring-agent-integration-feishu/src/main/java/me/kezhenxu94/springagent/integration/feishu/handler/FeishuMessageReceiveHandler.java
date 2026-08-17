@@ -20,6 +20,7 @@ import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
+import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
@@ -47,6 +48,7 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
   final UserWorkspaceFactory userWorkspaceFactory;
   final FeishuTools feishuTools;
   final PendingQuestionRepo pendingQuestionRepo;
+  final ProcessedMessageRepo processedMessageRepo;
   final FeishuQuestionFormCloser questionFormCloser;
 
   /**
@@ -109,54 +111,87 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
       return;
     }
 
-    // Whatever this message says, it is the user's answer to anything the agent was still waiting
-    // on in this conversation — they replied instead of using the form. Closing those off now stops
-    // the form, pressed later, from starting a second run with an answer that has been overtaken.
-    supersedePendingQuestions(rootId);
-
-    if (message.getMentions() != null && message.getMentions().length > 0) {
-      message.setContent(
-          Stream.of(message.getMentions())
-              .reduce(
-                  message.getContent(),
-                  (content, mention) -> content.replaceAll(mention.getKey(), mention.getName()),
-                  (a, b) -> a));
+    // Feishu delivers an event again when it has not heard that the first attempt arrived, and a
+    // reconnecting long-lived connection can replay one — so a message can reach this method more
+    // than once, and each time would otherwise start its own run and write its own answer.
+    //
+    // Placed exactly here, between the checks above and the effects below. After them, because
+    // refusing a message while shutting down throws so that Feishu will try again, and a claim
+    // taken
+    // first would make that refusal permanent — while a group message the bot was not mentioned in
+    // is not being answered by anybody, so there is nothing to claim. Before them, because
+    // superseding the outstanding questions changes the conversation, and firing answers it.
+    if (!processedMessageRepo.claim(messageId)) {
+      log.info("Ignoring message {}: it has already been taken up", messageId);
+      return;
     }
 
-    final var mentionsText =
-        message.getMentions() == null || message.getMentions().length == 0
-            ? "none"
-            : Stream.of(message.getMentions())
-                .map(m -> m.getName() + " (" + m.getId().getOpenId() + ")")
-                .collect(Collectors.joining(", "));
-    springAgent.fire(
-        AgentRequest.builder()
-            .requestId(messageId)
-            .scenario(AgentScenario.CHAT)
-            .userId(userOpenId)
-            .chatId(message.getChatId())
-            .chatType(message.getChatType())
-            .conversationId(rootId)
-            .rootMessageId(rootId)
-            .replyMessageId(message.getMessageId())
-            .promptVariables(
-                Map.of(
-                    "mentions",
-                    mentionsText,
-                    "threadId",
-                    Strings.nullToEmpty(message.getThreadId()),
-                    "parentId",
-                    Strings.nullToEmpty(parentId)))
-            .userMessage(
-                user ->
-                    addToChat(
-                        user::text,
-                        message.getMessageId(),
-                        message.getMessageType(),
-                        message.getContent(),
-                        userOpenId,
-                        feishuTools))
-            .build());
+    try {
+      // Whatever this message says, it is the user's answer to anything the agent was still waiting
+      // on in this conversation — they replied instead of using the form. Closing those off now
+      // stops the form, pressed later, from starting a second run with an answer that has been
+      // overtaken.
+      supersedePendingQuestions(rootId);
+
+      if (message.getMentions() != null && message.getMentions().length > 0) {
+        message.setContent(
+            Stream.of(message.getMentions())
+                .reduce(
+                    message.getContent(),
+                    (content, mention) -> content.replaceAll(mention.getKey(), mention.getName()),
+                    (a, b) -> a));
+      }
+
+      final var mentionsText =
+          message.getMentions() == null || message.getMentions().length == 0
+              ? "none"
+              : Stream.of(message.getMentions())
+                  .map(m -> m.getName() + " (" + m.getId().getOpenId() + ")")
+                  .collect(Collectors.joining(", "));
+      springAgent.fire(
+          AgentRequest.builder()
+              .requestId(messageId)
+              .scenario(AgentScenario.CHAT)
+              .userId(userOpenId)
+              .chatId(message.getChatId())
+              .chatType(message.getChatType())
+              .conversationId(rootId)
+              .rootMessageId(rootId)
+              .replyMessageId(message.getMessageId())
+              .promptVariables(
+                  Map.of(
+                      "mentions",
+                      mentionsText,
+                      "threadId",
+                      Strings.nullToEmpty(message.getThreadId()),
+                      "parentId",
+                      Strings.nullToEmpty(parentId)))
+              .userMessage(
+                  user ->
+                      addToChat(
+                          user::text,
+                          message.getMessageId(),
+                          message.getMessageType(),
+                          message.getContent(),
+                          userOpenId,
+                          feishuTools))
+              .build());
+    } catch (Throwable t) {
+      // Released, because nothing has answered this message and nothing now will. Holding the claim
+      // would turn a failure here into a message silently dropped — worse than the duplicate the
+      // claim exists to prevent — and Feishu will hand it to us again.
+      release(messageId);
+      throw t;
+    }
+  }
+
+  /** Best effort: failing to let go of a claim costs a redelivery its run, not this one. */
+  private void release(final String messageId) {
+    try {
+      processedMessageRepo.release(messageId);
+    } catch (Exception e) {
+      log.warn("Could not release the claim on message {}", messageId, e);
+    }
   }
 
   boolean isBotMentioned(EventMessage message) {

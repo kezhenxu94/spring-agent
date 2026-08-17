@@ -67,6 +67,12 @@ spring:
           enabled: true
           tool-index-type: vector
           max-results: 5
+          # Which index a run searches. The default is the conversation id, and the user is better:
+          # the index holds the descriptions of the tools that user's MCP servers offer, which are
+          # the same in every conversation they have. Keyed per conversation, every new thread pays
+          # to embed the same few hundred descriptions again. The name has to agree with
+          # SpringAgent.TOOL_INDEX_KEY, which is what puts the value in the advisor context.
+          session-id-key-name: toolIndexKey
     openai:
       base-url: ${OPENAI_BASE_URL}
       api-key: ${OPENAI_API_KEY}

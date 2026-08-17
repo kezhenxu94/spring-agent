@@ -55,11 +55,7 @@ class VectorStoreSimpleTest extends AbstractIntegrationTest {
 
     given(embeddingModel.dimensions()).willReturn(2);
     given(embeddingModel.embed(any(Document.class)))
-        .willAnswer(
-            invocation ->
-                "ping".equals(invocation.<Document>getArgument(0).getText())
-                    ? new float[] {1f, 0f}
-                    : new float[] {0f, 1f});
+        .willAnswer(invocation -> vectorFor(invocation.getArgument(0)));
     given(embeddingModel.embed(anyString())).willReturn(new float[] {1f, 0f});
 
     vectorStore.add(List.of(new Document("ping"), new Document("pong")));
@@ -78,6 +74,11 @@ class VectorStoreSimpleTest extends AbstractIntegrationTest {
     assertThat(reloaded.similaritySearch(SearchRequest.builder().query("ping").topK(2).build()))
         .extracting(Document::getText)
         .containsExactlyInAnyOrder("ping", "pong");
+  }
+
+  /** Two orthogonal vectors, so the documents can be told apart by cosine distance. */
+  private static float[] vectorFor(final Document document) {
+    return "ping".equals(document.getText()) ? new float[] {1f, 0f} : new float[] {0f, 1f};
   }
 
   private static Path tempIndexFile() {

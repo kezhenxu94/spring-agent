@@ -8,10 +8,15 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.tools.mcp.McpClientFactory;
 import me.kezhenxu94.springagent.core.tools.mcp.ServerNameToolPrefixGenerator;
@@ -85,6 +90,27 @@ public class AgentToolsProvider {
       final boolean answersArriveLater)
       throws IOException {
     final var agentTools = build(userId, chatId);
+    // From here on the MCP clients are live, and the caller only learns of them by being handed the
+    // composition. Anything that throws in between would leave them open with nobody holding a
+    // reference to close them — the run's own cleanup included, since it has not been given them
+    // yet.
+    try {
+      return composeWith(
+          agentTools, userId, scenario, todoEventHandler, questionHandler, answersArriveLater);
+    } catch (Throwable t) {
+      agentTools.mcpTools().close();
+      throw t;
+    }
+  }
+
+  private AgentComposition composeWith(
+      final AgentTools agentTools,
+      final String userId,
+      final AgentScenario scenario,
+      final TodoEventHandler todoEventHandler,
+      final QuestionHandler questionHandler,
+      final boolean answersArriveLater)
+      throws IOException {
     final var memoriesRootDirectory = userWorkspaceFactory.forOwner(userId).memories().toString();
 
     final var tools = new ArrayList<Object>();
@@ -198,19 +224,53 @@ public class AgentToolsProvider {
     return new AgentTools(fileSystemTools, skillsTool, mcpTools);
   }
 
+  /**
+   * Connects to every MCP server the user can reach, at once rather than in turn.
+   *
+   * <p>Each one costs a connection, an initialize handshake and a listTools round trip, and each
+   * may take the full request timeout to fail. In turn, that is the sum of every server's latency
+   * added to the front of every request, before the model has been asked anything — and it grows
+   * with each server registered. Concurrently it is the slowest one.
+   *
+   * <p>Virtual threads, not {@code parallelStream}: this is blocking I/O with a timeout measured in
+   * tens of seconds, which is not what the common ForkJoinPool is for.
+   */
   private McpTools buildMcpTools(final String userId, final String chatId) {
     final var identifiers =
         chatId == null || chatId.isBlank() ? List.of(userId) : List.of(userId, chatId);
-    final var configs = mcpServerConfigRepo.findAccessibleTo(userId, identifiers);
-    final var clients = new ArrayList<McpSyncClient>();
-    for (final var config : configs) {
-      if (!config.enabled()) {
-        continue;
-      }
-      try {
-        clients.add(mcpClientFactory.createAndInitialize(config));
-      } catch (Exception e) {
-        log.warn("Skipping MCP server '{}' for user {}: {}", config.name(), userId, e.getMessage());
+    final var configs =
+        mcpServerConfigRepo.findAccessibleTo(userId, identifiers).stream()
+            .filter(McpServerConfig::enabled)
+            .toList();
+    final var clients = new ArrayList<McpSyncClient>(configs.size());
+    if (!configs.isEmpty()) {
+      try (final var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        final var pending =
+            configs.stream()
+                .map(
+                    config ->
+                        Map.entry(
+                            config,
+                            CompletableFuture.supplyAsync(
+                                () -> mcpClientFactory.createAndInitialize(config), executor)))
+                .toList();
+        for (final var entry : pending) {
+          try {
+            // join rather than get: every task has to be collected, because one already past its
+            // handshake holds an open connection that nothing else will ever close, and join is the
+            // one that keeps waiting through an interrupt instead of abandoning it.
+            clients.add(entry.getValue().join());
+          } catch (CompletionException | CancellationException e) {
+            // A server that is down, misconfigured or slow costs the run its tools, never the run
+            // itself.
+            final var cause = e.getCause() != null ? e.getCause() : e;
+            log.warn(
+                "Skipping MCP server '{}' for user {}: {}",
+                entry.getKey().name(),
+                userId,
+                cause.getMessage());
+          }
+        }
       }
     }
     final var callbacks =

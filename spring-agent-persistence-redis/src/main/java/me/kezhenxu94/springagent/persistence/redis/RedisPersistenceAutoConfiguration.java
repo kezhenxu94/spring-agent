@@ -2,8 +2,11 @@ package me.kezhenxu94.springagent.persistence.redis;
 
 import me.kezhenxu94.springagent.core.config.ConditionalOnPersistenceBackend;
 import me.kezhenxu94.springagent.core.config.PersistenceProperties.Type;
+import me.kezhenxu94.springagent.persistence.redis.repo.RedisProcessedMessageRepo;
 import me.kezhenxu94.springagent.persistence.redis.repo.RedisScheduledTaskRepo;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.repository.configuration.EnableRedisRepositories;
 
 /**
@@ -48,4 +51,14 @@ import org.springframework.data.redis.repository.configuration.EnableRedisReposi
 @AutoConfiguration
 @ConditionalOnPersistenceBackend(Type.REDIS)
 @EnableRedisRepositories(basePackageClasses = RedisScheduledTaskRepo.class)
-public class RedisPersistenceAutoConfiguration {}
+public class RedisPersistenceAutoConfiguration {
+
+  /**
+   * Declared rather than found by the repository scan above, because it is a class and not a Spring
+   * Data interface — see {@link RedisProcessedMessageRepo} for why it is one.
+   */
+  @Bean
+  RedisProcessedMessageRepo redisProcessedMessageRepo(final StringRedisTemplate redisTemplate) {
+    return new RedisProcessedMessageRepo(redisTemplate);
+  }
+}
