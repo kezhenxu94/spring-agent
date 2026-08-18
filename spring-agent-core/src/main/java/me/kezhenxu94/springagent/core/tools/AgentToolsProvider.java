@@ -238,7 +238,7 @@ public class AgentToolsProvider {
     // on
     // the bean's own class.
     return applicationContext.getBeansWithAnnotation(AgentTool.class).values().stream()
-        .filter(tool -> !(tool instanceof ScenarioGatedTool gated) || gated.appliesTo(scenario))
+        .filter(scenario::offers)
         .toList();
   }
 

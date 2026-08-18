@@ -4,9 +4,6 @@ package me.kezhenxu94.springagent.core.agent;
  * What kind of run this is: what the agent is being asked to do and, from that, how it should
  * behave. {@link BuiltInScenarios} holds the ones shipped here; implement this to add a scenario of
  * your own and hand the instance to {@link AgentRequest}.
- *
- * <p>A scenario decides which tools a run is offered, but it does not hold the list: a tool that
- * belongs only in some runs implements {@code ScenarioGatedTool} and is asked.
  */
 public interface AgentScenario {
   /**
@@ -14,4 +11,12 @@ public interface AgentScenario {
    * a run that must not see, or must not pollute, what a person said in the same conversation.
    */
   boolean conversationMemory();
+
+  /**
+   * Whether a run in this scenario is offered {@code tool}, one of the {@code @AgentTool} beans in
+   * the context. Every tool by default; override to keep one out of these runs.
+   */
+  default boolean offers(final Object tool) {
+    return true;
+  }
 }

@@ -9,9 +9,9 @@ import java.lang.annotation.Target;
  * Marks an object whose {@code @Tool} methods are offered to the agent. Allowed on a {@code @Bean}
  * factory method too, for a tool whose type comes from a library and cannot be annotated itself.
  *
- * <p>Every annotated bean is offered to every run. A tool that belongs only in some of them
- * implements {@link ScenarioGatedTool} and says so in code, where it can speak of a scenario this
- * runtime does not ship.
+ * <p>Every annotated bean is offered to every run, unless the run's {@code AgentScenario} keeps it
+ * out — the scenario decides, so a consumer's own scenario can rule on tools this runtime ships and
+ * the other way round.
  */
 @Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)

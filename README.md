@@ -142,8 +142,8 @@ within the call implements the `SynchronousQuestionHandler` marker and the turn 
 
 A bean annotated `@AgentTool` has its Spring AI `@Tool` methods offered to the agent; the annotation
 is allowed on a `@Bean` method too, for a type from a library. Every annotated bean is offered to
-every run; one that belongs only in some implements `ScenarioGatedTool` and is asked. Per-request
-identity arrives through the tool context, under typed keys:
+every run unless the run's scenario keeps it out, by overriding `AgentScenario.offers(tool)`.
+Per-request identity arrives through the tool context, under typed keys:
 
 ```java
 @AgentTool

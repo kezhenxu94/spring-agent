@@ -7,6 +7,8 @@ import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
+import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
+import me.kezhenxu94.springagent.core.scheduling.ScheduledTaskService;
 import me.kezhenxu94.springagent.core.tools.mcp.McpClientFactory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,8 +18,8 @@ import org.springframework.context.annotation.Configuration;
 
 /**
  * {@link AgentTool} has to be honoured on a {@code @Bean} factory method as well as on a class,
- * since a tool whose type comes from a library cannot carry the annotation itself, and a tool that
- * gates itself with {@link ScenarioGatedTool} has to be asked.
+ * since a tool whose type comes from a library cannot carry the annotation itself, and the run's
+ * scenario has the last word on which of them it is offered.
  */
 class AgentToolsProviderScenarioTest {
 
@@ -27,23 +29,6 @@ class AgentToolsProviderScenarioTest {
 
   @AgentTool
   static class AnnotatedOwnedTool extends OwnedTool {}
-
-  @AgentTool
-  static class ScheduledOnlyTool implements ScenarioGatedTool {
-    @Override
-    public boolean appliesTo(final AgentScenario scenario) {
-      return scenario == BuiltInScenarios.SCHEDULED_TASK;
-    }
-  }
-
-  /** Gated over the interface alone, so it also covers a scenario this runtime does not ship. */
-  @AgentTool
-  static class MemorylessOnlyTool implements ScenarioGatedTool {
-    @Override
-    public boolean appliesTo(final AgentScenario scenario) {
-      return !scenario.conversationMemory();
-    }
-  }
 
   @Configuration(proxyBeanMethods = false)
   static class Tools {
@@ -60,51 +45,54 @@ class AgentToolsProviderScenarioTest {
     }
 
     @Bean
-    ScheduledOnlyTool scheduledOnlyTool() {
-      return new ScheduledOnlyTool();
-    }
-
-    @Bean
-    MemorylessOnlyTool memorylessOnlyTool() {
-      return new MemorylessOnlyTool();
-    }
-
-    @Bean
     OwnedTool plainBean() {
       return new OwnedTool();
     }
   }
 
   @Test
-  @DisplayName("collects @AgentTool from both a @Bean method and a class, filtered by scenario")
+  @DisplayName("collects @AgentTool from both a @Bean method and a class, and nothing else")
   void collectsAnnotatedBeansAndFactoryMethods() {
     try (var context = new AnnotationConfigApplicationContext(Tools.class)) {
-      final var provider = provider(context);
-
-      assertThat(provider.resolveScenarioTools(BuiltInScenarios.CHAT))
+      assertThat(provider(context).resolveScenarioTools(BuiltInScenarios.CHAT))
           .extracting(Object::getClass)
           .containsExactlyInAnyOrder(LibraryTool.class, AnnotatedOwnedTool.class);
-
-      assertThat(provider.resolveScenarioTools(BuiltInScenarios.SCHEDULED_TASK))
-          .extracting(Object::getClass)
-          .containsExactlyInAnyOrder(
-              LibraryTool.class, AnnotatedOwnedTool.class, ScheduledOnlyTool.class);
     }
   }
 
   @Test
-  @DisplayName("a scenario of a consumer's own gets the ungated tools, and the ones that want it")
-  void collectsForACustomScenario() {
-    // What an SDK consumer can do: their own scenario, and a tool of theirs that decides on it
-    // without any of the scenarios shipped here being able to name it.
-    final AgentScenario ownScenario = () -> false;
+  @DisplayName("a scenario keeps out a tool it does not want, its own or one shipped here")
+  void aScenarioDecidesWhatItIsOffered() {
+    // What an SDK consumer can do: their own scenario, ruling on a tool that knows nothing about
+    // it.
+    final var ownScenario =
+        new AgentScenario() {
+          @Override
+          public boolean conversationMemory() {
+            return false;
+          }
+
+          @Override
+          public boolean offers(final Object tool) {
+            return !(tool instanceof LibraryTool);
+          }
+        };
 
     try (var context = new AnnotationConfigApplicationContext(Tools.class)) {
       assertThat(provider(context).resolveScenarioTools(ownScenario))
           .extracting(Object::getClass)
-          .containsExactlyInAnyOrder(
-              LibraryTool.class, AnnotatedOwnedTool.class, MemorylessOnlyTool.class);
+          .containsExactly(AnnotatedOwnedTool.class);
     }
+  }
+
+  @Test
+  @DisplayName("a scheduled run is not offered the tool that schedules runs")
+  void aScheduledRunCannotScheduleMore() {
+    final var scheduledTaskTool =
+        new ScheduledTaskTool(mock(ScheduledTaskRepo.class), mock(ScheduledTaskService.class));
+
+    assertThat(BuiltInScenarios.SCHEDULED_TASK.offers(scheduledTaskTool)).isFalse();
+    assertThat(BuiltInScenarios.CHAT.offers(scheduledTaskTool)).isTrue();
   }
 
   private static AgentToolsProvider provider(final AnnotationConfigApplicationContext context) {
