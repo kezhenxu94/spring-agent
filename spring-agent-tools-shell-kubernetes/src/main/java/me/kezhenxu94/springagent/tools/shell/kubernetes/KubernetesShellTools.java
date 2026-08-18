@@ -33,17 +33,10 @@ public class KubernetesShellTools {
       description =
 """
 Execute a bash command for terminal operations like npm, docker, make, mvn, python.
-DO NOT use for file operations — use specialized tools instead:
-- File search: Use Glob (NOT find or ls)
-- Content search: Use Grep (NOT grep or rg)
-- Read files: Use Read (NOT cat/head/tail)
-- Edit files: Use Edit (NOT sed/awk)
-- Write files: Use Write (NOT echo >/cat <<EOF)
 
 Usage notes:
 - The command argument is required.
 - Optional timeout in milliseconds (max 600000ms / 10 minutes). Default: 120000ms (2 minutes).
-- Output truncated at 30000 characters.
 - Use run_in_background for long-running commands.
 - Quote file paths with spaces in double quotes.
 - Chain dependent commands with &&. Use ; if earlier failures are acceptable.
