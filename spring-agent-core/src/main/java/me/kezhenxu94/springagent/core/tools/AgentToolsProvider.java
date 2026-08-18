@@ -30,6 +30,7 @@ import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
 import org.springframework.context.ApplicationContext;
@@ -143,6 +144,7 @@ public class AgentToolsProvider {
     if (mcpCallbacks != null) {
       Collections.addAll(callbacks, mcpCallbacks);
     }
+    callbacks.addAll(globalToolCallbacks());
 
     return new AgentComposition(
         agentTools, tools.toArray(), callbacks.toArray(new ToolCallback[0]), memoriesRootDirectory);
@@ -185,6 +187,42 @@ public class AgentToolsProvider {
         return delegate.call(toolInput, toolContext);
       }
     };
+  }
+
+  /**
+   * Tools contributed to the application as a whole rather than built for one run: the callbacks of
+   * every {@link ToolCallbackProvider} bean in the context.
+   *
+   * <p>Spring AI's MCP client auto-configuration is the one every consumer gets without writing a
+   * line of code — servers listed under {@code spring.ai.mcp.client.*} become such a bean — and
+   * nothing else would ever assemble it, because a run is handed exactly the tools composed here
+   * and Spring AI does not fold provider beans into a {@code ChatClient} on its own.
+   *
+   * <p>Whatever sits behind these callbacks belongs to the context and outlives the run, so they
+   * are deliberately kept out of {@link McpTools} and are not closed when the run ends. A provider
+   * is also expected to namespace what it offers: Spring AI refuses a request carrying two tools of
+   * the same name, so a clash with a per-request tool would cost every run rather than one call.
+   * The MCP provider does this by prefixing each tool with its connection name.
+   */
+  private List<ToolCallback> globalToolCallbacks() {
+    final var callbacks = new ArrayList<ToolCallback>();
+    applicationContext
+        .getBeanProvider(ToolCallbackProvider.class)
+        .forEach(
+            provider -> {
+              try {
+                // Listing tools is a round trip to a remote server for the MCP provider, and a
+                // server that is down or slow costs the run those tools, never the run itself —
+                // the same bargain the per-request MCP path strikes above.
+                Collections.addAll(callbacks, provider.getToolCallbacks());
+              } catch (Exception e) {
+                log.warn(
+                    "Skipping tools from {}: {}",
+                    provider.getClass().getSimpleName(),
+                    e.getMessage());
+              }
+            });
+    return callbacks;
   }
 
   /** The {@code @AgentTool} beans a run in {@code scenario} is offered, in registration order. */

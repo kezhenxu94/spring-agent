@@ -67,6 +67,23 @@ spring:
           enabled: true
           tool-index-type: vector
           max-results: 5
+    # MCP servers belonging to the application rather than to a user: connected once at startup and
+    # offered to every run, whoever it belongs to. Contrast the servers a user registers at runtime,
+    # which are stored per owner (McpServerConfig), shared explicitly, and connected afresh for each
+    # request. Both reach the model the same way — AgentToolsProvider appends the callbacks of every
+    # ToolCallbackProvider bean, which is what Spring AI's client auto-configuration publishes these
+    # as, to the ones it composes itself.
+    #
+    # None are configured here; a deployment that wants one adds it. Only streamable HTTP is worth
+    # using — stdio would launch a subprocess next to the application, and SSE is deprecated
+    # upstream.
+    #
+    # mcp:
+    #   client:
+    #     streamable-http:
+    #       connections:
+    #         github:
+    #           url: https://api.githubcopilot.com/mcp/
     openai:
       base-url: ${OPENAI_BASE_URL}
       api-key: ${OPENAI_API_KEY}

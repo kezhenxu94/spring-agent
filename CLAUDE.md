@@ -63,6 +63,8 @@ spring-agent-cli               laptop command line; jpa + local shell only
 
 **Tools** are beans annotated `@AgentTool` (allowed on a `@Bean` method too, for library types), whose Spring AI `@Tool` methods `AgentToolsProvider.compose(...)` assembles per request. `AgentScenario` on the annotation gates which runs get the tool. Per-request identity reaches a tool through the `toolContext` map, with typed keys in `core/tools/ToolContexts.java` — read them through those keys rather than by string. Cross-cutting behaviour around tool calls goes in a `ToolCallInterceptor` (`core/tools/interceptors/`), which the custom `ToolCallingManager` wires in.
 
+A run is offered exactly what `compose(...)` returns, so tools that come from elsewhere have to be collected there too: alongside the `@AgentTool` beans and the user's own MCP servers it appends the callbacks of every `ToolCallbackProvider` bean in the context. That is how application-wide MCP servers configured under `spring.ai.mcp.client.*` reach the model — Spring AI publishes them as such a bean but never wires it into a `ChatClient` itself. Those clients belong to the context and are never closed by a run; only the per-request MCP clients in `McpTools` are.
+
 **Two runtime switches select beans by condition**, not by classpath alone:
 
 - `app.persistence.type` — `jpa` (default, SQLite) | `mongodb` | `redis`, via `@ConditionalOnPersistenceBackend`. Chooses repositories *and* the Spring AI chat memory repository together.
