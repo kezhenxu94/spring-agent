@@ -14,7 +14,7 @@ class AgentRunRegistryTest {
       new AgentRunRegistry(
           AgentRequest.builder()
               .requestId("request-1")
-              .scenario(AgentScenario.SCHEDULED_TASK)
+              .scenario(BuiltInScenarios.SCHEDULED_TASK)
               .userMessage(user -> user.text("hi"))
               .build());
 
@@ -60,7 +60,7 @@ class AgentRunRegistryTest {
   @Test
   @DisplayName("the request is exposed so a listener can decide whether the run concerns it")
   void requestIsExposed() {
-    assertThat(registry.request().scenario()).isEqualTo(AgentScenario.SCHEDULED_TASK);
+    assertThat(registry.request().scenario()).isEqualTo(BuiltInScenarios.SCHEDULED_TASK);
     assertThat(registry.request().requestId()).isEqualTo("request-1");
   }
 
@@ -76,7 +76,7 @@ class AgentRunRegistryTest {
         new AgentRunRegistry(
             AgentRequest.builder()
                 .requestId("request-2")
-                .scenario(AgentScenario.SCHEDULED_TASK)
+                .scenario(BuiltInScenarios.SCHEDULED_TASK)
                 .background(true)
                 .userMessage(user -> user.text("hi"))
                 .build());

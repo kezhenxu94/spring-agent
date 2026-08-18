@@ -16,7 +16,7 @@ import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.agent.AgentRunRegistry;
-import me.kezhenxu94.springagent.core.agent.AgentScenario;
+import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.FeishuMessageCard;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
@@ -74,7 +74,7 @@ class FeishuCardListenerBackgroundTest {
     return new AgentRunRegistry(
         AgentRequest.builder()
             .requestId("task-1")
-            .scenario(AgentScenario.SCHEDULED_TASK)
+            .scenario(BuiltInScenarios.SCHEDULED_TASK)
             .userId("ou_1")
             .rootMessageId("om_root")
             .replyMessageId("om_root")

@@ -13,7 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
-import me.kezhenxu94.springagent.core.agent.AgentScenario;
+import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
@@ -104,7 +104,7 @@ public class ScheduledTaskService {
     springAgent.fire(
         AgentRequest.builder()
             .requestId(task.id())
-            .scenario(AgentScenario.SCHEDULED_TASK)
+            .scenario(BuiltInScenarios.SCHEDULED_TASK)
             .userId(task.userId())
             .chatId(task.chatId())
             .chatType(task.chatType())

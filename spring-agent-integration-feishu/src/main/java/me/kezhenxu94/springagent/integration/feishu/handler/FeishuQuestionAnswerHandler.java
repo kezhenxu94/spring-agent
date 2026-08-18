@@ -13,7 +13,7 @@ import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
-import me.kezhenxu94.springagent.core.agent.AgentScenario;
+import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
@@ -167,7 +167,7 @@ public class FeishuQuestionAnswerHandler {
       springAgent.fire(
           AgentRequest.builder()
               .requestId(pending.id())
-              .scenario(AgentScenario.CHAT)
+              .scenario(BuiltInScenarios.CHAT)
               .userId(pending.userId())
               .chatId(pending.chatId())
               .chatType(pending.chatType())

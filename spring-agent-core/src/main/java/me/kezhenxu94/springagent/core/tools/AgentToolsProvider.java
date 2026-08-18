@@ -16,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
+import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
@@ -243,7 +244,7 @@ public class AgentToolsProvider {
               final var annotation =
                   applicationContext.findAnnotationOnBean(entry.getKey(), AgentTool.class);
               final var scenarios = Arrays.asList(annotation.scenario());
-              return scenarios.contains(AgentScenario.ALL) || scenarios.contains(scenario);
+              return scenarios.contains(BuiltInScenarios.ALL) || scenarios.contains(scenario);
             })
         .map(Map.Entry::getValue)
         .toList();

@@ -2,7 +2,7 @@ package me.kezhenxu94.springagent.cli;
 
 import java.util.Comparator;
 import java.util.stream.Collectors;
-import me.kezhenxu94.springagent.core.agent.AgentScenario;
+import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
@@ -115,7 +115,7 @@ public class CliCommands {
         .execute(
             context -> {
               final var names =
-                  agentToolsProvider.resolveScenarioTools(AgentScenario.CHAT).stream()
+                  agentToolsProvider.resolveScenarioTools(BuiltInScenarios.CHAT).stream()
                       .map(tool -> tool.getClass().getSimpleName())
                       .sorted()
                       .collect(Collectors.joining("\n  "));

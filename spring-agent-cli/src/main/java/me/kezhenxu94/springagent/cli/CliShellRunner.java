@@ -9,7 +9,7 @@ import me.kezhenxu94.springagent.cli.config.CliProperties;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
-import me.kezhenxu94.springagent.core.agent.AgentScenario;
+import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
@@ -143,7 +143,7 @@ public class CliShellRunner implements ShellRunner {
       springAgent.fire(
           AgentRequest.builder()
               .requestId(runId)
-              .scenario(AgentScenario.CHAT)
+              .scenario(BuiltInScenarios.CHAT)
               .userId(properties.userId())
               // No chat and no message to reply to: a terminal session is the whole conversation,
               // and CliRunListener attaches to a run without needing either.
