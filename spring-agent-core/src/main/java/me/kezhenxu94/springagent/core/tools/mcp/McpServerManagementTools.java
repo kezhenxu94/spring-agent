@@ -13,8 +13,11 @@ import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.ai.mcp.client.common.autoconfigure.properties.McpStreamableHttpClientProperties;
+import org.springframework.ai.mcp.client.common.autoconfigure.properties.McpStreamableHttpClientProperties.ConnectionParameters;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -32,6 +35,19 @@ import org.springframework.stereotype.Component;
 public class McpServerManagementTools {
   private final McpServerConfigRepo repo;
   private final McpClientFactory clientFactory;
+
+  /**
+   * The servers this application configures for everyone under {@code
+   * spring.ai.mcp.client.streamable-http}, which reach a run through {@link
+   * me.kezhenxu94.springagent.core.tools.AgentToolsProvider} rather than through the repository
+   * above. Listed here because a user asking what MCP servers they have means the ones the agent
+   * can reach, not the ones a particular table happens to hold.
+   *
+   * <p>Through an {@link ObjectProvider} because the bean only exists while {@code
+   * spring.ai.mcp.client.enabled} is true, and an application that turns MCP off entirely must
+   * still get its MCP registry tools.
+   */
+  private final ObjectProvider<McpStreamableHttpClientProperties> streamableHttpProperties;
 
   @Tool(
       name = "AddMcpServer",
@@ -156,7 +172,9 @@ name overwrites its configuration.
       description =
           "List the MCP servers registered by this user (name, transport, URL, enabled, who it's"
               + " shared with), plus any servers others have shared with this user or the current"
-              + " chat (name and transport only — connection details stay private to the owner).")
+              + " chat (name and transport only — connection details stay private to the owner),"
+              + " plus the servers this application configures for everyone, which are already"
+              + " available to every user here and cannot be added, removed or shared from here.")
   public String listMcpServers(final ToolContext context) {
     final var ownerId = ToolContexts.require(context, ToolContexts.USER_ID);
     final var chatId = ToolContexts.get(context, ToolContexts.CHAT_ID);
@@ -168,7 +186,9 @@ name overwrites its configuration.
             .filter(s -> !s.ownerId().equals(ownerId))
             .toList();
 
-    if (owned.isEmpty() && shared.isEmpty()) {
+    final var configured = applicationConfigured();
+
+    if (owned.isEmpty() && shared.isEmpty() && configured.isEmpty()) {
       return "No MCP servers registered or shared with you.";
     }
 
@@ -203,6 +223,18 @@ name overwrites its configuration.
             .append("\n");
       }
     }
+    if (!configured.isEmpty()) {
+      sb.append("Configured by this application, for everyone:\n");
+      for (final var entry : configured.entrySet()) {
+        sb.append("- ")
+            .append(entry.getKey())
+            .append(" [")
+            .append(McpServerConfig.Transport.STREAMABLE_HTTP)
+            .append("] ")
+            .append(connectionUrl(entry.getValue()))
+            .append("\n");
+      }
+    }
     return sb.toString();
   }
 
@@ -228,6 +260,9 @@ name overwrites its configuration.
     final var serverName = name.trim();
     final var target = targetId.trim();
 
+    if (isApplicationConfigured(serverName)) {
+      return notYoursToManage(serverName, "shared");
+    }
     final var config = repo.findByOwnerIdAndName(ownerId, serverName).orElse(null);
     if (config == null) {
       return "Error: no MCP server named '"
@@ -267,6 +302,9 @@ name overwrites its configuration.
     final var serverName = name.trim();
     final var target = targetId.trim();
 
+    if (isApplicationConfigured(serverName)) {
+      return notYoursToManage(serverName, "unshared");
+    }
     final var config = repo.findByOwnerIdAndName(ownerId, serverName).orElse(null);
     if (config == null) {
       return "Error: no MCP server named '"
@@ -279,6 +317,47 @@ name overwrites its configuration.
     repo.save(config);
     log.info("Unshared MCP server '{}' from {} by owner {}", serverName, target, ownerId);
     return "Successfully revoked access to '" + serverName + "' from " + target + ".";
+  }
+
+  /**
+   * The connections configured under {@code spring.ai.mcp.client.streamable-http}, keyed by name,
+   * empty when none are or when MCP is disabled altogether.
+   *
+   * <p>Only that transport: stdio would launch a subprocess beside this application and SSE is
+   * deprecated upstream, so neither is configured anywhere here — a deployment that configured one
+   * regardless would not see it listed.
+   */
+  private Map<String, ConnectionParameters> applicationConfigured() {
+    final var properties = streamableHttpProperties.getIfAvailable();
+    return properties == null ? Map.of() : properties.getConnections();
+  }
+
+  private boolean isApplicationConfigured(final String name) {
+    return applicationConfigured().containsKey(name);
+  }
+
+  /**
+   * Where the connection's requests actually go. The endpoint is a path under the URL and defaults
+   * to {@code /mcp} when unset, exactly as Spring AI's transport builds it.
+   */
+  private static String connectionUrl(final ConnectionParameters connection) {
+    final var url = connection.url() == null ? "" : connection.url();
+    final var endpoint = connection.endpoint() == null ? "/mcp" : connection.endpoint();
+    return url + endpoint;
+  }
+
+  /**
+   * What a mutating tool says about a name this application configures. Without it the answer is
+   * that no such server is registered, which reads as "it does not exist" for a server whose tools
+   * the model can see itself calling — and invites it to register one under the same name.
+   */
+  private static String notYoursToManage(final String name, final String verb) {
+    return "Error: '"
+        + name
+        + "' is configured by this application, not registered by you. It is already available to"
+        + " everyone here and cannot be "
+        + verb
+        + " through these tools.";
   }
 
   private static String blankToNull(final String value) {
@@ -306,6 +385,9 @@ name overwrites its configuration.
       return "Error: a server name is required.";
     }
     final var serverName = name.trim();
+    if (isApplicationConfigured(serverName)) {
+      return notYoursToManage(serverName, "removed");
+    }
     if (!repo.existsByOwnerIdAndName(ownerId, serverName)) {
       return "Error: no MCP server named '" + serverName + "' is registered.";
     }

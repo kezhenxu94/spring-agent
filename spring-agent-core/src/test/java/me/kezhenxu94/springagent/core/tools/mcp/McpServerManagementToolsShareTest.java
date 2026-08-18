@@ -18,6 +18,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.ai.mcp.client.common.autoconfigure.properties.McpStreamableHttpClientProperties;
+import org.springframework.ai.mcp.client.common.autoconfigure.properties.McpStreamableHttpClientProperties.ConnectionParameters;
+import org.springframework.beans.factory.ObjectProvider;
 
 class McpServerManagementToolsShareTest {
 
@@ -35,7 +38,27 @@ class McpServerManagementToolsShareTest {
 
   @BeforeEach
   void setUp() {
-    tools = new McpServerManagementTools(repo, clientFactory);
+    tools = toolsWith(null);
+  }
+
+  /**
+   * The tools under test, seeing {@code configured} as the servers this application configures for
+   * everyone. Null stands for a deployment that configures none, which is also what an application
+   * with {@code spring.ai.mcp.client.enabled=false} presents: no properties bean at all.
+   */
+  @SuppressWarnings("unchecked")
+  private McpServerManagementTools toolsWith(final McpStreamableHttpClientProperties configured) {
+    final ObjectProvider<McpStreamableHttpClientProperties> provider = mock(ObjectProvider.class);
+    when(provider.getIfAvailable()).thenReturn(configured);
+    return new McpServerManagementTools(repo, clientFactory, provider);
+  }
+
+  private static McpStreamableHttpClientProperties configuredGithub() {
+    final var properties = new McpStreamableHttpClientProperties();
+    properties
+        .getConnections()
+        .put("github", new ConnectionParameters("https://api.githubcopilot.com", "/mcp"));
+    return properties;
   }
 
   private McpServerConfig sampleConfig() {
@@ -138,5 +161,32 @@ class McpServerManagementToolsShareTest {
     assertThat(result).contains("Owned by you:").contains("ops").contains(TARGET_USER_ID);
     assertThat(result).contains("Shared with you:").contains("weather").contains(OTHER_OWNER_ID);
     assertThat(result).doesNotContain("weather.example.com").doesNotContain("secret");
+  }
+
+  @Test
+  @DisplayName("listing names the servers this application configures for everyone")
+  void listingIncludesApplicationConfiguredServers() {
+    final var result = toolsWith(configuredGithub()).listMcpServers(context);
+
+    assertThat(result).contains("github").contains("https://api.githubcopilot.com/mcp");
+    // Listed apart from the user's own, because what it lists is nobody in this conversation's to
+    // manage, and a model told only the name would try.
+    assertThat(result).contains("Configured by this application");
+    // Nothing was registered or shared, and the old answer was that there was nothing at all.
+    assertThat(result).doesNotContain("No MCP servers registered or shared with you");
+  }
+
+  @Test
+  @DisplayName("a server this application configures cannot be removed or shared")
+  void applicationConfiguredServersAreNotManageable() {
+    final var tools = toolsWith(configuredGithub());
+
+    assertThat(tools.removeMcpServer("github", context)).contains("configured by this application");
+    assertThat(tools.shareMcpServer("github", TARGET_USER_ID, context))
+        .contains("configured by this application");
+    assertThat(tools.unshareMcpServer("github", TARGET_USER_ID, context))
+        .contains("configured by this application");
+    verify(repo, never()).deleteByOwnerIdAndName(any(), any());
+    verify(repo, never()).save(any());
   }
 }
