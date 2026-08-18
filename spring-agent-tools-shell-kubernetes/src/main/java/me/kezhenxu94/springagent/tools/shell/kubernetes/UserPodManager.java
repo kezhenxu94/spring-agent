@@ -11,7 +11,6 @@ import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.HexFormat;

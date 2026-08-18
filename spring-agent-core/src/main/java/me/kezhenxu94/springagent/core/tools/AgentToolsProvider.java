@@ -14,18 +14,21 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.tools.mcp.McpClientFactory;
 import me.kezhenxu94.springagent.core.tools.mcp.ServerNameToolPrefixGenerator;
+import org.springaicommunity.agent.advisors.AutoMemoryToolsAdvisor;
 import org.springaicommunity.agent.tools.AskUserQuestionTool;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springaicommunity.agent.tools.FileSystemTools;
 import org.springaicommunity.agent.tools.SkillsTool;
 import org.springaicommunity.agent.tools.TodoWriteTool;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
+import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.support.ToolCallbacks;
@@ -71,33 +74,38 @@ public class AgentToolsProvider {
   }
 
   /**
-   * Fully assembled agent inputs for one request: the raw {@link AgentTools}, the {@code tools} and
-   * {@code toolCallbacks} arrays ready for {@code AgentRequest}, and the resolved memories
-   * directory. Callers must close {@code agentTools().mcpTools()} once the request completes.
+   * Fully assembled agent inputs for one request: the tools a run is offered, the live MCP clients
+   * behind some of them, and the resolved memories directory. Callers must close {@code mcpTools()}
+   * once the request completes.
+   *
+   * <p>One array holds every kind of tool because that is what the far end makes of them anyway:
+   * {@code ChatClient.tools(Object...)} takes a {@link ToolCallback} as it stands and derives one
+   * from anything else, into the same list either way. So a tool that has to arrive as a callback —
+   * the ask that ends the turn, whose metadata cannot be set any other way — travels here beside
+   * the plain tool objects rather than in a second array that means nothing downstream.
+   *
+   * <p>An advisor appears here for the same reason: {@link AutoMemoryToolsAdvisor} is tools too,
+   * adding its callbacks to the request as it passes and a paragraph to the system prompt telling
+   * the model what they are for — which is the only reason it cannot simply be a callback. Only an
+   * advisor that exists to contribute tools belongs in a composition; the ones a run wires up for
+   * its own reasons, chat memory and logging, stay with the run.
    */
-  public record AgentComposition(
-      AgentTools agentTools,
-      Object[] tools,
-      ToolCallback[] toolCallbacks,
-      String memoriesRootDirectory) {}
+  public record AgentComposition(Object[] tools, List<Advisor> advisors, McpTools mcpTools) {}
 
   public AgentComposition compose(
-      final String userId,
-      final String chatId,
-      final String chatType,
-      final AgentScenario scenario,
+      final AgentRequest request,
       final TodoEventHandler todoEventHandler,
       final QuestionHandler questionHandler,
       final boolean answersArriveLater)
       throws IOException {
-    final var agentTools = build(userId, chatId);
+    final var agentTools = build(request.userId(), request.chatId());
     // From here on the MCP clients are live, and the caller only learns of them by being handed the
     // composition. Anything that throws in between would leave them open with nobody holding a
     // reference to close them — the run's own cleanup included, since it has not been given them
     // yet.
     try {
       return composeWith(
-          agentTools, userId, scenario, todoEventHandler, questionHandler, answersArriveLater);
+          agentTools, request, todoEventHandler, questionHandler, answersArriveLater);
     } catch (Throwable t) {
       agentTools.mcpTools().close();
       throw t;
@@ -106,22 +114,21 @@ public class AgentToolsProvider {
 
   private AgentComposition composeWith(
       final AgentTools agentTools,
-      final String userId,
-      final AgentScenario scenario,
+      final AgentRequest request,
       final TodoEventHandler todoEventHandler,
       final QuestionHandler questionHandler,
       final boolean answersArriveLater)
       throws IOException {
-    final var memoriesRootDirectory = userWorkspaceFactory.forOwner(userId).memories().toString();
+    final var memoriesRootDirectory =
+        userWorkspaceFactory.forOwner(request.userId()).memories().toString();
 
     final var tools = new ArrayList<Object>();
-    tools.addAll(resolveScenarioTools(scenario));
+    tools.addAll(resolveScenarioTools(request.scenario()));
     tools.add(agentTools.fileSystemTools());
     tools.add(TodoWriteTool.builder().todoEventHandler(todoEventHandler).build());
     // Two independent gates, and both have to open. No handler means the run has no way to reach
     // the user, so offering the tool would only invite the agent to ask into the void; the property
     // is how a deployment turns the whole interaction off whatever the channel can do.
-    final var callbacks = new ArrayList<ToolCallback>();
     if (questionHandler != null && appConfiguration.ai().tools().askUserQuestion().enabled()) {
       // Both of these follow from the same fact. Where the answer only arrives later there is
       // nothing to validate — the ask comes back empty by design — and nothing to hand the model,
@@ -132,22 +139,23 @@ public class AgentToolsProvider {
               .answersValidation(!answersArriveLater)
               .questionHandler(questionHandler)
               .build();
-      if (answersArriveLater) {
-        callbacks.add(endsTurnCallback(askTool));
-      } else {
-        tools.add(askTool);
-      }
+      // Ending the turn is a property of the callback, not of the tool, so that path hands over a
+      // wrapped one while the other hands over the tool itself and lets the far end derive it.
+      tools.add(answersArriveLater ? endsTurnCallback(askTool) : askTool);
     }
 
-    agentTools.skillsTool().ifPresent(callbacks::add);
+    agentTools.skillsTool().ifPresent(tools::add);
     final var mcpCallbacks = agentTools.mcpTools().callbacks();
     if (mcpCallbacks != null) {
-      Collections.addAll(callbacks, mcpCallbacks);
+      Collections.addAll(tools, mcpCallbacks);
     }
-    callbacks.addAll(globalToolCallbacks());
+    tools.addAll(globalToolCallbacks());
 
-    return new AgentComposition(
-        agentTools, tools.toArray(), callbacks.toArray(new ToolCallback[0]), memoriesRootDirectory);
+    final var advisors =
+        List.<Advisor>of(
+            AutoMemoryToolsAdvisor.builder().memoriesRootDirectory(memoriesRootDirectory).build());
+
+    return new AgentComposition(tools.toArray(), advisors, agentTools.mcpTools());
   }
 
   /**
