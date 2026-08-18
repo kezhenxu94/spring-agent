@@ -22,7 +22,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
-import me.kezhenxu94.springagent.core.storage.StorageProperties;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -35,12 +34,10 @@ public class UserPodManager {
   public static final String LABEL_SHELL_POD_ROLE = "springagent.io/shell-pod-role";
   public static final String SHELL_POD_ROLE_ADMIN = "admin";
   public static final String CONTAINER_NAME = "shell";
-  public static final String VOLUME_NAME = "user-home";
   public static final String CREDENTIALS_VOLUME_NAME = "user-credentials";
 
   private final KubernetesClient kubernetesClient;
   private final KubernetesShellProperties properties;
-  private final StorageProperties storageProperties;
   private final SpringAgentProperties appConfiguration;
 
   public String ensurePodFor(final String userId) {
@@ -181,16 +178,6 @@ public class UserPodManager {
     return kubernetesClient.getNamespace();
   }
 
-  public String userHomeMountPath(final String userId) {
-    return Path.of(storageProperties.getLocation(), userId).toString();
-  }
-
-  private String userHomeSubPath(final String userId) {
-    final var pvcMount = Path.of(properties.storage().pvcMountPath());
-    final var userHome = Path.of(storageProperties.getLocation(), userId);
-    return pvcMount.relativize(userHome).toString();
-  }
-
   static String jobName(final String userId) {
     return "spring-agent-shell-" + shortHash(userId);
   }
@@ -268,17 +255,27 @@ public class UserPodManager {
 
     final var credentialsSecretName = credentialsSecretName(userId);
     final var credentialsMountPath = properties.credentials().mountPathOrDefault();
+    final var mounts = properties.storage().mounts();
 
-    final var podSpec =
+    var podSpecBuilder =
         new PodSpecBuilder()
             .withRestartPolicy("Never")
             .withAutomountServiceAccountToken(false)
-            .withImagePullSecrets(imagePullSecrets)
+            .withImagePullSecrets(imagePullSecrets);
+    if (properties.fsGroup() != null) {
+      podSpecBuilder =
+          podSpecBuilder
+              .withNewSecurityContext()
+              .withFsGroup(properties.fsGroup())
+              .endSecurityContext();
+    }
+    var podSpec =
+        podSpecBuilder
             .addNewContainer()
             .withName(CONTAINER_NAME)
             .withImage(properties.image())
             .withImagePullPolicy("Always")
-            .withWorkingDir(userHomeMountPath(userId))
+            .withWorkingDir(properties.workingDir())
             .withCommand("sh", "-c", watchdogScript)
             .addNewEnv()
             .withName("IDLE_TTL_SECONDS")
@@ -301,22 +298,11 @@ public class UserPodManager {
                     "memory", Quantity.parse(properties.resources().memoryLimitOrDefault())))
             .endResources()
             .addNewVolumeMount()
-            .withName(VOLUME_NAME)
-            .withMountPath(userHomeMountPath(userId))
-            .withSubPath(userHomeSubPath(userId))
-            .endVolumeMount()
-            .addNewVolumeMount()
             .withName(CREDENTIALS_VOLUME_NAME)
             .withMountPath(credentialsMountPath)
             .withReadOnly(true)
             .endVolumeMount()
             .endContainer()
-            .addNewVolume()
-            .withName(VOLUME_NAME)
-            .withNewPersistentVolumeClaim()
-            .withClaimName(properties.storage().pvcName())
-            .endPersistentVolumeClaim()
-            .endVolume()
             .addNewVolume()
             .withName(CREDENTIALS_VOLUME_NAME)
             .withNewSecret()
@@ -326,6 +312,27 @@ public class UserPodManager {
             .endSecret()
             .endVolume()
             .build();
+
+    final var builder = new PodSpecBuilder(podSpec);
+    for (var i = 0; i < mounts.size(); i++) {
+      final var mount = mounts.get(i);
+      final var volumeName = "user-mount-" + i;
+      builder
+          .editFirstContainer()
+          .addNewVolumeMount()
+          .withName(volumeName)
+          .withMountPath(mount.mountPath())
+          .withSubPath(mount.subPath(userId))
+          .endVolumeMount()
+          .endContainer()
+          .addNewVolume()
+          .withName(volumeName)
+          .withNewPersistentVolumeClaim()
+          .withClaimName(mount.pvcName())
+          .endPersistentVolumeClaim()
+          .endVolume();
+    }
+    podSpec = builder.build();
 
     final var podTemplate =
         new PodTemplateSpecBuilder()
