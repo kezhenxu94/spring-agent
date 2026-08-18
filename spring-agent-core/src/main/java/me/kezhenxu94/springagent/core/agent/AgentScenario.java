@@ -7,10 +7,13 @@ package me.kezhenxu94.springagent.core.agent;
  */
 public interface AgentScenario {
   /**
-   * Whether the run reads the conversation's chat memory and appends its own turn to it. False for
-   * a run that must not see, or must not pollute, what a person said in the same conversation.
+   * Whether the run reads the conversation's chat memory and appends its own turn to it. It does by
+   * default; override to false for a run that must not see, or must not pollute, what a person said
+   * in the same conversation.
    */
-  boolean conversationMemory();
+  default boolean conversationMemory() {
+    return true;
+  }
 
   /**
    * Whether a run in this scenario is offered {@code tool}, one of the {@code @AgentTool} beans in
