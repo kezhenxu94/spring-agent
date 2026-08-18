@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai;
@@ -55,7 +56,10 @@ class AgentToolsProviderAskTest {
   void synchronousAsk() throws Exception {
     final var composition = compose(false);
 
-    assertThat(Arrays.stream(composition.toolCallbacks()).map(cb -> cb.getToolDefinition().name()))
+    assertThat(
+            Arrays.stream(composition.tools())
+                .filter(ToolCallback.class::isInstance)
+                .map(tool -> ((ToolCallback) tool).getToolDefinition().name()))
         .doesNotContain("AskUserQuestionTool");
     final var ask =
         Arrays.stream(composition.tools())
@@ -82,10 +86,12 @@ class AgentToolsProviderAskTest {
               context,
               properties());
       return provider.compose(
-          "ou_1",
-          "oc_1",
-          "p2p",
-          AgentScenario.CHAT,
+          AgentRequest.builder()
+              .scenario(AgentScenario.CHAT)
+              .userId("ou_1")
+              .chatId("oc_1")
+              .userMessage(user -> user.text("Which database?"))
+              .build(),
           todos -> {},
           // Answers nothing, as an asynchronous channel does and a broken synchronous one would.
           questions -> Map.of(),
@@ -94,7 +100,9 @@ class AgentToolsProviderAskTest {
   }
 
   private static ToolCallback askCallback(final AgentToolsProvider.AgentComposition composition) {
-    return Arrays.stream(composition.toolCallbacks())
+    return Arrays.stream(composition.tools())
+        .filter(ToolCallback.class::isInstance)
+        .map(ToolCallback.class::cast)
         .filter(callback -> "AskUserQuestionTool".equals(callback.getToolDefinition().name()))
         .findFirst()
         .orElseThrow();

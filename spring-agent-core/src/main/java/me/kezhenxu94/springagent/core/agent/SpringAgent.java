@@ -25,7 +25,6 @@ import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentComposition;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.McpTools;
 import me.kezhenxu94.springagent.core.tools.QuestionNotAnsweredException;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
-import org.springaicommunity.agent.advisors.AutoMemoryToolsAdvisor;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
@@ -212,14 +211,8 @@ public class SpringAgent {
               try {
                 final var composition =
                     agentToolsProvider.compose(
-                        request.userId(),
-                        request.chatId(),
-                        request.chatType(),
-                        request.scenario(),
-                        fanOut(todoEventHandlers),
-                        questionHandler,
-                        answersArriveLater);
-                mcpTools.set(composition.agentTools().mcpTools());
+                        request, fanOut(todoEventHandlers), questionHandler, answersArriveLater);
+                mcpTools.set(composition.mcpTools());
                 return rawStream(request, composition, toolContextFor(request, registry));
               } catch (Exception e) {
                 return Flux.<ChatResponse>error(e);
@@ -485,11 +478,9 @@ public class SpringAgent {
         new SystemPromptTemplate(appConfiguration.ai().systemPrompt())
             .render(promptVariablesFor(request));
 
-    final var advisors = new ArrayList<Advisor>();
-    advisors.add(
-        AutoMemoryToolsAdvisor.builder()
-            .memoriesRootDirectory(composition.memoriesRootDirectory())
-            .build());
+    // The tools the composition delivers as advisors rather than as callbacks, auto-memory among
+    // them. What follows is the run's own wiring, which is nothing to do with tools.
+    final var advisors = new ArrayList<Advisor>(composition.advisors());
     if (request.scenario().conversationMemory()) {
       // Ordered after the tool advisor, so it sits inside the tool-calling loop and sees each
       // iteration: the assistant message carrying the tool calls, and the tool responses that
@@ -526,7 +517,6 @@ public class SpringAgent {
         .system(renderedSystemPrompt)
         .user(request.userMessage())
         .tools(composition.tools())
-        .tools((Object[]) composition.toolCallbacks())
         .toolContext(toolContext)
         .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, request.conversationId()))
         .advisors(a -> a.param(TOOL_INDEX_KEY, toolIndexKeyFor(request)))

@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai;
@@ -59,13 +60,22 @@ class AgentToolsProviderGlobalToolsTest {
 
       final var composition =
           provider.compose(
-              "ou_1", "oc_1", "p2p", AgentScenario.CHAT, todos -> {}, questions -> Map.of(), true);
+              AgentRequest.builder()
+                  .scenario(AgentScenario.CHAT)
+                  .userId("ou_1")
+                  .chatId("oc_1")
+                  .userMessage(user -> user.text("Search for something."))
+                  .build(),
+              todos -> {},
+              questions -> Map.of(),
+              true);
 
-      assertThat(composition.toolCallbacks())
-          .extracting(callback -> callback.getToolDefinition().name())
+      assertThat(composition.tools())
+          .filteredOn(ToolCallback.class::isInstance)
+          .extracting(tool -> ((ToolCallback) tool).getToolDefinition().name())
           .contains("global_search");
       // Nothing here is the run's to close: the provider's clients live as long as the context.
-      assertThat(composition.agentTools().mcpTools().clients()).isEmpty();
+      assertThat(composition.mcpTools().clients()).isEmpty();
     }
   }
 

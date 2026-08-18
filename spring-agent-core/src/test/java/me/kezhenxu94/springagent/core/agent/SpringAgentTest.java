@@ -22,7 +22,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -35,7 +34,6 @@ import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentComposition;
-import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentTools;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.McpTools;
 import me.kezhenxu94.springagent.core.tools.QuestionNotAnsweredException;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
@@ -47,11 +45,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
+import org.springaicommunity.agent.advisors.AutoMemoryToolsAdvisor;
 import org.springaicommunity.agent.tools.AskUserQuestionTool;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
+import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -96,14 +96,12 @@ class SpringAgentTest {
 
   @BeforeEach
   void setUp() throws Exception {
-    when(agentToolsProvider.compose(any(), any(), any(), any(), any(), any(), anyBoolean()))
+    when(agentToolsProvider.compose(any(), any(), any(), anyBoolean()))
         .thenReturn(
             new AgentComposition(
-                new AgentTools(
-                    null, Optional.empty(), new McpTools(List.of(mcpClient), new ToolCallback[0])),
                 new Object[0],
-                new ToolCallback[0],
-                memoriesDirectory.toString()));
+                autoMemoryAdvisors(),
+                new McpTools(List.of(mcpClient), new ToolCallback[0])));
     final var chatMemory =
         MessageWindowChatMemory.builder().chatMemoryRepository(chatMemoryRepository).build();
     agent =
@@ -183,7 +181,7 @@ class SpringAgentTest {
   @Test
   @DisplayName("a run that cannot be composed reports FAILED rather than failing silently")
   void compositionFailureRun() throws Exception {
-    when(agentToolsProvider.compose(any(), any(), any(), any(), any(), any(), anyBoolean()))
+    when(agentToolsProvider.compose(any(), any(), any(), anyBoolean()))
         .thenThrow(new IOException("no workspace"));
 
     final var listener = fireAndAwait(request());
@@ -222,8 +220,7 @@ class SpringAgentTest {
     assertThat(listener.outcomes).containsExactly(AgentOutcome.FAILED);
     assertThat(listener.errors).hasSize(1);
     assertThat(listener.errors.getFirst()).hasMessage("nowhere to put the answer");
-    verify(agentToolsProvider, times(0))
-        .compose(any(), any(), any(), any(), any(), any(), anyBoolean());
+    verify(agentToolsProvider, times(0)).compose(any(), any(), any(), anyBoolean());
   }
 
   @Test
@@ -439,8 +436,7 @@ class SpringAgentTest {
   /** What the run told compose() about whether an answer can arrive inside the call. */
   private boolean answersArriveLaterFromRun() throws Exception {
     final var endsTurn = ArgumentCaptor.forClass(Boolean.class);
-    verify(agentToolsProvider)
-        .compose(any(), any(), any(), any(), any(), any(), endsTurn.capture());
+    verify(agentToolsProvider).compose(any(), any(), any(), endsTurn.capture());
     return endsTurn.getValue();
   }
 
@@ -707,8 +703,7 @@ class SpringAgentTest {
     fireAndAwait(request);
 
     final var composed = ArgumentCaptor.forClass(QuestionHandler.class);
-    verify(agentToolsProvider)
-        .compose(any(), any(), any(), any(), any(), composed.capture(), anyBoolean());
+    verify(agentToolsProvider).compose(any(), any(), composed.capture(), anyBoolean());
     return composed
         .getValue()
         .handle(
@@ -718,8 +713,7 @@ class SpringAgentTest {
   /** The one handler the run composed out of everything registered. */
   private QuestionHandler handlerFromRun() throws Exception {
     final var composed = ArgumentCaptor.forClass(QuestionHandler.class);
-    verify(agentToolsProvider)
-        .compose(any(), any(), any(), any(), any(), composed.capture(), anyBoolean());
+    verify(agentToolsProvider).compose(any(), any(), composed.capture(), anyBoolean());
     return composed.getValue();
   }
 
@@ -736,8 +730,7 @@ class SpringAgentTest {
     agent.fire(request().listener(listener).build());
 
     assertThat(listener.outcomes).isEmpty();
-    verify(agentToolsProvider, times(0))
-        .compose(any(), any(), any(), any(), any(), any(), anyBoolean());
+    verify(agentToolsProvider, times(0)).compose(any(), any(), any(), anyBoolean());
   }
 
   private RecordingListener fireAndAwait(final AgentRequest.AgentRequestBuilder request) {
@@ -817,6 +810,14 @@ class SpringAgentTest {
         .userMessage(user -> user.text("hi"));
   }
 
+  /** What the real provider composes: the auto-memory tools, delivered as an advisor. */
+  private List<Advisor> autoMemoryAdvisors() {
+    return List.of(
+        AutoMemoryToolsAdvisor.builder()
+            .memoriesRootDirectory(memoriesDirectory.toString())
+            .build());
+  }
+
   /** Core's notes, through a message source configured as an application's would be. */
   private static CoreMessages messagesIn(final Locale locale) {
     final var source = new ResourceBundleMessageSource();
@@ -850,14 +851,12 @@ class SpringAgentTest {
     final var repository = new ToolMessageDroppingRepository();
     final var chatMemory =
         MessageWindowChatMemory.builder().chatMemoryRepository(repository).build();
-    when(agentToolsProvider.compose(any(), any(), any(), any(), any(), any(), anyBoolean()))
+    when(agentToolsProvider.compose(any(), any(), any(), anyBoolean()))
         .thenReturn(
             new AgentComposition(
-                new AgentTools(
-                    null, Optional.empty(), new McpTools(List.of(mcpClient), new ToolCallback[0])),
-                new Object[0],
-                new ToolCallback[] {toolCallback("CurrentDateTime", "2026-08-16T10:00:00+08:00")},
-                memoriesDirectory.toString()));
+                new Object[] {toolCallback("CurrentDateTime", "2026-08-16T10:00:00+08:00")},
+                autoMemoryAdvisors(),
+                new McpTools(List.of(mcpClient), new ToolCallback[0])));
     agent =
         new SpringAgent(
             ChatClient.builder(chatModel).defaultOptions(ToolCallingChatOptions.builder()).build(),
