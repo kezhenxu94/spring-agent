@@ -78,12 +78,22 @@ spring:
     # using — stdio would launch a subprocess next to the application, and SSE is deprecated
     # upstream.
     #
+    # `headers` is ours, not Spring AI's. Upstream binds only `url` and `endpoint` per connection
+    # and expects an authenticated server to be served by a McpSyncHttpClientRequestCustomizer bean
+    # instead, which is code a deployment should not have to write to send a bearer token. The map
+    # below is bound by McpStreamableHttpHeadersProperties, which reads this same block, and applied
+    # to every outbound request of that one connection by McpClientHeadersConfiguration. Spring AI
+    # ignores the key it does not know, so the two bindings coexist. Header names are sent as
+    # written; keep the values in the environment rather than in this file.
+    #
     # mcp:
     #   client:
     #     streamable-http:
     #       connections:
     #         github:
     #           url: https://api.githubcopilot.com/mcp/
+    #           headers:
+    #             Authorization: Bearer ${GITHUB_MCP_TOKEN}
     openai:
       base-url: ${OPENAI_BASE_URL}
       api-key: ${OPENAI_API_KEY}

@@ -61,6 +61,30 @@ spring:
           enabled: true
           tool-index-type: vector
           max-results: 5
+    # MCP servers this command line always has, as opposed to the ones registered at runtime and
+    # stored per user: connected at startup and offered to every run. AgentToolsProvider appends the
+    # callbacks of every ToolCallbackProvider bean, which is what Spring AI's client
+    # auto-configuration publishes these as, to the tools it composes itself.
+    #
+    # None ship configured. Only streamable HTTP is worth using — stdio would launch a subprocess
+    # beside this process, and SSE is deprecated upstream.
+    #
+    # `headers` is ours, not Spring AI's. Upstream binds only `url` and `endpoint` per connection
+    # and leaves authentication to a McpSyncHttpClientRequestCustomizer bean, which is code nobody
+    # should have to write to send a token. The map below is bound by
+    # McpStreamableHttpHeadersProperties, which reads this same block, and applied to every outbound
+    # request of that one connection by McpClientHeadersConfiguration. Spring AI ignores the key it
+    # does not know, so the two bindings coexist. Read the values from the environment: this file is
+    # on the classpath, and a token pasted here ends up in the binary.
+    #
+    # mcp:
+    #   client:
+    #     streamable-http:
+    #       connections:
+    #         github:
+    #           url: https://api.githubcopilot.com/mcp/
+    #           headers:
+    #             Authorization: Bearer ${GITHUB_MCP_TOKEN}
     openai:
       base-url: ${OPENAI_BASE_URL}
       api-key: ${OPENAI_API_KEY}

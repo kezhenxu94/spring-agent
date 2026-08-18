@@ -14,6 +14,7 @@ import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallbac
 import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallingManager;
 import me.kezhenxu94.springagent.core.tools.interceptors.ToolCallInterceptor;
 import me.kezhenxu94.springagent.core.tools.mcp.McpProperties;
+import me.kezhenxu94.springagent.core.tools.mcp.McpStreamableHttpHeadersProperties;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.BatchingStrategy;
@@ -57,6 +58,7 @@ import org.springframework.web.client.RestTemplate;
 @EnableConfigurationProperties({
   SpringAgentProperties.class,
   McpProperties.class,
+  McpStreamableHttpHeadersProperties.class,
   // Bound here rather than by the backend modules: whichever of them is on the classpath reads it,
   // and neither is guaranteed to be.
   PersistenceProperties.class,
