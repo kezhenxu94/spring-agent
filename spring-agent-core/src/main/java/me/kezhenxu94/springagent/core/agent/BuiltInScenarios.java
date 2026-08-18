@@ -8,9 +8,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum BuiltInScenarios implements AgentScenario {
   CHAT(true),
-  SCHEDULED_TASK(true),
-  // Not a scenario a run can be in: the wildcard @AgentTool uses to mean "offered to every run".
-  ALL(true);
+  SCHEDULED_TASK(true);
 
   private final boolean conversationMemory;
 }

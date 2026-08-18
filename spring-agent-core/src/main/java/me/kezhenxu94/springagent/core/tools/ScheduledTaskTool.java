@@ -8,6 +8,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
@@ -19,13 +20,20 @@ import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Component;
 
 @Slf4j
-@AgentTool(scenario = BuiltInScenarios.CHAT)
+@AgentTool
 @Component
 @RequiredArgsConstructor
-public class ScheduledTaskTool {
+public class ScheduledTaskTool implements ScenarioGatedTool {
 
   final ScheduledTaskRepo scheduledTaskRepo;
   final ScheduledTaskService scheduledTaskService;
+
+  @Override
+  public boolean appliesTo(final AgentScenario scenario) {
+    // Anything but a task the agent scheduled for itself: a run that fires on a schedule must not
+    // be able to schedule more of itself, which is how one task becomes a growing pile of them.
+    return scenario != BuiltInScenarios.SCHEDULED_TASK;
+  }
 
   @Tool(
       name = "CreateScheduledTask",

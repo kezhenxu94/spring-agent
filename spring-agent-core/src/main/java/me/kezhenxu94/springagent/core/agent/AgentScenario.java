@@ -5,10 +5,8 @@ package me.kezhenxu94.springagent.core.agent;
  * behave. {@link BuiltInScenarios} holds the ones shipped here; implement this to add a scenario of
  * your own and hand the instance to {@link AgentRequest}.
  *
- * <p>A run in a scenario of your own is offered only the tools annotated {@code
- * BuiltInScenarios.ALL}: an annotation attribute cannot have an interface type, so {@code
- * AgentTool#scenario()} can only name constants of the enum. The request is the extension point,
- * the annotation is not.
+ * <p>A scenario decides which tools a run is offered, but it does not hold the list: a tool that
+ * belongs only in some runs implements {@code ScenarioGatedTool} and is asked.
  */
 public interface AgentScenario {
   /**

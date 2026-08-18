@@ -141,12 +141,12 @@ within the call implements the `SynchronousQuestionHandler` marker and the turn 
 ### Adding a tool
 
 A bean annotated `@AgentTool` has its Spring AI `@Tool` methods offered to the agent; the annotation
-is allowed on a `@Bean` method too, for a type from a library. `scenario` gates which runs see it and
-names constants of `BuiltInScenarios`. Per-request identity arrives through the tool context, under
-typed keys:
+is allowed on a `@Bean` method too, for a type from a library. Every annotated bean is offered to
+every run; one that belongs only in some implements `ScenarioGatedTool` and is asked. Per-request
+identity arrives through the tool context, under typed keys:
 
 ```java
-@AgentTool(scenario = BuiltInScenarios.CHAT)
+@AgentTool
 @Component
 public class ProfileTool {
 

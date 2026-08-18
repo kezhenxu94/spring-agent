@@ -3,7 +3,6 @@ package me.kezhenxu94.springagent.core.tools;
 import io.modelcontextprotocol.client.McpSyncClient;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -16,7 +15,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
-import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
@@ -236,17 +234,11 @@ public class AgentToolsProvider {
 
   /** The {@code @AgentTool} beans a run in {@code scenario} is offered, in registration order. */
   public List<Object> resolveScenarioTools(final AgentScenario scenario) {
-    // findAnnotationOnBean, not findAnnotation on the bean's class: @AgentTool may sit on a @Bean
-    // factory method. It is also the lookup getBeansWithAnnotation performs, so the two agree.
-    return applicationContext.getBeansWithAnnotation(AgentTool.class).entrySet().stream()
-        .filter(
-            entry -> {
-              final var annotation =
-                  applicationContext.findAnnotationOnBean(entry.getKey(), AgentTool.class);
-              final var scenarios = Arrays.asList(annotation.scenario());
-              return scenarios.contains(BuiltInScenarios.ALL) || scenarios.contains(scenario);
-            })
-        .map(Map.Entry::getValue)
+    // getBeansWithAnnotation, so that @AgentTool is honoured on a @Bean factory method as well as
+    // on
+    // the bean's own class.
+    return applicationContext.getBeansWithAnnotation(AgentTool.class).values().stream()
+        .filter(tool -> !(tool instanceof ScenarioGatedTool gated) || gated.appliesTo(scenario))
         .toList();
   }
 
