@@ -355,6 +355,9 @@ app:
           # carries what the shell tools require plus git, gh, jq, yq, curl and python3. Override it
           # with an image built FROM that one to add a language toolchain.
           image: ${TOOLS_SHELL_KUBERNETES_IMAGE:ghcr.io/kezhenxu94/spring-agent/shell-runner:latest}
+          # Must match the mount-path of one of the storage.mounts entries below for the shell to
+          # actually start in persistent storage.
+          working-dir: ${TOOLS_SHELL_KUBERNETES_WORKING_DIR:/data/spring-agent}
           # namespace: spring-agent-assistant     # optional; auto-detected from the bot's own ServiceAccount
           # Comma-separated list of imagePullSecret names to attach to each shell sandbox Pod.
           # Required when `image` lives in a private registry (the Pod does not inherit the bot's secrets).
@@ -365,9 +368,19 @@ app:
           max-output-bytes: 30000
           default-timeout-ms: 120000
           max-timeout-ms: 600000
+          # Applied as the Pod's securityContext.fsGroup; needed so a non-root sandbox image user
+          # can write to volumes whose CSI driver doesn't otherwise grant it write access.
+          fs-group: ${TOOLS_SHELL_KUBERNETES_FS_GROUP:}
           storage:
-            pvc-name: ${TOOLS_SHELL_KUBERNETES_STORAGE_PVC_NAME:}
-            pvc-mount-path: ${TOOLS_SHELL_KUBERNETES_STORAGE_PVC_MOUNT_PATH:/data/spring-agent}
+            # Every mount gets a per-user subPath, so one shared PVC serves every user's Pod
+            # without their files colliding; working-dir above (not list position) picks which
+            # mount's path the shell starts in. Additional entries (extra PVCs, e.g. a faster NAS
+            # mounted at /workspace) aren't aliased here - set them via Spring's indexed env var
+            # binding directly, e.g. APP_AI_TOOLS_SHELL_KUBERNETES_STORAGE_MOUNTS_1_PVC_NAME /
+            # _1_MOUNT_PATH.
+            mounts:
+              - pvc-name: ${TOOLS_SHELL_KUBERNETES_STORAGE_PVC_NAME:}
+                mount-path: ${TOOLS_SHELL_KUBERNETES_WORKING_DIR:/data/spring-agent}
           resources:
             cpu-request: 100m
             memory-request: 256Mi

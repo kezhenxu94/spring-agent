@@ -5,7 +5,6 @@ import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import me.kezhenxu94.springagent.core.config.ConditionalOnShellBackend;
 import me.kezhenxu94.springagent.core.config.ShellToolsProperties.Type;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
-import me.kezhenxu94.springagent.core.storage.StorageProperties;
 import me.kezhenxu94.springagent.core.tools.credentials.CredentialTools;
 import me.kezhenxu94.springagent.core.tools.credentials.ShellCredentialStore;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -35,9 +34,8 @@ public class KubernetesShellAutoConfiguration {
   UserPodManager userPodManager(
       final KubernetesClient kubernetesClient,
       final KubernetesShellProperties properties,
-      final StorageProperties storageProperties,
       final SpringAgentProperties appConfiguration) {
-    return new UserPodManager(kubernetesClient, properties, storageProperties, appConfiguration);
+    return new UserPodManager(kubernetesClient, properties, appConfiguration);
   }
 
   @Bean
