@@ -13,7 +13,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
-import me.kezhenxu94.springagent.core.agent.AgentScenario;
+import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.Tools;
@@ -87,7 +87,7 @@ class AgentToolsProviderAskTest {
               properties());
       return provider.compose(
           AgentRequest.builder()
-              .scenario(AgentScenario.CHAT)
+              .scenario(BuiltInScenarios.CHAT)
               .userId("ou_1")
               .chatId("oc_1")
               .userMessage(user -> user.text("Which database?"))

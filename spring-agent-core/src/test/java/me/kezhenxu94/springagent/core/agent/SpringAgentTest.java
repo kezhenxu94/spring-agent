@@ -348,7 +348,7 @@ class SpringAgentTest {
   void askingIsRecordedForAScheduledTask() throws Exception {
     // A firing shares the conversation of the thread the task was created in, so the note reaches
     // the user's own history as well as the next firing's.
-    fireAndAwait(unansweredAsk().scenario(AgentScenario.SCHEDULED_TASK));
+    fireAndAwait(unansweredAsk().scenario(BuiltInScenarios.SCHEDULED_TASK));
 
     final var handler = handlerFromRun();
     assertThatThrownBy(() -> handler.handle(questions()))
@@ -800,7 +800,7 @@ class SpringAgentTest {
   private static AgentRequest.AgentRequestBuilder request() {
     return AgentRequest.builder()
         .requestId("req-1")
-        .scenario(AgentScenario.CHAT)
+        .scenario(BuiltInScenarios.CHAT)
         .userId("ou_1")
         .chatId("oc_1")
         .chatType("group")

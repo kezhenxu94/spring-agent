@@ -8,7 +8,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
 import me.kezhenxu94.springagent.core.scheduling.ScheduledTaskService;
@@ -19,7 +18,7 @@ import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Component;
 
 @Slf4j
-@AgentTool(scenario = AgentScenario.CHAT)
+@AgentTool
 @Component
 @RequiredArgsConstructor
 public class ScheduledTaskTool {

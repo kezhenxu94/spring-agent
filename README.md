@@ -109,7 +109,7 @@ listeners, so a caller that has to wait for the answer waits on one of them:
 agent.fire(
     AgentRequest.builder()
         .requestId(runId)                     // what SpringAgent.cancel(runId) stops
-        .scenario(AgentScenario.CHAT)
+        .scenario(BuiltInScenarios.CHAT)
         .userId(userId)
         .chatId(conversationId)
         .conversationId(conversationId)       // groups the runs that share chat memory
@@ -141,11 +141,12 @@ within the call implements the `SynchronousQuestionHandler` marker and the turn 
 ### Adding a tool
 
 A bean annotated `@AgentTool` has its Spring AI `@Tool` methods offered to the agent; the annotation
-is allowed on a `@Bean` method too, for a type from a library. `scenario` gates which runs see it.
+is allowed on a `@Bean` method too, for a type from a library. Every annotated bean is offered to
+every run unless the run's scenario keeps it out, by overriding `AgentScenario.offers(tool)`.
 Per-request identity arrives through the tool context, under typed keys:
 
 ```java
-@AgentTool(scenario = AgentScenario.CHAT)
+@AgentTool
 @Component
 public class ProfileTool {
 

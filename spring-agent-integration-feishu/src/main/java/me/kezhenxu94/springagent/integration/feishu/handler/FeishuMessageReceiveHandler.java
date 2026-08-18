@@ -16,7 +16,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
-import me.kezhenxu94.springagent.core.agent.AgentScenario;
+import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
@@ -151,7 +151,7 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
       springAgent.fire(
           AgentRequest.builder()
               .requestId(messageId)
-              .scenario(AgentScenario.CHAT)
+              .scenario(BuiltInScenarios.CHAT)
               .userId(userOpenId)
               .chatId(message.getChatId())
               .chatType(message.getChatType())

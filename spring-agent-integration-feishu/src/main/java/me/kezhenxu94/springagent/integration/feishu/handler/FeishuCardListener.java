@@ -15,7 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.agent.AgentRunRegistry;
-import me.kezhenxu94.springagent.core.agent.AgentScenario;
+import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
@@ -126,7 +126,7 @@ public class FeishuCardListener implements AgentResponseListener {
       // Only a chat run, and registering this is what decides whether the agent may ask at all. A
       // scheduled task has no conversation memory, so an answer arriving later would have nothing
       // to rejoin — its prompt already tells the model there is nobody to ask.
-      if (request.scenario() == AgentScenario.CHAT) {
+      if (request.scenario() == BuiltInScenarios.CHAT) {
         registry.addQuestionHandler(
             new FeishuQuestionHandler(
                 request,
@@ -151,7 +151,7 @@ public class FeishuCardListener implements AgentResponseListener {
    * pointless; a scheduled task does its work regardless and goes ahead unreported.
    */
   private static void abortOrCarryOn(final AgentRunRegistry registry, final String reason) {
-    if (registry.request().scenario() == AgentScenario.CHAT) {
+    if (registry.request().scenario() == BuiltInScenarios.CHAT) {
       registry.abort(reason);
     }
   }

@@ -9,6 +9,7 @@ import java.util.Map;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentRunRegistry;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
+import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import org.junit.jupiter.api.Test;
 
 class CliRunListenerTest {
@@ -20,7 +21,7 @@ class CliRunListenerTest {
 
   @Test
   void attachesEverythingAChatRunNeeds() {
-    final var registry = new AgentRunRegistry(request(AgentScenario.CHAT));
+    final var registry = new AgentRunRegistry(request(BuiltInScenarios.CHAT));
 
     listener.onStart(registry);
 
@@ -37,7 +38,7 @@ class CliRunListenerTest {
 
   @Test
   void doesNotOfferToAskOnAScheduledTask() {
-    final var registry = new AgentRunRegistry(request(AgentScenario.SCHEDULED_TASK));
+    final var registry = new AgentRunRegistry(request(BuiltInScenarios.SCHEDULED_TASK));
 
     listener.onStart(registry);
 

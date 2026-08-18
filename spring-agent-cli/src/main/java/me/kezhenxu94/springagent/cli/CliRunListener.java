@@ -4,7 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.agent.AgentRunRegistry;
-import me.kezhenxu94.springagent.core.agent.AgentScenario;
+import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import org.springframework.stereotype.Component;
 
 /**
@@ -40,7 +40,7 @@ public class CliRunListener implements AgentResponseListener {
     // a run somebody is watching: a scheduled task fires whether or not the user is at the
     // terminal,
     // and its prompt already tells the model there is nobody to ask.
-    if (registry.request().scenario() == AgentScenario.CHAT) {
+    if (registry.request().scenario() == BuiltInScenarios.CHAT) {
       registry.addQuestionHandler(questionHandler);
     }
 
