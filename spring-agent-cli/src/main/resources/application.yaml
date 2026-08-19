@@ -131,23 +131,19 @@ logging:
     # cold start is one line per tool. Harmless in a server log, but this is the file a user opens
     # when something went wrong, and it buries everything else.
     org.springframework.ai.vectorstore.SimpleVectorStore: WARN
-storage:
-  location: ${user.home}/.spring-agent/
-  # Validated as non-blank though nothing here reads them: they are for a deployment serving files
-  # over HTTP. Pointed at the directory the files are actually in, so any that gets printed leads
-  # somewhere the user can look.
-  base-url: file://${user.home}/.spring-agent/%s
-  cdn-url: file://${user.home}/.spring-agent/%s
-share:
-  # Where PublishFileTool says it put a file. No server to serve it, so the honest answer is the
-  # path on this machine.
-  base-url: file://${user.home}/.spring-agent/
 app:
   # Which language the agent's own text speaks — what it writes into a conversation itself, as
   # opposed to what the model wrote or what a surface says directly. The note recording that the
   # user has already been asked something is the one so far. Defaults to the host's language; en
   # and zh_CN ship with it, and any other is a core/messages_xx.properties on the classpath away.
   locale: ${SPRING_AGENT_LOCALE:}
+  storage:
+    location: ${user.home}/.spring-agent/
+    # Validated as non-blank though nothing here reads them: they are for a deployment serving files
+    # over HTTP. Pointed at the directory the files are actually in, so any that gets printed leads
+    # somewhere the user can look.
+    base-url: file://${user.home}/.spring-agent/%s
+    cdn-url: file://${user.home}/.spring-agent/%s
   cli:
     # Who the agent thinks it is talking to. Scopes the workspace, the memories and the stored
     # credentials, so changing it is equivalent to starting again as somebody else.
@@ -177,6 +173,10 @@ app:
         # questions are drawn in the terminal and the run waits for the answer, so unlike the chat
         # integrations there is no expiry to configure — CliQuestionHandler explains why.
         enabled: ${ASK_USER_QUESTION_ENABLED:true}
+      publish-file:
+        # Where PublishFile says it put a file. No server to serve it, so the honest answer is the
+        # path on this machine.
+        base-url: file://${user.home}/.spring-agent/
       shell:
         # `local`: Spring AI's own ShellTools, in this process as this user, with their filesystem,
         # secrets and network. That is what makes the tool useful on a laptop and it is also the

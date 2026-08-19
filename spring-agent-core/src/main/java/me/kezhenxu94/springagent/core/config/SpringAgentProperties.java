@@ -155,7 +155,9 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
      *
      * <p>Not every tool is configured here: which shell backend is in play is chosen by {@code
      * app.ai.tools.shell.type}, read directly by {@code ShellBackendResolver} because it selects
-     * between auto-configurations and so has to be readable before any bean exists.
+     * between auto-configurations and so has to be readable before any bean exists, and {@code
+     * app.ai.tools.publish-file.base-url} is a {@code @Value} on {@code PublishFileTool} so that a
+     * deployment which never states it fails at startup rather than on the first published link.
      */
     public record Tools(AskUserQuestion askUserQuestion) {
       public Tools {

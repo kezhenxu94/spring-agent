@@ -36,11 +36,16 @@ public class PublishFileTool {
   private final UserWorkspaceFactory userWorkspaceFactory;
   private final PublishedResourceRepo publishedResourceRepo;
 
+  // Read straight from the environment rather than through SpringAgentProperties.Ai.Tools, where
+  // the other per-tool settings live: it has no default worth writing down, and a placeholder with
+  // none fails the context at startup, whereas a null bound into that record would surface as a
+  // broken link on the first publish instead.
+  //
   // Not final, matching FeishuTools#feishuReplyCard: @Value on a field is an injection point in its
   // own right, and AOT generates a plain field assignment for it, which cannot target a final field
   // the way the JVM's reflective injection can.
-  @Value("${share.base-url}")
-  String shareBaseUrl;
+  @Value("${app.ai.tools.publish-file.base-url}")
+  String baseUrl;
 
   @Tool(
       name = "PublishFile",
@@ -420,7 +425,7 @@ public class PublishFileTool {
       final String token,
       final StoredContent stored) {
     final var urlBuilder =
-        UriComponentsBuilder.fromUriString(shareBaseUrl)
+        UriComponentsBuilder.fromUriString(baseUrl)
             .pathSegment("share", visibilityDir, userId, token);
     if (!stored.directory()) {
       urlBuilder.pathSegment(stored.entryFilename());

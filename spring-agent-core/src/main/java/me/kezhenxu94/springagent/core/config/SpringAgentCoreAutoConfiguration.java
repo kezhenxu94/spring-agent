@@ -81,7 +81,7 @@ public class SpringAgentCoreAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  @ConfigurationProperties("storage")
+  @ConfigurationProperties("app.storage")
   @Validated
   public StorageProperties storageProperties() {
     return FileSystemStorageProperties.builder().build();

@@ -190,12 +190,6 @@ management:
     web:
       exposure:
         include: health,prometheus
-storage:
-  location: ./data/
-  base-url: http://localhost:8080/files/%s
-  cdn-url: http://localhost:8080/files/%s
-share:
-  base-url: http://localhost:8080
 app:
   # Which language the agent's own text speaks — what it writes into a conversation itself, as
   # opposed to what the model wrote or what a surface says directly. The note recording that the
@@ -204,6 +198,10 @@ app:
   # saying so twice. en and zh_CN ship with it, and any other is a core/messages_xx.properties on
   # the classpath away.
   locale: ${SPRING_AGENT_LOCALE:${FEISHU_LOCALE:}}
+  storage:
+    location: ./data/
+    base-url: http://localhost:8080/files/%s
+    cdn-url: http://localhost:8080/files/%s
   persistence:
     # Where the agent's own records live — MCP server configs, scheduled tasks, published resources,
     # shell credentials and the conversation history, all together. One of:
@@ -329,6 +327,14 @@ app:
         # How long the questions stay answerable. Capped from above by Feishu regardless of what is
         # set here: the card the form lives on expires 14 days after it is created.
         ttl: ${ASK_USER_QUESTION_TTL:24h}
+      publish-file:
+        # Where the links PublishFile hands out point: the address a colleague, or anyone holding a
+        # public link, reaches this application on. ShareController serves them under /share/, so
+        # this is the origin only — scheme, host and port, no path.
+        #
+        # Not app.storage.base-url, which serves an uploaded file directly: a published link carries
+        # a token this application has to check before it hands the file over, and expires.
+        base-url: http://localhost:8080
       shell:
         # Where the agent's Bash tool runs commands. One of:
         #
@@ -397,7 +403,7 @@ app:
           # Unlike the Kubernetes sandbox, a container does not outlive this application: the
           # Testcontainers reaper stops every one of them when the JVM exits, so a restart gives
           # each user a fresh sandbox and loses their background shells. Files under
-          # storage.location survive, because they are bind-mounted from the host.
+          # app.storage.location survive, because they are bind-mounted from the host.
           idle-timeout: 30m
           hard-deadline: 4h
           startup-timeout: 60s

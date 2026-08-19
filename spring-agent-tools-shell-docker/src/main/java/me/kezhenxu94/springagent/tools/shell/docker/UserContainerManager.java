@@ -23,8 +23,8 @@ import org.testcontainers.utility.DockerImageName;
  *
  * <p>The counterpart of {@code UserPodManager} in the Kubernetes module, and it deliberately keeps
  * that class's shape: one sandbox per user, created on first use, its working directory the user's
- * own home under {@code storage.location}, and a watchdog inside the container that exits when the
- * user stops using it.
+ * own home under {@code app.storage.location}, and a watchdog inside the container that exits when
+ * the user stops using it.
  *
  * <p>Where the two differ is what outlives this process. A Job's Pod is the cluster's, and a
  * restarted application finds it again by label; a container started through Testcontainers belongs
@@ -101,7 +101,7 @@ public class UserContainerManager implements AutoCloseable {
    * Where the user's files live, identical inside and outside the container.
    *
    * <p>Bound at the same path on both sides on purpose: {@code UserWorkspaceFactory} hands the
-   * model paths under {@code storage.location}, and the upload and file-serving paths read them
+   * model paths under {@code app.storage.location}, and the upload and file-serving paths read them
    * back from the host, so a container-local path would make the two disagree about the same file.
    */
   public String userHome(final String userId) {

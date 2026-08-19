@@ -66,9 +66,9 @@ class PublishFileToolTest {
         .deleteById(any());
 
     tool = new PublishFileTool(storageService, userWorkspaceFactory, publishedResourceRepo);
-    // Assigned rather than passed to the constructor: shareBaseUrl is @Value-injected into the
-    // field, which is how Spring populates it too.
-    tool.shareBaseUrl = "http://localhost:8080";
+    // Assigned rather than passed to the constructor: baseUrl is @Value-injected into the field,
+    // which is how Spring populates it too.
+    tool.baseUrl = "http://localhost:8080";
   }
 
   private ToolContext contextFor(final String userId) {
