@@ -92,6 +92,7 @@ class AgentToolsProviderAskTest {
               .chatId("oc_1")
               .userMessage(user -> user.text("Which database?"))
               .build(),
+          Map.of(),
           todos -> {},
           // Answers nothing, as an asynchronous channel does and a broken synchronous one would.
           questions -> Map.of(),

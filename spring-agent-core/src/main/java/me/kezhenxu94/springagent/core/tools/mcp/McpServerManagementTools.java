@@ -126,7 +126,9 @@ name overwrites its configuration.
     final List<String> toolNames;
     McpSyncClient client = null;
     try {
-      client = clientFactory.createAndInitialize(config);
+      // The registration probe goes out with the same headers a run would send, contributors
+      // included, so a server that only accepts the call once one is present is not rejected here.
+      client = clientFactory.createAndInitialize(config, context.getContext());
       toolNames = client.listTools().tools().stream().map(t -> t.name()).toList();
     } catch (IllegalArgumentException e) {
       return "Error: " + e.getMessage();

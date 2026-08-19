@@ -209,11 +209,19 @@ public class SpringAgent {
     Flux.defer(
             () -> {
               try {
+                // Assembled before composition, not just for the run: an MCP server is called with
+                // the headers its contributors derive from this map, so it has to exist before the
+                // clients that will consult it are built.
+                final var toolContext = toolContextFor(request, registry);
                 final var composition =
                     agentToolsProvider.compose(
-                        request, fanOut(todoEventHandlers), questionHandler, answersArriveLater);
+                        request,
+                        toolContext,
+                        fanOut(todoEventHandlers),
+                        questionHandler,
+                        answersArriveLater);
                 mcpTools.set(composition.mcpTools());
-                return rawStream(request, composition, toolContextFor(request, registry));
+                return rawStream(request, composition, toolContext);
               } catch (Exception e) {
                 return Flux.<ChatResponse>error(e);
               }

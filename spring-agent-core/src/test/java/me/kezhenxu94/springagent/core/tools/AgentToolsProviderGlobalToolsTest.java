@@ -66,6 +66,7 @@ class AgentToolsProviderGlobalToolsTest {
                   .chatId("oc_1")
                   .userMessage(user -> user.text("Search for something."))
                   .build(),
+              Map.of(),
               todos -> {},
               questions -> Map.of(),
               true);

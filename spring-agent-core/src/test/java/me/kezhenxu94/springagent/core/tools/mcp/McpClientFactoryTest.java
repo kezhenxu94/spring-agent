@@ -10,7 +10,8 @@ import org.junit.jupiter.api.Test;
 
 class McpClientFactoryTest {
 
-  private final McpClientFactory factory = new McpClientFactory(new McpProperties(List.of()));
+  private final McpClientFactory factory =
+      new McpClientFactory(new McpProperties(List.of()), List.of());
 
   @Test
   @DisplayName("rejects non-https URLs")
@@ -60,7 +61,7 @@ class McpClientFactoryTest {
   @DisplayName("trusted hosts bypass the https-only and private-address checks")
   void trustedHostsBypassGuard() {
     final var trustedFactory =
-        new McpClientFactory(new McpProperties(List.of("monitoring-mcp.monitoring")));
+        new McpClientFactory(new McpProperties(List.of("monitoring-mcp.monitoring")), List.of());
 
     assertThatCode(() -> trustedFactory.validateRemoteUrl("http://monitoring-mcp.monitoring/mcp"))
         .doesNotThrowAnyException();
@@ -73,7 +74,7 @@ class McpClientFactoryTest {
   @DisplayName("non-trusted hosts are still blocked even when a trusted host is configured")
   void nonTrustedHostsStillBlocked() {
     final var trustedFactory =
-        new McpClientFactory(new McpProperties(List.of("monitoring-mcp.monitoring")));
+        new McpClientFactory(new McpProperties(List.of("monitoring-mcp.monitoring")), List.of());
 
     assertThatThrownBy(
             () -> trustedFactory.validateRemoteUrl("http://some-other-internal-svc.default/mcp"))
@@ -84,7 +85,7 @@ class McpClientFactoryTest {
   @DisplayName("trusted hosts still require the http or https scheme")
   void trustedHostsStillRequireHttpOrHttpsScheme() {
     final var trustedFactory =
-        new McpClientFactory(new McpProperties(List.of("monitoring-mcp.monitoring")));
+        new McpClientFactory(new McpProperties(List.of("monitoring-mcp.monitoring")), List.of());
 
     assertThatThrownBy(
             () -> trustedFactory.validateRemoteUrl("file://monitoring-mcp.monitoring/mcp"))

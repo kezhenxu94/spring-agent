@@ -16,11 +16,15 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.stereotype.Component;
 
 /**
@@ -32,6 +36,21 @@ import org.springframework.stereotype.Component;
  * link-local addresses before any connection is attempted, unless the host is explicitly
  * allowlisted via {@code app.ai.tools.mcp.trusted-hosts} (e.g. known in-cluster services such as
  * github-mcp).
+ *
+ * <p><b>Headers.</b> A server's own {@link McpServerConfig#headers()} are fixed and go out on every
+ * request. Headers that depend on who is calling come from the {@link McpHeaderContributor} beans,
+ * and reaching them at call time takes the one seam the MCP SDK offers for it: {@code
+ * transportContextProvider}. The supplier registered there is invoked once per {@code
+ * McpSyncClient} call, on the thread making it, and what it returns travels down the Reactor
+ * context to the transport's request customizer — which is the only place a header can still be
+ * added. The transport builder cannot do this itself: a builder customizer runs once, when the
+ * connection is made, and never sees a call.
+ *
+ * <p>That thread is neither the one the caller came in on: assembly runs on a bounded-elastic
+ * worker and the call on whatever thread the {@code ChatClient}'s tool loop is using. Nothing
+ * thread-bound at the edge (a security or request context holder) survives to either, which is why
+ * a contributor is handed the run's tool context and an integration that has such a value must put
+ * it there while it still can.
  */
 @Slf4j
 @Component
@@ -42,21 +61,32 @@ public class McpClientFactory {
   private static final int HASH_PREFIX_LENGTH = 16;
 
   private final Set<String> trustedHosts;
+  private final List<McpHeaderContributor> headerContributors;
 
-  public McpClientFactory(final McpProperties properties) {
+  public McpClientFactory(
+      final McpProperties properties, final List<McpHeaderContributor> headerContributors) {
     this.trustedHosts =
         properties.trustedHosts().stream()
             .map(h -> h.toLowerCase(Locale.ROOT))
             .collect(Collectors.toUnmodifiableSet());
+    this.headerContributors = headerContributors;
   }
 
   /**
    * Validates the URL, opens the transport and performs the MCP handshake. Throws on any failure;
    * the caller decides whether to skip the server (per-request assembly) or surface the error
    * (registration).
+   *
+   * @param toolContext the run's tool context, held for the life of the client and passed to the
+   *     {@link McpHeaderContributor}s on every call it makes.
    */
-  public McpSyncClient createAndInitialize(final McpServerConfig config) {
+  public McpSyncClient createAndInitialize(
+      final McpServerConfig config, final Map<String, Object> toolContext) {
     validateRemoteUrl(config.url());
+    // Wrapped once here rather than per call: the map is fixed for the life of the client, and
+    // ToolContext is what ToolContexts reads and what a @Tool method is handed, so a contributor
+    // resolves identity exactly the way every other consumer of the run's context does.
+    final var context = new ToolContext(toolContext);
     final var transport = buildTransport(config);
     final var version =
         config.version() == null || config.version().isBlank()
@@ -71,9 +101,43 @@ public class McpClientFactory {
             .websiteUrl(config.websiteUrl())
             .build();
     final var client =
-        McpClient.sync(transport).clientInfo(clientInfo).requestTimeout(REQUEST_TIMEOUT).build();
+        McpClient.sync(transport)
+            .clientInfo(clientInfo)
+            .requestTimeout(REQUEST_TIMEOUT)
+            .transportContextProvider(
+                () -> McpDynamicHeaders.carrying(dynamicHeaders(config, context)))
+            .build();
     client.initialize();
     return client;
+  }
+
+  /**
+   * Asks every contributor what it wants to add to this call.
+   *
+   * <p>A contributor that throws costs its own headers and nothing else: whatever it was going to
+   * add is worth less than the tool call it would otherwise take down, and the run has no way to
+   * recover from a failure this deep in the transport.
+   */
+  Map<String, String> dynamicHeaders(final McpServerConfig config, final ToolContext toolContext) {
+    if (headerContributors.isEmpty()) {
+      return Map.of();
+    }
+    final var headers = new LinkedHashMap<String, String>();
+    for (final var contributor : headerContributors) {
+      try {
+        final var contributed = contributor.headers(config, toolContext);
+        if (contributed != null) {
+          headers.putAll(contributed);
+        }
+      } catch (Exception e) {
+        log.warn(
+            "Skipping headers from {} for MCP server '{}': {}",
+            contributor.getClass().getSimpleName(),
+            config.name(),
+            e.getMessage());
+      }
+    }
+    return headers;
   }
 
   /**
@@ -99,18 +163,40 @@ public class McpClientFactory {
   }
 
   private McpClientTransport buildTransport(final McpServerConfig config) {
-    final var headers = config.headers();
     final var clientBuilder = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT);
-    final McpSyncHttpClientRequestCustomizer headerCustomizer =
-        (requestBuilder, method, uri, body, context) -> {
-          if (headers != null) {
-            headers.forEach(requestBuilder::header);
-          }
-        };
     return HttpClientStreamableHttpTransport.builder(config.url())
         .clientBuilder(clientBuilder)
-        .httpRequestCustomizer(headerCustomizer)
+        .httpRequestCustomizer(headerCustomizer(config))
         .build();
+  }
+
+  /**
+   * Puts both kinds of header on an outgoing request: the server's own, then whatever the transport
+   * context carries for this particular call.
+   *
+   * <p>{@code setHeader} for the dynamic ones, {@code header} for the static: the former replaces
+   * and the latter appends, and a contributor's whole reason to name a header the registration
+   * already named is that it knows better. Appending would send both values.
+   *
+   * <p>Only header names are logged, never values — an Authorization header is the ordinary case
+   * for both halves.
+   */
+  McpSyncHttpClientRequestCustomizer headerCustomizer(final McpServerConfig config) {
+    final var staticHeaders = config.headers();
+    return (requestBuilder, method, uri, body, context) -> {
+      if (staticHeaders != null) {
+        staticHeaders.forEach(requestBuilder::header);
+      }
+      final var dynamic = McpDynamicHeaders.from(context);
+      if (!dynamic.isEmpty()) {
+        log.debug(
+            "Applying {} dynamic header(s) {} to MCP server \'{}\'",
+            dynamic.size(),
+            dynamic.keySet(),
+            config.name());
+        dynamic.forEach(requestBuilder::setHeader);
+      }
+    };
   }
 
   /**
