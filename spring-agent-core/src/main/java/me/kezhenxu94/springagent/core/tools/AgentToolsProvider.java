@@ -93,11 +93,12 @@ public class AgentToolsProvider {
 
   public AgentComposition compose(
       final AgentRequest request,
+      final Map<String, Object> toolContext,
       final TodoEventHandler todoEventHandler,
       final QuestionHandler questionHandler,
       final boolean answersArriveLater)
       throws IOException {
-    final var agentTools = build(request.userId(), request.chatId());
+    final var agentTools = build(request.userId(), request.chatId(), toolContext);
     // From here on the MCP clients are live, and the caller only learns of them by being handed the
     // composition. Anything that throws in between would leave them open with nobody holding a
     // reference to close them — the run's own cleanup included, since it has not been given them
@@ -242,7 +243,8 @@ public class AgentToolsProvider {
         .toList();
   }
 
-  public AgentTools build(String userId, String chatId) throws IOException {
+  public AgentTools build(String userId, String chatId, Map<String, Object> toolContext)
+      throws IOException {
     final var userWs = userWorkspaceFactory.forOwner(userId);
 
     final var fileSystemTools = FileSystemTools.builder().allowedDirectory(userWs.root()).build();
@@ -258,7 +260,7 @@ public class AgentToolsProvider {
       skillsTool = Optional.empty();
     }
 
-    final var mcpTools = buildMcpTools(userId, chatId);
+    final var mcpTools = buildMcpTools(userId, chatId, toolContext);
 
     return new AgentTools(fileSystemTools, skillsTool, mcpTools);
   }
@@ -274,7 +276,8 @@ public class AgentToolsProvider {
    * <p>Virtual threads, not {@code parallelStream}: this is blocking I/O with a timeout measured in
    * tens of seconds, which is not what the common ForkJoinPool is for.
    */
-  private McpTools buildMcpTools(final String userId, final String chatId) {
+  private McpTools buildMcpTools(
+      final String userId, final String chatId, final Map<String, Object> toolContext) {
     final var identifiers =
         chatId == null || chatId.isBlank() ? List.of(userId) : List.of(userId, chatId);
     final var configs =
@@ -291,7 +294,8 @@ public class AgentToolsProvider {
                         Map.entry(
                             config,
                             CompletableFuture.supplyAsync(
-                                () -> mcpClientFactory.createAndInitialize(config), executor)))
+                                () -> mcpClientFactory.createAndInitialize(config, toolContext),
+                                executor)))
                 .toList();
         for (final var entry : pending) {
           try {
