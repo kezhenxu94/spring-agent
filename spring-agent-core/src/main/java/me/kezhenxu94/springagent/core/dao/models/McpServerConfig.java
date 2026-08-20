@@ -53,6 +53,14 @@ public class McpServerConfig {
   public static final String COLLECTION_NAME = "mcp_servers";
   public static final String DEFAULT_VERSION = "1.0.0";
 
+  /**
+   * A {@link #sharedWith} entry meaning "every caller," not one specific open_id/chat_id. {@code
+   * findAccessibleTo}'s {@code identifiers} argument only needs to include this value for a config
+   * carrying it to become visible to everyone, on every backend — {@code sharedWith} is already
+   * queried by plain equality/{@code IN}, so this sentinel needs no query changes to work.
+   */
+  public static final String SHARED_WITH_ALL = "*";
+
   @Id @jakarta.persistence.Id private String id;
 
   // findByOwnerId, findByOwnerIdAndName.
