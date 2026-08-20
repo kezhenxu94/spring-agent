@@ -119,6 +119,25 @@ public class McpServerConfig {
   private List<String> sharedWith = new ArrayList<>();
 
   /**
+   * Every {@link #sharedWith} value that reaches the given caller: themselves, the chat they are
+   * writing from when there is one, and {@link #SHARED_WITH_ALL}. Suitable as the {@code
+   * identifiers} argument of both {@code findAccessibleTo} and {@code findBySharedWithIn}.
+   *
+   * <p>Here rather than at either call site because there are two of them — the lookup that gives a
+   * run its MCP tools, and the registry tool that tells the user which servers they have — and a
+   * server reachable by one but invisible to the other is a bug either way round.
+   */
+  public static List<String> accessIdentifiers(final String callerId, final String chatId) {
+    final var identifiers = new ArrayList<String>(3);
+    identifiers.add(callerId);
+    if (chatId != null && !chatId.isBlank()) {
+      identifiers.add(chatId);
+    }
+    identifiers.add(SHARED_WITH_ALL);
+    return List.copyOf(identifiers);
+  }
+
+  /**
    * SSE was dropped (the upstream MCP SDK deprecated it); only streamable HTTP remains, for now.
    */
   public enum Transport {

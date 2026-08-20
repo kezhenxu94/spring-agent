@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
@@ -173,16 +174,17 @@ name overwrites its configuration.
       name = "ListMcpServers",
       description =
           "List the MCP servers registered by this user (name, transport, URL, enabled, who it's"
-              + " shared with), plus any servers others have shared with this user or the current"
-              + " chat (name and transport only — connection details stay private to the owner),"
-              + " plus the servers this application configures for everyone, which are already"
-              + " available to every user here and cannot be added, removed or shared from here.")
+              + " shared with), plus any servers others have shared with this user, the current"
+              + " chat, or everyone (name and transport only — connection details stay private to"
+              + " the owner), plus the servers this application configures for everyone, which are"
+              + " already available to every user here and cannot be added, removed or shared from"
+              + " here.")
   public String listMcpServers(final ToolContext context) {
     final var ownerId = ToolContexts.require(context, ToolContexts.USER_ID);
     final var chatId = ToolContexts.get(context, ToolContexts.CHAT_ID);
 
     final var owned = repo.findByOwnerId(ownerId);
-    final var identifiers = shareIdentifiers(ownerId, chatId);
+    final var identifiers = McpServerConfig.accessIdentifiers(ownerId, chatId);
     final var shared =
         repo.findBySharedWithIn(identifiers).stream()
             .filter(s -> !s.ownerId().equals(ownerId))
@@ -208,7 +210,7 @@ name overwrites its configuration.
             .append(
                 s.sharedWith() == null || s.sharedWith().isEmpty()
                     ? ""
-                    : " (shared with: " + String.join(", ", s.sharedWith()) + ")")
+                    : " (shared with: " + shareTargets(s.sharedWith()) + ")")
             .append("\n");
       }
     }
@@ -322,6 +324,16 @@ name overwrites its configuration.
   }
 
   /**
+   * The share list as the reader should see it: {@link McpServerConfig#SHARED_WITH_ALL} is a
+   * sentinel, and a bare {@code *} in the answer says nothing about who can reach the server.
+   */
+  private static String shareTargets(final List<String> sharedWith) {
+    return sharedWith.stream()
+        .map(target -> McpServerConfig.SHARED_WITH_ALL.equals(target) ? "everyone" : target)
+        .collect(Collectors.joining(", "));
+  }
+
+  /**
    * The connections configured under {@code spring.ai.mcp.client.streamable-http}, keyed by name,
    * empty when none are or when MCP is disabled altogether.
    *
@@ -364,15 +376,6 @@ name overwrites its configuration.
 
   private static String blankToNull(final String value) {
     return value == null || value.isBlank() ? null : value.trim();
-  }
-
-  private List<String> shareIdentifiers(final String ownerId, final String chatId) {
-    final var identifiers = new ArrayList<String>();
-    identifiers.add(ownerId);
-    if (chatId != null && !chatId.isBlank()) {
-      identifiers.add(chatId);
-    }
-    return identifiers;
   }
 
   @Tool(

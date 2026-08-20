@@ -154,13 +154,46 @@ class McpServerManagementToolsShareTest {
             .headers(java.util.Map.of("Authorization", "Bearer secret"))
             .sharedWith(new ArrayList<>(List.of(CHAT_ID)))
             .build();
-    when(repo.findBySharedWithIn(List.of(OWNER_ID, CHAT_ID))).thenReturn(List.of(sharedToMe));
+    when(repo.findBySharedWithIn(McpServerConfig.accessIdentifiers(OWNER_ID, CHAT_ID)))
+        .thenReturn(List.of(sharedToMe));
 
     final var result = tools.listMcpServers(context);
 
     assertThat(result).contains("Owned by you:").contains("ops").contains(TARGET_USER_ID);
     assertThat(result).contains("Shared with you:").contains("weather").contains(OTHER_OWNER_ID);
     assertThat(result).doesNotContain("weather.example.com").doesNotContain("secret");
+  }
+
+  @Test
+  @DisplayName("listing includes a server someone else shared with everyone")
+  void listingIncludesSharedWithAll() {
+    final var sharedToAll =
+        McpServerConfig.builder()
+            .ownerId(OTHER_OWNER_ID)
+            .name("weather")
+            .transport(McpServerConfig.Transport.STREAMABLE_HTTP)
+            .url("https://weather.example.com/mcp")
+            .sharedWith(new ArrayList<>(List.of(McpServerConfig.SHARED_WITH_ALL)))
+            .build();
+    when(repo.findBySharedWithIn(McpServerConfig.accessIdentifiers(OWNER_ID, CHAT_ID)))
+        .thenReturn(List.of(sharedToAll));
+
+    final var result = tools.listMcpServers(context);
+
+    assertThat(result).contains("Shared with you:").contains("weather").contains(OTHER_OWNER_ID);
+  }
+
+  @Test
+  @DisplayName("the everyone sentinel is not shown to the reader as a bare asterisk")
+  void sharedWithAllIsSpelledOut() {
+    final var owned = sampleConfig();
+    owned.sharedWith().add(McpServerConfig.SHARED_WITH_ALL);
+    when(repo.findByOwnerId(OWNER_ID)).thenReturn(List.of(owned));
+
+    final var result = tools.listMcpServers(context);
+
+    assertThat(result).contains("shared with: everyone");
+    assertThat(result).doesNotContain("shared with: *");
   }
 
   @Test

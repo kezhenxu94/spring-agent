@@ -278,10 +278,7 @@ public class AgentToolsProvider {
    */
   private McpTools buildMcpTools(
       final String userId, final String chatId, final Map<String, Object> toolContext) {
-    final var identifiers =
-        chatId == null || chatId.isBlank()
-            ? List.of(userId, McpServerConfig.SHARED_WITH_ALL)
-            : List.of(userId, chatId, McpServerConfig.SHARED_WITH_ALL);
+    final var identifiers = McpServerConfig.accessIdentifiers(userId, chatId);
     final var configs =
         mcpServerConfigRepo.findAccessibleTo(userId, identifiers).stream()
             .filter(McpServerConfig::enabled)
