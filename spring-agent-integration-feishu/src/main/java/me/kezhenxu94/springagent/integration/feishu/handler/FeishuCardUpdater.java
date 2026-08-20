@@ -49,6 +49,7 @@ import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.web.client.RestTemplate;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 @Slf4j
@@ -67,6 +68,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   private static final Pattern IMAGE_PATTERN = Pattern.compile("!\\[(.*?)\\]\\(([^)\\s]+)\\)");
 
   private static final String FILE_SCHEME = "file:";
+
+  private static final String DESCRIPTION_FIELD = "description";
 
   private final Client feishu;
   private final JsonMapper om;
@@ -171,42 +174,75 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     return Strings.isNullOrEmpty(msg) ? error.getClass().getSimpleName() : msg;
   }
 
+  /**
+   * Announces a tool call on the card, above the fields it was called with.
+   *
+   * <p>Tools that take a {@code description} — {@code Bash} asks the model for one, in active
+   * voice, saying what the command does — describe the call far better than its name does, so that
+   * text becomes the line and is left out of the fields below rather than said twice.
+   */
   public synchronized void setToolStatus(
       String toolName, String toolInput, ToolContext toolContext) {
-    final var quotedInput = quoteToolInput(toolInput);
+    final var input = parseObject(toolInput);
+    final var description = input == null ? null : singleLine(input.path(DESCRIPTION_FIELD));
     log.info("Tool call: cardId={}, tool={}", cardId, toolName);
-    sendContent(
-        lastBaseContent
-            + "\n"
-            + messages.get("card-calling-tool", Strings.nullToEmpty(toolName))
-            + quotedInput);
+    final var header =
+        description != null
+            ? description
+            : messages.get("card-calling-tool", Strings.nullToEmpty(toolName));
+    final var fields =
+        input == null ? Strings.nullToEmpty(toolInput) : formatFields(input, description != null);
+    sendContent(lastBaseContent + "\n" + header + quote(fields));
   }
 
-  private String quoteToolInput(String toolInput) {
+  /** The input parsed as a JSON object, or {@code null} if it is neither JSON nor an object. */
+  private JsonNode parseObject(String toolInput) {
     if (Strings.isNullOrEmpty(toolInput)) {
-      return "";
+      return null;
     }
-    final var quoted =
-        Arrays.stream(formatToolInput(toolInput).split("\n"))
-            .map(line -> "> " + line)
-            .collect(Collectors.joining("\n"));
-    return "\n" + quoted;
-  }
-
-  private String formatToolInput(String toolInput) {
     try {
       final var node = om.readTree(toolInput);
-      if (!node.isObject()) {
-        return toolInput;
-      }
-      final var fields =
-          node.properties().stream()
-              .map(entry -> entry.getKey() + ": " + entry.getValue().asString())
-              .collect(Collectors.toList());
-      return String.join("\n", fields);
+      return node.isObject() ? node : null;
     } catch (JacksonException e) {
-      return toolInput;
+      return null;
     }
+  }
+
+  /**
+   * The node as one line of text, or {@code null} if it holds no text to show. A description the
+   * model wrote may span lines; the card gives a call one line, so they are folded into it.
+   */
+  private static String singleLine(JsonNode node) {
+    if (!node.isString()) {
+      return null;
+    }
+    final var text = node.stringValue().strip().replaceAll("\\s*\\R\\s*", " ");
+    return text.isEmpty() ? null : text;
+  }
+
+  private static String formatFields(JsonNode input, boolean skipDescription) {
+    return input.properties().stream()
+        .filter(entry -> !skipDescription || !DESCRIPTION_FIELD.equals(entry.getKey()))
+        .map(entry -> entry.getKey() + ": " + valueOf(entry.getValue()))
+        .collect(Collectors.joining("\n"));
+  }
+
+  /**
+   * A field holding an object or an array is shown as the JSON it is: readable enough, where {@code
+   * asString()} refuses to coerce it and would cost the reader every other field with it.
+   */
+  private static String valueOf(JsonNode value) {
+    return value.isContainer() ? value.toString() : value.asString();
+  }
+
+  private static String quote(String text) {
+    if (text.isEmpty()) {
+      return "";
+    }
+    return "\n"
+        + Arrays.stream(text.split("\n"))
+            .map(line -> "> " + line)
+            .collect(Collectors.joining("\n"));
   }
 
   private synchronized void sendContent(String content) {
