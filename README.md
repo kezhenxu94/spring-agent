@@ -4,10 +4,64 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-21%2B-orange)](#)
 
-A tool-using agent runtime on Spring Boot 4 and Spring AI: shell sandboxes, MCP servers, scheduled
-tasks, chat memory, file publishing and a searchable tool index, behind one entry point. Run the
-deployable server or the command line as they are, or take the libraries and give the agent a
-surface of your own.
+An SDK for standing up a tool-using agent on Spring Boot 4 and Spring AI: shell sandboxes, MCP
+servers, skills, memories, scheduled tasks, chat memory, file publishing and a searchable tool
+index, behind one entry point. Add two dependencies and a `@SpringBootApplication` and you have an
+agent; or run the surfaces that ship here — a deployable server with Feishu/Lark chat, and a command
+line — as they are.
+
+Every property and environment variable is documented in place, with the reason for its default, in
+[`spring-agent-app/src/main/resources/application.yaml`](spring-agent-app/src/main/resources/application.yaml).
+That file, not this README, is the configuration reference.
+
+## (Nearly) everything is a tool
+
+The agent is not a fixed feature list. Almost everything it can do arrives as a tool, and the
+registries that decide what tools exist are themselves tools — so the agent extends itself, in
+conversation, without a redeploy:
+
+| Ask it to… | …and it calls | …which gives the next run |
+| --- | --- | --- |
+| use an MCP server you name | `AddMcpServer` | every tool that server offers |
+| learn a procedure | `WriteSkillFile` | a skill, loaded on demand |
+| remember something about you | the memory tools | notes it reads back before replying |
+| hold a token for later | `SetCredential` | the secret in its sandbox, never in a prompt |
+| do this every Monday | `CreateScheduledTask` | a run that fires on its own |
+
+Nothing here is registered up front. `AgentToolsProvider.compose(...)` assembles the tool set once
+per request out of the `@AgentTool` beans in the context, the MCP servers that request's user can
+reach, that user's skills, and the callbacks of every `ToolCallbackProvider` bean — so a set that
+grew a minute ago is offered to the next turn. Because the set is open-ended, both surfaces here
+turn on Spring AI's tool-search advisor, which retrieves the few tools a turn actually needs instead
+of sending the model all of them.
+
+Which is also how you extend it from the outside: a bean with `@Tool` methods is a tool, an MCP
+server is a tool, a skill is a tool. `AgentScenario.offers(tool)` is the one gate — that is how a
+run that fired on a schedule is denied `ScheduledTaskTool` and cannot breed more of itself.
+
+## Every user gets their own agent
+
+Every run carries a user id, and that id — not the process — owns the state. Under
+`app.storage.location` each user has a home with `memories/`, `skills/`, `workspace/` and
+`artifacts/`; the filesystem tools are confined to that root, so one user's agent cannot read
+another's files. The same line runs through everything else:
+
+- **MCP servers** are registered by their owner. `ShareMcpServer` grants use to another person, a
+  group chat, or everyone, while editing, removing and re-sharing stay with the owner — the
+  recipient never sees the URL or headers. Servers the deployment configures for everybody under
+  `spring.ai.mcp.client.*` are listed alongside them and belong to nobody.
+- **Skills** are folders with a `SKILL.md` in the user's own skills directory. The agent writes and
+  deletes them on request; paths outside that directory are refused.
+- **Memories** are files in the user's memories directory, written and read back by the agent
+  itself.
+- **Credentials** are per-user: a Kubernetes Secret mounted into that user's sandbox, or an
+  encrypted row, so a token reaches a shell as an environment variable and never a prompt.
+- **The sandbox shell** is a Pod or container per user, with its own slice of the volume, torn down
+  when idle and rebuilt on the next command.
+
+A user needs no administrator to set any of this up — they ask the agent, and it registers it for
+them. On the command line the same machinery serves the one person at the keyboard, out of
+`~/.spring-agent`.
 
 ## Standalone
 
@@ -17,13 +71,13 @@ surface of your own.
 docker run --env-file .env -p 8080:8080 ghcr.io/kezhenxu94/spring-agent:latest
 ```
 
-Or from a clone: `./gradlew :spring-agent-app:bootRun`.
+Or from a clone: `./gradlew :spring-agent-app:bootRun`. It comes with the Feishu/Lark integration
+wired up, so a bot in a chat is an agent surface with no code written.
 
 These environment variables have no defaults and the application will not start without them —
 `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`,
-`EMBEDDING_MODEL`. Everything else is optional and documented in place, property by property, in
-[`spring-agent-app/src/main/resources/application.yaml`](spring-agent-app/src/main/resources/application.yaml)
-— read that file rather than this README for configuration.
+`EMBEDDING_MODEL`. Everything else is optional, and set in
+[`application.yaml`](spring-agent-app/src/main/resources/application.yaml).
 
 Two switches decide what the deployment is:
 
@@ -96,6 +150,12 @@ spring:
         model: ${EMBEDDING_MODEL}
 ```
 
+That is the minimum, not the whole of it. Everything you can turn on from here — the shell sandbox,
+the tool-search advisor, per-user storage and published-file links, the MCP SSRF allow-list, the
+question tool's lifetime — is written out with its rationale in the server's
+[`application.yaml`](spring-agent-app/src/main/resources/application.yaml); copy the blocks you want
+out of it rather than rediscovering the property names.
+
 `app.ai.system-prompt` has a surface-neutral default; override it to give the agent your own persona
 and house rules. It is rendered per request over a fixed variable set, and naming a variable that is
 not supplied fails the render.
@@ -110,7 +170,7 @@ agent.fire(
     AgentRequest.builder()
         .requestId(runId)                     // what SpringAgent.cancel(runId) stops
         .scenario(BuiltInScenarios.CHAT)
-        .userId(userId)
+        .userId(userId)                       // whose workspace, skills, memories and MCP servers
         .chatId(conversationId)
         .conversationId(conversationId)       // groups the runs that share chat memory
         .userMessage(message -> message.text(text))
