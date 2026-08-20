@@ -25,7 +25,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
-import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Configuration;
 
@@ -52,7 +51,8 @@ class AgentToolsProviderGlobalMcpServersTest {
 
     try (var context = new AnnotationConfigApplicationContext(NoGlobalTools.class)) {
       final var provider =
-          new AgentToolsProvider(workspaces, repo, mock(McpClientFactory.class), context, properties());
+          new AgentToolsProvider(
+              workspaces, repo, mock(McpClientFactory.class), context, properties());
 
       provider.compose(
           AgentRequest.builder()
@@ -82,13 +82,15 @@ class AgentToolsProviderGlobalMcpServersTest {
 
     try (var context = new AnnotationConfigApplicationContext(NoGlobalTools.class)) {
       final var provider =
-          new AgentToolsProvider(workspaces, repo, mock(McpClientFactory.class), context, properties());
+          new AgentToolsProvider(
+              workspaces, repo, mock(McpClientFactory.class), context, properties());
 
       provider.build("ou_1", null, Map.of());
 
       final var identifiers = ArgumentCaptor.forClass(java.util.Collection.class);
       verify(repo).findAccessibleTo(eq("ou_1"), identifiers.capture());
-      assertThat(identifiers.getValue()).containsExactlyInAnyOrder("ou_1", McpServerConfig.SHARED_WITH_ALL);
+      assertThat(identifiers.getValue())
+          .containsExactlyInAnyOrder("ou_1", McpServerConfig.SHARED_WITH_ALL);
     }
   }
 
