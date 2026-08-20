@@ -251,9 +251,9 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
 
   private String formatTodoItem(TodoWriteTool.Todos.TodoItem item) {
     return switch (item.status()) {
-      case completed -> "- [✔] " + item.content();
-      case in_progress -> "- [*] **" + item.activeForm() + "**";
-      case pending -> "- [ ] " + item.content();
+      case completed -> "☑ " + item.content();
+      case in_progress -> "☒ **" + item.activeForm() + "**";
+      case pending -> "☐ " + item.content();
     };
   }
 
