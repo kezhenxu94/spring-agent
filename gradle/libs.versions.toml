@@ -4,7 +4,10 @@ jakarta-annotation = "2.1.1"
 logback-json = "0.1.5"
 larksuite-oapi = "2.6.1"
 spring-ai-agent-utils = "0.10.0"
-spring-ai = "2.0.1-SNAPSHOT"
+# A released version, never a -SNAPSHOT: Maven Central rejects a deployment whose POM manages or
+# depends on one, and this BOM is imported into the POM of every published module (see
+# springagent.java-library-conventions). The whole release fails validation on that one line.
+spring-ai = "2.0.1"
 # Not BOM-managed: spring-boot-dependencies does not manage Spring Shell at all. 4.x is the line
 # built against Spring Boot 4, and it is where the terminal UI moved to
 # org.springframework.shell.jline.tui — spring-agent-cli renders the agent's questions with it.
@@ -15,7 +18,7 @@ fabric8 = "6.13.4"
 # property only manages the Maven plugin, Gradle plugin versions are never BOM-managed, and 0.11.5
 # predates Gradle 9. 1.1.4+ is tested against Gradle 9.6.1, which is what the wrapper pins.
 graalvm-buildtools = "1.1.8"
-springboot = "4.0.7"
+springboot = "4.1.1"
 # Above spring-boot-dependencies' jedis.version (7.0.0), which is why it is pinned rather than left
 # to the BOM. Spring AI's Redis chat memory declares 7.4.1 and its auto-configuration is
 # @ConditionalOnClass(redis.clients.jedis.RedisClient), a class 7.0.0 does not have — under the BOM

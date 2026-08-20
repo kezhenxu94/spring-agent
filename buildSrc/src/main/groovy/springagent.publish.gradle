@@ -22,6 +22,21 @@ publishing {
     maven(MavenPublication) {
       from components.java
 
+      // Write the resolved version onto every dependency in the POM. Without this, a dependency
+      // whose version comes from one of the BOMs in springagent.java-library-conventions is
+      // published with no <version> at all, and the Central Portal rejects the deployment:
+      // "Dependency version information is missing for dependency: ...". It validates the POM on
+      // its own and does not follow the <dependencyManagement> imports that would supply them —
+      // the fabric8 BOM proves it, being a release and still not consulted.
+      //
+      // Only the POM is affected. Gradle consumers keep reading the module metadata, where the
+      // platforms are still dependencies, so the constraints go on reaching an application's
+      // runtime classpath as that convention intends.
+      versionMapping {
+        usage('java-api') { fromResolutionResult() }
+        usage('java-runtime') { fromResolutionResult() }
+      }
+
       pom {
         name = project.name
         // Maven Central rejects a deployment whose POM has no description, so every module

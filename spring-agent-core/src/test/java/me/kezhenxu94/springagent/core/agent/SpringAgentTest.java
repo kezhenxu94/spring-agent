@@ -591,13 +591,7 @@ class SpringAgentTest {
                   throw new QuestionNotAnsweredException("NOT ANSWERED YET. End your turn.");
                 })
             .build();
-    final var manager =
-        new InterceptingToolCallingManager(
-            DefaultToolCallingManager.builder()
-                .toolCallbackResolver(
-                    new InterceptingToolCallbackResolver(toolName -> null, List.of()))
-                .build(),
-            List.of());
+    final var manager = managerResolvingNothingByName();
 
     final var history = executeAsk(manager, ToolCallbacks.from(tool));
 
@@ -647,17 +641,26 @@ class SpringAgentTest {
     // The tool-search advisor rebuilds the callbacks every iteration, and AskUserQuestionTool is a
     // per-request tool no resolver can find by name. The model then reads the resolver's recovery
     // message, which tells it to call the tool again — and no question reaches the user.
-    final var manager =
-        new InterceptingToolCallingManager(
-            DefaultToolCallingManager.builder()
-                .toolCallbackResolver(
-                    new InterceptingToolCallbackResolver(toolName -> null, List.of()))
-                .build(),
-            List.of());
+    final var manager = managerResolvingNothingByName();
 
     final var history = executeAsk(manager, new ToolCallback[0]);
 
     assertThat(history).singleElement(as(STRING)).contains("was not offered to this call");
+  }
+
+  /**
+   * A manager wired as {@code SpringAgentCoreAutoConfiguration} wires the real one, over a delegate
+   * resolver that finds nothing: the flag has to be set here too, since without it Spring AI never
+   * consults the resolver at all and these tests would exercise a path the application does not
+   * take.
+   */
+  private static ToolCallingManager managerResolvingNothingByName() {
+    return new InterceptingToolCallingManager(
+        DefaultToolCallingManager.builder()
+            .toolCallbackResolver(new InterceptingToolCallbackResolver(toolName -> null, List.of()))
+            .resolutionFallbackEnabled(true)
+            .build(),
+        List.of());
   }
 
   /** The tool responses one AskUserQuestionTool call produces, as the model would read them. */
