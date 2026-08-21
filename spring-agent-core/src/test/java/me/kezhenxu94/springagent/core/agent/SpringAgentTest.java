@@ -27,6 +27,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
@@ -56,6 +57,7 @@ import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
@@ -92,6 +94,9 @@ class SpringAgentTest {
   /** Stands in for an integration taking part in a run it did not initiate. */
   private AgentResponseListener declaredListener = new AgentResponseListener() {};
 
+  /** Stands in for a surface saying how it wants an answer written. */
+  private PromptVariablesContributor declaredContributor = request -> Map.of();
+
   private SpringAgent agent;
 
   @BeforeEach
@@ -115,6 +120,7 @@ class SpringAgentTest {
             pendingQuestions,
             messagesIn(Locale.ENGLISH),
             listenerProvider(),
+            contributorProvider(),
             // Present, as on a JPA or MongoDB deployment; Redis has no such bean.
             recorderProvider(new AskedQuestionsRecorder(chatMemory, messagesIn(Locale.ENGLISH))),
             // The plain advisor rather than the tool-search one an application configures: what is
@@ -152,6 +158,49 @@ class SpringAgentTest {
     fireAndAwait(request().chatType(null));
 
     assertThat(chatModel.lastToolContext()).containsEntry(ToolContexts.KEY_CHAT_TYPE, "p2p");
+  }
+
+  @Test
+  @DisplayName("a surface's own rules reach the prompt of a run it did not start")
+  void contributedPromptVariablesReachThePrompt() {
+    declaredContributor = request -> Map.of("replyFormat", "mention with <at>");
+
+    fireAndAwait(request());
+
+    assertThat(systemPrompt()).contains("Format: mention with <at>");
+  }
+
+  @Test
+  @DisplayName("what the run itself says wins over what the surface says in general")
+  void requestVariablesWinOverContributedOnes() {
+    declaredContributor = request -> Map.of("replyFormat", "in general");
+
+    fireAndAwait(request().promptVariables(Map.of("replyFormat", "for this run")));
+
+    assertThat(systemPrompt()).contains("Format: for this run").doesNotContain("in general");
+  }
+
+  @Test
+  @DisplayName("a contributor that throws costs the run its formatting, not its answer")
+  void aBrokenContributorDoesNotFailTheRun() {
+    declaredContributor =
+        request -> {
+          throw new IllegalStateException("cannot say");
+        };
+
+    final var listener = fireAndAwait(request());
+
+    assertThat(listener.outcomes).containsExactly(AgentOutcome.COMPLETED);
+    assertThat(systemPrompt()).contains("Format: ");
+  }
+
+  /** The system message of the first call, which is where the rendered prompt lands. */
+  private String systemPrompt() {
+    assertThat(chatModel.prompts).as("the model was never called").isNotEmpty();
+    return chatModel.prompts.get(0).getInstructions().stream()
+        .filter(SystemMessage.class::isInstance)
+        .map(Message::getText)
+        .collect(Collectors.joining());
   }
 
   @Test
@@ -800,6 +849,20 @@ class SpringAgentTest {
     };
   }
 
+  private ObjectProvider<PromptVariablesContributor> contributorProvider() {
+    return new ObjectProvider<>() {
+      @Override
+      public PromptVariablesContributor getObject() {
+        return declaredContributor;
+      }
+
+      @Override
+      public Stream<PromptVariablesContributor> stream() {
+        return Stream.of(declaredContributor);
+      }
+    };
+  }
+
   private static AgentRequest.AgentRequestBuilder request() {
     return AgentRequest.builder()
         .requestId("req-1")
@@ -839,7 +902,7 @@ class SpringAgentTest {
             null,
             null,
             "You are {userId} in {chatId} ({chatType}), thread {threadId}, parent {parentId},"
-                + " mentions {mentions}.",
+                + " mentions {mentions}. Format: {replyFormat}",
             null),
         Locale.ENGLISH);
   }
@@ -869,6 +932,7 @@ class SpringAgentTest {
             pendingQuestions,
             messagesIn(Locale.ENGLISH),
             listenerProvider(),
+            contributorProvider(),
             recorderProvider(new AskedQuestionsRecorder(chatMemory, messagesIn(Locale.ENGLISH))),
             providerOf(ToolCallingAdvisor.builder()));
     chatModel.callToolOnce("CurrentDateTime");

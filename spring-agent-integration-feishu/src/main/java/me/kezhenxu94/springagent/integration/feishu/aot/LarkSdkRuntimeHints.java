@@ -46,9 +46,20 @@ import com.lark.oapi.service.im.v1.model.CreateImageReq;
 import com.lark.oapi.service.im.v1.model.CreateImageReqBody;
 import com.lark.oapi.service.im.v1.model.CreateMessageReq;
 import com.lark.oapi.service.im.v1.model.CreateMessageReqBody;
+import com.lark.oapi.service.im.v1.model.DeleteMessageReq;
+import com.lark.oapi.service.im.v1.model.DeleteMessageResp;
 import com.lark.oapi.service.im.v1.model.EventMessage;
+import com.lark.oapi.service.im.v1.model.GetChatMembersReq;
+import com.lark.oapi.service.im.v1.model.GetChatMembersResp;
+import com.lark.oapi.service.im.v1.model.GetChatReq;
+import com.lark.oapi.service.im.v1.model.GetChatResp;
+import com.lark.oapi.service.im.v1.model.GetMessageReq;
 import com.lark.oapi.service.im.v1.model.GetMessageResourceReq;
 import com.lark.oapi.service.im.v1.model.GetMessageResp;
+import com.lark.oapi.service.im.v1.model.IsInChatChatMembersReq;
+import com.lark.oapi.service.im.v1.model.IsInChatChatMembersResp;
+import com.lark.oapi.service.im.v1.model.ListChatReq;
+import com.lark.oapi.service.im.v1.model.ListChatResp;
 import com.lark.oapi.service.im.v1.model.ListMessageResp;
 import com.lark.oapi.service.im.v1.model.P2MessageReadV1;
 import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1;
@@ -136,9 +147,20 @@ public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
           CreateImageReqBody.class,
           CreateMessageReq.class,
           CreateMessageReqBody.class,
+          DeleteMessageReq.class,
+          DeleteMessageResp.class,
           EventMessage.class,
+          GetChatMembersReq.class,
+          GetChatMembersResp.class,
+          GetChatReq.class,
+          GetChatResp.class,
+          GetMessageReq.class,
           GetMessageResourceReq.class,
           GetMessageResp.class,
+          IsInChatChatMembersReq.class,
+          IsInChatChatMembersResp.class,
+          ListChatReq.class,
+          ListChatResp.class,
           ListMessageResp.class,
           P2MessageReadV1.class,
           P2MessageReceiveV1.class,

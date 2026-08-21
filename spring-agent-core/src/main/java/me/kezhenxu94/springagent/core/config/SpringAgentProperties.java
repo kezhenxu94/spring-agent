@@ -49,7 +49,9 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
      * integration overrides it to add its own rules rather than to restate these.
      *
      * <p>Rendered against the same variables as any other prompt — {@code userId}, {@code chatId}
-     * and {@code chatType} are always supplied, the rest default to empty.
+     * and {@code chatType} are always supplied, the rest default to empty. {@code replyFormat} is
+     * the surface's own: whichever integration receives the answer says there how it wants one
+     * written, and a surface with nothing to say leaves the slot empty.
      */
     public static final String DEFAULT_SYSTEM_PROMPT =
         """
@@ -102,7 +104,9 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
         - Reply in the language the user wrote in.
         - Be concise, warm and direct. Skip filler and ceremony.
         - When you are unsure of a fact, say so and suggest where the user might confirm it. \
-        Never invent details.\
+        Never invent details.
+
+        {replyFormat}\
         """;
 
     public static final String DEFAULT_SCHEDULED_TASK_PROMPT =
