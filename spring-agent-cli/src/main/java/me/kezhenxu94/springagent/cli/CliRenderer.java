@@ -1,11 +1,13 @@
 package me.kezhenxu94.springagent.cli;
 
+import com.google.common.base.Strings;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.concurrent.CountDownLatch;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
+import me.kezhenxu94.springagent.core.agent.AgentResponseListener.SubagentEvent;
 import me.kezhenxu94.springagent.core.tools.ToolContextKey;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.jline.utils.WCWidth;
@@ -230,6 +232,38 @@ public class CliRenderer implements AgentResponseListener, TodoEventHandler {
       case completed -> console.dim(marker("☒", "[x]") + " " + item.content());
       case in_progress -> console.bold(marker("☐", "[>]") + " " + item.activeForm());
       case pending -> console.dim(marker("☐", "[ ]") + " " + item.content());
+    };
+  }
+
+  /**
+   * A subagent of this run starting or ending. One line each way, in the tool-call column. What it
+   * says as it goes is deliberately not shown: it comes back as the result of the call that waited
+   * for it, and two answers written into one gutter — several, with several subagents — would be
+   * unreadable. The lines are here to account for the time the run spends saying nothing.
+   */
+  @Override
+  public void onSubagent(final SubagentEvent event) {
+    // Only the two ends of it: what it says as it goes comes back as the result of the call that
+    // waited for it, and what it spends is already in this run's own token count.
+    if (event.said() || event.spent()) {
+      return;
+    }
+    newBlock();
+    final var label =
+        Strings.isNullOrEmpty(event.description()) ? event.subagentId() : event.description();
+    write("  " + console.dim(marker("⏿", ">") + " " + messages.get(key(event), label)) + "\n");
+    bulletOwed = true;
+  }
+
+  /** One key per way a subagent can end, so the word for it is translated rather than passed in. */
+  private static String key(final SubagentEvent event) {
+    if (event.outcome() == null) {
+      return "subagent-started";
+    }
+    return switch (event.outcome()) {
+      case COMPLETED -> "subagent-completed";
+      case CANCELLED -> "subagent-cancelled";
+      case FAILED -> "subagent-failed";
     };
   }
 

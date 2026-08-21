@@ -1,0 +1,59 @@
+{
+  "comment": [
+    "One subagent on the reply card: a panel of its own, collapsed, holding what it reported.",
+    "Secondary by design — the run folds the answer into its own reply, and this is where a reader",
+    "goes to see what the work behind that reply actually was. The two placeholders are filled in",
+    "FeishuSubagentPanel: {panelId}, {bodyId} and {footerId} are element ids, {title} says which",
+    "subagent this is and how it is getting on, {body} is what it has said so far, and {footer} is",
+    "what it has spent saying it. A deployment replacing this file has to keep all six, and keep the",
+    "body and footer elements text ones: the run streams into both of them by id.",
+    "The header fills the panel's width and carries its own horizontal padding, so the title reads",
+    "as a row of its own rather than as text floating beside the chevron; the chevron therefore sits",
+    "at the right edge rather than following the text. This key is ignored when the panel is built."
+  ],
+  "panel": {
+    "tag": "collapsible_panel",
+    "element_id": "{panelId}",
+    "expanded": false,
+    "vertical_spacing": "8px",
+    "padding": "4px 8px 8px 8px",
+    "margin": "4px 0px 0px 0px",
+    "header": {
+      "title": {
+        "tag": "markdown",
+        "content": "{title}"
+      },
+      "width": "fill",
+      "vertical_align": "center",
+      "padding": "4px 8px 4px 8px",
+      "icon": {
+        "tag": "standard_icon",
+        "token": "down-small-ccm_outlined",
+        "size": "16px 16px"
+      },
+      "icon_position": "right",
+      "icon_expanded_angle": -180
+    },
+    "border": {
+      "color": "grey",
+      "corner_radius": "5px"
+    },
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "{body}",
+        "text_align": "left",
+        "text_size": "notation",
+        "element_id": "{bodyId}"
+      },
+      {
+        "tag": "markdown",
+        "content": "{footer}",
+        "text_align": "left",
+        "text_size": "notation",
+        "margin": "2px 0px 0px 0px",
+        "element_id": "{footerId}"
+      }
+    ]
+  }
+}

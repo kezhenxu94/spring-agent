@@ -15,6 +15,14 @@ import org.springframework.ai.chat.client.ChatClient;
  * touches the tool provider, the MCP client lifecycle or reactor.
  *
  * @param requestId the key {@link SpringAgent#cancel(String)} stops this run by
+ * @param parentRequestId the {@code requestId} of the run that started this one, null for a run
+ *     nobody started — which is every run a surface receives. Naming a live parent ties the two
+ *     together: cancelling the parent cancels this run, this run's token usage is reported to the
+ *     parent's listeners as well as its own, and the parent does not report itself finished until
+ *     this run has. Ignored where it names a run that has already ended.
+ * @param description one line saying what this run is for, in the words of whoever started it.
+ *     Reported to a parent run's listeners so a surface can name a run it is not streaming; null
+ *     where nobody said, which is every run whose reason is the message that arrived.
  * @param scenario selects which tools the run gets and whether it accumulates conversation history
  * @param chatType free-form, defaults to {@code p2p}
  * @param conversationId groups runs that share chat memory
@@ -35,6 +43,8 @@ import org.springframework.ai.chat.client.ChatClient;
 @Builder
 public record AgentRequest(
     String requestId,
+    String parentRequestId,
+    String description,
     AgentScenario scenario,
     String userId,
     String chatId,

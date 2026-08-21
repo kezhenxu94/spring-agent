@@ -34,6 +34,57 @@ public interface AgentResponseListener {
 
   default void onUsage(String model, Usage usage) {}
 
+  /**
+   * Something happened in a run started by this one — so a surface can show work happening
+   * somewhere it is not streaming, and say what that work cost. What such a run reports is not this
+   * run's answer: that is the result of the tool call that waited for it, and this run says what it
+   * made of it.
+   */
+  default void onSubagent(SubagentEvent event) {}
+
+  /**
+   * One thing that happened in a subagent. Which one is settled by the predicates below rather than
+   * by a kind: every event names the subagent, and carries whichever of the rest applies.
+   *
+   * @param description what the run was started for, in the words of whoever started it
+   * @param contentSoFar everything the run has said so far, not the latest delta; set only on an
+   *     event reporting what it has said
+   * @param model the model of the call this event accounts for, set with {@code usage}
+   * @param usage what one model call of that run cost. The same tokens also arrive through {@link
+   *     #onUsage}, which is where a surface totals up the turn; this is the same spend attributed
+   *     to the subagent that incurred it, for a surface that shows each of them separately. Adding
+   *     both to one total counts them twice.
+   * @param outcome how the run ended, set only on the event that says it has
+   */
+  record SubagentEvent(
+      String subagentId,
+      String description,
+      String contentSoFar,
+      String model,
+      Usage usage,
+      AgentOutcome outcome) {
+
+    /** It has been started, and has yet to say or spend anything. */
+    public boolean started() {
+      return outcome == null && contentSoFar == null && usage == null;
+    }
+
+    /** It has said something, and this is all of it so far. */
+    public boolean said() {
+      return outcome == null && contentSoFar != null;
+    }
+
+    /** It has made a model call, and this is what that call cost. */
+    public boolean spent() {
+      return outcome == null && usage != null;
+    }
+
+    /** It has ended, whatever way. */
+    public boolean ended() {
+      return outcome != null;
+    }
+  }
+
   default void onError(Throwable error) {}
 
   /** Invoked exactly once per run, whatever the {@link AgentOutcome}. */

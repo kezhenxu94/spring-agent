@@ -60,6 +60,8 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.metadata.ChatResponseMetadata;
+import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
@@ -192,6 +194,182 @@ class SpringAgentTest {
 
     assertThat(listener.outcomes).containsExactly(AgentOutcome.COMPLETED);
     assertThat(systemPrompt()).contains("Format: ");
+  }
+
+  /** What a subagent of these tests is sent, and how its own responses are recognised. */
+  private static final String SUBAGENT_MESSAGE = "do the reading";
+
+  @Test
+  @DisplayName("a run is not reported finished while a subagent of its own is still running")
+  void aRunWaitsForItsSubagents() {
+    final var ended = new java.util.concurrent.CopyOnWriteArrayList<String>();
+    // Outlives its parent, whose own stream is over the moment the tool call returns.
+    final var child =
+        subagentListener(ended, "child", listener -> sleep(java.time.Duration.ofMillis(300)));
+    toolThatStartsASubagent(child, false);
+    chatModel.callToolOnce("StartSubagent");
+
+    fireAndAwait(request().listener(recordsEnd(ended, "parent")));
+
+    assertThat(ended).containsExactly("child", "parent");
+  }
+
+  @Test
+  @DisplayName("what a subagent spends is counted on the turn that asked for it")
+  void subagentTokensAreCountedOnTheParent() {
+    chatModel.reportUsage();
+    final var models = new java.util.concurrent.CopyOnWriteArrayList<String>();
+    toolThatStartsASubagent(new AgentResponseListener() {}, true);
+    chatModel.callToolOnce("StartSubagent");
+
+    fireAndAwait(
+        request()
+            .listener(
+                new AgentResponseListener() {
+                  @Override
+                  public void onUsage(
+                      final String model, final org.springframework.ai.chat.metadata.Usage usage) {
+                    models.add(model);
+                  }
+                }));
+
+    // Its own and the subagent's, on the one listener: a card counting the turn counts both.
+    assertThat(models).contains("parent-model", "child-model");
+  }
+
+  @Test
+  @DisplayName("stopping a run stops the subagents it is waiting on")
+  void cancellingARunCancelsItsSubagents() {
+    final var outcomes = new java.util.concurrent.CopyOnWriteArrayList<AgentOutcome>();
+    // Stops the whole turn part-way through the subagent's own answer, as the stop button does.
+    final var child =
+        new AgentResponseListener() {
+          @Override
+          public void onContent(final String contentSoFar) {
+            agent.cancel("req-1");
+          }
+
+          @Override
+          public void onFinished(final AgentOutcome outcome) {
+            outcomes.add(outcome);
+          }
+        };
+    toolThatStartsASubagent(child, true);
+    chatModel.callToolOnce("StartSubagent");
+
+    final var listener = fireAndAwait(request());
+
+    assertThat(outcomes).containsExactly(AgentOutcome.CANCELLED);
+    assertThat(listener.outcomes).containsExactly(AgentOutcome.CANCELLED);
+  }
+
+  /**
+   * Composes one tool that does what {@code StartSubagent} does: fires a run naming this one as its
+   * parent, and either waits for it or leaves it running.
+   */
+  private void toolThatStartsASubagent(
+      final AgentResponseListener childListener, final boolean waitForIt) {
+    final var childFinished = new CountDownLatch(1);
+    final var callback =
+        callbackThat(
+            () -> {
+              agent.fire(
+                  AgentRequest.builder()
+                      .requestId("sub-1")
+                      .parentRequestId("req-1")
+                      .description("reading the timeline")
+                      .scenario(BuiltInScenarios.SUBAGENT)
+                      .userId("ou_1")
+                      .conversationId("sub-1")
+                      .userMessage(user -> user.text(SUBAGENT_MESSAGE))
+                      .listener(childListener)
+                      .listener(
+                          new AgentResponseListener() {
+                            @Override
+                            public void onFinished(final AgentOutcome outcome) {
+                              childFinished.countDown();
+                            }
+                          })
+                      .build());
+              if (waitForIt) {
+                try {
+                  childFinished.await(10, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                  Thread.currentThread().interrupt();
+                }
+              }
+              return "sub-1";
+            });
+    try {
+      when(agentToolsProvider.compose(any(), any(), any(), any(), anyBoolean()))
+          .thenReturn(
+              new AgentComposition(
+                  new Object[] {callback},
+                  autoMemoryAdvisors(),
+                  new McpTools(List.of(mcpClient), new ToolCallback[0])));
+    } catch (IOException e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  /** A tool named {@code StartSubagent} that does whatever {@code action} does and returns it. */
+  private static ToolCallback callbackThat(final java.util.function.Supplier<String> action) {
+    final var definition =
+        ToolDefinition.builder()
+            .name("StartSubagent")
+            .description("StartSubagent")
+            .inputSchema("{\"type\":\"object\",\"properties\":{}}")
+            .build();
+    return new ToolCallback() {
+      @Override
+      public ToolDefinition getToolDefinition() {
+        return definition;
+      }
+
+      @Override
+      public String call(final String toolInput) {
+        return action.get();
+      }
+
+      @Override
+      public String call(final String toolInput, final ToolContext toolContext) {
+        return action.get();
+      }
+    };
+  }
+
+  /** Records that a run ended, under the name given, in the order the runs end. */
+  private static AgentResponseListener recordsEnd(final List<String> ended, final String name) {
+    return new AgentResponseListener() {
+      @Override
+      public void onFinished(final AgentOutcome outcome) {
+        ended.add(name);
+      }
+    };
+  }
+
+  /** {@link #recordsEnd} plus something to do while the run is going. */
+  private static AgentResponseListener subagentListener(
+      final List<String> ended, final String name, final Consumer<Void> whileRunning) {
+    return new AgentResponseListener() {
+      @Override
+      public void onContent(final String contentSoFar) {
+        whileRunning.accept(null);
+      }
+
+      @Override
+      public void onFinished(final AgentOutcome outcome) {
+        ended.add(name);
+      }
+    };
+  }
+
+  private static void sleep(final java.time.Duration duration) {
+    try {
+      Thread.sleep(duration.toMillis());
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
   }
 
   /** The system message of the first call, which is where the rendered prompt lands. */
@@ -774,14 +952,19 @@ class SpringAgentTest {
   }
 
   @Test
-  @DisplayName("a request arriving during shutdown is dropped without composing anything")
+  @DisplayName("a request arriving during shutdown is dropped, and said to have been")
   void droppedDuringShutdown() throws Exception {
     final var listener = new RecordingListener();
     agent.onShutdown();
 
     agent.fire(request().listener(listener).build());
 
-    assertThat(listener.outcomes).isEmpty();
+    // Nothing is assembled and the model is never called — but it is still reported: whoever waits
+    // for the run to end is fed by onFinished and nothing else, and silence here is a caller that
+    // waits for a run that is not coming.
+    assertThat(listener.finished.await(5, TimeUnit.SECONDS)).isTrue();
+    assertThat(listener.outcomes).containsExactly(AgentOutcome.FAILED);
+    assertThat(listener.errors).hasSize(1);
     verify(agentToolsProvider, times(0)).compose(any(), any(), any(), any(), anyBoolean());
   }
 
@@ -903,6 +1086,7 @@ class SpringAgentTest {
             null,
             "You are {userId} in {chatId} ({chatType}), thread {threadId}, parent {parentId},"
                 + " mentions {mentions}. Format: {replyFormat}",
+            null,
             null),
         Locale.ENGLISH);
   }
@@ -1079,6 +1263,7 @@ class SpringAgentTest {
     private final java.util.concurrent.atomic.AtomicBoolean toolCalled =
         new java.util.concurrent.atomic.AtomicBoolean();
     private RuntimeException failure;
+    private volatile boolean reportUsage;
 
     /** Makes the first response a call to {@code toolName}, and every one after it plain text. */
     void callToolOnce(final String toolName) {
@@ -1087,6 +1272,11 @@ class SpringAgentTest {
 
     void failWith(final RuntimeException failure) {
       this.failure = failure;
+    }
+
+    /** Off by default: a response with no metadata is what most of these tests want. */
+    void reportUsage() {
+      this.reportUsage = true;
     }
 
     Map<String, Object> lastToolContext() {
@@ -1133,8 +1323,21 @@ class SpringAgentTest {
                       .build())));
     }
 
-    private static ChatResponse response(final String text) {
-      return new ChatResponse(List.of(new Generation(new AssistantMessage(text))));
+    private ChatResponse response(final String text) {
+      if (!reportUsage) {
+        return new ChatResponse(List.of(new Generation(new AssistantMessage(text))));
+      }
+      // Named after the run it answers, so a listener can say which run the tokens came from.
+      final var model =
+          lastPrompt.getInstructions().stream()
+                  .anyMatch(message -> SUBAGENT_MESSAGE.equals(message.getText()))
+              ? "child-model"
+              : "parent-model";
+      return ChatResponse.builder()
+          .generations(List.of(new Generation(new AssistantMessage(text))))
+          .metadata(
+              ChatResponseMetadata.builder().model(model).usage(new DefaultUsage(1, 2, 3)).build())
+          .build();
     }
   }
 }

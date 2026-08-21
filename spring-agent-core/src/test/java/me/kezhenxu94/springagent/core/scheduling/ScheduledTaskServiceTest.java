@@ -101,7 +101,7 @@ class ScheduledTaskServiceTest {
     return new SpringAgentProperties(
         null,
         new SpringAgentProperties.Ai(
-            null, Set.of(), Map.of(), null, null, "you are an agent", scheduledTaskPrompt),
+            null, Set.of(), Map.of(), null, null, "you are an agent", scheduledTaskPrompt, null),
         null);
   }
 }

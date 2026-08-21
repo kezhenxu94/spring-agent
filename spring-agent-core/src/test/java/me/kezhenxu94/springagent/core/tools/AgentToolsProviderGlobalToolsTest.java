@@ -109,8 +109,9 @@ class AgentToolsProviderGlobalToolsTest {
             Set.of(),
             Map.of(),
             null,
-            new Tools(new AskUserQuestion(true, null)),
+            new Tools(new AskUserQuestion(true, null), null),
             "You are an agent.",
+            null,
             null),
         Locale.ENGLISH);
   }

@@ -31,6 +31,13 @@ public class CliRunListener implements AgentResponseListener {
 
   @Override
   public void onStart(final AgentRunRegistry registry) {
+    // A subagent is not a turn of its own: it is work the run that started it is waiting on, and
+    // its
+    // answer reaches the terminal as that run reads it. Rendering it here as well would interleave
+    // two answers in one gutter, and — with several subagents going at once — several.
+    if (registry.request().scenario() == BuiltInScenarios.SUBAGENT) {
+      return;
+    }
     final var renderer = new CliRenderer(console, messages);
     registry.addResponseListener(renderer);
     registry.addTodoEventHandler(renderer);

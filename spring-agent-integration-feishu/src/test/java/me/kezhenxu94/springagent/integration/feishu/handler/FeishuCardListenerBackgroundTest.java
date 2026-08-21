@@ -67,6 +67,7 @@ class FeishuCardListenerBackgroundTest {
             mock(UserWorkspaceFactory.class),
             null,
             null,
+            null,
             messageCard);
   }
 

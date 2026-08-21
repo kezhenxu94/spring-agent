@@ -8,11 +8,19 @@ import org.springframework.ai.chat.model.ToolContext;
 @UtilityClass
 public class ToolContexts {
 
+  public static final String KEY_REQUEST_ID = "requestId";
   public static final String KEY_USER_ID = "userId";
   public static final String KEY_CHAT_ID = "chatId";
   public static final String KEY_CHAT_TYPE = "chatType";
   public static final String KEY_ROOT_MESSAGE_ID = "rootMessageId";
   public static final String KEY_REPLY_MESSAGE_ID = "replyMessageId";
+
+  /**
+   * The run the tool call belongs to, the same key {@code SpringAgent#cancel(String)} stops a run
+   * by. A tool that starts a run of its own passes this as the new run's parent, which is what
+   * links the two — cancellation reaches down it, and the child's usage back up.
+   */
+  public static final ToolContextKey<String> REQUEST_ID = new Key<>(KEY_REQUEST_ID, String.class);
 
   public static final ToolContextKey<String> USER_ID = new Key<>(KEY_USER_ID, String.class);
   public static final ToolContextKey<String> CHAT_ID = new Key<>(KEY_CHAT_ID, String.class);
