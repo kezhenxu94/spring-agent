@@ -56,9 +56,13 @@ public class SpringAgent {
   /**
    * The system prompt is rendered against a fixed variable set (see {@code ai.system-prompt} in the
    * application config), so core supplies the ones an integration may have nothing to say about.
+   *
+   * <p>{@code replyFormat} is the slot a surface's own rules go in — the markdown its client
+   * renders, the tags it understands — filled by a {@link PromptVariablesContributor} and empty on
+   * a surface that has nothing to say about how a reply looks.
    */
   private static final Map<String, Object> OPTIONAL_PROMPT_VARIABLES =
-      Map.of("threadId", "", "parentId", "", "mentions", "none");
+      Map.of("threadId", "", "parentId", "", "mentions", "none", "replyFormat", "");
 
   /**
    * Where the tool search looks for the index to use. Has to agree with {@code
@@ -91,6 +95,12 @@ public class SpringAgent {
    * that a listener bean is free to depend on this one.
    */
   final ObjectProvider<AgentResponseListener> declaredListeners;
+
+  /**
+   * The surfaces filling a system-prompt slot for every run. Resolved lazily for the same reason as
+   * the listeners above.
+   */
+  final ObjectProvider<PromptVariablesContributor> promptVariablesContributors;
 
   /** Only present on a backend whose chat memory cannot keep tool calls. */
   final ObjectProvider<AskedQuestionsRecorder> askedQuestionsRecorder;
@@ -469,8 +479,23 @@ public class SpringAgent {
   }
 
   /** Same rule as the tool context: core fills the identity variables, the request the rest. */
-  private static Map<String, Object> promptVariablesFor(final AgentRequest request) {
+  private Map<String, Object> promptVariablesFor(final AgentRequest request) {
     final var variables = new LinkedHashMap<String, Object>(OPTIONAL_PROMPT_VARIABLES);
+    // Between the defaults and the request: a contributor speaks for a surface in general, the
+    // request for this one run, so the run's own word is the later one.
+    promptVariablesContributors.forEach(
+        contributor -> {
+          try {
+            variables.putAll(contributor.variables(request));
+          } catch (Exception e) {
+            // A surface that cannot say how it renders a reply is worth less than a run that never
+            // happens: the slot stays at its default and the answer arrives unstyled.
+            log.warn(
+                "Prompt variables contributor {} failed; carrying on without it",
+                contributor.getClass().getName(),
+                e);
+          }
+        });
     variables.putAll(request.promptVariables());
     variables.put("userId", Strings.nullToEmpty(request.userId()));
     variables.put("chatId", Strings.nullToEmpty(request.chatId()));

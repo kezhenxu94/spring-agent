@@ -221,9 +221,14 @@ app:
     type: ${PERSISTENCE_TYPE:jpa}
   ai:
     # The agent's system prompt. Rendered per request with these variables:
-    # {userId} {chatId} {chatType} {threadId} {parentId} {mentions} — referencing any
-    # other name will fail the render. Override this to give the agent its own
-    # persona, house rules, or domain knowledge.
+    # {userId} {chatId} {chatType} {threadId} {parentId} {mentions} {replyFormat} —
+    # referencing any other name will fail the render. Override this to give the agent
+    # its own persona, house rules, or domain knowledge.
+    #
+    # {replyFormat} is filled by whichever surface the answer lands on, with how it wants
+    # one written — for Feishu, the card markdown and the difference between mentioning
+    # somebody and merely naming them (FeishuReplyFormat). Drop it from a prompt of your
+    # own and the model writes plain markdown, mentioning nobody.
     system-prompt: |
       You are a helpful AI assistant that works alongside people in their chat
       workspace. You answer questions, look things up, and carry out multi-step
@@ -285,6 +290,8 @@ app:
       - Be concise, warm and direct. Skip filler and ceremony.
       - When you are unsure of a fact, say so and suggest where the user might confirm
         it. Never invent details.
+
+      {replyFormat}
     # What a firing scheduled task says to the model, rendered with one variable: {taskText}, the
     # prompt the task was created with. Referencing any other name will fail the render, and a
     # template that fails to render falls back to sending the task's own text unwrapped. Override

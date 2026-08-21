@@ -39,6 +39,7 @@ class FeishuToolsTest {
     tools =
         new FeishuTools(
             null,
+            null,
             userWorkspaceFactory,
             objectMapper,
             new FeishuMessages(

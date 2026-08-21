@@ -50,6 +50,7 @@ import tools.jackson.databind.json.JsonMapper;
 public class FeishuTools {
 
   final Client feishu;
+  final FeishuChatAccess access;
   final UserWorkspaceFactory userWorkspaceFactory;
   final JsonMapper objectMapper;
   final FeishuMessages messages;
@@ -275,10 +276,9 @@ public class FeishuTools {
           "Read earlier messages from a conversation or a thread, which is how to get the context"
               + " behind an @-mention that does not explain itself. Pass containerId as the chatId"
               + " when containerIdType is chat, and as the threadId when it is thread. Messages"
-              + " come back newest first.")
+              + " come back newest first. Only conversations the person you are talking to is in"
+              + " can be read.")
   @SneakyThrows
-  // TODO restrict only chat/group members can call this tool, and containerId must be one of the
-  // chats the user is in
   public List<MessageHistoryItem> readMessageHistory(
       @ToolParam(description = "Either \"chat\" (a direct or group conversation) or \"thread\"")
           final String containerIdType,
@@ -287,7 +287,15 @@ public class FeishuTools {
                   "The chat_id when containerIdType is chat, the thread_id when it is thread")
           final String containerId,
       @ToolParam(description = "How many to return; 20 by default, 50 at most")
-          final Integer pageSize) {
+          final Integer pageSize,
+      final ToolContext toolContext) {
+
+    // A chat is named outright, so it is checked before anything is read. A thread is not — a
+    // thread_id says nothing about which chat it belongs to — so that one is checked below, off
+    // the chat_id the messages themselves carry, and nothing is returned until it passes.
+    if ("chat".equalsIgnoreCase(containerIdType)) {
+      access.requireMember(toolContext, containerId);
+    }
 
     final var size = pageSize == null ? 20 : Math.min(Math.max(pageSize, 1), 50);
     final var query =
@@ -324,6 +332,23 @@ public class FeishuTools {
     if (items == null) {
       throw new IllegalStateException("Failed to read message history: no items in response");
     }
+    // Every chat these messages came from, which for a thread is the one thing that says whose
+    // conversation was just read. Checked before the messages are handed over, so a refusal costs
+    // a wasted request rather than a leak.
+    final var chats =
+        Stream.of(items)
+            .map(com.lark.oapi.service.im.v1.model.Message::getChatId)
+            .filter(chat -> !Strings.isNullOrEmpty(chat))
+            .distinct()
+            .toList();
+    // Messages that name no chat at all cannot be shown to have come from one this person is in,
+    // and an unanswerable question about access is a refusal, not a pass.
+    if (chats.isEmpty() && items.length > 0) {
+      throw new FeishuChatAccess.ChatAccessDeniedException(
+          "Refused: which conversation these messages belong to could not be established, and this"
+              + " only reads conversations you are in.");
+    }
+    chats.forEach(chat -> access.requireMember(toolContext, chat));
     log.info("Read {} message(s) from {} {}", items.length, containerIdType, containerId);
     return Stream.of(items).map(this::toHistoryItem).toList();
   }
@@ -334,11 +359,13 @@ public class FeishuTools {
           "Read one Feishu message by id, which is how to see the message a user replied to or"
               + " quoted. If the result carries a threadId the message belongs to a thread, so"
               + " follow up with FeishuReadMessageHistory passing containerIdType=thread and"
-              + " containerId=threadId to get the rest of it.")
+              + " containerId=threadId to get the rest of it. Only messages in a conversation the"
+              + " person you are talking to is in can be read.")
   @SneakyThrows
   public MessageHistoryItem readMessage(
       @ToolParam(description = "Id of the Feishu message to read, of the form om_xxx")
-          final String messageId) {
+          final String messageId,
+      final ToolContext toolContext) {
 
     final var query = GetMessageQuery.builder().cardMsgContentType("user_card_content").build();
 
@@ -364,6 +391,9 @@ public class FeishuTools {
     if (items == null || items.length == 0) {
       throw new IllegalStateException("Failed to read message: no message returned");
     }
+    // A message id names no chat, so whose conversation this is only becomes knowable here — and
+    // an id is all it would otherwise take to read a message out of a chat the asker is not in.
+    access.requireMember(toolContext, items[0].getChatId());
     log.info("Read message {}", messageId);
     return toHistoryItem(items[0]);
   }
