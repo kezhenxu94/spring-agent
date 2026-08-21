@@ -55,7 +55,8 @@ class FeishuCardUpdaterErrorTest {
             userWorkspaceFactory,
             null,
             new FeishuMessages(
-                new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH)));
+                new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH)),
+            null);
   }
 
   private String lastContentSent() throws Exception {

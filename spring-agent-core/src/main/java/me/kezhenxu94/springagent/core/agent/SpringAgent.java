@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -128,15 +129,37 @@ public class SpringAgent {
    */
   private final AtomicReference<Advisor> toolCallingAdvisor = new AtomicReference<>();
 
-  private final ConcurrentMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
+  /**
+   * The runs in flight, by request id. Three things read it: a cancel, which is the only reason it
+   * existed before; a run naming another as its parent, which is looked up here; and a parent
+   * finishing, which waits here for the runs it started.
+   */
+  private final ConcurrentMap<String, LiveRun> liveRuns = new ConcurrentHashMap<>();
+
   private final AtomicInteger inFlight = new AtomicInteger(0);
 
   @Getter private volatile boolean accepting = true;
 
+  /**
+   * A run that has been assembled and has not yet ended.
+   *
+   * @param listeners the run's own, complete: assembled before the stream is subscribed and never
+   *     added to afterwards, which is what makes it safe for a child run to notify them
+   * @param children the latch of each run this one started, released as that run ends
+   */
+  private record LiveRun(
+      AtomicBoolean cancelled,
+      List<AgentResponseListener> listeners,
+      ConcurrentMap<String, CountDownLatch> children) {}
+
   public boolean cancel(final String requestId) {
-    final var flag = cancelFlags.get(requestId);
-    if (flag == null) return false;
-    flag.set(true);
+    final var run = liveRuns.get(requestId);
+    if (run == null) return false;
+    run.cancelled().set(true);
+    // Down the tree as well, and not only because a subagent nobody is waiting for any more is
+    // wasted work: a run cannot see its own flag while a tool call blocks, so a parent waiting for
+    // a subagent would keep going until that subagent ended on its own.
+    run.children().keySet().forEach(this::cancel);
     return true;
   }
 
@@ -171,6 +194,14 @@ public class SpringAgent {
     final var requestId = request.requestId();
     if (!accepting) {
       log.warn("Shutting down, dropping agent request {}", requestId);
+      // Said out loud rather than dropped in silence: whoever waits for this run to end is fed by
+      // onFinished and nothing else, so a caller that blocks on it — the command line between
+      // prompts, a tool waiting on the subagent it started — would wait for a run that is never
+      // going to happen. Only the request's own listeners: the bean listeners never got their
+      // onStart for this run and have nothing attached to it to report on.
+      final var dropped = new IllegalStateException(messages.get("run-shutting-down"));
+      notify(request.listeners(), l -> l.onError(dropped));
+      notify(request.listeners(), l -> l.onFinished(AgentOutcome.FAILED));
       return;
     }
 
@@ -206,8 +237,26 @@ public class SpringAgent {
         questionHandlers.isEmpty() ? null : asking(request, questionHandlers, answersArriveLater);
 
     final var cancelFlag = new AtomicBoolean(false);
+    final var liveRun = new LiveRun(cancelFlag, listeners, new ConcurrentHashMap<>());
     if (requestId != null) {
-      cancelFlags.put(requestId, cancelFlag);
+      liveRuns.put(requestId, liveRun);
+    }
+
+    // The run that started this one, if it is still going. A parent that has already ended is left
+    // out of everything below: there is nobody there to tell, and nobody waiting.
+    final var parent =
+        requestId == null || request.parentRequestId() == null
+            ? null
+            : liveRuns.get(request.parentRequestId());
+    final var doneForParent = new CountDownLatch(1);
+    if (parent != null) {
+      parent.children().put(requestId, doneForParent);
+      notify(
+          parent.listeners(),
+          l ->
+              l.onSubagent(
+                  new AgentResponseListener.SubagentEvent(
+                      requestId, request.description(), null, null, null, null)));
     }
 
     // Held so doFinally can release the MCP clients however the run ends, including when assembling
@@ -252,6 +301,13 @@ public class SpringAgent {
         .takeWhile(
             $ -> {
               if (cancelFlag.get()) return false;
+              // Inherited: the stop button is on the parent's card, and this run is work the parent
+              // asked for. Checked here rather than propagated at cancel time, so a run started
+              // after the parent was already cancelled stops at its first emission too.
+              if (parent != null && parent.cancelled().get()) {
+                cancelFlag.set(true);
+                return false;
+              }
               if (listeners.stream().allMatch(AgentResponseListener::shouldContinue)) return true;
               // A listener that stops consuming ends the run the same way an explicit cancel does,
               // so the outcome below reports it as one.
@@ -269,6 +325,21 @@ public class SpringAgent {
                 final var usage = metadata.getUsage();
                 if (usage != null && usage.getTotalTokens() != null && usage.getTotalTokens() > 0) {
                   notify(listeners, l -> l.onUsage(model, usage));
+                  // Tokens a subagent spends are spent on the parent's turn, so they belong in the
+                  // count the parent shows. Usage is the only event forwarded up: content is
+                  // cumulative and a surface renders it as the reply, so forwarding it would
+                  // overwrite the parent's own answer with this one's.
+                  if (parent != null) {
+                    notify(parent.listeners(), l -> l.onUsage(model, usage));
+                    // The same tokens again, attributed: the total above is the turn's, and a
+                    // surface showing each subagent separately needs to know whose spend this was.
+                    notify(
+                        parent.listeners(),
+                        l ->
+                            l.onSubagent(
+                                new AgentResponseListener.SubagentEvent(
+                                    requestId, request.description(), null, model, usage, null)));
+                  }
                 }
               }
               final var result = chatResponse.getResult();
@@ -280,6 +351,18 @@ public class SpringAgent {
               contentBuffer.append(content);
               final var contentSoFar = contentBuffer.toString();
               notify(listeners, l -> l.onContent(contentSoFar));
+              // Up to the parent as well, and as its own kind of event rather than as content: a
+              // surface renders content as the reply, so handing it this one would overwrite the
+              // parent's answer with the subagent's. Shown where the parent puts work it is waiting
+              // on instead.
+              if (parent != null) {
+                notify(
+                    parent.listeners(),
+                    l ->
+                        l.onSubagent(
+                            new AgentResponseListener.SubagentEvent(
+                                requestId, request.description(), contentSoFar, null, null, null)));
+              }
             })
         .doOnError(
             error -> {
@@ -289,7 +372,7 @@ public class SpringAgent {
         .doFinally(
             signal -> {
               if (requestId != null) {
-                cancelFlags.remove(requestId);
+                liveRuns.remove(requestId);
               }
               try {
                 // A cancelled run may still surface the aborted read as an error, so the flag
@@ -304,7 +387,26 @@ public class SpringAgent {
                         };
                 log.info(
                     "Agent request {} finished: signal={}, outcome={}", requestId, signal, outcome);
+                // Before this run is reported finished, so that whatever a surface does with the
+                // end of a run — finalize a card, print a prompt — happens after the runs it
+                // started have had their say. The model has already stopped talking by now, so
+                // this is not waiting for an answer; it is keeping the subagent's tokens and
+                // outcome attributable to the turn that spent them.
+                awaitSubagents(requestId, liveRun);
                 notify(listeners, l -> l.onFinished(outcome));
+                if (parent != null) {
+                  notify(
+                      parent.listeners(),
+                      l ->
+                          l.onSubagent(
+                              new AgentResponseListener.SubagentEvent(
+                                  requestId,
+                                  request.description(),
+                                  contentBuffer.toString(),
+                                  null,
+                                  null,
+                                  outcome)));
+                }
               } catch (Throwable t) {
                 // Not even an Error may cost the run its cleanup: a leaked MCP client holds its
                 // connection open, and a missed decrement leaves shutdown waiting out its full
@@ -318,10 +420,42 @@ public class SpringAgent {
                   }
                 } finally {
                   inFlight.decrementAndGet();
+                  // Last of all, and outside every other failure above: the parent is blocked on
+                  // this latch, so anything that skipped it would hold that run open until the
+                  // application shut down.
+                  if (parent != null) {
+                    parent.children().remove(requestId);
+                    doneForParent.countDown();
+                  }
                 }
               }
             })
         .subscribe();
+  }
+
+  /**
+   * Waits for every run {@code run} started that has not ended yet.
+   *
+   * <p>Deliberately unbounded. A subagent is work the turn asked for, and abandoning it halfway
+   * would leave a shell command or an MCP call running with nothing watching it. The bound is the
+   * one every run already has: cancelling this run cancels its subagents with it, and shutdown
+   * gives the whole tree its ten minutes before giving up on the lot.
+   */
+  private void awaitSubagents(final String requestId, final LiveRun run) {
+    final var children = run.children();
+    if (children.isEmpty()) {
+      return;
+    }
+    log.info("Run {} is waiting for {} subagent(s) to finish", requestId, children.size());
+    children.forEach(
+        (childId, done) -> {
+          try {
+            done.await();
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("Interrupted while waiting for subagent {} of run {}", childId, requestId);
+          }
+        });
   }
 
   /**
@@ -469,6 +603,7 @@ public class SpringAgent {
     final var toolContext = new LinkedHashMap<String, Object>(registry.toolContext());
     toolContext.putAll(request.toolContext());
     // Emptied rather than left null: ChatClient rejects a tool context with null values outright.
+    toolContext.put(ToolContexts.KEY_REQUEST_ID, Strings.nullToEmpty(request.requestId()));
     toolContext.put(ToolContexts.KEY_USER_ID, Strings.nullToEmpty(request.userId()));
     toolContext.put(ToolContexts.KEY_CHAT_ID, Strings.nullToEmpty(request.chatId()));
     toolContext.put(ToolContexts.KEY_CHAT_TYPE, request.chatType());

@@ -12,6 +12,8 @@ import com.lark.oapi.service.cardkit.v1.model.DeleteCardElementReq;
 import com.lark.oapi.service.cardkit.v1.model.DeleteCardElementReqBody;
 import com.lark.oapi.service.cardkit.v1.model.SettingsCardReq;
 import com.lark.oapi.service.cardkit.v1.model.SettingsCardReqBody;
+import com.lark.oapi.service.cardkit.v1.model.UpdateCardElementReq;
+import com.lark.oapi.service.cardkit.v1.model.UpdateCardElementReqBody;
 import com.lark.oapi.service.im.v1.model.CreateImageReq;
 import com.lark.oapi.service.im.v1.model.CreateImageReqBody;
 import com.openai.models.completions.CompletionUsage;
@@ -25,8 +27,11 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -37,6 +42,7 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
+import me.kezhenxu94.springagent.core.agent.AgentResponseListener.SubagentEvent;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.ToolContextKey;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
@@ -71,6 +77,9 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
 
   private static final String DESCRIPTION_FIELD = "description";
 
+  /** How much of a subagent's report a panel holds. See {@link #truncated}. */
+  private static final int MAX_SUBAGENT_REPORT = 3000;
+
   private final Client feishu;
   private final JsonMapper om;
   private final String cardId;
@@ -79,9 +88,81 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   private final UserWorkspaceFactory userWorkspaceFactory;
   private final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing;
   private final FeishuMessages messages;
+  private final FeishuSubagentPanel panels;
   private final Instant startedAt = Instant.now();
   private final AtomicInteger sequence = new AtomicInteger(2);
   private final ConcurrentMap<String, String> imageKeysBySource = new ConcurrentHashMap<>();
+
+  /**
+   * What the turn has spent, across every model call it made and every subagent it started. Guarded
+   * by the same lock as the footer it is written to, which is every writer of it.
+   */
+  private final Spend turnSpend = new Spend();
+
+  /**
+   * The panels on this card, by subagent id. Kept because a panel is replaced whole when its
+   * subagent ends, and that replacement has to carry what the panel had been streaming; dropped as
+   * it ends, since a panel is never rewritten twice.
+   */
+  private final ConcurrentMap<String, SubagentPanel> subagentPanels = new ConcurrentHashMap<>();
+
+  /** One subagent's panel: what it has said, what it has spent, and since when. */
+  private final class SubagentPanel {
+    private final Instant startedAt = Instant.now();
+    private final Spend spend = new Spend();
+    private String report = "";
+  }
+
+  /**
+   * What one run spent: which models answered, how many tokens they read and wrote, and roughly
+   * what that cost. One of these for the turn and one per subagent, so a reader can see both the
+   * whole and where it went.
+   */
+  private final class Spend {
+    private final Set<String> models = new LinkedHashSet<>();
+    private long promptTokens;
+    private long completionTokens;
+
+    /** Per currency, so a deployment pricing two models in two of them gets two figures. */
+    private final Map<String, Double> costs = new LinkedHashMap<>();
+
+    private void model(final String model) {
+      models.add(model);
+    }
+
+    private void add(final String model, final Usage usage) {
+      models.add(model);
+      if (usage == null || usage.getPromptTokens() == null || usage.getCompletionTokens() == null) {
+        return;
+      }
+      promptTokens += usage.getPromptTokens();
+      completionTokens += usage.getCompletionTokens();
+      final var cost = approxCost(model, usage);
+      if (cost != null) {
+        costs.merge(modelPricing.get(model).currency().symbol(), cost, Double::sum);
+      }
+    }
+
+    /** The one line of it: models, tokens, cost and how long, or nothing at all if nothing ran. */
+    private String render(final Instant since) {
+      final var models = String.join(" + ", this.models);
+      if (promptTokens == 0 && completionTokens == 0) {
+        return models;
+      }
+      final var cost =
+          costs.entrySet().stream()
+              .map(entry -> String.format(Locale.ROOT, "~%s%.2f", entry.getKey(), entry.getValue()))
+              .collect(Collectors.joining(" + "));
+      return String.format(
+          "%s · ↑%d ↓%d%s · %s",
+          models,
+          promptTokens,
+          completionTokens,
+          cost.isEmpty() ? "" : " · " + cost,
+          formatElapsed(Duration.between(since, Instant.now())));
+    }
+  }
+
   private String lastBaseContent = "";
 
   public FeishuCardUpdater(
@@ -92,7 +173,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       final RestTemplate restTemplate,
       final UserWorkspaceFactory userWorkspaceFactory,
       final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing,
-      final FeishuMessages messages) {
+      final FeishuMessages messages,
+      final FeishuSubagentPanel panels) {
     this.feishu = feishu;
     this.om = om;
     this.cardId = cardId;
@@ -101,6 +183,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     this.userWorkspaceFactory = userWorkspaceFactory;
     this.modelPricing = modelPricing != null ? modelPricing : Map.of();
     this.messages = messages;
+    this.panels = panels;
   }
 
   private static boolean isThinkingMode(Usage usage) {
@@ -113,7 +196,12 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         && details.reasoningTokens().get() > 0;
   }
 
-  private String approxCost(String model, Usage usage) {
+  /**
+   * What one model call cost, at the price configured for that model and for the mode it ran in, or
+   * null where the model has no pricing configured. Returned rather than formatted, since the
+   * footer shows the sum of every call the turn made.
+   */
+  private Double approxCost(String model, Usage usage) {
     final var pricing = modelPricing.get(model);
     if (pricing == null
         || usage == null
@@ -125,11 +213,9 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         isThinkingMode(usage)
             ? pricing.thinkingInputPerMillion()
             : pricing.nonThinkingInputPerMillion();
-    final var cost =
-        (usage.getPromptTokens() * inputPrice
-                + usage.getCompletionTokens() * pricing.outputPerMillion())
-            / 1_000_000.0;
-    return String.format(Locale.ROOT, "~%s%.2f", pricing.currency().symbol(), cost);
+    return (usage.getPromptTokens() * inputPrice
+            + usage.getCompletionTokens() * pricing.outputPerMillion())
+        / 1_000_000.0;
   }
 
   private static String formatElapsed(Duration elapsed) {
@@ -379,29 +465,31 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     }
   }
 
+  /**
+   * Adds one model call to the turn's running total and rewrites the footer with it.
+   *
+   * <p>A total, not the latest call: a turn is a loop, and every iteration of it reports its own
+   * usage — as does every subagent the turn started, whose usage is forwarded to this run's
+   * listeners for exactly this reason. Showing the last report alone said a five-call turn had cost
+   * what its final call cost.
+   *
+   * <p>Assumes one usage report per model call, which is what the OpenAI streaming API does: usage
+   * arrives on the last chunk of a call and nowhere else. A gateway that instead repeated a
+   * cumulative total on every chunk would inflate this.
+   */
   public synchronized void updateUsageFooter(String model, Usage usage) {
     if (Strings.isNullOrEmpty(model)) {
       log.debug("updateUsageFooter: skipped, model is empty for cardId={}", cardId);
       return;
     }
-    final var cost = approxCost(model, usage);
-    final var usageText =
-        usage != null && usage.getPromptTokens() != null && usage.getCompletionTokens() != null
-            ? String.format(
-                "%s · ↑%d ↓%d%s · %s",
-                model,
-                usage.getPromptTokens(),
-                usage.getCompletionTokens(),
-                cost != null ? " · " + cost : "",
-                formatElapsed(Duration.between(startedAt, Instant.now())))
-            : model;
-    log.debug(
-        "updateUsageFooter: cardId={}, model={}, promptTokens={}, completionTokens={}",
-        cardId,
-        model,
-        usage != null ? usage.getPromptTokens() : null,
-        usage != null ? usage.getCompletionTokens() : null);
-    sendElementContent("usage", usageText);
+    if (usage == null) {
+      // Named before it has spent anything, since this is also how the footer first says which
+      // model is answering.
+      turnSpend.model(model);
+    } else {
+      turnSpend.add(model, usage);
+    }
+    sendElementContent("usage", turnSpend.render(startedAt));
   }
 
   @SneakyThrows
@@ -476,6 +564,116 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   @Override
   public void onUsage(String model, Usage usage) {
     updateUsageFooter(model, usage);
+  }
+
+  /**
+   * A subagent of this run starting, saying something, spending something, or ending.
+   *
+   * <p>Each gets a collapsed panel of its own on the card: a run can have several going at once,
+   * and what any one of them says is not the answer — the run folds that into its own reply. The
+   * panel is where a reader goes to see what the work behind the reply actually was, and it streams
+   * as the subagent writes, so a turn that spends five minutes on one is not five minutes of
+   * nothing.
+   *
+   * <p>Each panel keeps a footer of its own, on the same terms as the card's: which model answered,
+   * what it read and wrote, roughly what that cost and how long it took. The card's footer is the
+   * turn as a whole and these are where it went, which is the only way to see that one subagent
+   * accounts for most of a turn.
+   *
+   * <p>The panel is inserted once, streamed into by the ids of the text inside it, and replaced
+   * whole when the subagent ends — replaced rather than streamed because the title has to change
+   * too, and the title is not a streamable element.
+   */
+  @Override
+  public synchronized void onSubagent(SubagentEvent event) {
+    final var id = event.subagentId();
+    if (Strings.isNullOrEmpty(id)) {
+      return;
+    }
+    if (event.started()) {
+      // The panel has to exist before anything can be streamed into it, and the subagent's own id
+      // is
+      // the idempotency key: unique to it, and the same across a retry, so a retried insert cannot
+      // leave the card holding two panels.
+      subagentPanels.put(id, new SubagentPanel());
+      insertBeforeFooter(panels.forInsert(id, event.description(), null), id);
+      return;
+    }
+    final var panel = subagentPanels.get(id);
+    if (event.ended()) {
+      subagentPanels.remove(id);
+      updateElement(
+          FeishuSubagentPanel.panelElementId(id),
+          panels.forUpdate(
+              id,
+              event.description(),
+              event.outcome(),
+              panel == null ? truncated(event.contentSoFar()) : panel.report,
+              panel == null ? "" : panel.spend.render(panel.startedAt)),
+          id + ":end");
+      return;
+    }
+    // Only from here on is the panel needed, and only a subagent whose start went missing has none.
+    if (panel == null) {
+      log.debug("No panel for subagent {} on card {}, nothing to update", id, cardId);
+      return;
+    }
+    if (event.spent()) {
+      panel.spend.add(event.model(), event.usage());
+      sendElementContent(
+          FeishuSubagentPanel.footerElementId(id), panel.spend.render(panel.startedAt));
+      return;
+    }
+    panel.report = truncated(event.contentSoFar());
+    sendElementContent(FeishuSubagentPanel.bodyElementId(id), panel.report);
+  }
+
+  /**
+   * What a panel may hold. A subagent reports for the model to act on, not for a card to show, and
+   * that can run to tens of thousands of characters; the card refuses an element that long and the
+   * whole panel is lost with it. The head rather than the tail: a report opens with its conclusion.
+   */
+  private static String truncated(final String content) {
+    final var text = Strings.nullToEmpty(content);
+    return text.length() <= MAX_SUBAGENT_REPORT
+        ? text
+        : text.substring(0, MAX_SUBAGENT_REPORT) + "\n\n…";
+  }
+
+  /**
+   * Replaces one element of the card outright, for a change no streamed content can express — a
+   * different title, say. Failures are logged and left: a panel that keeps its old title is worth
+   * more than a run that ends here.
+   */
+  @SneakyThrows
+  private synchronized void updateElement(
+      final String elementId, final String elementJson, final String uuid) {
+    final var seq = sequence.getAndIncrement();
+    final var response =
+        feishu
+            .cardkit()
+            .v1()
+            .cardElement()
+            .update(
+                UpdateCardElementReq.newBuilder()
+                    .cardId(cardId)
+                    .elementId(elementId)
+                    .updateCardElementReqBody(
+                        UpdateCardElementReqBody.newBuilder()
+                            .uuid(uuid)
+                            .sequence(seq)
+                            .element(elementJson)
+                            .build())
+                    .build());
+    if (response.getCode() != 0) {
+      log.warn(
+          "Failed to update element {}: cardId={}, seq={}, code={}, msg={}",
+          elementId,
+          cardId,
+          seq,
+          response.getCode(),
+          response.getMsg());
+    }
   }
 
   @Override

@@ -33,6 +33,9 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
    *     {@code {taskText}} — the prompt the task was created with. Defaults to {@link
    *     #DEFAULT_SCHEDULED_TASK_PROMPT}, since a deployment that never schedules anything has no
    *     reason to state one.
+   * @param subagentPrompt how a subagent is introduced to itself, as a template over {@code
+   *     {taskText}} — the brief the run that started it wrote. Defaults to {@link
+   *     #DEFAULT_SUBAGENT_PROMPT}, on the same reasoning.
    */
   public record Ai(
       BotInterceptor botInterceptor,
@@ -41,7 +44,8 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
       VectorStore vectorstore,
       Tools tools,
       String systemPrompt,
-      String scheduledTaskPrompt) {
+      String scheduledTaskPrompt,
+      String subagentPrompt) {
 
     /**
      * What the agent is told when an application states no prompt of its own. Written to suit any
@@ -75,6 +79,24 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
         - Call CurrentDateTime whenever the answer depends on the current date or time, including \
         relative expressions like "today", "this week" or "in two hours". Never guess the current \
         time or the user's timezone.
+
+        # Handing work to a subagent
+        StartSubagent runs another you on one task, with a context window of its own, and gives \
+        you back only what it reports. Reach for it when the work is large but its middle is not \
+        worth your attention:
+        - Reading something long to answer a narrow question about it — a transcript, a log, a \
+        file you would otherwise page through here.
+        - The same question in several places: one subagent per repository, cluster or service, \
+        all started before you wait for any of them.
+        - A search whose path you cannot predict, and whose dead ends you have no reason to keep.
+
+        Do the work yourself when it is one or two tool calls, when it only makes sense against \
+        this conversation, or when it needs the user: a subagent sees neither and cannot ask.
+
+        The brief is the whole of what a subagent gets, so state the task, every fact it needs, \
+        and what to report back. Collect each answer with WaitForSubagent before you finish your \
+        turn, and call CancelSubagent on any you no longer need — one you walk away from goes on \
+        running, and goes on costing.
 
         # Ask before you do something you cannot undo
         Get on with the work. The tools you have are there to be used, and asking to use them \
@@ -127,12 +149,45 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
         {taskText}\
         """;
 
+    /**
+     * What a subagent is told about being one, ahead of the brief it was given. Everything a
+     * subagent cannot do — see the conversation, ask the user, start a subagent of its own — it has
+     * to be told here, because the tools that would let it are simply absent and a model that is
+     * not told reaches for them anyway.
+     */
+    public static final String DEFAULT_SUBAGENT_PROMPT =
+        """
+        You are running as a subagent. Another run of you needed work done that would not fit in \
+        its own context, wrote the brief below, and is waiting for what you report back.
+
+        What that means for you:
+        - You cannot see that conversation. The brief is everything you have been told; nothing \
+        else is coming. Where it leaves something open, decide, act, and say in your report what \
+        you decided and why.
+        - There is nobody to ask. Do the reversible part, stop before anything destructive or \
+        irreversible that the brief does not plainly call for, and say what you stopped short of.
+        - Your final message is the whole of what your caller reads. Everything they need has to \
+        be in it: what you found, the numbers and names and paths themselves rather than a \
+        reference to where you saw them, and what you could not settle. Nothing else you did \
+        survives.
+        - Write it for another agent to act on, not for a person to read: no greeting, no closing \
+        offer of further help, no formatting for a chat window.
+        - You share a workspace with your caller, so a file you write is a file they can read. Say \
+        the path of anything you leave behind.
+
+        # The brief
+        {taskText}\
+        """;
+
     public Ai {
       if (systemPrompt == null || systemPrompt.isBlank()) {
         systemPrompt = DEFAULT_SYSTEM_PROMPT;
       }
       if (scheduledTaskPrompt == null || scheduledTaskPrompt.isBlank()) {
         scheduledTaskPrompt = DEFAULT_SCHEDULED_TASK_PROMPT;
+      }
+      if (subagentPrompt == null || subagentPrompt.isBlank()) {
+        subagentPrompt = DEFAULT_SUBAGENT_PROMPT;
       }
       if (admins == null) {
         admins = Set.of();
@@ -144,7 +199,7 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
         vectorstore = new VectorStore(null);
       }
       if (tools == null) {
-        tools = new Tools(null);
+        tools = new Tools(null, null);
       }
       // The one field this block used to leave null, which cost every application that did not
       // configure it a NullPointerException from LargeResponseInterceptor — not at startup, but on
@@ -163,10 +218,32 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
      * app.ai.tools.publish-file.base-url} is a {@code @Value} on {@code PublishFileTool} so that a
      * deployment which never states it fails at startup rather than on the first published link.
      */
-    public record Tools(AskUserQuestion askUserQuestion) {
+    public record Tools(AskUserQuestion askUserQuestion, Subagent subagent) {
       public Tools {
         if (askUserQuestion == null) {
           askUserQuestion = new AskUserQuestion(true, null);
+        }
+        if (subagent == null) {
+          subagent = new Subagent(0);
+        }
+      }
+
+      /**
+       * @param maxConcurrent how many subagents one run may have going at once. Bounded because
+       *     each one is a run in full — an MCP handshake per server it can reach, its own workspace
+       *     and skills build, its own tool index lookup — so a model that fans out as far as it
+       *     likes can spend a great deal before it says anything. Over the limit the tool refuses
+       *     and tells the model to collect an answer first. Zero and below are read as "not
+       *     configured" and replaced by {@link #DEFAULT_MAX_CONCURRENT}.
+       */
+      public record Subagent(int maxConcurrent) {
+
+        public static final int DEFAULT_MAX_CONCURRENT = 3;
+
+        public Subagent {
+          if (maxConcurrent <= 0) {
+            maxConcurrent = DEFAULT_MAX_CONCURRENT;
+          }
         }
       }
 

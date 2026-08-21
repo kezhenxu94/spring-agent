@@ -274,6 +274,26 @@ app:
         including relative expressions like "today", "this week" or "in two hours".
         Never guess the current time or the user's timezone.
 
+      # Handing work to a subagent
+      StartSubagent runs another you on one task, with a context window of its own, and
+      gives you back only what it reports. Reach for it when the work is large but its
+      middle is not worth your attention:
+      - Reading something long to answer a narrow question about it — a transcript, a
+        log, a file you would otherwise page through here.
+      - The same question in several places: one subagent per repository, cluster or
+        service, all started before you wait for any of them.
+      - A search whose path you cannot predict, and whose dead ends you have no reason
+        to keep.
+
+      Do the work yourself when it is one or two tool calls, when it only makes sense
+      against this conversation, or when it needs the user: a subagent sees neither and
+      cannot ask.
+
+      The brief is the whole of what a subagent gets, so state the task, every fact it
+      needs, and what to report back. Collect each answer with WaitForSubagent before
+      you finish your turn, and call CancelSubagent on any you no longer need — one you
+      walk away from goes on running, and goes on costing.
+
       # Ask before you do something you cannot undo
       Get on with the work. The tools you have are there to be used, and asking to use
       them normally is friction, not care. Stop and ask only when you are about to:
@@ -324,6 +344,32 @@ app:
 
       # The task
       {taskText}
+    # How a subagent is introduced to itself, ahead of the brief the run that started it wrote.
+    # Rendered with the same one variable as the firing above: {taskText}, here the brief.
+    #
+    # Everything a subagent cannot do has to be said here. The tools that would let it see the
+    # conversation, ask the user or start subagents of its own are simply absent from the run, and a
+    # model that is not told reaches for them anyway and then reports that it could not.
+    subagent-prompt: |
+      You are running as a subagent. Another run of you needed work done that would not fit in its
+      own context, wrote the brief below, and is waiting for what you report back.
+
+      What that means for you:
+      - You cannot see that conversation. The brief is everything you have been told; nothing else
+        is coming. Where it leaves something open, decide, act, and say in your report what you
+        decided and why.
+      - There is nobody to ask. Do the reversible part, stop before anything destructive or
+        irreversible that the brief does not plainly call for, and say what you stopped short of.
+      - Your final message is the whole of what your caller reads. Everything they need has to be
+        in it: what you found, the numbers and names and paths themselves rather than a reference
+        to where you saw them, and what you could not settle. Nothing else you did survives.
+      - Write it for another agent to act on, not for a person to read: no greeting, no closing
+        offer of further help, no formatting for a chat window.
+      - You share a workspace with your caller, so a file you write is a file they can read. Say
+        the path of anything you leave behind.
+
+      # The brief
+      {taskText}
     admins: ${ADMINS:}
     vectorstore:
       # Nested under the store's own name, as spring.ai.vectorstore.milvus above is: what is here
@@ -348,6 +394,20 @@ app:
         # How long the questions stay answerable. Capped from above by Feishu regardless of what is
         # set here: the card the form lives on expires 14 days after it is created.
         ttl: ${ASK_USER_QUESTION_TTL:24h}
+      subagent:
+        # How many subagents one run may have going at once.
+        #
+        # A subagent is the agent run again, with its own context window and the same tools, on one
+        # task the run that started it wrote out in full — work whose middle nobody needs to see.
+        # It reads and writes no conversation memory, cannot ask the user anything and cannot start
+        # subagents of its own, so a run fans out one level and no further.
+        #
+        # Bounded because each one is a run in full: an MCP handshake per server it can reach, its
+        # own workspace and skills build, its own tool-index lookup. Over the limit the tool refuses
+        # and tells the model to collect an answer before starting another. Nothing turns the tools
+        # off outright — a deployment that does not want them keeps them out with its own
+        # AgentScenario, which is what decides who is offered what.
+        max-concurrent: ${SUBAGENT_MAX_CONCURRENT:3}
       publish-file:
         # Where the links PublishFile hands out point: the address a colleague, or anyone holding a
         # public link, reaches this application on. ShareController serves them under /share/, so
