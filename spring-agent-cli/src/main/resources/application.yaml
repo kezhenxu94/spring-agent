@@ -91,7 +91,10 @@ spring:
       chat:
         model: ${OPENAI_MODEL}
         temperature: 0
-        timeout: 5m
+        # OkHttp's callTimeout, not a read timeout — it bounds the entire streaming call, so it has
+        # to outlast the longest single model turn. See the app's application.yaml for why the two
+        # cannot be told apart here.
+        timeout: 30m
         stream-options:
           include-usage: true
       image:

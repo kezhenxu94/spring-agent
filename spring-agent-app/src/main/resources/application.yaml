@@ -100,7 +100,21 @@ spring:
       chat:
         model: ${OPENAI_MODEL}
         temperature: 0
-        timeout: 5m
+        # Not a read timeout: Spring AI hands this to the OpenAI SDK as the request timeout, and
+        # SpringAiOpenAiHttpClient turns that into OkHttp's *callTimeout* — a ceiling on the whole
+        # HTTP call, including reading the SSE stream to its end. A streaming turn that is still
+        # arriving when it expires is cancelled mid-flight, and the run fails with
+        # `IllegalStateException: Stream processing failed` wrapping
+        # `InterruptedIOException: timeout`. So this has to be longer than the longest single model
+        # turn, not longer than a plausible gap between two chunks: a slow gateway or a long
+        # reasoning answer reaches five minutes without anything being wrong.
+        #
+        # The two cannot be separated with what Spring AI exposes. It only ever sets the SDK's
+        # `request` timeout, and the SDK's `read` timeout defaults to it, so raising the ceiling
+        # also means a stream that goes silent is held this long before it fails — one stuck run
+        # keeps its MCP clients open and delays graceful shutdown for that whole time. Setting it
+        # to 0 (the SDK's "no timeout") would remove both bounds; don't.
+        timeout: 30m
         stream-options:
           include-usage: true
       image:
