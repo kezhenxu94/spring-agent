@@ -11,6 +11,7 @@ import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.HexFormat;
@@ -255,6 +256,7 @@ public class UserPodManager {
     final var credentialsSecretName = credentialsSecretName(userId);
     final var credentialsMountPath = properties.credentials().mountPathOrDefault();
     final var mounts = properties.storage().mounts();
+    final var homeDir = Path.of(properties.workingDir(), userId).toString();
 
     var podSpecBuilder =
         new PodSpecBuilder()
@@ -274,11 +276,15 @@ public class UserPodManager {
             .withName(CONTAINER_NAME)
             .withImage(properties.image())
             .withImagePullPolicy("Always")
-            .withWorkingDir(properties.workingDir())
+            .withWorkingDir(homeDir)
             .withCommand("sh", "-c", watchdogScript)
             .addNewEnv()
             .withName("IDLE_TTL_SECONDS")
             .withValue(Long.toString(idleSeconds))
+            .endEnv()
+            .addNewEnv()
+            .withName("HOME")
+            .withValue(homeDir)
             .endEnv()
             .addNewEnvFrom()
             .withNewSecretRef()
@@ -320,7 +326,7 @@ public class UserPodManager {
           .editFirstContainer()
           .addNewVolumeMount()
           .withName(volumeName)
-          .withMountPath(mount.mountPath())
+          .withMountPath(Path.of(mount.mountPath(), userId).toString())
           .withSubPath(mount.subPath(userId))
           .endVolumeMount()
           .endContainer()
