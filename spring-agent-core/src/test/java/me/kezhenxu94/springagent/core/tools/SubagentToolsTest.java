@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -166,6 +167,57 @@ class SubagentToolsTest {
   }
 
   @Test
+  @DisplayName("a subagent that could not be started leaves nothing behind to wait for")
+  void aSubagentThatCouldNotStartIsNotLeftRunning() {
+    // The tool remembers the subagent before firing it, and only a run that actually started ever
+    // reports itself finished. So a fire() that throws used to leave behind a subagent that was
+    // forever running: it held a place under the limit, and the first wait for it never returned.
+    org.mockito.Mockito.doThrow(new IllegalStateException("no listener bean"))
+        .when(springAgent)
+        .fire(any());
+
+    final var refused = tools.startSubagent("one", "do one", context);
+
+    assertThat(refused).contains("COULD NOT START").contains("no listener bean");
+    // Nothing to wait for, and the place it briefly took is free again.
+    assertThat(tools.waitForSubagent("sub_whatever", context)).contains("No subagent");
+    org.mockito.Mockito.reset(springAgent);
+    when(springAgent.accepting()).thenReturn(true);
+    assertThat(tools.startSubagent("two", "do two", context)).contains("Started subagent");
+  }
+
+  @Test
+  @DisplayName("waiting on a subagent still working hands the turn back rather than holding it")
+  void aWaitThatTimesOutTellsTheModelToAskAgain() {
+    // Unbounded, this wait sat on a Reactor worker that the subagent it waited for might need in
+    // order to finish. It lets go on a timer instead, and says so in terms that tell the model to
+    // come back rather than to give up.
+    final var id = idOf(tools.startSubagent("Reading the timeline", "Read x", context));
+
+    final var stillWorking = tools.waitForSubagent(id, context);
+
+    assertThat(stillWorking).contains("still working").contains("WaitForSubagent");
+    // And the answer is still there to be collected on the next call.
+    finish(fired(), "the timeline starts on Monday", AgentOutcome.COMPLETED);
+    assertThat(tools.waitForSubagent(id, context)).contains("the timeline starts on Monday");
+  }
+
+  @Test
+  @DisplayName("a subagent that outlasts the ceiling is stopped rather than waited on for ever")
+  void aSubagentPastTheCeilingIsStopped() {
+    final var id = idOf(tools.startSubagent("Reading the timeline", "Read x", context));
+
+    // The ceiling in these tests is 300ms, so a few polls take the wait past it.
+    String result;
+    do {
+      result = tools.waitForSubagent(id, context);
+    } while (result.contains("still working"));
+
+    assertThat(result).contains("was still running").contains("has been stopped");
+    verify(springAgent).cancel(id);
+  }
+
+  @Test
   @DisplayName("a subagent is offered neither subagents of its own nor the scheduler")
   void aSubagentCannotFanOutFurther() {
     assertThat(BuiltInScenarios.SUBAGENT.offers(tools)).isFalse();
@@ -231,7 +283,14 @@ class SubagentToolsTest {
             Map.of(),
             null,
             new SpringAgentProperties.Ai.Tools(
-                null, new SpringAgentProperties.Ai.Tools.Subagent(maxConcurrent)),
+                null,
+                new SpringAgentProperties.Ai.Tools.Subagent(
+                    maxConcurrent,
+                    // Short, because a few of these wait on a subagent that has already
+                    // finished and the rest on one that never will: the poll is what decides
+                    // how long the latter sit there.
+                    Duration.ofMillis(100),
+                    Duration.ofMillis(300))),
             null,
             null,
             null),

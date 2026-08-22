@@ -25,7 +25,8 @@ class FeishuMessageCardTest {
         new FeishuMessageCard(
             objectMapper,
             new FeishuMessages(
-                new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH)),
+                new FeishuProperties(
+                    null, null, null, null, null, null, null, Locale.ENGLISH, null)),
             new ClassPathResource("feishu/reply-card.json"));
   }
 

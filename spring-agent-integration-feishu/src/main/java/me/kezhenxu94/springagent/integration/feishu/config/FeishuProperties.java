@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.integration.feishu.config;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.util.Locale;
 import lombok.SneakyThrows;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -12,6 +13,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param locale which language the cards speak. Defaults to the host's, so setting it is for a
  *     workspace whose language differs from the machine the agent runs on. See {@link
  *     FeishuMessages} for what it selects.
+ * @param requestTimeout how long any one call to Feishu may take. Stated because the SDK's own
+ *     default is no timeout at all — {@code OKHttps.create(0, MILLISECONDS)}, which OkHttp reads as
+ *     "wait for ever" — and a card update that never returns is not a lost card but a stuck run:
+ *     every writer to a card holds the same lock while it calls, and a subagent reports itself
+ *     finished to its parent's card before the run that started it is released. One unanswered HTTP
+ *     call was therefore enough to hang a whole turn with nothing logged. Defaults to {@link
+ *     #DEFAULT_REQUEST_TIMEOUT}.
  */
 @ConfigurationProperties(prefix = "app.feishu")
 public record FeishuProperties(
@@ -22,7 +30,17 @@ public record FeishuProperties(
     String appSecret,
     String botOpenId,
     String verificationToken,
-    Locale locale) {
+    Locale locale,
+    Duration requestTimeout) {
+
+  /** Generous for a card update, which is a small write to a nearby service. */
+  public static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(30);
+
+  public FeishuProperties {
+    if (requestTimeout == null || requestTimeout.isZero() || requestTimeout.isNegative()) {
+      requestTimeout = DEFAULT_REQUEST_TIMEOUT;
+    }
+  }
 
   @SneakyThrows
   public byte[] encryptKeyBytes() {

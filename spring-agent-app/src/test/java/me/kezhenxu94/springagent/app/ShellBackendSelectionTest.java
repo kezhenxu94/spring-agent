@@ -93,7 +93,11 @@ class ShellBackendSelectionTest {
     runner
         .withPropertyValues(
             "app.ai.tools.shell.type=kubernetes",
-            "app.ai.tools.shell.kubernetes.image=test-image:latest")
+            "app.ai.tools.shell.kubernetes.image=test-image:latest",
+            // No application.yaml behind this runner, so the sandbox's required shape - where the
+            // shell starts and the volume it starts in - has to be spelled out here.
+            "app.ai.tools.shell.kubernetes.working-dir=/data/spring-agent",
+            "app.ai.tools.shell.kubernetes.storage.mounts[0].pvc-name=test-pvc")
         .run(
             context ->
                 assertThat(context)
