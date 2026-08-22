@@ -7,7 +7,7 @@ spring-ai-agent-utils = "0.10.0"
 # A released version, never a -SNAPSHOT: Maven Central rejects a deployment whose POM manages or
 # depends on one, and this BOM is imported into the POM of every published module (see
 # springagent.java-library-conventions). The whole release fails validation on that one line.
-spring-ai = "2.0.1-SNAPSHOT"
+spring-ai = "2.0.2-SNAPSHOT"
 # Not BOM-managed: spring-boot-dependencies does not manage Spring Shell at all. 4.x is the line
 # built against Spring Boot 4, and it is where the terminal UI moved to
 # org.springframework.shell.jline.tui — spring-agent-cli renders the agent's questions with it.
