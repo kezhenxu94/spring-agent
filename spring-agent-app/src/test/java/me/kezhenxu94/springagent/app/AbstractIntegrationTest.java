@@ -63,6 +63,9 @@ public abstract class AbstractIntegrationTest {
     // The client above is mocked, so no cluster is contacted.
     registry.add("app.ai.tools.shell.type", () -> "kubernetes");
     registry.add("app.ai.tools.shell.kubernetes.image", () -> "test-image:latest");
+    // application.yaml declares mounts[0] with its pvc-name left to an environment variable that
+    // is unset here, and a mount without one is rejected outright, so name it.
+    registry.add("app.ai.tools.shell.kubernetes.storage.mounts[0].pvc-name", () -> "test-pvc");
     registry.add("spring.ai.openai.base-url", () -> "http://127.0.0.1:8080");
     registry.add("spring.ai.openai.api-key", () -> "test-openai-key");
     registry.add("spring.ai.openai.chat.model", () -> "test-openai-model");
