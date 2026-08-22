@@ -885,7 +885,6 @@ class SpringAgentTest {
     return new InterceptingToolCallingManager(
         DefaultToolCallingManager.builder()
             .toolCallbackResolver(new InterceptingToolCallbackResolver(toolName -> null, List.of()))
-            .resolutionFallbackEnabled(true)
             .build(),
         List.of());
   }

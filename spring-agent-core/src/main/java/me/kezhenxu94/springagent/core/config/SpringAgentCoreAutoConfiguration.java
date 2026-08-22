@@ -131,13 +131,6 @@ public class SpringAgentCoreAutoConfiguration {
         DefaultToolCallingManager.builder()
             .toolCallbackResolver(
                 new InterceptingToolCallbackResolver(toolCallbackResolver, interceptors))
-            // Off by default since Spring AI 2.0.1, and this run depends on it: a tool the
-            // tool-search advisor did not offer to the current iteration is resolved by name, which
-            // is where InterceptingToolCallbackResolver answers with the stub telling the model to
-            // search for the tool and call it again. Left disabled, that call throws instead and
-            // takes the whole run with it — see the resolver's own comment for why the case is
-            // routine rather than exceptional.
-            .resolutionFallbackEnabled(true)
             .build();
     return new InterceptingToolCallingManager(defaultManager, interceptors);
   }
