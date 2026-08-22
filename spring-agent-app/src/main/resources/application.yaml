@@ -408,6 +408,31 @@ app:
         # off outright — a deployment that does not want them keeps them out with its own
         # AgentScenario, which is what decides who is offered what.
         max-concurrent: ${SUBAGENT_MAX_CONCURRENT:3}
+        # How long WaitForSubagent blocks before handing the turn back to the model to ask again.
+        #
+        # This one is load-bearing rather than a preference. That wait runs on a Reactor
+        # boundedElastic worker, and so does every subagent's own stream: the pool is a fixed number
+        # of single-threaded executors (ten per core), a worker is pinned to one of them when it is
+        # created, and once the pool is full a new worker is handed one that is already busy —
+        # Reactor pins tasks to an executor and never steals them back. A wait that never let go
+        # could therefore be holding the one thread the subagent it waits for needs in order to
+        # finish, and since nothing throws and nothing times out there, the turn simply went quiet:
+        # no reply, no error, nothing in the log. Letting go on a timer is what makes that
+        # impossible rather than merely unlikely.
+        #
+        # Raising it is safe and costs nothing while subagents are quick — the wait returns the
+        # moment one finishes, so the poll is invisible in the ordinary case. It only buys a further
+        # model call, and one more stretch of held thread, once a subagent outlives it. Do not set
+        # it to hours: that is the unbounded wait again.
+        wait-poll: ${SUBAGENT_WAIT_POLL:60s}
+        # How long a run may wait for one subagent in total, however many polls that takes.
+        #
+        # Reaching this means something is wrong rather than slow, so the subagent is cancelled and
+        # the model told the work did not happen. A ceiling that is never hit is still what keeps
+        # the next bug in this area from becoming a turn that hangs for good with nothing to show
+        # for it. Matched to spring.ai.openai.chat.timeout above, since a subagent is a chat turn
+        # and cannot sensibly outlast one.
+        wait-timeout: ${SUBAGENT_WAIT_TIMEOUT:30m}
       publish-file:
         # Where the links PublishFile hands out point: the address a colleague, or anyone holding a
         # public link, reaches this application on. ShareController serves them under /share/, so
@@ -560,3 +585,10 @@ app:
     tenant-id: ${FEISHU_TENANT_ID}
     tenant-domain: ${FEISHU_TENANT_DOMAIN}
     bot-open-id: ${FEISHU_BOT_OPEN_ID}
+    # How long any one call to Feishu may take. Stated because the SDK's own default is no timeout
+    # at all — it builds its OkHttp client with callTimeout(0), which means wait for ever — and what
+    # that costs is not a missed card update but a stuck turn: every writer to a card takes the same
+    # lock and holds it across the call, and a subagent tells its parent's card it has finished
+    # before the run waiting on it is released. One call Feishu never answered was enough to hang a
+    # whole turn, silently. A callTimeout, so it bounds the whole call rather than a gap within it.
+    request-timeout: ${FEISHU_REQUEST_TIMEOUT:30s}

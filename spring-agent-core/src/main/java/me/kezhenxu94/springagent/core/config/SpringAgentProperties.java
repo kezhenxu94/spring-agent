@@ -224,7 +224,7 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
           askUserQuestion = new AskUserQuestion(true, null);
         }
         if (subagent == null) {
-          subagent = new Subagent(0);
+          subagent = new Subagent(0, null, null);
         }
       }
 
@@ -235,14 +235,46 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
        *     likes can spend a great deal before it says anything. Over the limit the tool refuses
        *     and tells the model to collect an answer first. Zero and below are read as "not
        *     configured" and replaced by {@link #DEFAULT_MAX_CONCURRENT}.
+       * @param waitPoll how long {@code WaitForSubagent} blocks before handing the turn back to the
+       *     model to ask again. It exists because that wait happens on a Reactor {@code
+       *     boundedElastic} worker, and so does every subagent's own stream: the pool is a fixed
+       *     number of single-threaded executors, a worker is pinned to one of them for its whole
+       *     life, and past capacity a new worker is handed one that is already busy. A wait that
+       *     never let go could therefore be sitting on the very thread the subagent it waits for
+       *     needs, and neither would ever move again. Letting go on a timer is what makes that
+       *     impossible rather than unlikely. Longer costs nothing while a subagent is quick — the
+       *     wait returns the moment it finishes — and only a further model call once it is not, so
+       *     this trades tokens against how long a stalled thread is held.
+       * @param waitTimeout the ceiling on waiting for a subagent, in two places: how long one
+       *     subagent may be waited for by {@code WaitForSubagent}, across however many polls, and
+       *     how long a run that has finished talking may be held open for the subagents it never
+       *     collected. Reached means something is wrong rather than slow, so the subagent is
+       *     cancelled and — where there is still a model listening — it is told the work did not
+       *     happen. A bound that is never hit is still what keeps a bug in this area from becoming
+       *     a turn that hangs for good with nothing in the log.
        */
-      public record Subagent(int maxConcurrent) {
+      public record Subagent(int maxConcurrent, Duration waitPoll, Duration waitTimeout) {
 
         public static final int DEFAULT_MAX_CONCURRENT = 3;
+
+        /**
+         * Long enough that a subagent worth starting usually finishes inside the first one, so the
+         * poll costs nothing in the ordinary case.
+         */
+        public static final Duration DEFAULT_WAIT_POLL = Duration.ofSeconds(60);
+
+        /** The chat timeout, since a subagent is a chat turn and cannot sensibly outlast one. */
+        public static final Duration DEFAULT_WAIT_TIMEOUT = Duration.ofMinutes(30);
 
         public Subagent {
           if (maxConcurrent <= 0) {
             maxConcurrent = DEFAULT_MAX_CONCURRENT;
+          }
+          if (waitPoll == null || waitPoll.isZero() || waitPoll.isNegative()) {
+            waitPoll = DEFAULT_WAIT_POLL;
+          }
+          if (waitTimeout == null || waitTimeout.isZero() || waitTimeout.isNegative()) {
+            waitTimeout = DEFAULT_WAIT_TIMEOUT;
           }
         }
       }

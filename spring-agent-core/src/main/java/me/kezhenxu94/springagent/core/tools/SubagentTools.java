@@ -1,11 +1,13 @@
 package me.kezhenxu94.springagent.core.tools;
 
 import com.google.common.base.Strings;
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
@@ -62,6 +64,14 @@ public class SubagentTools implements AgentResponseListener {
     private final String id;
     private final String description;
     private final CountDownLatch done = new CountDownLatch(1);
+
+    /**
+     * When the subagent was started, which is what the total wait is measured against. On the run
+     * rather than on a wait, because the model may wait, do something else and wait again: what is
+     * bounded is how long this subagent may take, not how long one call sat there.
+     */
+    private final long startedAtNanos = System.nanoTime();
+
     private volatile String content = "";
     private volatile Throwable error;
     private volatile AgentOutcome outcome;
@@ -69,6 +79,10 @@ public class SubagentTools implements AgentResponseListener {
     private SubRun(final String id, final String description) {
       this.id = id;
       this.description = description;
+    }
+
+    private Duration age() {
+      return Duration.ofNanos(System.nanoTime() - startedAtNanos);
     }
 
     @Override
@@ -172,7 +186,7 @@ you no longer want it, call CancelSubagent.
     subagents.put(id, subRun);
 
     log.info("Starting subagent {} of run {}: {}", id, parentRequestId, description);
-    springAgent.fire(
+    final var subagentRequest =
         AgentRequest.builder()
             .requestId(id)
             // What ties the two runs together: cancelling this run cancels the subagent, its tokens
@@ -194,7 +208,18 @@ you no longer want it, call CancelSubagent.
             .background(true)
             .userMessage(spec -> spec.text(subagentPrompt(prompt)))
             .listener(subRun)
-            .build());
+            .build();
+    // Guarded because the entry above is what WaitForSubagent waits on, and only a run that was
+    // actually started ever releases it. A fire() that threw — a listener bean that cannot be
+    // resolved, an Error escaping the fan-out — would otherwise leave behind a subagent that is
+    // forever running, holding a place under the limit and hanging the first wait for it.
+    try {
+      springAgent.fire(subagentRequest);
+    } catch (Throwable t) {
+      subagents.remove(id);
+      log.error("Could not start subagent {} of run {}", id, parentRequestId, t);
+      return messages.get("subagent-could-not-start", Strings.nullToEmpty(t.getMessage()));
+    }
 
     return messages.get("subagent-started", id, Strings.nullToEmpty(description));
   }
@@ -203,8 +228,12 @@ you no longer want it, call CancelSubagent.
       name = "WaitForSubagent",
       description =
 """
-Wait for a subagent to finish and read its answer. Waits as long as it takes; there is nothing \
-to poll. Wait for each subagent you started, one after another, before you finish your turn.
+Wait for a subagent to finish and read its answer. Wait for each subagent you started, one \
+after another, before you finish your turn.
+This blocks until the subagent finishes or until a while has passed, whichever comes first. If \
+it is still working you are told so and told for how long, and you call this again to go on \
+waiting — a subagent does not stop or lose anything because a wait for it came back. Keep \
+waiting for as long as the work is worth; if it no longer is, call CancelSubagent instead.
 """)
   public String waitForSubagent(
       @ToolParam(description = "The id StartSubagent returned") final String subagentId,
@@ -214,8 +243,41 @@ to poll. Wait for each subagent you started, one after another, before you finis
     if (subRun == null) {
       return messages.get("subagent-unknown", Strings.nullToEmpty(subagentId));
     }
+    final var subagentConfig = appConfiguration.ai().tools().subagent();
     try {
-      subRun.done.await();
+      // Bounded, and this is the load-bearing part rather than a nicety. This call runs on a
+      // Reactor boundedElastic worker, and so does the stream of every subagent: the pool is a
+      // fixed number of single-threaded executors, a worker is pinned to one of them when it is
+      // created, and once the pool is full a new worker is handed one that is already busy. A wait
+      // that never let go could therefore be holding the one thread the subagent it waits for
+      // needs in order to finish — and neither would ever move again, with nothing thrown and
+      // nothing logged. Letting go on a timer means the thread is always given back, so that
+      // cannot happen; what it costs is a further model call whenever a subagent outlives one
+      // poll.
+      if (!subRun.done.await(subagentConfig.waitPoll().toMillis(), TimeUnit.MILLISECONDS)) {
+        final var waited = subRun.age();
+        if (waited.compareTo(subagentConfig.waitTimeout()) < 0) {
+          log.info(
+              "Subagent {} still running after {}, handing the turn back to the model",
+              subagentId,
+              waited);
+          return messages.get(
+              "subagent-still-running",
+              subagentId,
+              Strings.nullToEmpty(subRun.description),
+              humanize(waited));
+        }
+        // Past the ceiling this is a fault, not slow work: something is holding the run open that
+        // nothing else is going to release. Said out loud, because the whole point of the ceiling
+        // is that a turn never again hangs for good with nothing in the log to say why.
+        log.error(
+            "Subagent {} did not finish within {}; cancelling it",
+            subagentId,
+            subagentConfig.waitTimeout());
+        springAgent.cancel(subagentId);
+        return messages.get(
+            "subagent-wait-timed-out", subagentId, humanize(subagentConfig.waitTimeout()));
+      }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       return messages.get("subagent-interrupted", subagentId);
@@ -264,6 +326,12 @@ subagent that has already finished is left alone.
     // hanging.
     springAgent.cancel(subagentId);
     return messages.get("subagent-cancel-requested", subagentId);
+  }
+
+  /** A duration as the model should read it back to the user, rather than as {@code PT1M30S}. */
+  private static String humanize(final Duration duration) {
+    final var seconds = duration.toSeconds();
+    return seconds < 60 ? seconds + "s" : duration.toMinutes() + "m";
   }
 
   /** The subagent of the calling run under that id, or null — including one started by a run. */

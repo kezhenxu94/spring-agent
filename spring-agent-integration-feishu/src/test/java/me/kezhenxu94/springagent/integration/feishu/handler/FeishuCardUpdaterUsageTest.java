@@ -49,7 +49,7 @@ class FeishuCardUpdaterUsageTest {
 
   private final FeishuMessages messages =
       new FeishuMessages(
-          new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH));
+          new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
 
   @BeforeEach
   void setUp() throws Exception {

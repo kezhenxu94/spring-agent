@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.core.agent;
 
 import com.google.common.base.Strings;
 import java.io.InterruptedIOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -9,6 +10,9 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -72,6 +76,9 @@ public class SpringAgent {
    * id and this deliberately is not. See {@link #toolIndexKeyFor}.
    */
   public static final String TOOL_INDEX_KEY = "toolIndexKey";
+
+  /** How often a run waiting on its subagents says so, so that a long wait is not silence. */
+  private static final Duration WAIT_PROGRESS_INTERVAL = Duration.ofSeconds(30);
 
   final ChatClient chatClient;
 
@@ -138,6 +145,15 @@ public class SpringAgent {
 
   private final AtomicInteger inFlight = new AtomicInteger(0);
 
+  /**
+   * Where a run waits out the subagents it started. A thread of our own rather than the Reactor
+   * worker the run ended on: that pool is bounded and shared with every subagent's own stream, so
+   * blocking on it can block the run being waited for. Virtual threads for the same reason the MCP
+   * fan-out uses them — this is blocking I/O with a timeout measured in minutes, held one thread
+   * per waiting run, which is not what a pooled platform thread is for.
+   */
+  private final ExecutorService subagentWaiters = Executors.newVirtualThreadPerTaskExecutor();
+
   @Getter private volatile boolean accepting = true;
 
   /**
@@ -184,6 +200,9 @@ public class SpringAgent {
     } else {
       log.info("Shutdown: all in-flight agent streams completed");
     }
+    // After the drain above, not before it: a run still waiting for its subagents is counted in
+    // inFlight, and it is one of these threads that is doing the waiting.
+    subagentWaiters.shutdownNow();
   }
 
   /**
@@ -371,86 +390,165 @@ public class SpringAgent {
             })
         .doFinally(
             signal -> {
-              if (requestId != null) {
-                liveRuns.remove(requestId);
-              }
-              try {
-                // A cancelled run may still surface the aborted read as an error, so the flag
-                // decides before the signal does.
-                final var outcome =
-                    cancelFlag.get()
-                        ? AgentOutcome.CANCELLED
-                        : switch (signal) {
-                          case ON_ERROR -> AgentOutcome.FAILED;
-                          case CANCEL -> AgentOutcome.CANCELLED;
-                          default -> AgentOutcome.COMPLETED;
-                        };
-                log.info(
-                    "Agent request {} finished: signal={}, outcome={}", requestId, signal, outcome);
-                // Before this run is reported finished, so that whatever a surface does with the
-                // end of a run — finalize a card, print a prompt — happens after the runs it
-                // started have had their say. The model has already stopped talking by now, so
-                // this is not waiting for an answer; it is keeping the subagent's tokens and
-                // outcome attributable to the turn that spent them.
-                awaitSubagents(requestId, liveRun);
-                notify(listeners, l -> l.onFinished(outcome));
-                if (parent != null) {
-                  notify(
-                      parent.listeners(),
-                      l ->
-                          l.onSubagent(
-                              new AgentResponseListener.SubagentEvent(
-                                  requestId,
-                                  request.description(),
-                                  contentBuffer.toString(),
-                                  null,
-                                  null,
-                                  outcome)));
-                }
-              } catch (Throwable t) {
-                // Not even an Error may cost the run its cleanup: a leaked MCP client holds its
-                // connection open, and a missed decrement leaves shutdown waiting out its full
-                // timeout for a stream that has already ended.
-                log.error("Failed to report the end of agent request {}", requestId, t);
-              } finally {
-                try {
-                  final var tools = mcpTools.get();
-                  if (tools != null) {
-                    tools.close();
-                  }
-                } finally {
-                  inFlight.decrementAndGet();
-                  // Last of all, and outside every other failure above: the parent is blocked on
-                  // this latch, so anything that skipped it would hold that run open until the
-                  // application shut down.
-                  if (parent != null) {
-                    parent.children().remove(requestId);
-                    doneForParent.countDown();
-                  }
-                }
+              // A cancelled run may still surface the aborted read as an error, so the flag
+              // decides before the signal does.
+              final var outcome =
+                  cancelFlag.get()
+                      ? AgentOutcome.CANCELLED
+                      : switch (signal) {
+                        case ON_ERROR -> AgentOutcome.FAILED;
+                        case CANCEL -> AgentOutcome.CANCELLED;
+                        default -> AgentOutcome.COMPLETED;
+                      };
+              log.info(
+                  "Agent request {} finished: signal={}, outcome={}", requestId, signal, outcome);
+
+              final Runnable tail =
+                  () ->
+                      finish(
+                          request,
+                          requestId,
+                          liveRun,
+                          listeners,
+                          parent,
+                          doneForParent,
+                          mcpTools,
+                          contentBuffer,
+                          outcome);
+
+              // The run is over as far as the model is concerned, but not as far as the turn is:
+              // the subagents it started are still going, and they belong to it. Waiting for them
+              // is the one thing that must not happen here. This callback runs on a Reactor
+              // boundedElastic worker, the pool is a fixed number of single-threaded executors
+              // shared out once it is full, and every subagent's own stream needs a worker from
+              // it — so blocking here can be blocking the very thread that would let a subagent
+              // finish, which is a deadlock with nothing thrown and nothing logged. A thread of
+              // our own instead, and only when there is in fact something to wait for: a run with
+              // no subagents, which is nearly all of them, ends inline exactly as before.
+              if (liveRun.children().isEmpty()) {
+                tail.run();
+              } else {
+                subagentWaiters.execute(tail);
               }
             })
         .subscribe();
   }
 
   /**
+   * Ends a run: waits out the subagents it started, reports it finished, and releases everything it
+   * held. Split out of {@code doFinally} because it blocks, and so has to be able to run on a
+   * thread that is not Reactor's — see the call site.
+   *
+   * <p>Deliberately not throwing: every step is another run's or another surface's, and none of
+   * them may cost this run its cleanup.
+   */
+  private void finish(
+      final AgentRequest request,
+      final String requestId,
+      final LiveRun liveRun,
+      final List<AgentResponseListener> listeners,
+      final LiveRun parent,
+      final CountDownLatch doneForParent,
+      final AtomicReference<McpTools> mcpTools,
+      final StringBuilder contentBuffer,
+      final AgentOutcome outcome) {
+    try {
+      // Before this run is reported finished, so that whatever a surface does with the end of a
+      // run — finalize a card, print a prompt — happens after the runs it started have had their
+      // say. The model has already stopped talking by now, so this is not waiting for an answer;
+      // it is keeping the subagent's tokens and outcome attributable to the turn that spent them.
+      awaitSubagents(requestId, liveRun);
+      notify(listeners, l -> l.onFinished(outcome));
+      if (parent != null) {
+        notify(
+            parent.listeners(),
+            l ->
+                l.onSubagent(
+                    new AgentResponseListener.SubagentEvent(
+                        requestId,
+                        request.description(),
+                        contentBuffer.toString(),
+                        null,
+                        null,
+                        outcome)));
+      }
+    } catch (Throwable t) {
+      // Not even an Error may cost the run its cleanup: a leaked MCP client holds its
+      // connection open, and a missed decrement leaves shutdown waiting out its full
+      // timeout for a stream that has already ended.
+      log.error("Failed to report the end of agent request {}", requestId, t);
+    } finally {
+      try {
+        // Only now, and not at the top of doFinally where it used to be. cancel() finds a run
+        // through this map, so a run taken out of it before it had finished waiting for its
+        // subagents was a run the stop button could not reach — precisely while it was stuck,
+        // and precisely when cancelling it is what would have released it.
+        if (requestId != null) {
+          liveRuns.remove(requestId);
+        }
+        final var tools = mcpTools.get();
+        if (tools != null) {
+          tools.close();
+        }
+      } finally {
+        inFlight.decrementAndGet();
+        // Last of all, and outside every other failure above: the parent is blocked on
+        // this latch, so anything that skipped it would hold that run open until the
+        // application shut down.
+        if (parent != null) {
+          parent.children().remove(requestId);
+          doneForParent.countDown();
+        }
+      }
+    }
+  }
+
+  /**
    * Waits for every run {@code run} started that has not ended yet.
    *
-   * <p>Deliberately unbounded. A subagent is work the turn asked for, and abandoning it halfway
-   * would leave a shell command or an MCP call running with nothing watching it. The bound is the
-   * one every run already has: cancelling this run cancels its subagents with it, and shutdown
-   * gives the whole tree its ten minutes before giving up on the lot.
+   * <p>A subagent is work the turn asked for, and abandoning it halfway would leave a shell command
+   * or an MCP call running with nothing watching it — so this waits, and generously. It does not
+   * wait for ever, though: it used to, and an unbounded wait is why a subagent that never reported
+   * itself finished turned into a turn that hung with no reply, no error and nothing in the log
+   * after the line below. Reaching the ceiling means a fault rather than slow work, so it is said
+   * out loud and the run stops being held for it.
+   *
+   * <p>Progress is logged while waiting for the same reason: silence for half an hour is
+   * indistinguishable from the hang this replaced.
    */
   private void awaitSubagents(final String requestId, final LiveRun run) {
     final var children = run.children();
     if (children.isEmpty()) {
       return;
     }
-    log.info("Run {} is waiting for {} subagent(s) to finish", requestId, children.size());
+    final var timeout = appConfiguration.ai().tools().subagent().waitTimeout();
+    log.info(
+        "Run {} is waiting up to {} for {} subagent(s) to finish",
+        requestId,
+        timeout,
+        children.size());
+    final var deadline = System.nanoTime() + timeout.toNanos();
     children.forEach(
         (childId, done) -> {
           try {
-            done.await();
+            for (var remaining = deadline - System.nanoTime();
+                remaining > 0;
+                remaining = deadline - System.nanoTime()) {
+              // Whichever is sooner, so that a deployment with a ceiling shorter than the progress
+              // interval is still held only as long as it asked for.
+              final var slice = Math.min(remaining, WAIT_PROGRESS_INTERVAL.toNanos());
+              if (done.await(slice, TimeUnit.NANOSECONDS)) {
+                return;
+              }
+              log.info("Run {} is still waiting for subagent {}", requestId, childId);
+            }
+            log.error(
+                "Subagent {} of run {} did not finish within {}; giving up on it and letting the"
+                    + " run end",
+                childId,
+                requestId,
+                timeout);
+            cancel(childId);
           } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.warn("Interrupted while waiting for subagent {} of run {}", childId, requestId);

@@ -78,7 +78,8 @@ class FeishuSubagentPanelTest {
         new FeishuSubagentPanel(
             om,
             new FeishuMessages(
-                new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH)));
+                new FeishuProperties(
+                    null, null, null, null, null, null, null, Locale.ENGLISH, null)));
     panel.subagentPanel = new ClassPathResource("feishu/subagent-panel.json");
     return panel;
   }

@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.integration.feishu.config;
 
 import com.lark.oapi.Client;
+import java.util.concurrent.TimeUnit;
 import me.kezhenxu94.springagent.integration.feishu.aot.FeishuRuntimeHints;
 import me.kezhenxu94.springagent.integration.feishu.aot.LarkSdkRuntimeHints;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -42,6 +43,14 @@ public class FeishuAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   Client feishuClient(final FeishuProperties feishuProperties) {
-    return new Client.Builder(feishuProperties.appId(), feishuProperties.appSecret()).build();
+    return new Client.Builder(feishuProperties.appId(), feishuProperties.appSecret())
+        // Stated rather than left to the SDK, whose default is no timeout: it builds its OkHttp
+        // client with callTimeout(0), which means wait for ever. What that costs is not a missed
+        // card update but a stuck turn — the card's writers share one lock and hold it across the
+        // call, and a subagent tells its parent's card it has finished before the run waiting on
+        // it is released. So one call Feishu never answers used to hang the whole turn, silently.
+        // This is a callTimeout, so it bounds the whole call and not a gap within it.
+        .requestTimeout(feishuProperties.requestTimeout().toMillis(), TimeUnit.MILLISECONDS)
+        .build();
   }
 }
