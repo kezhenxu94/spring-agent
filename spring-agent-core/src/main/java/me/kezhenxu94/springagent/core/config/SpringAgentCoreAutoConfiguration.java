@@ -140,13 +140,7 @@ public class SpringAgentCoreAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean(name = "chatClient")
   ChatClient chatClient(final ChatClient.Builder builder) {
-    // spring-ai 2.0.1-SNAPSHOT always sends a "strict" field on tool function definitions; when
-    // unset it serializes as an explicit `"strict": null`, which OpenAI treats as opting into
-    // strict schema validation (requiring `required` to list every property). Force false to
-    // keep the lenient validation our @ToolParam(required = false) tools rely on.
-    // TODO: remove once spring-ai fixes strict defaulting for optional @ToolParam and we're back
-    // on a released (non-SNAPSHOT) version.
-    return builder.defaultOptions(OpenAiChatOptions.builder().strict(false)).build();
+    return builder.build();
   }
 
   @Bean
