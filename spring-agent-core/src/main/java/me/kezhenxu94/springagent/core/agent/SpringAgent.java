@@ -67,7 +67,7 @@ public class SpringAgent {
    * a surface that has nothing to say about how a reply looks.
    */
   private static final Map<String, Object> OPTIONAL_PROMPT_VARIABLES =
-      Map.of("threadId", "", "parentId", "", "mentions", "none", "replyFormat", "");
+      Map.of("threadId", "", "parentId", "", "mentions", "none", "replyFormat", "", "homeDirs", "");
 
   /**
    * Where the tool search looks for the index to use. Has to agree with {@code
