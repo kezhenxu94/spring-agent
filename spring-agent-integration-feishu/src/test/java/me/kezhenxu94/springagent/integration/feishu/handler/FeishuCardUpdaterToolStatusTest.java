@@ -47,19 +47,15 @@ class FeishuCardUpdaterToolStatusTest {
     ok.setCode(0);
     when(feishu.cardkit().v1().cardElement().content(any(ContentCardElementReq.class)))
         .thenReturn(ok);
+    final var messages =
+        new FeishuMessages(
+            new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
     updater =
-        new FeishuCardUpdater(
-            feishu,
+        FeishuCardUpdater.forRun(
+            new FeishuCard(feishu, "card-1", restTemplate, new UserHome(userHomeRoot), messages),
             new JsonMapper(),
-            "card-1",
-            "ou_user",
-            restTemplate,
-            new UserHome(userHomeRoot),
             null,
-            new FeishuMessages(
-                new FeishuProperties(
-                    null, null, null, null, null, null, null, Locale.ENGLISH, null)),
-            null);
+            messages);
   }
 
   private String lastContentSent() throws Exception {

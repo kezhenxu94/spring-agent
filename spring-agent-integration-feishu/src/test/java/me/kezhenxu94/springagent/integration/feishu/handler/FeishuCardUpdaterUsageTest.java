@@ -14,7 +14,6 @@ import com.lark.oapi.service.cardkit.v1.model.CreateCardElementResp;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Map;
-import me.kezhenxu94.springagent.core.agent.AgentResponseListener.SubagentEvent;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.ModelPricing;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.ModelPricing.Currency;
 import me.kezhenxu94.springagent.core.tools.UserHome;
@@ -47,6 +46,7 @@ class FeishuCardUpdaterUsageTest {
   @Mock private RestTemplate restTemplate;
   @TempDir Path userHomeRoot;
 
+  private FeishuCard card;
   private FeishuCardUpdater updater;
 
   private final FeishuMessages messages =
@@ -59,18 +59,14 @@ class FeishuCardUpdaterUsageTest {
     ok.setCode(0);
     when(feishu.cardkit().v1().cardElement().content(any(ContentCardElementReq.class)))
         .thenReturn(ok);
+    card = new FeishuCard(feishu, "card-1", restTemplate, new UserHome(userHomeRoot), messages);
     updater =
-        new FeishuCardUpdater(
-            feishu,
+        FeishuCardUpdater.forRun(
+            card,
             new JsonMapper(),
-            "card-1",
-            "ou_user",
-            restTemplate,
-            new UserHome(userHomeRoot),
             // A tenth of a cent per thousand tokens each way, so the arithmetic is checkable.
             Map.of("the-model", new ModelPricing(1.0, 1.0, 1.0, Currency.USD)),
-            messages,
-            panels());
+            messages);
   }
 
   /** The real builder: what a panel holds is the point of the assertions below. */
@@ -114,27 +110,50 @@ class FeishuCardUpdaterUsageTest {
   @Test
   @DisplayName("a subagent panel counts that subagent alone, beside the turn's own total")
   void eachSubagentPanelCountsItself() throws Exception {
+    final var subagent = subagentUpdater();
+
+    updater.onUsage("the-model", new DefaultUsage(1_000_000, 0, 1_000_000));
+    // The subagent's own run reports to its own updater, and SpringAgent forwards the same tokens
+    // to the listeners of the run that started it — which is where the turn's total comes from.
+    subagent.onUsage("the-model", new DefaultUsage(3_000_000, 0, 0));
+    updater.onUsage("the-model", new DefaultUsage(3_000_000, 0, 0));
+
+    // The panel is that subagent's spend, and only that.
+    assertThat(lastContentOf(FeishuSubagentPanel.footerElementId("sub_1"))).contains("↑3000000 ↓0");
+    // The card's footer is the turn: the run's own call and the subagent's.
+    assertThat(lastFooter()).contains("↑4000000 ↓0");
+  }
+
+  @Test
+  @DisplayName("a subagent writes into its own panel, and never onto the card's own answer")
+  void aSubagentIsConfinedToItsPanel() throws Exception {
+    final var subagent = subagentUpdater();
+
+    updater.onContent("what the run is saying");
+    subagent.onContent("what the subagent found");
+    subagent.setToolStatus("Bash", "{\"description\":\"Reading the log\"}", null);
+
+    assertThat(lastContentOf("message")).isEqualTo("what the run is saying");
+    assertThat(lastContentOf(FeishuSubagentPanel.bodyElementId("sub_1")))
+        .isEqualTo("what the subagent found\nReading the log");
+  }
+
+  /** A subagent of the run above, panel and all, as {@code FeishuCardListener} attaches one. */
+  private FeishuCardUpdater subagentUpdater() throws Exception {
     final var insert = new CreateCardElementResp();
     insert.setCode(0);
     when(feishu.cardkit().v1().cardElement().create(any(CreateCardElementReq.class)))
         .thenReturn(insert);
-
-    updater.onUsage("the-model", new DefaultUsage(1_000_000, 0, 1_000_000));
-    updater.onSubagent(new SubagentEvent("sub_1", "Reading the timeline", null, null, null, null));
-    updater.onSubagent(
-        new SubagentEvent(
-            "sub_1",
-            "Reading the timeline",
-            null,
-            "the-model",
-            new DefaultUsage(3_000_000, 0, 0),
-            null));
-
-    // The panel is that subagent's spend, and only that.
-    assertThat(lastContentOf(FeishuSubagentPanel.footerElementId("sub_1"))).contains("↑3000000 ↓0");
-    // The card's footer is the turn: the run's own call and the subagent's, since SpringAgent
-    // forwards the tokens for the total as well as attributing them to the panel.
-    assertThat(lastFooter()).contains("↑1000000 ↓0");
+    final var panels = panels();
+    card.insertBeforeFooter(panels.forInsert("sub_1", "Reading the timeline", null), "sub_1");
+    return FeishuCardUpdater.forSubagent(
+        card,
+        new JsonMapper(),
+        Map.of("the-model", new ModelPricing(1.0, 1.0, 1.0, Currency.USD)),
+        messages,
+        panels,
+        "sub_1",
+        "Reading the timeline");
   }
 
   private String lastFooter() throws Exception {

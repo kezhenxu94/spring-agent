@@ -149,10 +149,8 @@ public class FeishuQuestionForm {
    * forms on the card.
    */
   public boolean insert(
-      final FeishuCardUpdater cardUpdater,
-      final List<Question> questions,
-      final String pendingQuestionId) {
-    return cardUpdater.insertBeforeFooter(build(questions, pendingQuestionId), pendingQuestionId);
+      final FeishuCard card, final List<Question> questions, final String pendingQuestionId) {
+    return card.insertBeforeFooter(build(questions, pendingQuestionId), pendingQuestionId);
   }
 
   /**

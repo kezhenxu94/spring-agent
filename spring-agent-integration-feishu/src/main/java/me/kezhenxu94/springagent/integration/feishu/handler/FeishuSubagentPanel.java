@@ -17,7 +17,8 @@ import tools.jackson.databind.node.ObjectNode;
  * answer is on the card without being in the way of it.
  *
  * <p>Nothing here talks to Feishu — JSON in, JSON out — which is what makes the layout testable
- * without a tenant. {@code FeishuCardUpdater} is what puts it on a card and streams into it.
+ * without a tenant. {@code FeishuCardListener} is what puts one on a card, and the {@code
+ * FeishuCardUpdater} of the subagent it belongs to is what streams into it.
  */
 @Component
 @RequiredArgsConstructor

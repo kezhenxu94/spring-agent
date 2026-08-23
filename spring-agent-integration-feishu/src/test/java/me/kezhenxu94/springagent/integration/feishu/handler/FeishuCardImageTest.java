@@ -28,15 +28,14 @@ import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.client.RestTemplate;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
- * A card can only show images the tenant has uploaded, so tools hand back local paths and the
- * updater uploads them. What that upload must not do is reach outside the user it answers for, or
- * repeat itself on every streaming tick.
+ * A card can only show images the tenant has uploaded, so tools hand back local paths and the card
+ * uploads them. What that upload must not do is reach outside the user it answers for, or repeat
+ * itself on every streaming tick.
  */
 @ExtendWith(MockitoExtension.class)
-class FeishuCardUpdaterImageTest {
+class FeishuCardImageTest {
 
   @Mock(answer = Answers.RETURNS_DEEP_STUBS)
   private Client feishu;
@@ -46,7 +45,7 @@ class FeishuCardUpdaterImageTest {
   @TempDir Path userHomeRoot;
   @TempDir Path elsewhere;
 
-  private FeishuCardUpdater updater;
+  private FeishuCard card;
 
   private static CreateImageResp uploaded(final String imageKey) {
     final var body = new CreateImageRespBody();
@@ -59,19 +58,15 @@ class FeishuCardUpdaterImageTest {
 
   @BeforeEach
   void setUp() {
-    updater =
-        new FeishuCardUpdater(
+    card =
+        new FeishuCard(
             feishu,
-            new JsonMapper(),
             "card-1",
-            "ou_user",
             restTemplate,
             new UserHome(userHomeRoot),
-            null,
             new FeishuMessages(
                 new FeishuProperties(
-                    null, null, null, null, null, null, null, Locale.ENGLISH, null)),
-            null);
+                    null, null, null, null, null, null, null, Locale.ENGLISH, null)));
   }
 
   @Test
@@ -82,8 +77,8 @@ class FeishuCardUpdaterImageTest {
         .thenReturn(uploaded("img_v3_key"));
 
     final var markdown = "here it is ![a cat](" + image + ")";
-    assertThat(updater.reuploadImages(markdown)).isEqualTo("here it is ![a cat](img_v3_key)");
-    assertThat(updater.reuploadImages(markdown + " and more text"))
+    assertThat(card.reuploadImages(markdown)).isEqualTo("here it is ![a cat](img_v3_key)");
+    assertThat(card.reuploadImages(markdown + " and more text"))
         .isEqualTo("here it is ![a cat](img_v3_key) and more text");
 
     verify(feishu.im().v1().image(), times(1)).create(any(CreateImageReq.class));
@@ -96,7 +91,7 @@ class FeishuCardUpdaterImageTest {
     when(feishu.im().v1().image().create(any(CreateImageReq.class)))
         .thenReturn(uploaded("img_v3_key"));
 
-    assertThat(updater.reuploadImages("![a cat](" + image.toUri() + ")"))
+    assertThat(card.reuploadImages("![a cat](" + image.toUri() + ")"))
         .isEqualTo("![a cat](img_v3_key)");
   }
 
@@ -105,7 +100,7 @@ class FeishuCardUpdaterImageTest {
   void imageOutsideUserHomeIsRejected() throws Exception {
     final var image = Files.write(elsewhere.resolve("someone-elses.png"), new byte[] {1, 2, 3});
 
-    assertThat(updater.reuploadImages("![secret](" + image.toUri() + ")"))
+    assertThat(card.reuploadImages("![secret](" + image.toUri() + ")"))
         .isEqualTo("(image unavailable)");
 
     verify(feishu.im().v1().image(), never()).create(any(CreateImageReq.class));
@@ -119,14 +114,14 @@ class FeishuCardUpdaterImageTest {
     when(feishu.im().v1().image().create(any(CreateImageReq.class)))
         .thenReturn(uploaded("img_v3_remote"));
 
-    assertThat(updater.reuploadImages("![a cat](https://example.com/a.png)"))
+    assertThat(card.reuploadImages("![a cat](https://example.com/a.png)"))
         .isEqualTo("![a cat](img_v3_remote)");
   }
 
   @Test
   @DisplayName("a target that is neither a local path nor a URL is left as written")
   void unknownTargetsAreLeftAlone() {
-    assertThat(updater.reuploadImages("![a cat](img_v3_already_a_key)"))
+    assertThat(card.reuploadImages("![a cat](img_v3_already_a_key)"))
         .isEqualTo("![a cat](img_v3_already_a_key)");
 
     verify(restTemplate, never()).getForObject(anyString(), eq(byte[].class));

@@ -39,6 +39,14 @@ public interface AgentResponseListener {
    * somewhere it is not streaming, and say what that work cost. What such a run reports is not this
    * run's answer: that is the result of the tool call that waited for it, and this run says what it
    * made of it.
+   *
+   * <p>The other way to show a subagent, and the better one where it is available, is to attach to
+   * the subagent's own run: a bean listener is asked about every run, including one a tool started,
+   * and a listener attached there gets the ordinary callbacks — content, usage, outcome — plus
+   * whatever else is per-run, such as a tool-context entry that lets the surface announce the
+   * subagent's tool calls too. That is what the Feishu cards do, which is why nothing here
+   * implements this. It stays for a surface that cannot: one whose per-run state is tied to
+   * something a subagent does not have, a message to reply onto or a terminal to draw in.
    */
   default void onSubagent(SubagentEvent event) {}
 
