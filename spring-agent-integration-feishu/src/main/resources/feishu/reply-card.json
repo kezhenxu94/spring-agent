@@ -22,8 +22,8 @@
   },
   "body": {
     "direction": "vertical",
-    "vertical_spacing": "8px",
-    "padding": "12px 12px 12px 12px",
+    "vertical_spacing": "4px",
+    "padding": "8px 12px",
     "elements": [
       {
         "tag": "markdown",
@@ -64,7 +64,6 @@
         "content": "<font color='grey'>{conversationHint}</font>",
         "text_align": "left",
         "text_size": "notation",
-        "margin": "-4px 0px 0px 0px",
         "element_id": "guide"
       }
     ]

@@ -16,8 +16,7 @@
     "tag": "markdown",
     "content": "",
     "text_align": "left",
-    "text_size": "notation",
-    "margin": "0px 0px 2px 0px"
+    "text_size": "notation"
   },
   "todo": {
     "tag": "markdown",
@@ -29,7 +28,6 @@
     "tag": "markdown",
     "content": "",
     "text_align": "left",
-    "text_size": "notation",
-    "margin": "0px"
+    "text_size": "notation"
   }
 }

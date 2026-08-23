@@ -182,6 +182,11 @@ class DockerShellToolsIntegrationTest {
       }
 
       @Override
+      public String getWorkspaceLocation() {
+        return null;
+      }
+
+      @Override
       public String getBaseUrl() {
         return "";
       }

@@ -14,6 +14,7 @@ import lombok.experimental.Accessors;
 @Accessors(fluent = false)
 public class FileSystemStorageProperties implements StorageProperties {
   @NotBlank private String location;
+  private String workspaceLocation;
   @NotBlank private String cdnUrl;
   @NotBlank private String baseUrl;
   private boolean autoUnzip;

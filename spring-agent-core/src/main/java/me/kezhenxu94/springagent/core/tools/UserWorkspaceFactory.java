@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.core.tools;
 
+import com.google.common.base.Strings;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +14,7 @@ public class UserWorkspaceFactory {
   private final StorageProperties storageProperties;
 
   public UserHome forOwner(String ownerId) {
-    return new UserHome(Path.of(storageProperties.getLocation(), ownerId));
+    return new UserHome(Path.of(storageProperties.getLocation(), ownerId), workspaceRoot(ownerId));
   }
 
   /**
@@ -21,7 +22,8 @@ public class UserWorkspaceFactory {
    * id can never collide with a bare userId.
    */
   public UserHome forGroup(String groupId) {
-    return new UserHome(Path.of(storageProperties.getLocation(), "groups", groupId));
+    final var scopeId = Path.of("groups", groupId).toString();
+    return new UserHome(Path.of(storageProperties.getLocation(), scopeId), workspaceRoot(scopeId));
   }
 
   /**
@@ -29,7 +31,17 @@ public class UserWorkspaceFactory {
    * so a tenant id can never collide with a bare userId.
    */
   public UserHome forTenant(String tenantId) {
-    return new UserHome(Path.of(storageProperties.getLocation(), "tenant", tenantId));
+    final var scopeId = Path.of("tenant", tenantId).toString();
+    return new UserHome(Path.of(storageProperties.getLocation(), scopeId), workspaceRoot(scopeId));
+  }
+
+  /**
+   * The scope's workspace folder on {@link StorageProperties#getWorkspaceLocation()} instead of
+   * nested under its home, or null to keep the default nesting when no override is configured.
+   */
+  private Path workspaceRoot(String scopeId) {
+    final var workspaceLocation = storageProperties.getWorkspaceLocation();
+    return Strings.isNullOrEmpty(workspaceLocation) ? null : Path.of(workspaceLocation, scopeId);
   }
 
   /**

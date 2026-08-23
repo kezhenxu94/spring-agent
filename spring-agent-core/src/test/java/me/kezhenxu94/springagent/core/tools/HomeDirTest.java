@@ -49,6 +49,30 @@ class HomeDirTest {
     void outsideTheRoot(@TempDir final Path elsewhere) {
       assertThat(new UserHome(root).contains(elsewhere.resolve("x.txt"))).isFalse();
     }
+
+    @Test
+    @DisplayName(
+        "a configured workspace root replaces root/workspace, other folders are unaffected")
+    void separateWorkspaceRoot(@TempDir final Path workspaceRoot) throws Exception {
+      final var home = new UserHome(root, workspaceRoot);
+
+      assertThat(home.workspace()).isEqualTo(workspaceRoot).exists();
+      assertThat(root.resolve("workspace")).doesNotExist();
+      assertThat(home.skills()).isEqualTo(root.resolve("skills")).exists();
+    }
+
+    @Test
+    @DisplayName(
+        "a separate workspace root is included in roots() and contains(), but only for workspace")
+    void separateWorkspaceRootIsInScope(@TempDir final Path workspaceRoot) {
+      final var home = new UserHome(root, workspaceRoot);
+      final var file = workspaceRoot.resolve("script.py");
+
+      assertThat(home.roots()).containsExactly(root, workspaceRoot);
+      assertThat(home.contains(file)).isTrue();
+      assertThat(home.containsIn(HomeDir.Folder.WORKSPACE, file)).isTrue();
+      assertThat(home.containsIn(HomeDir.Folder.SKILLS, file)).isFalse();
+    }
   }
 
   @Nested
@@ -135,6 +159,34 @@ class HomeDirTest {
               location.resolve("ou_1"),
               location.resolve("groups/oc_1"),
               location.resolve("tenant/t_1"));
+    }
+  }
+
+  @Nested
+  class FactoryWithSeparateWorkspaceLocation {
+    @TempDir Path location;
+    @TempDir Path workspaceLocation;
+
+    private UserWorkspaceFactory factory() {
+      return new UserWorkspaceFactory(
+          FileSystemStorageProperties.builder()
+              .location(location.toString())
+              .workspaceLocation(workspaceLocation.toString())
+              .build());
+    }
+
+    @Test
+    @DisplayName(
+        "each scope's workspace lives under workspace-location instead of nested under its home")
+    void workspaceNamespacedSeparately() throws Exception {
+      final var factory = factory();
+
+      assertThat(factory.forOwner("ou_1").workspace()).isEqualTo(workspaceLocation.resolve("ou_1"));
+      assertThat(factory.forGroup("oc_1").workspace())
+          .isEqualTo(workspaceLocation.resolve("groups/oc_1"));
+      assertThat(factory.forTenant("t_1").workspace())
+          .isEqualTo(workspaceLocation.resolve("tenant/t_1"));
+      assertThat(location.resolve("ou_1/workspace")).doesNotExist();
     }
   }
 }
