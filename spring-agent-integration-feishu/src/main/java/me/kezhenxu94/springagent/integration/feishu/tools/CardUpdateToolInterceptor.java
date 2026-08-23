@@ -14,16 +14,17 @@ public class CardUpdateToolInterceptor implements ToolCallInterceptor {
   @Override
   public String beforeCall(String toolName, String toolInput, ToolContext toolContext) {
     if (toolContext == null) {
-      log.info("Tool '{}' called without context, skipping card update", toolName);
+      log.debug("Tool '{}' called without context, skipping card update", toolName);
       return toolInput;
     }
     final var updater = ToolContexts.get(toolContext, FeishuCardUpdater.TOOL_CONTEXT_KEY);
     if (updater == null) {
-      log.info("No card updater found in context for tool '{}'", toolName);
+      // Ordinary rather than remarkable: a scheduled task fires with nobody watching and has no
+      // card at all, and neither has a run that did not come from Feishu.
+      log.debug("No card updater found in context for tool '{}'", toolName);
       return toolInput;
     }
     try {
-      log.info("Setting tool status for '{}'", toolName);
       updater.setToolStatus(toolName, toolInput, toolContext);
     } catch (Exception e) {
       log.warn("Failed to show tool status for '{}': {}", toolName, e.getMessage());

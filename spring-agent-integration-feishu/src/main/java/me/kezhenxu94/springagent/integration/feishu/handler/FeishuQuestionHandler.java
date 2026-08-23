@@ -37,8 +37,7 @@ import tools.jackson.databind.json.JsonMapper;
 public class FeishuQuestionHandler implements QuestionHandler {
 
   private final AgentRequest request;
-  private final FeishuCardUpdater cardUpdater;
-  private final String cardId;
+  private final FeishuCard card;
   private final PendingQuestionRepo pendingQuestionRepo;
   private final FeishuQuestionForm questionForm;
   private final JsonMapper om;
@@ -58,14 +57,14 @@ public class FeishuQuestionHandler implements QuestionHandler {
             .chatType(request.chatType())
             .conversationId(request.conversationId())
             .rootMessageId(request.rootMessageId())
-            .cardId(cardId)
+            .cardId(card.cardId())
             .questionsJson(om.writeValueAsString(questions))
             .status(PendingQuestion.Status.PENDING)
             .createdAt(now)
             .expiresAt(now.plus(ttl))
             .build());
 
-    final var posted = questionForm.insert(cardUpdater, questions, id);
+    final var posted = questionForm.insert(card, questions, id);
     if (!posted) {
       // Nothing to answer means nothing will ever answer it; leaving the row PENDING would only
       // block the next typed reply from being taken as the answer to something.
@@ -73,7 +72,7 @@ public class FeishuQuestionHandler implements QuestionHandler {
       // Thrown: the caller counts the channels that managed to ask, and this one did not.
       throw new IllegalStateException(
           "Could not insert the question form into card "
-              + cardId
+              + card.cardId()
               + " for user "
               + request.userId());
     }
@@ -83,7 +82,7 @@ public class FeishuQuestionHandler implements QuestionHandler {
         questions.size(),
         id,
         request.conversationId(),
-        cardId);
+        card.cardId());
     // Nothing yet: the caller turns an empty answer into the note that ends the model's turn.
     return Map.of();
   }

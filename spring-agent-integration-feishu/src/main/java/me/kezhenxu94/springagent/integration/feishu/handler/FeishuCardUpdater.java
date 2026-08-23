@@ -2,28 +2,7 @@ package me.kezhenxu94.springagent.integration.feishu.handler;
 
 import com.google.common.base.Strings;
 import com.google.common.base.Throwables;
-import com.lark.oapi.Client;
-import com.lark.oapi.service.cardkit.v1.enums.CreateCardElementTypeEnum;
-import com.lark.oapi.service.cardkit.v1.model.ContentCardElementReq;
-import com.lark.oapi.service.cardkit.v1.model.ContentCardElementReqBody;
-import com.lark.oapi.service.cardkit.v1.model.CreateCardElementReq;
-import com.lark.oapi.service.cardkit.v1.model.CreateCardElementReqBody;
-import com.lark.oapi.service.cardkit.v1.model.DeleteCardElementReq;
-import com.lark.oapi.service.cardkit.v1.model.DeleteCardElementReqBody;
-import com.lark.oapi.service.cardkit.v1.model.SettingsCardReq;
-import com.lark.oapi.service.cardkit.v1.model.SettingsCardReqBody;
-import com.lark.oapi.service.cardkit.v1.model.UpdateCardElementReq;
-import com.lark.oapi.service.cardkit.v1.model.UpdateCardElementReqBody;
-import com.lark.oapi.service.im.v1.model.CreateImageReq;
-import com.lark.oapi.service.im.v1.model.CreateImageReqBody;
 import com.openai.models.completions.CompletionUsage;
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.IOException;
-import java.net.URI;
-import java.net.URLConnection;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
@@ -32,19 +11,11 @@ import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
-import me.kezhenxu94.springagent.core.agent.AgentResponseListener.SubagentEvent;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
-import me.kezhenxu94.springagent.core.tools.HomeDir;
 import me.kezhenxu94.springagent.core.tools.ToolContextKey;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
@@ -53,70 +24,141 @@ import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
 import org.springaicommunity.agent.tools.TodoWriteTool.Todos;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ToolContext;
-import org.springframework.web.client.RestTemplate;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+/**
+ * One run, shown on a card: what it is saying, what it is doing and what it has spent, written into
+ * the three elements this updater owns.
+ *
+ * <p>Which three is the only difference between the two kinds of run that use it. The run the card
+ * was created for owns the card's own elements and finishes the card when it ends. A subagent of
+ * that run owns the elements of the panel it was given, and ends by rewriting that panel rather
+ * than the card — the work behind an answer, shown beside the answer, without a second card and a
+ * second stop button for something nobody started directly. Everything in between — streaming the
+ * answer, announcing tool calls, totalling the spend, showing a failure — is the same code writing
+ * to different ids, which is why a subagent needs nothing of its own to be visible.
+ *
+ * <p>The card itself is {@link FeishuCard}, shared by every updater writing to it, and the lock
+ * that orders their writes lives there.
+ */
 @Slf4j
 public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandler {
   public static final ToolContextKey<FeishuCardUpdater> TOOL_CONTEXT_KEY =
       new ToolContexts.Key<>("FeishuCardUpdater", FeishuCardUpdater.class);
 
-  private static final int CODE_STREAMING_MODE_CLOSED = 300309;
-
-  /**
-   * The divider above the card's footer, and so the anchor anything added mid-run is placed before:
-   * it keeps the usage line and the conversation hint at the bottom where a reader expects them.
-   */
-  private static final String FOOTER_ELEMENT_ID = "guide_divider";
-
-  private static final Pattern IMAGE_PATTERN = Pattern.compile("!\\[(.*?)\\]\\(([^)\\s]+)\\)");
-
-  private static final String FILE_SCHEME = "file:";
-
   private static final String DESCRIPTION_FIELD = "description";
 
-  /** How much of a subagent's report a panel holds. See {@link #truncated}. */
-  private static final int MAX_SUBAGENT_REPORT = 3000;
-
-  private final Client feishu;
+  private final FeishuCard card;
   private final JsonMapper om;
-  private final String cardId;
-  private final String userId;
-  private final RestTemplate restTemplate;
-  private final HomeDir home;
   private final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing;
   private final FeishuMessages messages;
+
+  /** The element this run's own words go into: the card's message, or the panel's body. */
+  private final String contentElementId;
+
+  /** Where this run's spend is written. */
+  private final String spendElementId;
+
+  /** The todo list's element, or null for a run whose elements have nowhere to put one. */
+  private final String todoElementId;
+
+  /**
+   * Set only for a subagent: the panel to rewrite when it ends, and what to call it there. Null on
+   * the run the card belongs to, which finishes the card instead.
+   */
   private final FeishuSubagentPanel panels;
+
+  private final String subagentId;
+  private final String description;
+
   private final Instant startedAt = Instant.now();
-  private final AtomicInteger sequence = new AtomicInteger(2);
-  private final ConcurrentMap<String, String> imageKeysBySource = new ConcurrentHashMap<>();
 
   /**
-   * What the turn has spent, across every model call it made and every subagent it started. Guarded
-   * by the same lock as the footer it is written to, which is every writer of it.
+   * What this run has spent, across every model call it made — and, on the run the card belongs to,
+   * every subagent it started too, whose usage {@code SpringAgent} forwards to its listeners.
    */
-  private final Spend turnSpend = new Spend();
+  private final Spend spend = new Spend();
+
+  private String lastBaseContent = "";
 
   /**
-   * The panels on this card, by subagent id. Kept because a panel is replaced whole when its
-   * subagent ends, and that replacement has to carry what the panel had been streaming; dropped as
-   * it ends, since a panel is never rewritten twice.
+   * The failure shown under the content, kept because a subagent's panel is rewritten whole when it
+   * ends and would otherwise be rewritten without it — a panel titled failed, saying only what the
+   * run had managed to report before it did.
    */
-  private final ConcurrentMap<String, SubagentPanel> subagentPanels = new ConcurrentHashMap<>();
+  private String failureNotice = "";
 
-  /** One subagent's panel: what it has said, what it has spent, and since when. */
-  private final class SubagentPanel {
-    private final Instant startedAt = Instant.now();
-    private final Spend spend = new Spend();
-    private String report = "";
+  /** The run the card was created for: it owns the card's elements and finishes it. */
+  public static FeishuCardUpdater forRun(
+      final FeishuCard card,
+      final JsonMapper om,
+      final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing,
+      final FeishuMessages messages) {
+    return new FeishuCardUpdater(
+        card, om, modelPricing, messages, "message", "usage", "todo", null, null, null);
+  }
+
+  /**
+   * A subagent of that run: it owns the elements of its panel, which has to be on the card already
+   * — nothing can be streamed into an element that is not there yet.
+   */
+  public static FeishuCardUpdater forSubagent(
+      final FeishuCard card,
+      final JsonMapper om,
+      final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing,
+      final FeishuMessages messages,
+      final FeishuSubagentPanel panels,
+      final String subagentId,
+      final String description) {
+    return new FeishuCardUpdater(
+        card,
+        om,
+        modelPricing,
+        messages,
+        FeishuSubagentPanel.bodyElementId(subagentId),
+        FeishuSubagentPanel.footerElementId(subagentId),
+        // A panel holds a report and what it cost, and nothing else: a subagent's todo list would
+        // have nowhere to go, so it is not offered one to write into.
+        null,
+        panels,
+        subagentId,
+        description);
+  }
+
+  private FeishuCardUpdater(
+      final FeishuCard card,
+      final JsonMapper om,
+      final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing,
+      final FeishuMessages messages,
+      final String contentElementId,
+      final String spendElementId,
+      final String todoElementId,
+      final FeishuSubagentPanel panels,
+      final String subagentId,
+      final String description) {
+    this.card = card;
+    this.om = om;
+    this.modelPricing = modelPricing != null ? modelPricing : Map.of();
+    this.messages = messages;
+    this.contentElementId = contentElementId;
+    this.spendElementId = spendElementId;
+    this.todoElementId = todoElementId;
+    this.panels = panels;
+    this.subagentId = subagentId;
+    this.description = description;
+  }
+
+  /** Whether this is a subagent's panel rather than the card's own run. */
+  private boolean isSubagent() {
+    return subagentId != null;
   }
 
   /**
    * What one run spent: which models answered, how many tokens they read and wrote, and roughly
-   * what that cost. One of these for the turn and one per subagent, so a reader can see both the
-   * whole and where it went.
+   * what that cost. One of these per run, so a reader can see both the turn as a whole and, in each
+   * panel, where it went.
    */
   private final class Spend {
     private final Set<String> models = new LinkedHashSet<>();
@@ -163,29 +205,6 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     }
   }
 
-  private String lastBaseContent = "";
-
-  public FeishuCardUpdater(
-      final Client feishu,
-      final JsonMapper om,
-      final String cardId,
-      final String userId,
-      final RestTemplate restTemplate,
-      final HomeDir home,
-      final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing,
-      final FeishuMessages messages,
-      final FeishuSubagentPanel panels) {
-    this.feishu = feishu;
-    this.om = om;
-    this.cardId = cardId;
-    this.userId = userId;
-    this.restTemplate = restTemplate;
-    this.home = home;
-    this.modelPricing = modelPricing != null ? modelPricing : Map.of();
-    this.messages = messages;
-    this.panels = panels;
-  }
-
   private static boolean isThinkingMode(Usage usage) {
     if (usage == null || !(usage.getNativeUsage() instanceof CompletionUsage openAiUsage)) {
       return false;
@@ -199,7 +218,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   /**
    * What one model call cost, at the price configured for that model and for the mode it ran in, or
    * null where the model has no pricing configured. Returned rather than formatted, since the
-   * footer shows the sum of every call the turn made.
+   * footer shows the sum of every call the run made.
    */
   private Double approxCost(String model, Usage usage) {
     final var pricing = modelPricing.get(model);
@@ -223,15 +242,15 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     return seconds < 60 ? seconds + "s" : (seconds / 60) + "m";
   }
 
-  public String getCardId() {
-    return cardId;
-  }
-
-  public synchronized void updateContent(String content) {
+  private synchronized void updateContent(String content) {
     log.debug(
-        "updateContent: cardId={}, length={}", cardId, content != null ? content.length() : 0);
+        "updateContent: cardId={}, element={}, length={}",
+        card.cardId(),
+        contentElementId,
+        content != null ? content.length() : 0);
     this.lastBaseContent = content;
-    sendContent(content);
+    this.failureNotice = "";
+    sendContent(lastBaseContent);
   }
 
   /**
@@ -241,17 +260,31 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    *
    * <p>The base content is left untouched, so a later update — a retry that resumes streaming —
    * clears the failure instead of writing underneath it.
+   *
+   * <p>A subagent gets the failure without the stack trace behind it: its panel is an account of
+   * work the reader did not ask to see the middle of, and the trace is in the log for whoever does.
    */
   private synchronized void showError(Throwable error) {
     final var summary = errorDisplay(error);
-    log.warn("showError: cardId={}, error={}", cardId, summary);
-    final var notice =
-        messages.error(summary)
-            + "\n\n```\n"
-            + Throwables.getStackTraceAsString(error).stripTrailing()
-            + "\n```";
-    final var base = Strings.nullToEmpty(lastBaseContent);
-    sendContent(base.isEmpty() ? notice : base + "\n\n" + notice);
+    log.warn(
+        "showError: cardId={}, element={}, error={}", card.cardId(), contentElementId, summary);
+    failureNotice =
+        isSubagent()
+            ? messages.error(summary)
+            : messages.error(summary)
+                + "\n\n```\n"
+                + Throwables.getStackTraceAsString(error).stripTrailing()
+                + "\n```";
+    sendContent(withFailure(lastBaseContent));
+  }
+
+  /** What the element holds: what the run said, and under it the failure if there was one. */
+  private String withFailure(final String content) {
+    final var base = Strings.nullToEmpty(content);
+    if (failureNotice.isEmpty()) {
+      return base;
+    }
+    return base.isEmpty() ? failureNotice : base + "\n\n" + failureNotice;
   }
 
   private static String errorDisplay(Throwable error) {
@@ -261,7 +294,9 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   }
 
   /**
-   * Announces a tool call on the card, above the fields it was called with.
+   * Announces a tool call, above the fields it was called with — on the card for the run it belongs
+   * to, and in its own panel for a subagent, which is the whole of what a reader sees of one while
+   * it works.
    *
    * <p>Tools that take a {@code description} — {@code Bash} asks the model for one, in active
    * voice, saying what the command does — describe the call far better than its name does, so that
@@ -271,7 +306,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       String toolName, String toolInput, ToolContext toolContext) {
     final var input = parseObject(toolInput);
     final var description = input == null ? null : singleLine(input.path(DESCRIPTION_FIELD));
-    log.info("Tool call: cardId={}, tool={}", cardId, toolName);
+    log.info(
+        "Tool call: cardId={}, element={}, tool={}", card.cardId(), contentElementId, toolName);
     final var header =
         description != null
             ? description
@@ -332,7 +368,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   }
 
   private synchronized void sendContent(String content) {
-    sendElementContent("message", content);
+    card.stream(contentElementId, content);
   }
 
   private String formatTodoItem(TodoWriteTool.Todos.TodoItem item) {
@@ -344,132 +380,10 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   }
 
   /**
-   * Adds elements to the card, above the footer, and returns whether they landed.
-   *
-   * <p>Here rather than in the caller because {@link #sequence} is: the card rejects an operation
-   * whose sequence did not strictly increase, so everything writing to one card has to draw from
-   * the same counter, and this is where it lives.
-   *
-   * @param uuid an idempotency key, so a retry cannot leave the card holding two copies
-   */
-  @SneakyThrows
-  public synchronized boolean insertBeforeFooter(final String elementsJson, final String uuid) {
-    final var seq = sequence.getAndIncrement();
-    final var response =
-        feishu
-            .cardkit()
-            .v1()
-            .cardElement()
-            .create(
-                CreateCardElementReq.newBuilder()
-                    .cardId(cardId)
-                    .createCardElementReqBody(
-                        CreateCardElementReqBody.newBuilder()
-                            .type(CreateCardElementTypeEnum.INSERT_BEFORE)
-                            .targetElementId(FOOTER_ELEMENT_ID)
-                            .uuid(uuid)
-                            .sequence(seq)
-                            .elements(elementsJson)
-                            .build())
-                    .build());
-    if (response.getCode() != 0) {
-      log.warn(
-          "Failed to insert elements: cardId={}, seq={}, code={}, msg={}",
-          cardId,
-          seq,
-          response.getCode(),
-          response.getMsg());
-      return false;
-    }
-    return true;
-  }
-
-  @SneakyThrows
-  private synchronized void sendElementContent(String elementId, String content) {
-    sendElementContent(elementId, content, true);
-  }
-
-  @SneakyThrows
-  private synchronized void sendElementContent(
-      String elementId, String content, boolean allowRetry) {
-    final var seq = sequence.getAndIncrement();
-    final var response =
-        feishu
-            .cardkit()
-            .v1()
-            .cardElement()
-            .content(
-                ContentCardElementReq.newBuilder()
-                    .cardId(cardId)
-                    .elementId(elementId)
-                    .contentCardElementReqBody(
-                        ContentCardElementReqBody.newBuilder()
-                            .sequence(seq)
-                            .content(content)
-                            .build())
-                    .build());
-    if (response.getCode() != 0) {
-      log.warn(
-          "Failed to send {} content: cardId={}, seq={}, code={}, msg={}",
-          elementId,
-          cardId,
-          seq,
-          response.getCode(),
-          response.getMsg());
-      if (allowRetry && response.getCode() == CODE_STREAMING_MODE_CLOSED) {
-        log.info("Streaming mode closed for cardId={}, re-enabling and retrying", cardId);
-        reenableStreaming();
-        sendElementContent(elementId, content, false);
-      }
-    }
-  }
-
-  @SneakyThrows
-  private void reenableStreaming() {
-    final var response =
-        feishu
-            .cardkit()
-            .v1()
-            .card()
-            .settings(
-                SettingsCardReq.newBuilder()
-                    .cardId(cardId)
-                    .settingsCardReqBody(
-                        SettingsCardReqBody.newBuilder()
-                            .sequence(sequence.getAndIncrement())
-                            .settings(
-                                """
-                                {
-                                  "schema": "2.0",
-                                  "config": {
-                                      "update_multi": true,
-                                      "streaming_mode": true,
-                                      "streaming_config": {
-                                          "print_step": {"default": 1},
-                                          "print_frequency_ms": {"default": 70},
-                                          "print_strategy": "fast"
-                                      }
-                                  }
-                                }
-                                """)
-                            .build())
-                    .build());
-    if (response.getCode() != 0) {
-      log.error(
-          "Failed to re-enable streaming mode: cardId={}, code={}, msg={}",
-          cardId,
-          response.getCode(),
-          response.getMsg());
-    } else {
-      log.info("Re-enabled streaming mode: cardId={}", cardId);
-    }
-  }
-
-  /**
-   * Adds one model call to the turn's running total and rewrites the footer with it.
+   * Adds one model call to this run's running total and rewrites its footer with it.
    *
    * <p>A total, not the latest call: a turn is a loop, and every iteration of it reports its own
-   * usage — as does every subagent the turn started, whose usage is forwarded to this run's
+   * usage — as does every subagent the turn started, whose usage is forwarded to the run's
    * listeners for exactly this reason. Showing the last report alone said a five-call turn had cost
    * what its final call cost.
    *
@@ -479,76 +393,17 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    */
   public synchronized void updateUsageFooter(String model, Usage usage) {
     if (Strings.isNullOrEmpty(model)) {
-      log.debug("updateUsageFooter: skipped, model is empty for cardId={}", cardId);
+      log.debug("updateUsageFooter: skipped, model is empty for cardId={}", card.cardId());
       return;
     }
     if (usage == null) {
       // Named before it has spent anything, since this is also how the footer first says which
       // model is answering.
-      turnSpend.model(model);
+      spend.model(model);
     } else {
-      turnSpend.add(model, usage);
+      spend.add(model, usage);
     }
-    sendElementContent("usage", turnSpend.render(startedAt));
-  }
-
-  @SneakyThrows
-  public synchronized void finalizeCard() {
-    log.info("Finalizing card: cardId={}", cardId);
-
-    final var removeActionsResponse =
-        feishu
-            .cardkit()
-            .v1()
-            .cardElement()
-            .delete(
-                DeleteCardElementReq.newBuilder()
-                    .cardId(cardId)
-                    .elementId("stop")
-                    .deleteCardElementReqBody(
-                        DeleteCardElementReqBody.newBuilder()
-                            .sequence(sequence.getAndIncrement())
-                            .build())
-                    .build());
-    if (removeActionsResponse.getCode() != 0) {
-      log.error(
-          "Failed to remove stop button: cardId={}, code={}, msg={}",
-          cardId,
-          removeActionsResponse.getCode(),
-          removeActionsResponse.getMsg());
-    }
-    final var stopResponse =
-        feishu
-            .cardkit()
-            .v1()
-            .card()
-            .settings(
-                SettingsCardReq.newBuilder()
-                    .cardId(cardId)
-                    .settingsCardReqBody(
-                        SettingsCardReqBody.newBuilder()
-                            .sequence(sequence.getAndIncrement())
-                            .settings(
-                                """
-                                {
-                                  "schema": "2.0",
-                                  "config": {
-                                      "update_multi": true,
-                                      "streaming_mode": false
-                                  }
-                                }
-                                """)
-                            .build())
-                    .build());
-    if (stopResponse.getCode() != 0) {
-      log.error(
-          "Failed to stop card streaming mode: cardId={}, code={}, msg={}",
-          cardId,
-          stopResponse.getCode(),
-          stopResponse.getMsg());
-    } else {
-      log.info("Card finalized: cardId={}", cardId);
-    }
+    card.stream(spendElementId, spend.render(startedAt));
   }
 
   @Override
@@ -558,7 +413,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
 
   @Override
   public void onContent(String contentSoFar) {
-    updateContent(reuploadImages(contentSoFar));
+    updateContent(card.reuploadImages(contentSoFar));
   }
 
   @Override
@@ -566,233 +421,38 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     updateUsageFooter(model, usage);
   }
 
-  /**
-   * A subagent of this run starting, saying something, spending something, or ending.
-   *
-   * <p>Each gets a collapsed panel of its own on the card: a run can have several going at once,
-   * and what any one of them says is not the answer — the run folds that into its own reply. The
-   * panel is where a reader goes to see what the work behind the reply actually was, and it streams
-   * as the subagent writes, so a turn that spends five minutes on one is not five minutes of
-   * nothing.
-   *
-   * <p>Each panel keeps a footer of its own, on the same terms as the card's: which model answered,
-   * what it read and wrote, roughly what that cost and how long it took. The card's footer is the
-   * turn as a whole and these are where it went, which is the only way to see that one subagent
-   * accounts for most of a turn.
-   *
-   * <p>The panel is inserted once, streamed into by the ids of the text inside it, and replaced
-   * whole when the subagent ends — replaced rather than streamed because the title has to change
-   * too, and the title is not a streamable element.
-   */
-  @Override
-  public synchronized void onSubagent(SubagentEvent event) {
-    final var id = event.subagentId();
-    if (Strings.isNullOrEmpty(id)) {
-      return;
-    }
-    if (event.started()) {
-      // The panel has to exist before anything can be streamed into it, and the subagent's own id
-      // is
-      // the idempotency key: unique to it, and the same across a retry, so a retried insert cannot
-      // leave the card holding two panels.
-      subagentPanels.put(id, new SubagentPanel());
-      insertBeforeFooter(panels.forInsert(id, event.description(), null), id);
-      return;
-    }
-    final var panel = subagentPanels.get(id);
-    if (event.ended()) {
-      subagentPanels.remove(id);
-      updateElement(
-          FeishuSubagentPanel.panelElementId(id),
-          panels.forUpdate(
-              id,
-              event.description(),
-              event.outcome(),
-              panel == null ? truncated(event.contentSoFar()) : panel.report,
-              panel == null ? "" : panel.spend.render(panel.startedAt)),
-          id + ":end");
-      return;
-    }
-    // Only from here on is the panel needed, and only a subagent whose start went missing has none.
-    if (panel == null) {
-      log.debug("No panel for subagent {} on card {}, nothing to update", id, cardId);
-      return;
-    }
-    if (event.spent()) {
-      panel.spend.add(event.model(), event.usage());
-      sendElementContent(
-          FeishuSubagentPanel.footerElementId(id), panel.spend.render(panel.startedAt));
-      return;
-    }
-    panel.report = truncated(event.contentSoFar());
-    sendElementContent(FeishuSubagentPanel.bodyElementId(id), panel.report);
-  }
-
-  /**
-   * What a panel may hold. A subagent reports for the model to act on, not for a card to show, and
-   * that can run to tens of thousands of characters; the card refuses an element that long and the
-   * whole panel is lost with it. The head rather than the tail: a report opens with its conclusion.
-   */
-  private static String truncated(final String content) {
-    final var text = Strings.nullToEmpty(content);
-    return text.length() <= MAX_SUBAGENT_REPORT
-        ? text
-        : text.substring(0, MAX_SUBAGENT_REPORT) + "\n\n…";
-  }
-
-  /**
-   * Replaces one element of the card outright, for a change no streamed content can express — a
-   * different title, say. Failures are logged and left: a panel that keeps its old title is worth
-   * more than a run that ends here.
-   */
-  @SneakyThrows
-  private synchronized void updateElement(
-      final String elementId, final String elementJson, final String uuid) {
-    final var seq = sequence.getAndIncrement();
-    final var response =
-        feishu
-            .cardkit()
-            .v1()
-            .cardElement()
-            .update(
-                UpdateCardElementReq.newBuilder()
-                    .cardId(cardId)
-                    .elementId(elementId)
-                    .updateCardElementReqBody(
-                        UpdateCardElementReqBody.newBuilder()
-                            .uuid(uuid)
-                            .sequence(seq)
-                            .element(elementJson)
-                            .build())
-                    .build());
-    if (response.getCode() != 0) {
-      log.warn(
-          "Failed to update element {}: cardId={}, seq={}, code={}, msg={}",
-          elementId,
-          cardId,
-          seq,
-          response.getCode(),
-          response.getMsg());
-    }
-  }
-
   @Override
   public void onError(Throwable error) {
     showError(error);
   }
 
+  /**
+   * The card's run finishes the card. A subagent instead has its panel written one last time, as a
+   * whole element rather than as streamed content: the title has to say how it ended, and a title
+   * is not something that can be streamed into.
+   */
   @Override
-  public void onFinished(AgentOutcome outcome) {
-    finalizeCard();
-  }
-
-  /**
-   * Replaces every markdown image whose target is a local file or a URL with the key Feishu hands
-   * back for it, since a card can only show images the tenant has uploaded. Tools produce local
-   * paths — {@code GenerateImage} saves into the user's artifacts directory — so this is where they
-   * become something a card can render.
-   */
-  String reuploadImages(String content) {
-    if (Strings.isNullOrEmpty(content)) {
-      return content;
+  public synchronized void onFinished(AgentOutcome outcome) {
+    if (!isSubagent()) {
+      card.finish();
+      return;
     }
-    final var matcher = IMAGE_PATTERN.matcher(content);
-    final var out = new StringBuilder();
-    while (matcher.find()) {
-      final var imageName = matcher.group(1);
-      final var source = matcher.group(2);
-      if (!isRemote(source) && !isLocal(source)) {
-        matcher.appendReplacement(out, Matcher.quoteReplacement(matcher.group()));
-        continue;
-      }
-      // Every streaming tick re-renders the whole answer, so without this the same image would be
-      // downloaded and uploaded again on each of them. An empty value caches a failure.
-      final var imageKey =
-          imageKeysBySource.computeIfAbsent(source, it -> Strings.nullToEmpty(uploadImage(it)));
-      final var replacement =
-          imageKey.isEmpty()
-              ? messages.get("card-image-unavailable")
-              : "![" + imageName + "](" + imageKey + ")";
-      matcher.appendReplacement(out, Matcher.quoteReplacement(replacement));
-    }
-    matcher.appendTail(out);
-    return out.toString();
-  }
-
-  private static boolean isRemote(final String source) {
-    return source.startsWith("http://") || source.startsWith("https://");
-  }
-
-  /** A {@code file://} URL, as {@code GenerateImage} returns, or a plain absolute path. */
-  private static boolean isLocal(final String source) {
-    return source.startsWith(FILE_SCHEME) || source.startsWith("/");
-  }
-
-  private static Path pathOf(final String source) {
-    return (source.startsWith(FILE_SCHEME) ? Path.of(URI.create(source)) : Path.of(source))
-        .toAbsolutePath()
-        .normalize();
-  }
-
-  /**
-   * Uploads the image at {@code source} to Feishu, returning its key, or {@code null} if it fails.
-   */
-  private String uploadImage(final String source) {
-    try {
-      if (isRemote(source)) {
-        final var imageBytes = restTemplate.getForObject(source, byte[].class);
-        if (imageBytes == null) {
-          log.warn("Nothing to download at image URL: {}", source);
-          return null;
-        }
-        final var tempFile = File.createTempFile("image-", "." + extensionOf(imageBytes));
-        try {
-          Files.write(tempFile.toPath(), imageBytes);
-          return upload(tempFile, source);
-        } finally {
-          tempFile.delete();
-        }
-      }
-      final var path = pathOf(source);
-      // The same containment check VisionTools makes: a run may only show files belonging to the
-      // user it is answering, never an arbitrary path the model wrote into its answer.
-      if (!home.contains(path) || !Files.isRegularFile(path)) {
-        log.warn("Rejected image path outside the user's home or missing: {}", source);
-        return null;
-      }
-      return upload(path.toFile(), source);
-    } catch (Exception e) {
-      log.error("Failed to upload image: {}", source, e);
-      return null;
-    }
-  }
-
-  private String upload(final File file, final String source) throws Exception {
-    final var response =
-        feishu
-            .im()
-            .v1()
-            .image()
-            .create(
-                CreateImageReq.newBuilder()
-                    .createImageReqBody(
-                        CreateImageReqBody.newBuilder().imageType("message").image(file).build())
-                    .build());
-    if (!response.success()) {
-      log.warn("Failed to upload image: {}, {}, {}", source, response.getCode(), response.getMsg());
-      return null;
-    }
-    return response.getData().getImageKey();
-  }
-
-  private static String extensionOf(final byte[] imageBytes) throws IOException {
-    final var contentType =
-        URLConnection.guessContentTypeFromStream(new ByteArrayInputStream(imageBytes));
-    return contentType == null ? "png" : contentType.split("/")[1];
+    card.replace(
+        FeishuSubagentPanel.panelElementId(subagentId),
+        panels.forUpdate(
+            subagentId,
+            description,
+            outcome,
+            withFailure(lastBaseContent),
+            spend.render(startedAt)),
+        subagentId + ":end");
   }
 
   @Override
   public synchronized void handle(Todos todos) {
+    if (todoElementId == null) {
+      return;
+    }
     final var items =
         todos == null || todos.todos() == null
             ? ""
@@ -801,8 +461,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         items.isEmpty() ? "" : "---\n" + messages.get("card-todo-heading") + "\n" + items;
     log.info(
         "updateTodoList: cardId={}, itemCount={}",
-        cardId,
+        card.cardId(),
         todos != null ? todos.todos().size() : 0);
-    sendElementContent("todo", markdown);
+    card.stream(todoElementId, markdown);
   }
 }

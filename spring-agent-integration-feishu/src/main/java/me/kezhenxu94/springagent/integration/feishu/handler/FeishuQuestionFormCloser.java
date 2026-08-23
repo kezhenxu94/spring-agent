@@ -20,8 +20,8 @@ import org.springframework.stereotype.Component;
  * the card as well — a form still offering controls after the row behind it is closed can only be
  * pressed to be refused.
  *
- * <p>Shared rather than sitting in either handler because the run's {@link FeishuCardUpdater}, and
- * the sequence counter that makes card writes safe, are gone by the time any of this happens.
+ * <p>Shared rather than sitting in either handler because the run's {@link FeishuCard}, and the
+ * sequence counter that makes card writes safe, are gone by the time any of this happens.
  */
 @Slf4j
 @Component
