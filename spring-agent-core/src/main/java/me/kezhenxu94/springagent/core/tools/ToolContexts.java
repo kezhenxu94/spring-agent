@@ -14,6 +14,8 @@ public class ToolContexts {
   public static final String KEY_CHAT_TYPE = "chatType";
   public static final String KEY_ROOT_MESSAGE_ID = "rootMessageId";
   public static final String KEY_REPLY_MESSAGE_ID = "replyMessageId";
+  public static final String KEY_GROUP_ID = "groupId";
+  public static final String KEY_TENANT_ID = "tenantId";
 
   /**
    * The run the tool call belongs to, the same key {@code SpringAgent#cancel(String)} stops a run
@@ -35,6 +37,20 @@ public class ToolContexts {
 
   public static final ToolContextKey<String> REPLY_MESSAGE_ID =
       new Key<>(KEY_REPLY_MESSAGE_ID, String.class);
+
+  /**
+   * Identifies the group chat the request came from (e.g. a Feishu group chat id), as an opaque
+   * string minted by whichever integration received it. Core never interprets its contents. Empty
+   * for a request with no group.
+   */
+  public static final ToolContextKey<String> GROUP_ID = new Key<>(KEY_GROUP_ID, String.class);
+
+  /**
+   * Identifies the tenant/enterprise the sender belongs to (e.g. a Feishu tenant key), as an opaque
+   * string minted by whichever integration received it. Core never interprets its contents. Empty
+   * for an integration with no tenant concept.
+   */
+  public static final ToolContextKey<String> TENANT_ID = new Key<>(KEY_TENANT_ID, String.class);
 
   public record Key<V>(String key, Class<V> clazz) implements ToolContextKey<V> {}
 

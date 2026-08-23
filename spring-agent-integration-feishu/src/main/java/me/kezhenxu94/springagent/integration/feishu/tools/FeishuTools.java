@@ -33,6 +33,7 @@ import lombok.SneakyThrows;
 import lombok.extern.jackson.Jacksonized;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
+import me.kezhenxu94.springagent.core.tools.HomeDir;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.FeishuMessageCard;
@@ -122,8 +123,7 @@ public class FeishuTools {
       return "Failed: file not found at " + filePath;
     }
 
-    final var userId = ToolContexts.require(toolContext, ToolContexts.USER_ID);
-    final var inWorkspace = userWorkspaceFactory.forOwner(userId).contains(file.toPath());
+    final var inWorkspace = userWorkspaceFactory.forRequest(toolContext).contains(file.toPath());
     if (!inWorkspace) {
       log.warn("sendFile rejected out-of-scope path: {}", filePath);
       return "Failed: file must be within an allowed workspace or system temp directory";
@@ -243,8 +243,8 @@ public class FeishuTools {
       @ToolParam(description = "Filename to save it under") String fileName,
       ToolContext toolContext) {
     try {
-      final var userId = ToolContexts.require(toolContext, ToolContexts.USER_ID);
-      final var dest = resolveSafeArtifactPath(fileName, userId);
+      final var dest =
+          resolveSafeArtifactPath(fileName, userWorkspaceFactory.forRequest(toolContext));
       log.info("Downloading file: fileKey={}", fileKey);
       final var response =
           feishu
@@ -497,8 +497,8 @@ public class FeishuTools {
       return "Failed: fileToken is required";
     }
     try {
-      final var userId = ToolContexts.require(toolContext, ToolContexts.USER_ID);
-      final var dest = resolveSafeArtifactPath(fileName, userId);
+      final var dest =
+          resolveSafeArtifactPath(fileName, userWorkspaceFactory.forRequest(toolContext));
       log.info("Downloading Drive file: token={}", fileToken);
       final var response =
           feishu
@@ -532,7 +532,7 @@ public class FeishuTools {
     return null;
   }
 
-  java.nio.file.Path resolveSafeArtifactPath(final String fileName, final String userId)
+  java.nio.file.Path resolveSafeArtifactPath(final String fileName, final HomeDir home)
       throws IOException {
     if (fileName == null || fileName.isBlank()) {
       throw new IllegalArgumentException("fileName is required");
@@ -547,7 +547,7 @@ public class FeishuTools {
     if (basename == null || basename.isBlank() || ".".equals(basename) || "..".equals(basename)) {
       throw new IllegalArgumentException("fileName is invalid: " + fileName);
     }
-    final var artifacts = userWorkspaceFactory.forOwner(userId).artifacts().normalize();
+    final var artifacts = home.artifacts().normalize();
     final var dest = artifacts.resolve(basename).normalize();
     if (!dest.startsWith(artifacts)) {
       throw new IllegalArgumentException("fileName escapes artifacts directory: " + fileName);

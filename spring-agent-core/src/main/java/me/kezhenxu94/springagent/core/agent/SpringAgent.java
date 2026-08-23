@@ -67,7 +67,7 @@ public class SpringAgent {
    * a surface that has nothing to say about how a reply looks.
    */
   private static final Map<String, Object> OPTIONAL_PROMPT_VARIABLES =
-      Map.of("threadId", "", "parentId", "", "mentions", "none", "replyFormat", "");
+      Map.of("threadId", "", "parentId", "", "mentions", "none", "replyFormat", "", "homeDirs", "");
 
   /**
    * Where the tool search looks for the index to use. Has to agree with {@code
@@ -708,6 +708,8 @@ public class SpringAgent {
     toolContext.put(ToolContexts.KEY_ROOT_MESSAGE_ID, Strings.nullToEmpty(request.rootMessageId()));
     toolContext.put(
         ToolContexts.KEY_REPLY_MESSAGE_ID, Strings.nullToEmpty(request.replyMessageId()));
+    toolContext.put(ToolContexts.KEY_GROUP_ID, Strings.nullToEmpty(request.groupId()));
+    toolContext.put(ToolContexts.KEY_TENANT_ID, Strings.nullToEmpty(request.tenantId()));
     return toolContext;
   }
 

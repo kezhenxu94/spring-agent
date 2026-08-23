@@ -87,6 +87,9 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
     final var rootId =
         !Strings.isNullOrEmpty(message.getRootId()) ? message.getRootId() : messageId;
     final var userOpenId = data.getSender().getSenderId().getOpenId();
+    final var tenantId = data.getSender().getTenantKey();
+    final var groupId =
+        "group".equalsIgnoreCase(message.getChatType()) ? message.getChatId() : null;
 
     log.info(
         "Received message: rootId={}, messageId={}, chatId={}, chatType={}, parentId={},"
@@ -155,6 +158,8 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
               .userId(userOpenId)
               .chatId(message.getChatId())
               .chatType(message.getChatType())
+              .groupId(groupId)
+              .tenantId(tenantId)
               .conversationId(rootId)
               .rootMessageId(rootId)
               .replyMessageId(message.getMessageId())

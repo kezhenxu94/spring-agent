@@ -11,18 +11,20 @@ import com.lark.oapi.service.cardkit.v1.model.ContentCardElementReq;
 import com.lark.oapi.service.cardkit.v1.model.ContentCardElementResp;
 import com.lark.oapi.service.cardkit.v1.model.CreateCardElementReq;
 import com.lark.oapi.service.cardkit.v1.model.CreateCardElementResp;
+import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener.SubagentEvent;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.ModelPricing;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.ModelPricing.Currency;
-import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
+import me.kezhenxu94.springagent.core.tools.UserHome;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -43,7 +45,7 @@ class FeishuCardUpdaterUsageTest {
   private Client feishu;
 
   @Mock private RestTemplate restTemplate;
-  @Mock private UserWorkspaceFactory userWorkspaceFactory;
+  @TempDir Path userHomeRoot;
 
   private FeishuCardUpdater updater;
 
@@ -64,7 +66,7 @@ class FeishuCardUpdaterUsageTest {
             "card-1",
             "ou_user",
             restTemplate,
-            userWorkspaceFactory,
+            new UserHome(userHomeRoot),
             // A tenth of a cent per thousand tokens each way, so the arithmetic is checkable.
             Map.of("the-model", new ModelPricing(1.0, 1.0, 1.0, Currency.USD)),
             messages,

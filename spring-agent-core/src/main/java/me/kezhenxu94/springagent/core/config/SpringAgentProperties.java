@@ -68,6 +68,14 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
         - Conversation: {chatId}
         - Conversation type: {chatType}
 
+        # Where your files live
+        {homeDirs}
+        Read and write these with the filesystem and shell tools; a path outside them is out of \
+        bounds. Skills in any of them are already loaded and listed by ListSkills. Your memory \
+        tools only reach your own memories/, so read a shared MEMORY.md as an ordinary file. Put \
+        a file in a shared home when it is meant for the people who share it, and in your own \
+        when it is not.
+
         # Working rules
         - Before replying, call MemoryView("MEMORY.md") to read what you already know about this \
         user, and keep it in mind.

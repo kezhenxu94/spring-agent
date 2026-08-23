@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -18,7 +17,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import me.kezhenxu94.springagent.core.tools.UserHome;
-import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,7 +42,6 @@ class FeishuCardUpdaterImageTest {
   private Client feishu;
 
   @Mock private RestTemplate restTemplate;
-  @Mock private UserWorkspaceFactory userWorkspaceFactory;
 
   @TempDir Path userHomeRoot;
   @TempDir Path elsewhere;
@@ -62,9 +59,6 @@ class FeishuCardUpdaterImageTest {
 
   @BeforeEach
   void setUp() {
-    lenient()
-        .when(userWorkspaceFactory.forOwner(anyString()))
-        .thenReturn(new UserHome(userHomeRoot));
     updater =
         new FeishuCardUpdater(
             feishu,
@@ -72,7 +66,7 @@ class FeishuCardUpdaterImageTest {
             "card-1",
             "ou_user",
             restTemplate,
-            userWorkspaceFactory,
+            new UserHome(userHomeRoot),
             null,
             new FeishuMessages(
                 new FeishuProperties(

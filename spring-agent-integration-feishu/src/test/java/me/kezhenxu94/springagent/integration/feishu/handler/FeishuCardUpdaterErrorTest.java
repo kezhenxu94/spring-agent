@@ -9,14 +9,16 @@ import static org.mockito.Mockito.when;
 import com.lark.oapi.Client;
 import com.lark.oapi.service.cardkit.v1.model.ContentCardElementReq;
 import com.lark.oapi.service.cardkit.v1.model.ContentCardElementResp;
+import java.nio.file.Path;
 import java.util.Locale;
-import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
+import me.kezhenxu94.springagent.core.tools.UserHome;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -35,7 +37,7 @@ class FeishuCardUpdaterErrorTest {
   private Client feishu;
 
   @Mock private RestTemplate restTemplate;
-  @Mock private UserWorkspaceFactory userWorkspaceFactory;
+  @TempDir Path userHomeRoot;
 
   private FeishuCardUpdater updater;
 
@@ -52,7 +54,7 @@ class FeishuCardUpdaterErrorTest {
             "card-1",
             "ou_user",
             restTemplate,
-            userWorkspaceFactory,
+            new UserHome(userHomeRoot),
             null,
             new FeishuMessages(
                 new FeishuProperties(

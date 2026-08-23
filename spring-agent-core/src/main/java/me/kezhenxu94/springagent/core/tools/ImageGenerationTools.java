@@ -103,13 +103,14 @@ public class ImageGenerationTools {
       return List.of();
     }
 
+    final var home = userWorkspaceFactory.forRequest(context);
     return response.output().choices().stream()
         .flatMap(
             choice ->
                 choice.message().content().stream()
                     .filter(c -> c.image() != null)
                     .map(c -> c.image()))
-        .map(imageUrl -> save(imageUrl, userId))
+        .map(imageUrl -> save(imageUrl, home))
         .filter(Objects::nonNull)
         .toList();
   }
@@ -120,18 +121,14 @@ public class ImageGenerationTools {
    * the caller the images that did come back. A URL rather than a bare path so that whoever renders
    * the answer can tell from the scheme alone what it is holding.
    */
-  private String save(final String imageUrl, final String userId) {
+  private String save(final String imageUrl, final HomeDir home) {
     try {
       final var imageBytes = restTemplate.getForObject(URI.create(imageUrl), byte[].class);
       if (imageBytes == null) {
         log.error("Nothing to download at generated image URL: {}", imageUrl);
         return null;
       }
-      final var dest =
-          userWorkspaceFactory
-              .forOwner(userId)
-              .artifacts()
-              .resolve("generated-" + UUID.randomUUID() + ".png");
+      final var dest = home.artifacts().resolve("generated-" + UUID.randomUUID() + ".png");
       Files.write(dest, imageBytes);
       log.info("Saved generated image to {}, size={} bytes", dest, imageBytes.length);
       return dest.toUri().toString();

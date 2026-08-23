@@ -3,23 +3,10 @@ package me.kezhenxu94.springagent.core.tools;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
-import lombok.experimental.Accessors;
+import java.util.List;
 
-public class UserHome {
-
-  @Getter
-  @RequiredArgsConstructor
-  @Accessors(fluent = true)
-  public enum Folder {
-    MEMORIES("memories"),
-    ARTIFACTS("artifacts"),
-    SKILLS("skills"),
-    WORKSPACE("workspace");
-
-    private final String dirName;
-  }
+/** One scope's home directory — a personal, a group's, or a tenant's. */
+public class UserHome implements HomeDir {
 
   private final Path root;
 
@@ -27,30 +14,28 @@ public class UserHome {
     this.root = root.toAbsolutePath().normalize();
   }
 
+  @Override
   public Path root() {
     return root;
   }
 
+  @Override
   public Path folder(Folder folder) throws IOException {
     return Files.createDirectories(root.resolve(folder.dirName()));
   }
 
-  public Path memories() throws IOException {
-    return folder(Folder.MEMORIES);
+  @Override
+  public List<Path> roots() {
+    return List.of(root);
   }
 
-  public Path artifacts() throws IOException {
-    return folder(Folder.ARTIFACTS);
+  @Override
+  public List<Path> dirs(Folder folder) {
+    final var dir = root.resolve(folder.dirName());
+    return Files.isDirectory(dir) ? List.of(dir) : List.of();
   }
 
-  public Path skills() throws IOException {
-    return folder(Folder.SKILLS);
-  }
-
-  public Path workspace() throws IOException {
-    return folder(Folder.WORKSPACE);
-  }
-
+  @Override
   public boolean contains(Path candidate) {
     return candidate.toAbsolutePath().normalize().startsWith(root);
   }

@@ -8,6 +8,8 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -56,8 +58,9 @@ public class PublishFileTool {
               optional and means the link never expires when omitted.
           visibility=public: reachable by anyone holding the link, no sign-in. ttl is optional and
               defaults to 1d, at most 30d.
-          Only files and directories inside the current user's workspace can be published, which
-          means whatever this or another tool produced for them earlier.
+          Only files and directories inside the current user's workspace, the current group's
+          shared workspace, or the tenant's company-wide shared workspace can be published, which
+          means whatever this or another tool produced there earlier.
           A directory is published whole, keeping its structure, and a browser opens its index.html
           if it has one.
           """)
@@ -75,10 +78,11 @@ public class PublishFileTool {
       final ToolContext context) {
 
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
+    final var home = userWorkspaceFactory.forRequest(context);
 
     final Path sourcePath;
     try {
-      sourcePath = resolveSourcePath(path, userId);
+      sourcePath = resolveSourcePath(path, home);
     } catch (IllegalArgumentException e) {
       return "Error: " + e.getMessage();
     }
@@ -143,7 +147,8 @@ public class PublishFileTool {
           mode=replace: delete everything published so far and put the new content in its place,
               which is a fresh publish that keeps the old link.
           Pass a new ttl to restart the expiry from now; omit it to leave the expiry as it is.
-          The new content, too, has to come from inside the current user's workspace.
+          The new content, too, has to come from inside the current user's, group's, or tenant's
+          workspace.
           """)
   public String updatePublishedFile(
       @ToolParam(
@@ -183,9 +188,10 @@ public class PublishFileTool {
       return "Error: mode must be update or replace.";
     }
 
+    final var home = userWorkspaceFactory.forRequest(context);
     final Path sourcePath;
     try {
-      sourcePath = resolveSourcePath(path, userId);
+      sourcePath = resolveSourcePath(path, home);
     } catch (IllegalArgumentException e) {
       return "Error: " + e.getMessage();
     }
@@ -328,7 +334,7 @@ public class PublishFileTool {
     return "Extended " + token + ". " + expiryNote;
   }
 
-  private Path resolveSourcePath(final String path, final String userId) {
+  private Path resolveSourcePath(final String path, final HomeDir home) {
     if (Strings.isNullOrEmpty(path)) {
       throw new IllegalArgumentException("Give a file or directory path.");
     }
@@ -342,19 +348,23 @@ public class PublishFileTool {
       throw new IllegalArgumentException("No such file or directory: " + path);
     }
 
-    final var userHome = userWorkspaceFactory.forOwner(userId);
     final Path realSourcePath;
-    final Path realWorkspaceRoot;
+    final List<Path> realWorkspaceRoots;
     try {
       realSourcePath = sourcePath.toRealPath();
-      realWorkspaceRoot = userHome.workspace().toRealPath();
+      final var roots = new ArrayList<Path>();
+      for (final var root : home.dirs(HomeDir.Folder.WORKSPACE)) {
+        roots.add(root.toRealPath());
+      }
+      realWorkspaceRoots = roots;
     } catch (IOException e) {
       throw new IllegalArgumentException("Could not resolve the path: " + path);
     }
-    if (!realSourcePath.equals(realWorkspaceRoot)
-        && !realSourcePath.startsWith(realWorkspaceRoot)) {
+    if (realWorkspaceRoots.stream()
+        .noneMatch(r -> realSourcePath.equals(r) || realSourcePath.startsWith(r))) {
       throw new IllegalArgumentException(
-          "Only files and directories inside the current user's workspace can be published.");
+          "Only files and directories inside the current user's workspace, the current group's"
+              + " shared workspace, or the company-shared workspace can be published.");
     }
     return sourcePath;
   }

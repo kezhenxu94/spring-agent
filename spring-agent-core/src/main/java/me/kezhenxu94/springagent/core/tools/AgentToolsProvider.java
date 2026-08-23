@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.core.tools;
 
 import io.modelcontextprotocol.client.McpSyncClient;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -120,7 +121,10 @@ public class AgentToolsProvider {
       final boolean answersArriveLater)
       throws IOException {
     final var memoriesRootDirectory =
-        userWorkspaceFactory.forOwner(request.userId()).memories().toString();
+        userWorkspaceFactory
+            .forRequest(request.userId(), request.groupId(), request.tenantId())
+            .memories()
+            .toString();
 
     final var tools = new ArrayList<Object>();
     tools.addAll(resolveScenarioTools(request.scenario()));
@@ -245,18 +249,29 @@ public class AgentToolsProvider {
 
   public AgentTools build(String userId, String chatId, Map<String, Object> toolContext)
       throws IOException {
-    final var userWs = userWorkspaceFactory.forOwner(userId);
+    // The sandbox and the skills index span every scope the request reaches, or a group's shared
+    // skill would be listed by SkillManagementTools and then refused by the tools meant to run it.
+    final var context = new ToolContext(toolContext == null ? Map.of() : toolContext);
+    final var home =
+        userWorkspaceFactory.forRequest(
+            userId,
+            ToolContexts.get(context, ToolContexts.GROUP_ID),
+            ToolContexts.get(context, ToolContexts.TENANT_ID));
 
-    final var fileSystemTools = FileSystemTools.builder().allowedDirectory(userWs.root()).build();
+    final var fileSystemTools =
+        FileSystemTools.builder().allowedDirectories(home.roots().toArray(Path[]::new)).build();
 
-    final var skillsDir = userWs.skills().toString();
+    // Only the directories that are actually there: an empty skills directory holds no SKILL.md
+    // and so contributes nothing to the index, and the one a new skill is written to is created
+    // by the write itself.
+    final var skillsDirs = home.dirs(HomeDir.Folder.SKILLS).stream().map(Path::toString).toList();
     final var skillsToolBuilder = SkillsTool.builder();
-    skillsToolBuilder.addSkillsDirectory(skillsDir);
+    skillsToolBuilder.addSkillsDirectories(skillsDirs);
     Optional<ToolCallback> skillsTool;
     try {
       skillsTool = Optional.of(skillsToolBuilder.build());
     } catch (IllegalArgumentException e) {
-      log.debug("No skills configured for directory: {}", skillsDir);
+      log.debug("No skills configured for directories: {}", skillsDirs);
       skillsTool = Optional.empty();
     }
 

@@ -3,6 +3,8 @@ package me.kezhenxu94.springagent.core.tools;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -75,7 +77,8 @@ class AgentToolsProviderAskTest {
   private AgentToolsProvider.AgentComposition compose(final boolean answersArriveLater)
       throws Exception {
     final var workspaces = mock(UserWorkspaceFactory.class);
-    when(workspaces.forOwner("ou_1")).thenReturn(new UserHome(workspace));
+    when(workspaces.forRequest(eq("ou_1"), nullable(String.class), nullable(String.class)))
+        .thenReturn(new UserHome(workspace));
     try (var context = new AnnotationConfigApplicationContext()) {
       context.refresh();
       final var provider =

@@ -70,9 +70,13 @@ class SpringAgentApplicationTests extends AbstractIntegrationTest {
                     // The slot the surface receiving the answer fills, empty as core defaults it:
                     // a prompt that names it and a run that never supplies it is the combination
                     // that would fail every chat.
-                    "replyFormat", ""));
+                    "replyFormat", "",
+                    // What HomeDirsPromptVariables contributes, one line per scope the run
+                    // reaches.
+                    "homeDirs", "- /data/ou_1 — yours alone, nobody else sees."));
 
     assertThat(rendered).contains("ou_1", "oc_1").doesNotContain("{replyFormat}");
+    assertThat(rendered).contains("/data/ou_1").doesNotContain("{homeDirs}");
     // The permission rules name the tool exactly as it is registered; a near miss reads fine to a
     // human and leaves the model calling something that does not exist.
     assertThat(rendered).contains("AskUserQuestionTool");

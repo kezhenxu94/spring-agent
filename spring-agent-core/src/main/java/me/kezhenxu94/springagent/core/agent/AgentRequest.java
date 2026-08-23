@@ -28,6 +28,10 @@ import org.springframework.ai.chat.client.ChatClient;
  * @param conversationId groups runs that share chat memory
  * @param rootMessageId opaque thread identifier minted by the integration, never interpreted here
  * @param replyMessageId opaque identifier of the message this run responds to
+ * @param groupId opaque group-chat identifier minted by the integration (e.g. a Feishu group chat
+ *     id), never interpreted here; null/empty for a request with no group
+ * @param tenantId opaque tenant/enterprise identifier minted by the integration (e.g. a Feishu
+ *     tenant key), never interpreted here; null/empty for an integration with no tenant concept
  * @param background whether the run is unattended: a background run is not shown anywhere and its
  *     answer is not delivered — no reply, no card, no progress, nothing to stop it with — so it
  *     reaches a person only through what it sends while running, say a message tool it calls
@@ -52,6 +56,8 @@ public record AgentRequest(
     String conversationId,
     String rootMessageId,
     String replyMessageId,
+    String groupId,
+    String tenantId,
     boolean background,
     Map<String, Object> promptVariables,
     Consumer<ChatClient.PromptUserSpec> userMessage,

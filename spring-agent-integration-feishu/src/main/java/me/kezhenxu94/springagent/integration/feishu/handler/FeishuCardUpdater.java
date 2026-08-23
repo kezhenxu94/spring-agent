@@ -44,9 +44,9 @@ import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener.SubagentEvent;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.tools.HomeDir;
 import me.kezhenxu94.springagent.core.tools.ToolContextKey;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
-import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springaicommunity.agent.tools.TodoWriteTool;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
@@ -85,7 +85,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   private final String cardId;
   private final String userId;
   private final RestTemplate restTemplate;
-  private final UserWorkspaceFactory userWorkspaceFactory;
+  private final HomeDir home;
   private final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing;
   private final FeishuMessages messages;
   private final FeishuSubagentPanel panels;
@@ -171,7 +171,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       final String cardId,
       final String userId,
       final RestTemplate restTemplate,
-      final UserWorkspaceFactory userWorkspaceFactory,
+      final HomeDir home,
       final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing,
       final FeishuMessages messages,
       final FeishuSubagentPanel panels) {
@@ -180,7 +180,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     this.cardId = cardId;
     this.userId = userId;
     this.restTemplate = restTemplate;
-    this.userWorkspaceFactory = userWorkspaceFactory;
+    this.home = home;
     this.modelPricing = modelPricing != null ? modelPricing : Map.of();
     this.messages = messages;
     this.panels = panels;
@@ -756,7 +756,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       final var path = pathOf(source);
       // The same containment check VisionTools makes: a run may only show files belonging to the
       // user it is answering, never an arbitrary path the model wrote into its answer.
-      if (!userWorkspaceFactory.forOwner(userId).contains(path) || !Files.isRegularFile(path)) {
+      if (!home.contains(path) || !Files.isRegularFile(path)) {
         log.warn("Rejected image path outside the user's home or missing: {}", source);
         return null;
       }

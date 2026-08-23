@@ -47,10 +47,10 @@ public class LargeResponseInterceptor implements ToolCallInterceptor {
       return toolResult;
     }
 
-    final var userHome = userWorkspaceFactory.forOwner(userId);
-    final var artifactsDir = userHome.artifacts().resolve("tool-results");
+    final var artifactsDir =
+        userWorkspaceFactory.forRequest(toolContext).artifacts().resolve("tool-results");
     Files.createDirectories(artifactsDir);
-    final var file = artifactsDir.resolve(toolName + "-" + Instant.now().toEpochMilli() + ".txt");
+    final var file = artifactsDir.resolve(toolName + "-" + Instant.now().toEpochMilli());
     Files.writeString(file, toolResult);
     log.info("Saved large tool result for '{}' to: {}", toolName, file.toAbsolutePath());
 
