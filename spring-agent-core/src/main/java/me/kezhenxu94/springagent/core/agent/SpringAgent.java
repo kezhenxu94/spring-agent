@@ -708,6 +708,8 @@ public class SpringAgent {
     toolContext.put(ToolContexts.KEY_ROOT_MESSAGE_ID, Strings.nullToEmpty(request.rootMessageId()));
     toolContext.put(
         ToolContexts.KEY_REPLY_MESSAGE_ID, Strings.nullToEmpty(request.replyMessageId()));
+    toolContext.put(ToolContexts.KEY_GROUP_ID, Strings.nullToEmpty(request.groupId()));
+    toolContext.put(ToolContexts.KEY_TENANT_ID, Strings.nullToEmpty(request.tenantId()));
     return toolContext;
   }
 

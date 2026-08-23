@@ -117,7 +117,8 @@ public class FeishuCardListener implements AgentResponseListener {
               cardId,
               request.userId(),
               restTemplate,
-              userWorkspaceFactory,
+              userWorkspaceFactory.forRequest(
+                  request.userId(), request.groupId(), request.tenantId()),
               appConfiguration.ai().modelPricing(),
               messages,
               subagentPanel);

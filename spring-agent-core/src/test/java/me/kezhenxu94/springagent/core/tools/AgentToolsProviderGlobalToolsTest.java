@@ -1,6 +1,8 @@
 package me.kezhenxu94.springagent.core.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -48,7 +50,8 @@ class AgentToolsProviderGlobalToolsTest {
   @DisplayName("tools from a global provider bean are offered to the run")
   void globalProviderToolsAreComposed() throws Exception {
     final var workspaces = mock(UserWorkspaceFactory.class);
-    when(workspaces.forOwner("ou_1")).thenReturn(new UserHome(workspace));
+    when(workspaces.forRequest(eq("ou_1"), nullable(String.class), nullable(String.class)))
+        .thenReturn(new UserHome(workspace));
     try (var context = new AnnotationConfigApplicationContext(GlobalTools.class)) {
       final var provider =
           new AgentToolsProvider(

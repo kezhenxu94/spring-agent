@@ -13,6 +13,7 @@ import io.fabric8.kubernetes.client.KubernetesClientException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.Map;
@@ -40,7 +41,15 @@ public class UserPodManager {
   private final KubernetesShellProperties properties;
   private final SpringAgentProperties appConfiguration;
 
-  public String ensurePodFor(final String userId) {
+  /**
+   * @param groupId the group (e.g. Feishu group chat id) this call came from, or null/blank for
+   *     none. Only used to decide what to mount when a new Pod is actually created — Pod identity
+   *     stays keyed on userId alone, so a Pod created for one group keeps that group's mounts even
+   *     if the same user later calls from a different group.
+   * @param tenantId the tenant (e.g. Feishu tenant key) this call came from, or null/blank for
+   *     none. Same one-time-at-creation treatment as groupId.
+   */
+  public String ensurePodFor(final String userId, final String groupId, final String tenantId) {
     final var ns = namespace();
     final var existing = findRunningPod(ns, userId);
     if (existing.isPresent()) {
@@ -48,18 +57,23 @@ public class UserPodManager {
     }
 
     final var jobName = jobName(userId);
-    createJob(ns, jobName, userId);
+    createJob(ns, jobName, userId, groupId, tenantId);
     return waitForRunningPod(ns, userId, jobName);
   }
 
-  private void createJob(final String ns, final String jobName, final String userId) {
+  private void createJob(
+      final String ns,
+      final String jobName,
+      final String userId,
+      final String groupId,
+      final String tenantId) {
     try {
       kubernetesClient
           .batch()
           .v1()
           .jobs()
           .inNamespace(ns)
-          .resource(buildJob(jobName, userId))
+          .resource(buildJob(jobName, userId, groupId, tenantId))
           .create();
       log.info("Created shell sandbox Job {} for user {}", jobName, userId);
       return;
@@ -78,7 +92,7 @@ public class UserPodManager {
           .v1()
           .jobs()
           .inNamespace(ns)
-          .resource(buildJob(jobName, userId))
+          .resource(buildJob(jobName, userId, groupId, tenantId))
           .create();
       return;
     }
@@ -109,7 +123,7 @@ public class UserPodManager {
           .v1()
           .jobs()
           .inNamespace(ns)
-          .resource(buildJob(jobName, userId))
+          .resource(buildJob(jobName, userId, groupId, tenantId))
           .create();
       log.info("Recreated shell sandbox Job {} for user {}", jobName, userId);
     } else {
@@ -224,7 +238,8 @@ public class UserPodManager {
     return HexFormat.of().formatHex(digest).substring(0, 16);
   }
 
-  private Job buildJob(final String jobName, final String userId) {
+  private Job buildJob(
+      final String jobName, final String userId, final String groupId, final String tenantId) {
     final var labels = new HashMap<String, String>();
     labels.put(LABEL_APP, LABEL_APP_VALUE);
     labels.put(LABEL_SHELL_POD, "true");
@@ -286,12 +301,6 @@ public class UserPodManager {
             .withName("HOME")
             .withValue(homeDir)
             .endEnv()
-            .addNewEnvFrom()
-            .withNewSecretRef()
-            .withName(credentialsSecretName)
-            .withOptional(true)
-            .endSecretRef()
-            .endEnvFrom()
             .withNewResources()
             .withRequests(
                 Map.of(
@@ -319,24 +328,76 @@ public class UserPodManager {
             .build();
 
     final var builder = new PodSpecBuilder(podSpec);
-    for (var i = 0; i < mounts.size(); i++) {
-      final var mount = mounts.get(i);
-      final var volumeName = "user-mount-" + i;
+
+    // Storage: mounted once per in-scope id, personal always included, group/tenant only when
+    // present at the time this Pod is created — a sibling of the personal mount under the same
+    // mountPath, e.g. mountPath/groups/{groupId} and mountPath/tenant/{tenantId} next to
+    // mountPath/{userId}.
+    final var scopeIds = new ArrayList<String>();
+    scopeIds.add(userId);
+    if (groupId != null && !groupId.isBlank()) {
+      scopeIds.add(Path.of("groups", groupId).toString());
+    }
+    if (tenantId != null && !tenantId.isBlank()) {
+      scopeIds.add(Path.of("tenant", tenantId).toString());
+    }
+    for (var s = 0; s < scopeIds.size(); s++) {
+      final var scopeId = scopeIds.get(s);
+      for (var i = 0; i < mounts.size(); i++) {
+        final var mount = mounts.get(i);
+        final var volumeName = "mount-" + s + "-" + i;
+        builder
+            .editFirstContainer()
+            .addNewVolumeMount()
+            .withName(volumeName)
+            .withMountPath(Path.of(mount.mountPath(), scopeId).toString())
+            .withSubPath(mount.subPath(scopeId))
+            .endVolumeMount()
+            .endContainer()
+            .addNewVolume()
+            .withName(volumeName)
+            .withNewPersistentVolumeClaim()
+            .withClaimName(mount.pvcName())
+            .endPersistentVolumeClaim()
+            .endVolume();
+      }
+    }
+
+    // Credentials: one optional envFrom Secret per in-scope id, added least-specific-first (tenant,
+    // then group, then the personal one last) so a key present in more than one Secret resolves to
+    // the most specific one — Kubernetes envFrom lets a later source's key win over an earlier one.
+    if (tenantId != null && !tenantId.isBlank()) {
       builder
           .editFirstContainer()
-          .addNewVolumeMount()
-          .withName(volumeName)
-          .withMountPath(Path.of(mount.mountPath(), userId).toString())
-          .withSubPath(mount.subPath(userId))
-          .endVolumeMount()
-          .endContainer()
-          .addNewVolume()
-          .withName(volumeName)
-          .withNewPersistentVolumeClaim()
-          .withClaimName(mount.pvcName())
-          .endPersistentVolumeClaim()
-          .endVolume();
+          .addNewEnvFrom()
+          .withNewSecretRef()
+          .withName(credentialsSecretName(Path.of("tenant", tenantId).toString()))
+          .withOptional(true)
+          .endSecretRef()
+          .endEnvFrom()
+          .endContainer();
     }
+    if (groupId != null && !groupId.isBlank()) {
+      builder
+          .editFirstContainer()
+          .addNewEnvFrom()
+          .withNewSecretRef()
+          .withName(credentialsSecretName(Path.of("groups", groupId).toString()))
+          .withOptional(true)
+          .endSecretRef()
+          .endEnvFrom()
+          .endContainer();
+    }
+    builder
+        .editFirstContainer()
+        .addNewEnvFrom()
+        .withNewSecretRef()
+        .withName(credentialsSecretName)
+        .withOptional(true)
+        .endSecretRef()
+        .endEnvFrom()
+        .endContainer();
+
     podSpec = builder.build();
 
     final var podTemplate =

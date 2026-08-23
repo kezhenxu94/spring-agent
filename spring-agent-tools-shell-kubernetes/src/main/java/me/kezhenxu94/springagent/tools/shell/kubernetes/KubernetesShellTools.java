@@ -62,6 +62,8 @@ Usage notes:
     // @formatter:on
 
     final var userId = userIdFrom(toolContext);
+    final var groupId = ToolContexts.get(toolContext, ToolContexts.GROUP_ID);
+    final var tenantId = ToolContexts.get(toolContext, ToolContexts.TENANT_ID);
 
     final var bashId = "shell_" + System.currentTimeMillis();
     log.info(
@@ -72,7 +74,7 @@ Usage notes:
         description);
 
     try {
-      final var podName = userPodManager.ensurePodFor(userId);
+      final var podName = userPodManager.ensurePodFor(userId, groupId, tenantId);
       if (Boolean.TRUE.equals(runInBackground)) {
         return runBackground(podName, bashId, command);
       }
@@ -108,13 +110,15 @@ Usage notes:
     // @formatter:on
 
     final var userId = userIdFrom(toolContext);
+    final var groupId = ToolContexts.get(toolContext, ToolContexts.GROUP_ID);
+    final var tenantId = ToolContexts.get(toolContext, ToolContexts.TENANT_ID);
 
     if (!isSafeBashId(bash_id)) {
       return "Error: invalid bash_id";
     }
 
     try {
-      final var podName = userPodManager.ensurePodFor(userId);
+      final var podName = userPodManager.ensurePodFor(userId, groupId, tenantId);
       final var maxBytes = properties.maxOutputBytes();
       final var script =
           String.join(
@@ -192,12 +196,14 @@ Usage notes:
     // @formatter:on
 
     final var userId = userIdFrom(toolContext);
+    final var groupId = ToolContexts.get(toolContext, ToolContexts.GROUP_ID);
+    final var tenantId = ToolContexts.get(toolContext, ToolContexts.TENANT_ID);
     if (!isSafeBashId(bash_id)) {
       return "Error: invalid bash_id";
     }
 
     try {
-      final var podName = userPodManager.ensurePodFor(userId);
+      final var podName = userPodManager.ensurePodFor(userId, groupId, tenantId);
       final var script =
           String.join(
               "\n",

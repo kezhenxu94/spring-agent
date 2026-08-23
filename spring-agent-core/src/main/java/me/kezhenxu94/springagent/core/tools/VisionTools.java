@@ -34,8 +34,9 @@ public class VisionTools {
       name = "RecognizeImage",
       description =
           "Describe what an image shows, or answer a question about it. Takes local paths (only"
-              + " images already saved under the current user's workspace/artifacts directory) or"
-              + " publicly reachable URLs, and several images at once.")
+              + " images already saved under the current user's, the current group's, or the"
+              + " tenant's workspace/artifacts directory) or publicly reachable URLs, and several"
+              + " images at once.")
   public String recognizeImage(
       @ToolParam(description = "The images: absolute local paths, or publicly reachable URLs")
           final List<String> images,
@@ -56,7 +57,8 @@ public class VisionTools {
         Strings.isNullOrEmpty(prompt) ? "<default describe>" : prompt);
     log.debug("Images to recognize for user {}: {}", userId, images);
 
-    final var mediaList = images.stream().map(src -> resolveMedia(src, userId)).toList();
+    final var home = userWorkspaceFactory.forRequest(context);
+    final var mediaList = images.stream().map(src -> resolveMedia(src, userId, home)).toList();
     if (mediaList.stream().anyMatch(Objects::isNull)) {
       final var failed =
           IntStream.range(0, mediaList.size())
@@ -70,7 +72,7 @@ public class VisionTools {
           images.size(),
           failed);
       return "Error: none of the images could be read. Check the paths and URLs; a local path has"
-          + " to be inside the current user's workspace directory.";
+          + " to be inside the current user's, group's, or tenant's workspace directory.";
     }
 
     final var startedAt = System.nanoTime();
@@ -113,7 +115,7 @@ public class VisionTools {
     }
   }
 
-  private Media resolveMedia(final String source, final String userId) {
+  private Media resolveMedia(final String source, final String userId, final HomeDir home) {
     final var startedAt = System.nanoTime();
     try {
       if (source.startsWith("http://") || source.startsWith("https://")) {
@@ -131,7 +133,7 @@ public class VisionTools {
         return Media.builder().name(source).mimeType(MimeTypeUtils.IMAGE_PNG).data(bytes).build();
       }
       final var path = Path.of(source).toAbsolutePath().normalize();
-      if (!userWorkspaceFactory.forOwner(userId).contains(path) || !Files.exists(path)) {
+      if (!home.contains(path) || !Files.exists(path)) {
         log.warn(
             "Rejected image path outside user {} workspace or missing: {} (resolved to {})",
             userId,

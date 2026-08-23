@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
@@ -19,9 +20,9 @@ import org.springframework.stereotype.Component;
 public class SkillManagementTools {
   private final UserWorkspaceFactory userWorkspaceFactory;
 
-  private String validatePath(String path, String skillsDir) {
+  private String validatePath(String path, HomeDir home) {
     final var resolved = Path.of(path).toAbsolutePath().normalize();
-    if (resolved.startsWith(Path.of(skillsDir).toAbsolutePath().normalize())) return null;
+    if (home.containsIn(HomeDir.Folder.SKILLS, resolved)) return null;
     return "Error: Access denied. Path is outside the allowed skill directories.";
   }
 
@@ -36,27 +37,31 @@ A skill is a folder containing a SKILL.md file. Returns the folder path and skil
 Usage:
 - Call with no arguments.
 - Returns a list of skill folder paths and their names.
-- Skills from all accessible directories (personal and shared) are included.
+- Skills from the current user's personal skills directory, the current group's shared skills
+  directory (when the request has one), and the tenant's company-wide shared skills directory
+  (when the request has one) are all included.
 """)
   public String listSkills(final ToolContext context) {
-    final String skillsDir;
+    final List<Path> skillsDirs;
     try {
-      skillsDir = resolveSkillsDir(context);
+      skillsDirs = userWorkspaceFactory.forRequest(context).dirs(HomeDir.Folder.SKILLS);
     } catch (IOException e) {
       return "Error: failed to resolve skills directory: " + e.getMessage();
     }
 
     final var result = new StringBuilder();
     int total = 0;
-    final var root = new File(skillsDir);
-    final var subDirs =
-        root.exists() && root.isDirectory() ? root.listFiles(File::isDirectory) : null;
-    if (subDirs != null) {
-      for (final var skillDir : subDirs) {
-        final var skillMd = new File(skillDir, "SKILL.md");
-        if (skillMd.exists()) {
-          result.append(skillDir.getAbsolutePath()).append("\n");
-          total++;
+    for (final var skillsDir : skillsDirs) {
+      final var root = skillsDir.toFile();
+      final var subDirs =
+          root.exists() && root.isDirectory() ? root.listFiles(File::isDirectory) : null;
+      if (subDirs != null) {
+        for (final var skillDir : subDirs) {
+          final var skillMd = new File(skillDir, "SKILL.md");
+          if (skillMd.exists()) {
+            result.append(skillDir.getAbsolutePath()).append("\n");
+            total++;
+          }
         }
       }
     }
@@ -86,14 +91,9 @@ Usage:
       @ToolParam(description = "Content to write") String content,
       final ToolContext context) {
 
-    final String skillsDir;
-    try {
-      skillsDir = resolveSkillsDir(context);
-    } catch (IOException e) {
-      return "Error: failed to resolve skills directory: " + e.getMessage();
-    }
+    final var home = userWorkspaceFactory.forRequest(context);
 
-    final var accessError = validatePath(filePath, skillsDir);
+    final var accessError = validatePath(filePath, home);
     if (accessError != null) return accessError;
 
     final var file = new File(filePath);
@@ -129,14 +129,9 @@ Usage:
           String skillFolderPath,
       final ToolContext context) {
 
-    final String skillsDir;
-    try {
-      skillsDir = resolveSkillsDir(context);
-    } catch (IOException e) {
-      return "Error: failed to resolve skills directory: " + e.getMessage();
-    }
+    final var home = userWorkspaceFactory.forRequest(context);
 
-    final var accessError = validatePath(skillFolderPath, skillsDir);
+    final var accessError = validatePath(skillFolderPath, home);
     if (accessError != null) return accessError;
 
     final var dir = new File(skillFolderPath);
@@ -172,14 +167,9 @@ Usage:
       @ToolParam(description = "Absolute path to the file inside a skill folder") String filePath,
       final ToolContext context) {
 
-    final String skillsDir;
-    try {
-      skillsDir = resolveSkillsDir(context);
-    } catch (IOException e) {
-      return "Error: failed to resolve skills directory: " + e.getMessage();
-    }
+    final var home = userWorkspaceFactory.forRequest(context);
 
-    final var accessError = validatePath(filePath, skillsDir);
+    final var accessError = validatePath(filePath, home);
     if (accessError != null) return accessError;
 
     final var file = new File(filePath);
@@ -189,10 +179,5 @@ Usage:
 
     if (!file.delete()) return "Error: Failed to delete file: " + filePath;
     return "Successfully deleted file: " + filePath;
-  }
-
-  private String resolveSkillsDir(final ToolContext context) throws IOException {
-    final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
-    return userWorkspaceFactory.forOwner(userId).skills().toString();
   }
 }
