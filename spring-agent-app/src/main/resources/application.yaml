@@ -587,6 +587,12 @@ app:
     # language. A classpath location other than the default needs its own native-image resource
     # hint; see FeishuRuntimeHints.
     reply-card: ${FEISHU_REPLY_CARD:classpath:/feishu/reply-card.json}
+    # The parts of that card a run only sometimes writes to — what the user said while it was
+    # working, its task list, what the turn cost — added to the card as it first has something to
+    # put in them rather than shipped empty on every reply. Same rules as above; a file of your own
+    # may restyle these three elements, but the card above has to keep the elements they are placed
+    # against (see FeishuCardElements).
+    card-elements: ${FEISHU_CARD_ELEMENTS:classpath:/feishu/card-elements.json}
     # Which language the cards speak — their own words, as opposed to anything the model wrote:
     # the labels on the reply card and the question form, and the toasts a button answers with.
     # Defaults to the host's language; en and zh_CN ship with it, and any other is a

@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.core.tools;
 
 import com.google.common.base.Strings;
 import lombok.experimental.UtilityClass;
+import me.kezhenxu94.springagent.core.agent.QueuedMessages;
 import org.springframework.ai.chat.model.ToolContext;
 
 /** Typed keys for values stored in the {@code toolContext} map passed to {@code @Tool} methods. */
@@ -51,6 +52,14 @@ public class ToolContexts {
    * for an integration with no tenant concept.
    */
   public static final ToolContextKey<String> TENANT_ID = new Key<>(KEY_TENANT_ID, String.class);
+
+  /**
+   * The messages that arrived for this run while it was working, read by the tool-calling manager
+   * between iterations of the turn — which is where a message can join the history without
+   * disturbing it. Absent from a run assembled anywhere other than {@code SpringAgent}.
+   */
+  public static final ToolContextKey<QueuedMessages> QUEUED_MESSAGES =
+      new Key<>("queuedMessages", QueuedMessages.class);
 
   public record Key<V>(String key, Class<V> clazz) implements ToolContextKey<V> {}
 

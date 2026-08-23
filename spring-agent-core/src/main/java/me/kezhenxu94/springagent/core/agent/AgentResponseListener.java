@@ -93,6 +93,23 @@ public interface AgentResponseListener {
     }
   }
 
+  /**
+   * A message arrived for this run while it was working, and is waiting to be read at the end of
+   * the tool call under way — the first point at which reading it cannot disturb the run's message
+   * history. For a surface to show that what the user said was noticed rather than ignored.
+   *
+   * @param message what they said, as the surface that received it would show it — which is not
+   *     necessarily what the model will read: a surface turning a message into something a model
+   *     can work with may have to fetch what it carries, and that is not done until the message is
+   *     read. Null or empty where the surface has nothing short to show.
+   */
+  default void onMessageQueued(String message) {}
+
+  /**
+   * Everything that was waiting has been read into the run, so the model is working with it now.
+   */
+  default void onQueuedMessageRead() {}
+
   default void onError(Throwable error) {}
 
   /** Invoked exactly once per run, whatever the {@link AgentOutcome}. */

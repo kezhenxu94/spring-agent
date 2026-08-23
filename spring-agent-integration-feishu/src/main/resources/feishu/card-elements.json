@@ -1,0 +1,35 @@
+{
+  "comment": [
+    "The parts of the reply card a run only sometimes has anything to put in, added to the card the",
+    "first time it does rather than sitting empty on every card: an element the card carries is",
+    "space the card gives up, and most runs write no todo list and are interrupted by nobody.",
+    "Where each one goes is decided in FeishuCardElements, which also sets the ids the run streams",
+    "into — so a deployment replacing this file is free to restyle these elements and nothing else.",
+    "'queued' holds what the user said while the run was working, one quoted line per message, and",
+    "goes above the answer so the card reads in the order things were said: the message Feishu",
+    "quotes above the card, then this, then the reply. 'todo' is the run's task list, under the",
+    "answer. 'usage' is what the turn has cost, in the card's footer. This key is ignored.",
+    "reply-card.json keeps the elements every run writes to — the answer, the stop button, the",
+    "footer divider and the conversation hint — and those are the anchors these are placed against."
+  ],
+  "queued": {
+    "tag": "markdown",
+    "content": "",
+    "text_align": "left",
+    "text_size": "notation",
+    "margin": "0px 0px 2px 0px"
+  },
+  "todo": {
+    "tag": "markdown",
+    "content": "",
+    "text_align": "left",
+    "text_size": "normal_v2"
+  },
+  "usage": {
+    "tag": "markdown",
+    "content": "",
+    "text_align": "left",
+    "text_size": "notation",
+    "margin": "0px"
+  }
+}

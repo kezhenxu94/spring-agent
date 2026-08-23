@@ -68,6 +68,7 @@ class FeishuCardListenerBackgroundTest {
             null,
             null,
             null,
+            null,
             messageCard);
   }
 

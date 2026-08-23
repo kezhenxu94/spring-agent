@@ -41,6 +41,7 @@ import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallback;
 import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallbackResolver;
 import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallingManager;
+import me.kezhenxu94.springagent.core.tools.interceptors.ToolCallInterceptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -886,7 +887,8 @@ class SpringAgentTest {
         DefaultToolCallingManager.builder()
             .toolCallbackResolver(new InterceptingToolCallbackResolver(toolName -> null, List.of()))
             .build(),
-        List.of());
+        List.of(),
+        messagesIn(Locale.ENGLISH));
   }
 
   /** The tool responses one AskUserQuestionTool call produces, as the model would read them. */
@@ -1088,6 +1090,203 @@ class SpringAgentTest {
             null,
             null),
         Locale.ENGLISH);
+  }
+
+  @Test
+  @DisplayName(
+      "a message arriving mid-run joins the turn as a user message, after the tool results")
+  void aMessageArrivingMidRunJoinsTheTurn() {
+    // Through the manager the application actually wires, since that is where the message joins the
+    // turn: the plain manager Spring AI builds by itself would leave the queue unread and the whole
+    // arrangement would silently fall back to answering the message in a run of its own.
+    agentWithInterceptingManager(
+        toolCallback("SearchRepository", "no repository called spring-agenk"));
+    chatModel.callToolOnce("SearchRepository");
+
+    final var listener = new RecordingListener();
+    // Queued from inside the tool call, which is where a real one arrives from: the run is going
+    // and
+    // is between model calls.
+    queueDuringTheToolCall("it should be kezhenxu94/spring-agent");
+
+    fireAndAwait(request().listener(listener));
+
+    assertThat(chatModel.prompts).as("the loop never came back for a second call").hasSize(2);
+    final var second = chatModel.prompts.get(1).getInstructions();
+    assertThat(second)
+        .last()
+        .as("the message has to come after the tool results, as the turn's newest message")
+        .isInstanceOfSatisfying(
+            UserMessage.class,
+            user -> assertThat(user.getText()).contains("it should be kezhenxu94/spring-agent"));
+    // The tool call it arrived during is still answered, and answered before it.
+    assertThat(second).anySatisfy(m -> assertThat(m).isInstanceOf(ToolResponseMessage.class));
+    assertThat(listener.outcomes).containsExactly(AgentOutcome.COMPLETED);
+
+    // And it is a message of the conversation like any other, so what the turn leaves behind holds
+    // it: a correction the next turn could not see would be a correction the user has to repeat.
+    // Once, not once per iteration it survived into.
+    final var saved = ArgumentCaptor.forClass(List.class);
+    verify(chatMemoryRepository, atLeast(1)).saveAll(eq("om_root"), saved.capture());
+    final var remembered =
+        saved.getAllValues().stream()
+            .flatMap(messages -> ((List<Message>) messages).stream())
+            .filter(message -> message.getText().contains("it should be kezhenxu94/spring-agent"))
+            .toList();
+    assertThat(remembered).hasSize(1);
+  }
+
+  @Test
+  @DisplayName("a message queued onto a run does not start a run of its own")
+  void aQueuedMessageDoesNotStartARun() {
+    final var queued = new RecordingListener();
+    agentWithInterceptingManager(toolCallback("SearchRepository", "nothing found"));
+    chatModel.callToolOnce("SearchRepository");
+    queueDuringTheToolCall("it should be kezhenxu94/spring-agent", queued);
+
+    fireAndAwait(request());
+
+    // No second run, and so no second card and no second stop button: the message was answered by
+    // the run that was already going.
+    assertThat(queued.outcomes).isEmpty();
+  }
+
+  @Test
+  @DisplayName("a message the run never reads is answered as a run of its own")
+  void aMessageTheRunNeverReadsIsFired() throws Exception {
+    final var queued = new RecordingListener();
+    agentWithInterceptingManager();
+
+    // Nothing calls a tool here, so the turn has no point at which it could read one. The message
+    // arrives while the run is streaming its answer, and the run ends without having read it.
+    final var listener =
+        fireAndAwait(
+            request()
+                .listener(
+                    new AgentResponseListener() {
+                      /**
+                       * Once, however many chunks the answer arrives in: one message, sent once.
+                       */
+                      private final java.util.concurrent.atomic.AtomicBoolean sent =
+                          new java.util.concurrent.atomic.AtomicBoolean();
+
+                      @Override
+                      public void onContent(final String contentSoFar) {
+                        if (!sent.compareAndSet(false, true)) {
+                          return;
+                        }
+                        agent.fireOrQueue(
+                            request()
+                                .requestId("req-2")
+                                .listener(queued)
+                                .userMessage(user -> user.text("and the other repo too"))
+                                .build(),
+                            () -> "and the other repo too",
+                            "and the other repo too");
+                      }
+                    }));
+
+    assertThat(listener.outcomes).containsExactly(AgentOutcome.COMPLETED);
+    // Answered after the run it was queued onto had ended, rather than dropped.
+    assertThat(queued.finished.await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(queued.outcomes).containsExactly(AgentOutcome.COMPLETED);
+  }
+
+  @Test
+  @DisplayName("what somebody else says in the same conversation is a run of its own")
+  void anotherPersonIsNotQueuedOntoThisRun() throws Exception {
+    final var theirs = new RecordingListener();
+    agentWithInterceptingManager(toolCallback("SearchRepository", "nothing found"));
+    chatModel.callToolOnce("SearchRepository");
+    // The same conversation — a card in a group chat is in front of everyone — but not the same
+    // person, so it is their question rather than a correction of this one.
+    queueDuringTheToolCall(
+        "what about my repo", theirs, request -> request.userId("ou_2").requestId("req-2"));
+
+    fireAndAwait(request());
+
+    assertThat(theirs.finished.await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(theirs.outcomes).containsExactly(AgentOutcome.COMPLETED);
+  }
+
+  /** Queues {@code message} onto the run from inside the tool call the run is waiting on. */
+  private void queueDuringTheToolCall(final String message) {
+    queueDuringTheToolCall(message, new RecordingListener());
+  }
+
+  private void queueDuringTheToolCall(final String message, final AgentResponseListener listener) {
+    queueDuringTheToolCall(message, listener, request -> request.requestId("req-2"));
+  }
+
+  private void queueDuringTheToolCall(
+      final String message,
+      final AgentResponseListener listener,
+      final Consumer<AgentRequest.AgentRequestBuilder> whoSentIt) {
+    queueingInterceptor =
+        () -> {
+          final var builder = request().listener(listener);
+          whoSentIt.accept(builder);
+          agent.fireOrQueue(
+              builder.userMessage(user -> user.text(message)).build(), () -> message, message);
+        };
+  }
+
+  /**
+   * What arrives while the tool call is being made, set by {@link #queueDuringTheToolCall}. Read
+   * through the interceptor below rather than wired as one, so that a test can arrange the agent
+   * first and say what arrives afterwards.
+   */
+  private volatile Runnable queueingInterceptor;
+
+  /**
+   * The agent as the application wires it where tool calls are concerned: over {@link
+   * InterceptingToolCallingManager}, which is what reads a message queued onto a running turn.
+   */
+  private void agentWithInterceptingManager(final ToolCallback... tools) {
+    final var whatArrivesMidCall =
+        new ToolCallInterceptor() {
+          @Override
+          public String afterCall(
+              final String toolName,
+              final String toolInput,
+              final String toolResult,
+              final ToolContext toolContext) {
+            final var arriving = queueingInterceptor;
+            if (arriving != null) {
+              arriving.run();
+            }
+            return toolResult;
+          }
+        };
+    final var manager =
+        new InterceptingToolCallingManager(
+            DefaultToolCallingManager.builder().build(),
+            List.of(whatArrivesMidCall),
+            messagesIn(Locale.ENGLISH));
+    final var chatMemory =
+        MessageWindowChatMemory.builder().chatMemoryRepository(chatMemoryRepository).build();
+    try {
+      when(agentToolsProvider.compose(any(), any(), any(), any(), anyBoolean()))
+          .thenReturn(
+              new AgentComposition(
+                  tools,
+                  autoMemoryAdvisors(),
+                  new McpTools(List.of(mcpClient), new ToolCallback[0])));
+    } catch (IOException e) {
+      throw new AssertionError(e);
+    }
+    agent =
+        new SpringAgent(
+            ChatClient.builder(chatModel).defaultOptions(ToolCallingChatOptions.builder()).build(),
+            chatMemory,
+            properties(),
+            agentToolsProvider,
+            pendingQuestions,
+            messagesIn(Locale.ENGLISH),
+            listenerProvider(),
+            contributorProvider(),
+            recorderProvider(new AskedQuestionsRecorder(chatMemory, messagesIn(Locale.ENGLISH))),
+            providerOf(ToolCallingAdvisor.builder().toolCallingManager(manager)));
   }
 
   @Test

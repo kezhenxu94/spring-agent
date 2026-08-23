@@ -23,6 +23,10 @@ import org.springframework.ai.chat.client.ChatClient;
  * @param description one line saying what this run is for, in the words of whoever started it.
  *     Reported to a parent run's listeners so a surface can name a run it is not streaming; null
  *     where nobody said, which is every run whose reason is the message that arrived.
+ * @param brief the whole task this run was given, in the words of whoever started it — a subagent's
+ *     brief, say. For a surface to show alongside {@code description}, which says what the run is
+ *     for in one line where this says what it was actually asked to do; null wherever the run's own
+ *     message is its brief, which is every run a surface receives.
  * @param scenario selects which tools the run gets and whether it accumulates conversation history
  * @param chatType free-form, defaults to {@code p2p}
  * @param conversationId groups runs that share chat memory
@@ -49,6 +53,7 @@ public record AgentRequest(
     String requestId,
     String parentRequestId,
     String description,
+    String brief,
     AgentScenario scenario,
     String userId,
     String chatId,

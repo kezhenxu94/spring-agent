@@ -20,7 +20,13 @@ class FeishuSubagentPanelTest {
   @Test
   @DisplayName("the panel carries the ids the run streams into and the title it collapses to")
   void thePanelIsAddressable() {
-    final var inserted = om.readTree(panel.forInsert("sub_a1b2c3d4", "Reading the timeline", null));
+    final var inserted =
+        om.readTree(
+            panel.forInsert(
+                "sub_a1b2c3d4",
+                "Reading the timeline",
+                "Read the timeline.\n\nSay when it starts.",
+                null));
 
     assertThat(inserted.isArray()).as("an insert takes an array of elements").isTrue();
     final var element = inserted.get(0);
@@ -31,10 +37,36 @@ class FeishuSubagentPanelTest {
         .contains("Reading the timeline");
     // Collapsed, since what a subagent reports is not the answer.
     assertThat(element.get("expanded").booleanValue()).isFalse();
-    final var body = element.get("elements").get(0);
+    // The brief is on the panel from the start: opening it says what this subagent was asked to
+    // do, before it has said anything itself.
+    assertThat(element.get("elements").get(0).get("content").stringValue())
+        .as("every line quoted, blank ones included, so paragraphs stay one quote")
+        .isEqualTo("> Read the timeline.\n> \n> Say when it starts.");
+    final var body = element.get("elements").get(1);
     assertThat(body.get("element_id").stringValue())
         .isEqualTo(FeishuSubagentPanel.bodyElementId("sub_a1b2c3d4"));
     assertThat(body.get("content").stringValue()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("a brief written for a model rather than a reader is cut short")
+  void aLongBriefIsCutShort() {
+    final var element =
+        om.readTree(
+            panel.forUpdate(
+                "sub_a1b2c3d4", "Sweeping the cluster", "x".repeat(2000), null, "", ""));
+
+    final var brief = element.get("elements").get(0).get("content").stringValue();
+    assertThat(brief).hasSizeLessThan(900).startsWith("> x").endsWith("…");
+  }
+
+  @Test
+  @DisplayName("a subagent started without a brief gets a panel without an empty quote on it")
+  void noBriefIsNoQuote() {
+    final var element =
+        om.readTree(panel.forUpdate("sub_a1b2c3d4", "Sweeping the cluster", "  ", null, "", ""));
+
+    assertThat(element.get("elements").get(0).get("content").stringValue()).isEmpty();
   }
 
   @Test
@@ -45,14 +77,18 @@ class FeishuSubagentPanelTest {
             panel.forUpdate(
                 "sub_a1b2c3d4",
                 "Reading the timeline",
+                "Read the timeline and say when it starts",
                 AgentOutcome.COMPLETED,
                 "it starts Monday",
                 "the-model · ↑10 ↓20 · 3s"));
 
     assertThat(element.isObject()).as("an update takes one element").isTrue();
     assertThat(element.get("elements").get(0).get("content").stringValue())
-        .isEqualTo("it starts Monday");
+        .as("the brief survives the rewrite the ending panel gets")
+        .isEqualTo("> Read the timeline and say when it starts");
     assertThat(element.get("elements").get(1).get("content").stringValue())
+        .isEqualTo("it starts Monday");
+    assertThat(element.get("elements").get(2).get("content").stringValue())
         .as("the panel says what that subagent alone spent")
         .isEqualTo("the-model · ↑10 ↓20 · 3s");
     assertThat(element.get("header").get("title").get("content").stringValue())

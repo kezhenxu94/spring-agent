@@ -23,6 +23,7 @@ import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.client.RestTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -55,7 +56,8 @@ class FeishuCardUpdaterToolStatusTest {
             new FeishuCard(feishu, "card-1", restTemplate, new UserHome(userHomeRoot), messages),
             new JsonMapper(),
             null,
-            messages);
+            messages,
+            cardElements());
   }
 
   private String lastContentSent() throws Exception {
@@ -141,5 +143,12 @@ class FeishuCardUpdaterToolStatusTest {
     updater.setToolStatus("DateTime", "", null);
 
     assertThat(lastContentSent()).isEqualTo("\nCalling DateTime ...");
+  }
+
+  /** The real elements: what the card gains as the run first has something to put in them. */
+  private static FeishuCardElements cardElements() {
+    final var elements = new FeishuCardElements(new JsonMapper());
+    elements.cardElements = new ClassPathResource("feishu/card-elements.json");
+    return elements;
   }
 }

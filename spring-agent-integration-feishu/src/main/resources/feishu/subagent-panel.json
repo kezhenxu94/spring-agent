@@ -1,12 +1,14 @@
 {
   "comment": [
-    "One subagent on the reply card: a panel of its own, collapsed, holding what it reported.",
-    "Secondary by design — the run folds the answer into its own reply, and this is where a reader",
-    "goes to see what the work behind that reply actually was. The two placeholders are filled in",
-    "FeishuSubagentPanel: {panelId}, {bodyId} and {footerId} are element ids, {title} says which",
-    "subagent this is and how it is getting on, {body} is what it has said so far, and {footer} is",
-    "what it has spent saying it. A deployment replacing this file has to keep all six, and keep the",
-    "body and footer elements text ones: the run streams into both of them by id.",
+    "One subagent on the reply card: a panel of its own, collapsed, holding the brief it was given",
+    "and what it reported. Secondary by design — the run folds the answer into its own reply, and",
+    "this is where a reader goes to see what the work behind that reply actually was, starting with",
+    "what was asked for. The placeholders are filled in FeishuSubagentPanel: {panelId}, {bodyId} and",
+    "{footerId} are element ids, {title} says which subagent this is and how it is getting on,",
+    "{brief} is the task it was given, quoted, {body} is what it has said so far, and {footer} is",
+    "what it has spent saying it. A deployment replacing this file has to keep all six, keep the",
+    "brief first among the elements, and keep the body and footer elements text ones: the run streams",
+    "into both of them by id. The brief has no id of its own because nothing ever rewrites it alone.",
     "The header fills the panel's width and carries its own horizontal padding, so the title reads",
     "as a row of its own rather than as text floating beside the chevron; the chevron therefore sits",
     "at the right edge rather than following the text. This key is ignored when the panel is built."
@@ -39,6 +41,12 @@
       "corner_radius": "5px"
     },
     "elements": [
+      {
+        "tag": "markdown",
+        "content": "{brief}",
+        "text_align": "left",
+        "text_size": "notation"
+      },
       {
         "tag": "markdown",
         "content": "{body}",

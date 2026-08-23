@@ -63,6 +63,7 @@ public class FeishuCardListener implements AgentResponseListener {
   final PendingQuestionRepo pendingQuestionRepo;
   final FeishuQuestionForm questionForm;
   final FeishuSubagentPanel subagentPanel;
+  final FeishuCardElements cardElements;
   final FeishuMessageCard messageCard;
 
   // Not final, matching FeishuTools#feishuReplyCard: @Value on a field is an injection point in its
@@ -142,7 +143,8 @@ public class FeishuCardListener implements AgentResponseListener {
                   request.userId(), request.groupId(), request.tenantId()),
               messages);
       final var cardUpdater =
-          FeishuCardUpdater.forRun(card, om, appConfiguration.ai().modelPricing(), messages);
+          FeishuCardUpdater.forRun(
+              card, om, appConfiguration.ai().modelPricing(), messages, cardElements);
       registry.addResponseListener(cardUpdater);
       registry.addTodoEventHandler(cardUpdater);
       registry.addToolContext(FeishuCardUpdater.TOOL_CONTEXT_KEY.key(), cardUpdater);
@@ -187,7 +189,8 @@ public class FeishuCardListener implements AgentResponseListener {
       final AgentRunRegistry registry, final AgentRequest request, final FeishuCard card) {
     final var runId = request.requestId();
     final var inserted =
-        card.insertBeforeFooter(subagentPanel.forInsert(runId, request.description(), null), runId);
+        card.insertBeforeFooter(
+            subagentPanel.forInsert(runId, request.description(), request.brief(), null), runId);
     if (!inserted) {
       // Worth doing anyway: the answer the subagent produces still reaches the run that waits for
       // it, and the reader loses the account of how it got there rather than the work itself.
@@ -203,7 +206,8 @@ public class FeishuCardListener implements AgentResponseListener {
             messages,
             subagentPanel,
             runId,
-            request.description());
+            request.description(),
+            request.brief());
     registry.addResponseListener(updater);
     registry.addToolContext(FeishuCardUpdater.TOOL_CONTEXT_KEY.key(), updater);
   }
