@@ -114,7 +114,9 @@ class FeishuCardListenerSubagentTest {
     final var captor = ArgumentCaptor.forClass(CreateCardElementReq.class);
     verify(feishu.cardkit().v1().cardElement()).create(captor.capture());
     assertThat(captor.getValue().getCreateCardElementReqBody().getElements())
-        .contains("Reading the timeline");
+        .contains("Reading the timeline")
+        .as("the brief the subagent was given is on its panel from the start")
+        .contains("Read the incident timeline and say when it starts");
 
     // Under the same key as the run's own updater, so the tool interceptor announces a subagent's
     // calls in its panel exactly as it announces the run's on the card.
@@ -150,6 +152,7 @@ class FeishuCardListenerSubagentTest {
         .requestId("sub_1")
         .parentRequestId(parentRequestId)
         .description("Reading the timeline")
+        .brief("Read the incident timeline and say when it starts")
         .scenario(BuiltInScenarios.SUBAGENT)
         .userId("ou_1")
         .background(true)

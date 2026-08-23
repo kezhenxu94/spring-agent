@@ -145,7 +145,10 @@ class FeishuCardUpdaterUsageTest {
     when(feishu.cardkit().v1().cardElement().create(any(CreateCardElementReq.class)))
         .thenReturn(insert);
     final var panels = panels();
-    card.insertBeforeFooter(panels.forInsert("sub_1", "Reading the timeline", null), "sub_1");
+    card.insertBeforeFooter(
+        panels.forInsert(
+            "sub_1", "Reading the timeline", "Read the timeline and say when it starts", null),
+        "sub_1");
     return FeishuCardUpdater.forSubagent(
         card,
         new JsonMapper(),
@@ -153,7 +156,8 @@ class FeishuCardUpdaterUsageTest {
         messages,
         panels,
         "sub_1",
-        "Reading the timeline");
+        "Reading the timeline",
+        "Read the timeline and say when it starts");
   }
 
   private String lastFooter() throws Exception {

@@ -86,10 +86,19 @@ class FeishuCardSequenceTest {
             new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
     final var panels = panels(messages);
     final var run = FeishuCardUpdater.forRun(card, new JsonMapper(), null, messages);
-    card.insertBeforeFooter(panels.forInsert("sub_1", "Reading the log", null), "sub_1");
+    card.insertBeforeFooter(
+        panels.forInsert("sub_1", "Reading the log", "Read the log and say what broke", null),
+        "sub_1");
     final var subagent =
         FeishuCardUpdater.forSubagent(
-            card, new JsonMapper(), null, messages, panels, "sub_1", "Reading the log");
+            card,
+            new JsonMapper(),
+            null,
+            messages,
+            panels,
+            "sub_1",
+            "Reading the log",
+            "Read the log and say what broke");
 
     // Both at once, which is what a run does while a subagent of it is working.
     final var start = new CountDownLatch(1);

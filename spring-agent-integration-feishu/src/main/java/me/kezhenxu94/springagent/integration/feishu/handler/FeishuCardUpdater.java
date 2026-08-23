@@ -73,6 +73,12 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   private final String subagentId;
   private final String description;
 
+  /**
+   * The brief that subagent was given, kept for the same reason the description is: the panel is
+   * rewritten whole when it ends, and what was asked for has to still be at the top of it.
+   */
+  private final String brief;
+
   private final Instant startedAt = Instant.now();
 
   /**
@@ -97,7 +103,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing,
       final FeishuMessages messages) {
     return new FeishuCardUpdater(
-        card, om, modelPricing, messages, "message", "usage", "todo", null, null, null);
+        card, om, modelPricing, messages, "message", "usage", "todo", null, null, null, null);
   }
 
   /**
@@ -111,7 +117,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       final FeishuMessages messages,
       final FeishuSubagentPanel panels,
       final String subagentId,
-      final String description) {
+      final String description,
+      final String brief) {
     return new FeishuCardUpdater(
         card,
         om,
@@ -124,7 +131,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         null,
         panels,
         subagentId,
-        description);
+        description,
+        brief);
   }
 
   private FeishuCardUpdater(
@@ -137,7 +145,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       final String todoElementId,
       final FeishuSubagentPanel panels,
       final String subagentId,
-      final String description) {
+      final String description,
+      final String brief) {
     this.card = card;
     this.om = om;
     this.modelPricing = modelPricing != null ? modelPricing : Map.of();
@@ -148,6 +157,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     this.panels = panels;
     this.subagentId = subagentId;
     this.description = description;
+    this.brief = brief;
   }
 
   /** Whether this is a subagent's panel rather than the card's own run. */
@@ -442,6 +452,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         panels.forUpdate(
             subagentId,
             description,
+            brief,
             outcome,
             withFailure(lastBaseContent),
             spend.render(startedAt)),

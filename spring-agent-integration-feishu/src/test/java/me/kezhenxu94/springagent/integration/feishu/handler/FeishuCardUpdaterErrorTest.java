@@ -104,10 +104,19 @@ class FeishuCardUpdaterErrorTest {
             new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
     final var panels = new FeishuSubagentPanel(new JsonMapper(), messages);
     panels.subagentPanel = new ClassPathResource("feishu/subagent-panel.json");
-    card.insertBeforeFooter(panels.forInsert("sub_1", "Reading the log", null), "sub_1");
+    card.insertBeforeFooter(
+        panels.forInsert("sub_1", "Reading the log", "Read the log and say what broke", null),
+        "sub_1");
     final var subagent =
         FeishuCardUpdater.forSubagent(
-            card, new JsonMapper(), null, messages, panels, "sub_1", "Reading the log");
+            card,
+            new JsonMapper(),
+            null,
+            messages,
+            panels,
+            "sub_1",
+            "Reading the log",
+            "Read the log and say what broke");
 
     subagent.onContent("half of what it found");
     subagent.onError(new IllegalStateException("the tool blew up"));

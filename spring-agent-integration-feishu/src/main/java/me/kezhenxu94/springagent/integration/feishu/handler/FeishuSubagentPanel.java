@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.integration.feishu.handler;
 
 import com.google.common.base.Strings;
 import java.nio.charset.StandardCharsets;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
@@ -13,8 +14,8 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * The card panel a subagent gets: a collapsed pane holding what it reported, so the work behind an
- * answer is on the card without being in the way of it.
+ * The card panel a subagent gets: a collapsed pane holding the brief it was given and what it
+ * reported, so the work behind an answer is on the card without being in the way of it.
  *
  * <p>Nothing here talks to Feishu — JSON in, JSON out — which is what makes the layout testable
  * without a tenant. {@code FeishuCardListener} is what puts one on a card, and the {@code
@@ -26,6 +27,14 @@ public class FeishuSubagentPanel {
 
   /** Feishu allows 20 characters, beginning with a letter, of letters, digits and underscores. */
   private static final int ID_CHARACTERS = 8;
+
+  /**
+   * How much of the brief the panel shows. A brief is written for a model rather than for a reader
+   * and can run to pages, and the whole panel is sent again when the subagent ends — a card has a
+   * size of its own to stay within, and several subagents share it. Enough to see what was asked
+   * for; the rest is the subagent's own business.
+   */
+  private static final int BRIEF_CHARACTERS = 800;
 
   private final JsonMapper om;
   private final FeishuMessages messages;
@@ -65,9 +74,12 @@ public class FeishuSubagentPanel {
   /** The panel as the JSON array the card element API takes for an insert. */
   @SneakyThrows
   public String forInsert(
-      final String subagentId, final String description, final AgentOutcome outcome) {
+      final String subagentId,
+      final String description,
+      final String brief,
+      final AgentOutcome outcome) {
     final var array = om.createArrayNode();
-    array.add(element(subagentId, description, outcome, "", ""));
+    array.add(element(subagentId, description, brief, outcome, "", ""));
     return om.writeValueAsString(array);
   }
 
@@ -76,10 +88,11 @@ public class FeishuSubagentPanel {
   public String forUpdate(
       final String subagentId,
       final String description,
+      final String brief,
       final AgentOutcome outcome,
       final String body,
       final String footer) {
-    return om.writeValueAsString(element(subagentId, description, outcome, body, footer));
+    return om.writeValueAsString(element(subagentId, description, brief, outcome, body, footer));
   }
 
   /**
@@ -100,9 +113,25 @@ public class FeishuSubagentPanel {
     return messages.get(key, label);
   }
 
+  /**
+   * The brief as the panel shows it: quoted, so the task the subagent was given reads as something
+   * it was handed rather than as something it said. Every line is prefixed, blank ones included, or
+   * a brief written in paragraphs would come out as several quotes with prose between them.
+   */
+  static String quotedBrief(final String brief) {
+    final var text = Strings.nullToEmpty(brief).strip();
+    if (text.isEmpty()) {
+      return "";
+    }
+    final var shown =
+        text.length() <= BRIEF_CHARACTERS ? text : text.substring(0, BRIEF_CHARACTERS) + "…";
+    return shown.lines().map(line -> "> " + line).collect(Collectors.joining("\n"));
+  }
+
   private ObjectNode element(
       final String subagentId,
       final String description,
+      final String brief,
       final AgentOutcome outcome,
       final String body,
       final String footer) {
@@ -110,10 +139,13 @@ public class FeishuSubagentPanel {
     panel.put("element_id", panelElementId(subagentId));
     panel.withObject("header").withObject("title").put("content", title(description, outcome));
     final var elements = panel.withArray("elements");
-    final var text = (ObjectNode) elements.get(0);
+    // No id of its own: the brief is written when the panel is built and never rewritten alone.
+    final var task = (ObjectNode) elements.get(0);
+    task.put("content", quotedBrief(brief));
+    final var text = (ObjectNode) elements.get(1);
     text.put("element_id", bodyElementId(subagentId));
     text.put("content", Strings.nullToEmpty(body));
-    final var spent = (ObjectNode) elements.get(1);
+    final var spent = (ObjectNode) elements.get(2);
     spent.put("element_id", footerElementId(subagentId));
     spent.put("content", Strings.nullToEmpty(footer));
     return panel;

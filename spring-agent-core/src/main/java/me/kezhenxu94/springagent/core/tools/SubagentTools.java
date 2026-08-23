@@ -193,6 +193,9 @@ you no longer want it, call CancelSubagent.
             // are counted on this turn, and this run is held open until the subagent has finished.
             .parentRequestId(parentRequestId)
             .description(description)
+            // The brief as the model wrote it, not as the template wraps it below: it is there for
+            // a reader to see what this subagent was asked to do, and the wrapping is not that.
+            .brief(prompt)
             .scenario(BuiltInScenarios.SUBAGENT)
             .userId(userId)
             .chatId(chatId)
