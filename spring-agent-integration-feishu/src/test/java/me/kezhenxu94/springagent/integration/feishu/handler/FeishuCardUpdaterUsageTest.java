@@ -59,6 +59,11 @@ class FeishuCardUpdaterUsageTest {
     ok.setCode(0);
     when(feishu.cardkit().v1().cardElement().content(any(ContentCardElementReq.class)))
         .thenReturn(ok);
+    // The footer is one of the elements the card gains on first use, so writing it inserts it.
+    final var inserted = new CreateCardElementResp();
+    inserted.setCode(0);
+    when(feishu.cardkit().v1().cardElement().create(any(CreateCardElementReq.class)))
+        .thenReturn(inserted);
     card = new FeishuCard(feishu, "card-1", restTemplate, new UserHome(userHomeRoot), messages);
     updater =
         FeishuCardUpdater.forRun(
@@ -66,7 +71,8 @@ class FeishuCardUpdaterUsageTest {
             new JsonMapper(),
             // A tenth of a cent per thousand tokens each way, so the arithmetic is checkable.
             Map.of("the-model", new ModelPricing(1.0, 1.0, 1.0, Currency.USD)),
-            messages);
+            messages,
+            cardElements());
   }
 
   /** The real builder: what a panel holds is the point of the assertions below. */
@@ -173,5 +179,12 @@ class FeishuCardUpdaterUsageTest {
             .toList();
     assertThat(footers).as("nothing was written to " + elementId).isNotEmpty();
     return footers.get(footers.size() - 1).getContentCardElementReqBody().getContent();
+  }
+
+  /** The real elements: what the card gains as the run first has something to put in them. */
+  private static FeishuCardElements cardElements() {
+    final var elements = new FeishuCardElements(new JsonMapper());
+    elements.cardElements = new ClassPathResource("feishu/card-elements.json");
+    return elements;
   }
 }

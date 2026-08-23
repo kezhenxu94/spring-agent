@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
@@ -151,7 +152,30 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
               : Stream.of(message.getMentions())
                   .map(m -> m.getName() + " (" + m.getId().getOpenId() + ")")
                   .collect(Collectors.joining(", "));
-      springAgent.fire(
+      // Produced only when it is needed, and never on this thread: turning a message into text can
+      // mean downloading what it carries, and Feishu concludes a message it is still waiting on was
+      // never delivered and sends it again. Assembly happens off this thread for that very reason
+      // (see SpringAgent#fire), and a message queued onto a run already going is read on the thread
+      // of the tool call that reads it.
+      final Supplier<String> text =
+          () -> {
+            final var content = new StringBuilder();
+            addToChat(
+                content::append,
+                message.getMessageId(),
+                message.getMessageType(),
+                message.getContent(),
+                userOpenId,
+                feishuTools);
+            return content.toString();
+          };
+
+      // Queued rather than fired where the user is already being answered in this conversation: a
+      // second run would mean a second card, a second stop button and two runs writing the same
+      // chat memory, when what they have almost always sent is a correction of the run they are
+      // watching. The run reads it as soon as the tool calls it is waiting on have come back; where
+      // it ends before that point, this is answered as a run of its own after all.
+      springAgent.fireOrQueue(
           AgentRequest.builder()
               .requestId(messageId)
               .scenario(BuiltInScenarios.CHAT)
@@ -171,22 +195,40 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
                       Strings.nullToEmpty(message.getThreadId()),
                       "parentId",
                       Strings.nullToEmpty(parentId)))
-              .userMessage(
-                  user ->
-                      addToChat(
-                          user::text,
-                          message.getMessageId(),
-                          message.getMessageType(),
-                          message.getContent(),
-                          userOpenId,
-                          feishuTools))
-              .build());
+              .userMessage(user -> user.text(text.get()))
+              .build(),
+          text,
+          displayOf(message.getMessageType(), message.getContent()));
     } catch (Throwable t) {
       // Released, because nothing has answered this message and nothing now will. Holding the claim
       // would turn a failure here into a message silently dropped — worse than the duplicate the
       // claim exists to prevent — and Feishu will hand it to us again.
       release(messageId);
       throw t;
+    }
+  }
+
+  /**
+   * The message as a card would show it while it waits to be read, or null where a line cannot show
+   * it at all.
+   *
+   * <p>Nothing here reads anything but the event: what an image or a file says is only known once
+   * it has been downloaded, and that happens when the run reads the message, not while the event is
+   * still being acknowledged. So a message carrying one is shown as the fact that it arrived.
+   */
+  private String displayOf(final String messageType, final String content) {
+    if ("sticker".equals(messageType)) {
+      return null;
+    }
+    try {
+      return switch (om.readValue(content, MessageContent.class)) {
+        case TextMessageContent text -> text.text();
+        case PostMessageContent post -> post.title();
+        default -> null;
+      };
+    } catch (Exception e) {
+      log.warn("Could not read what message {} says for the card", messageType, e);
+      return null;
     }
   }
 

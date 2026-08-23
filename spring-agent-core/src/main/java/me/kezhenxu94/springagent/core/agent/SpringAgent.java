@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
@@ -17,6 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -137,9 +139,10 @@ public class SpringAgent {
   private final AtomicReference<Advisor> toolCallingAdvisor = new AtomicReference<>();
 
   /**
-   * The runs in flight, by request id. Three things read it: a cancel, which is the only reason it
-   * existed before; a run naming another as its parent, which is looked up here; and a parent
-   * finishing, which waits here for the runs it started.
+   * The runs in flight, by request id. Four things read it: a cancel, which is the only reason it
+   * existed before; a run naming another as its parent, which is looked up here; a parent
+   * finishing, which waits here for the runs it started; and a message arriving in a conversation,
+   * which is queued onto the run already going there rather than starting one of its own.
    */
   private final ConcurrentMap<String, LiveRun> liveRuns = new ConcurrentHashMap<>();
 
@@ -159,14 +162,78 @@ public class SpringAgent {
   /**
    * A run that has been assembled and has not yet ended.
    *
+   * @param request what the run was started from, kept so that a message arriving mid-conversation
+   *     can tell whether this is the run it belongs to
    * @param listeners the run's own, complete: assembled before the stream is subscribed and never
    *     added to afterwards, which is what makes it safe for a child run to notify them
    * @param children the latch of each run this one started, released as that run ends
+   * @param queued what the user said while the run was working, waiting to be read into it
    */
   private record LiveRun(
+      AgentRequest request,
       AtomicBoolean cancelled,
       List<AgentResponseListener> listeners,
-      ConcurrentMap<String, CountDownLatch> children) {}
+      ConcurrentMap<String, CountDownLatch> children,
+      QueuedMessages queued) {}
+
+  /**
+   * Hands {@code message} to the run already under way in the same conversation, for it to read at
+   * the next point where reading it cannot disturb the message history — the end of a tool call.
+   * Where there is no such run, or where it is already past reading one, {@code request} is fired
+   * as its own run instead, which is also what becomes of a message a run ends without having read.
+   *
+   * <p>This is how a user corrects a run in flight rather than waiting it out and correcting the
+   * answer: the message reaches the model in the middle of the turn, so a tool call it would have
+   * made on the old course is never made.
+   *
+   * @param message the message as the model will read it, produced only if it is in fact read — an
+   *     integration may have to download what the message carries to produce it, which is not work
+   *     to do for a message that turns out to be answered by a run of its own
+   * @param display the same message as the surface would show it, for the listeners of the run it
+   *     joins; null where there is nothing short to show. Given separately for the reason above:
+   *     showing what arrived must not wait for what reading it would fetch.
+   * @return whether it was queued onto a run already going
+   */
+  public boolean fireOrQueue(
+      final AgentRequest request, final Supplier<String> message, final String display) {
+    final var live = liveRunFor(request);
+    if (live == null || !live.queued().offer(new QueuedMessages.Queued(request, message))) {
+      fire(request);
+      return false;
+    }
+    log.info(
+        "Message {} queued onto run {}, already going in conversation {}",
+        request.requestId(),
+        live.request().requestId(),
+        request.conversationId());
+    notify(live.listeners(), listener -> listener.onMessageQueued(display));
+    return true;
+  }
+
+  /**
+   * The run {@code request} would be joining: one going in the same conversation, for the same
+   * person, that somebody is watching.
+   *
+   * <p>The same person because a card in a group chat is in front of everyone, and what somebody
+   * else says while it streams is their own question rather than a correction of this one — theirs
+   * gets a run, and a card, of its own. Watched because a background run has no card the reader
+   * could be replying to, and a subagent is not the run they can see at all.
+   *
+   * <p>Any of them where there is somehow more than one, which queueing itself makes unlikely: the
+   * second message of a conversation now joins the first run rather than starting a second.
+   */
+  private LiveRun liveRunFor(final AgentRequest request) {
+    if (Strings.isNullOrEmpty(request.conversationId())) {
+      return null;
+    }
+    return liveRuns.values().stream()
+        .filter(run -> !run.request().background())
+        .filter(run -> Strings.isNullOrEmpty(run.request().parentRequestId()))
+        .filter(run -> request.conversationId().equals(run.request().conversationId()))
+        .filter(run -> Objects.equals(request.userId(), run.request().userId()))
+        .findAny()
+        .orElse(null);
+  }
 
   public boolean cancel(final String requestId) {
     final var run = liveRuns.get(requestId);
@@ -256,7 +323,10 @@ public class SpringAgent {
         questionHandlers.isEmpty() ? null : asking(request, questionHandlers, answersArriveLater);
 
     final var cancelFlag = new AtomicBoolean(false);
-    final var liveRun = new LiveRun(cancelFlag, listeners, new ConcurrentHashMap<>());
+    final var queued =
+        new QueuedMessages(() -> notify(listeners, AgentResponseListener::onQueuedMessageRead));
+    final var liveRun =
+        new LiveRun(request, cancelFlag, listeners, new ConcurrentHashMap<>(), queued);
     if (requestId != null) {
       liveRuns.put(requestId, liveRun);
     }
@@ -290,7 +360,7 @@ public class SpringAgent {
                 // Assembled before composition, not just for the run: an MCP server is called with
                 // the headers its contributors derive from this map, so it has to exist before the
                 // clients that will consult it are built.
-                final var toolContext = toolContextFor(request, registry);
+                final var toolContext = toolContextFor(request, registry, queued);
                 final var composition =
                     agentToolsProvider.compose(
                         request,
@@ -435,9 +505,10 @@ public class SpringAgent {
   }
 
   /**
-   * Ends a run: waits out the subagents it started, reports it finished, and releases everything it
-   * held. Split out of {@code doFinally} because it blocks, and so has to be able to run on a
-   * thread that is not Reactor's — see the call site.
+   * Ends a run: waits out the subagents it started, reports it finished, releases everything it
+   * held and answers whatever the user said that it never got round to reading. Split out of {@code
+   * doFinally} because it blocks, and so has to be able to run on a thread that is not Reactor's —
+   * see the call site.
    *
    * <p>Deliberately not throwing: every step is another run's or another surface's, and none of
    * them may cost this run its cleanup.
@@ -452,6 +523,10 @@ public class SpringAgent {
       final AtomicReference<McpTools> mcpTools,
       final StringBuilder contentBuffer,
       final AgentOutcome outcome) {
+    // First of all: the model has stopped, so nothing can be read into this run any more, and a
+    // message arriving from here on has to be answered some other way. Before the wait below and
+    // not after it, since that wait is measured in minutes and the queue is dead for all of them.
+    final var unread = liveRun.queued().close();
     try {
       // Before this run is reported finished, so that whatever a surface does with the end of a
       // run — finalize a card, print a prompt — happens after the runs it started have had their
@@ -501,6 +576,12 @@ public class SpringAgent {
         }
       }
     }
+
+    // Last, once this run has let go of everything it held: whatever the user said that the run
+    // never got round to reading is a message nobody has answered, so it is answered now, as the
+    // run it would have been had this one not been going. After onFinished above rather than
+    // before, so that the card it starts appears under a card that has already been finalized.
+    unread.forEach(queued -> fire(queued.request()));
   }
 
   /**
@@ -697,9 +778,14 @@ public class SpringAgent {
    * conflict, so an integration cannot overwrite the identity the run was started under.
    */
   private static Map<String, Object> toolContextFor(
-      final AgentRequest request, final AgentRunRegistry registry) {
+      final AgentRequest request,
+      final AgentRunRegistry registry,
+      final QueuedMessages queuedMessages) {
     final var toolContext = new LinkedHashMap<String, Object>(registry.toolContext());
     toolContext.putAll(request.toolContext());
+    // Not part of the run's identity, but reached the same way: this is how a tool call finds what
+    // the user has said since the turn began, which the interceptor appends to the call's result.
+    toolContext.put(ToolContexts.QUEUED_MESSAGES.key(), queuedMessages);
     // Emptied rather than left null: ChatClient rejects a tool context with null values outright.
     toolContext.put(ToolContexts.KEY_REQUEST_ID, Strings.nullToEmpty(request.requestId()));
     toolContext.put(ToolContexts.KEY_USER_ID, Strings.nullToEmpty(request.userId()));

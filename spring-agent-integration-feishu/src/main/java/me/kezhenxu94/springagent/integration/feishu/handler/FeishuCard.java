@@ -63,7 +63,7 @@ public class FeishuCard {
    * The divider above the card's footer, and so the anchor anything added mid-run is placed before:
    * it keeps the usage line and the conversation hint at the bottom where a reader expects them.
    */
-  private static final String FOOTER_ELEMENT_ID = "guide_divider";
+  static final String FOOTER_ELEMENT_ID = "guide_divider";
 
   private static final Pattern IMAGE_PATTERN = Pattern.compile("!\\[(.*?)\\]\\(([^)\\s]+)\\)");
 
@@ -87,8 +87,20 @@ public class FeishuCard {
    *
    * @param uuid an idempotency key, so a retry cannot leave the card holding two copies
    */
-  @SneakyThrows
   public synchronized boolean insertBeforeFooter(final String elementsJson, final String uuid) {
+    return insertBefore(FOOTER_ELEMENT_ID, elementsJson, uuid);
+  }
+
+  /**
+   * Adds elements to the card immediately above {@code targetElementId}, and returns whether they
+   * landed. The element has to be one the card already has, which is why the anchors are the
+   * elements every run carries — see {@code FeishuCardElements}.
+   *
+   * @param uuid an idempotency key, so a retry cannot leave the card holding two copies
+   */
+  @SneakyThrows
+  public synchronized boolean insertBefore(
+      final String targetElementId, final String elementsJson, final String uuid) {
     final var seq = sequence.getAndIncrement();
     final var response =
         feishu
@@ -101,7 +113,7 @@ public class FeishuCard {
                     .createCardElementReqBody(
                         CreateCardElementReqBody.newBuilder()
                             .type(CreateCardElementTypeEnum.INSERT_BEFORE)
-                            .targetElementId(FOOTER_ELEMENT_ID)
+                            .targetElementId(targetElementId)
                             .uuid(uuid)
                             .sequence(seq)
                             .elements(elementsJson)
@@ -109,7 +121,8 @@ public class FeishuCard {
                     .build());
     if (response.getCode() != 0) {
       log.warn(
-          "Failed to insert elements: cardId={}, seq={}, code={}, msg={}",
+          "Failed to insert elements before {}: cardId={}, seq={}, code={}, msg={}",
+          targetElementId,
           cardId,
           seq,
           response.getCode(),

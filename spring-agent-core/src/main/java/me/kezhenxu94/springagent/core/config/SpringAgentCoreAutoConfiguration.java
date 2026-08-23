@@ -126,13 +126,14 @@ public class SpringAgentCoreAutoConfiguration {
   @ConditionalOnMissingBean
   ToolCallingManager toolCallingManager(
       final ToolCallbackResolver toolCallbackResolver,
-      final List<ToolCallInterceptor> interceptors) {
+      final List<ToolCallInterceptor> interceptors,
+      final CoreMessages messages) {
     final var defaultManager =
         DefaultToolCallingManager.builder()
             .toolCallbackResolver(
                 new InterceptingToolCallbackResolver(toolCallbackResolver, interceptors))
             .build();
-    return new InterceptingToolCallingManager(defaultManager, interceptors);
+    return new InterceptingToolCallingManager(defaultManager, interceptors, messages);
   }
 
   // Name-based: two ChatClient beans here, so a type-based condition would have the first

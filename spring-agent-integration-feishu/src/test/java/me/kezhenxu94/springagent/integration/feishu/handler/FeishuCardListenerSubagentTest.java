@@ -78,6 +78,9 @@ class FeishuCardListenerSubagentTest {
             null,
             null,
             panels,
+            // The run's own card is not what this exercises: a subagent writes into its panel, and
+            // a panel arrives with every element of its own.
+            null,
             new FeishuMessageCard(om, messages, new ClassPathResource("feishu/reply-card.json")));
     listener.feishuReplyCard = new ClassPathResource("feishu/reply-card.json");
 

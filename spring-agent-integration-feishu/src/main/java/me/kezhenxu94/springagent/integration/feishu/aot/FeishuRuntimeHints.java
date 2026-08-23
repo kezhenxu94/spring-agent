@@ -70,7 +70,11 @@ public class FeishuRuntimeHints implements RuntimeHintsRegistrar {
    * hint of its own.
    */
   private static final List<String> CARD_TEMPLATES =
-      List.of("feishu/reply-card.json", "feishu/question-form.json");
+      List.of(
+          "feishu/reply-card.json",
+          "feishu/card-elements.json",
+          "feishu/question-form.json",
+          "feishu/subagent-panel.json");
 
   /** The cards' own words, whose locale is only known when the binary runs. */
   private static final String MESSAGES_BUNDLE = "feishu.messages";

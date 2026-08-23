@@ -27,6 +27,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.ClassPathResource;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -85,7 +86,8 @@ class FeishuCardSequenceTest {
         new FeishuMessages(
             new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
     final var panels = panels(messages);
-    final var run = FeishuCardUpdater.forRun(card, new JsonMapper(), null, messages);
+    final var run =
+        FeishuCardUpdater.forRun(card, new JsonMapper(), null, messages, cardElements());
     card.insertBeforeFooter(
         panels.forInsert("sub_1", "Reading the log", "Read the log and say what broke", null),
         "sub_1");
@@ -139,5 +141,12 @@ class FeishuCardSequenceTest {
     panels.subagentPanel =
         new org.springframework.core.io.ClassPathResource("feishu/subagent-panel.json");
     return panels;
+  }
+
+  /** The real elements: what the card gains as the run first has something to put in them. */
+  private static FeishuCardElements cardElements() {
+    final var elements = new FeishuCardElements(new JsonMapper());
+    elements.cardElements = new ClassPathResource("feishu/card-elements.json");
+    return elements;
   }
 }

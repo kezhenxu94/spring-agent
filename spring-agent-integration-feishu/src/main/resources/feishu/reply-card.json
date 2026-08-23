@@ -56,24 +56,8 @@
         "element_id": "stop"
       },
       {
-        "tag": "markdown",
-        "content": "",
-        "text_align": "left",
-        "text_size": "normal_v2",
-        "element_id": "todo"
-      },
-      {
         "tag": "hr",
-        "margin": "6px 0px 2px 0px",
         "element_id": "guide_divider"
-      },
-      {
-        "tag": "markdown",
-        "content": "",
-        "text_align": "left",
-        "text_size": "notation",
-        "margin": "0px",
-        "element_id": "usage"
       },
       {
         "tag": "markdown",
