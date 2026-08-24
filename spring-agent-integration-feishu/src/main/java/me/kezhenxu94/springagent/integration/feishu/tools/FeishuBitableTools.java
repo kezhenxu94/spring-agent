@@ -1,5 +1,7 @@
 package me.kezhenxu94.springagent.integration.feishu.tools;
 
+import com.lark.oapi.core.utils.Jsons;
+import com.lark.oapi.service.bitable.v1.model.AppTableField;
 import java.io.File;
 import java.util.List;
 import lombok.Builder;
@@ -129,17 +131,47 @@ file_token
 {"Screenshot": [{"file_token": "boxcnrHpsg1QDqXAAAyachabcef"}]}
 Several files in one cell means several uploads and one array of tokens.
 
-The ui_type values FeishuCreateBitableTable accepts for a new field are Text, Barcode, Number, \
-Progress, Currency, Rating, SingleSelect, MultiSelect, DateTime, Checkbox, User, GroupChat, Phone, \
-Url, Attachment, SingleLink, Formula, DuplexLink, Location, CreatedTime, ModifiedTime, CreatedUser, \
-ModifiedUser and AutoNumber. A lookup field (type 19) cannot be created through the API.
+The ui_type values FeishuCreateBitableTable and FeishuCreateBitableField accept for a new field are \
+Text, Email, Barcode, Number, Progress, Currency, Rating, SingleSelect, MultiSelect, DateTime, \
+Checkbox, User, GroupChat, Phone, Url, Attachment, SingleLink, Formula, DuplexLink, Location, \
+CreatedTime, ModifiedTime, CreatedUser, ModifiedUser and AutoNumber. A lookup field (type 19) can \
+neither be created nor updated through the API.
+
+A field's own settings live in its property object, which FeishuCreateBitableField, \
+FeishuUpdateBitableField and the fieldsJson of FeishuCreateBitableTable all take. Only the members \
+that suit the type mean anything:
+
+- single and multi select: {"options": [{"name": "Doing", "color": 0}]} — color is 0 to 54, and an
+  option id may not be set when creating
+- number, currency, progress and formula: {"formatter": "0"}; currency adds
+  {"currency_code": "CNY"} (USD, EUR, GBP, JPY and about twenty more)
+- progress and rating: {"min": 0, "max": 10}, progress also {"range_customize": true}; rating adds
+  {"rating": {"symbol": "star"}} — star, heart, thumbsup, fire, smile, lightning, flower or number
+- date, created time and last modified time: {"date_formatter": "yyyy/MM/dd"} — also
+  "yyyy-MM-dd HH:mm", "MM-dd", "MM/dd/yyyy" or "dd/MM/yyyy"; a date field adds
+  {"auto_fill": false}, whether a new record gets the current time
+- person, single link and duplex link: {"multiple": true}, whether the cell takes more than one.
+  A link field also needs {"table_id": "tbl..."} naming the table it points at, and a duplex link
+  {"back_field_name": "..."} for the field it creates on the other side
+- barcode: {"allowed_edit_modes": {"manual": true, "scan": true}}
+- location: {"location": {"input_type": "not_limit"}} — or "only_mobile", which forces a live fix
+- formula: {"formula_expression": "bitable::$table[tblAbc].$field[fldXyz]*2"}. Where
+  FeishuGetBitableMeta reports formula_type 2, the result type has to be declared as well:
+  {"type": {"data_type": 2, "ui_property": {"formatter": "0"}}}
+- auto number: {"auto_serial": {"type": "auto_increment_number"}}, or "custom" with
+  {"options": [{"type": "created_time", "value": "yyyyMMdd"}, {"type": "fixed_text", "value": "-"},
+  {"type": "system_number", "value": "4"}]} — system_number's value is 1 to 9 digits, fixed_text at
+  most 20 characters
+
+A table's first column is its index, and only a text, number, date, phone, url, formula or location \
+field can be one.
 
 Child records, the tree a grid view can show, are not a field type of their own. They are a link \
 field pointing at the table itself plus a view setting: create a field of type 18 whose property is \
 {"multiple": true, "table_id": "<this same table's id>"}, write a child record with that field set \
 to the parent's record id, and the nesting shows up once the view's property carries \
-{"hierarchy_config": {"field_id": "<that field's id>"}}. These tools do not cover creating a field \
-or patching a view, so the field and the view setting have to exist already.
+{"hierarchy_config": {"field_id": "<that field's id>"}}. FeishuCreateBitableField makes the field; \
+these tools do not cover patching a view, so that last setting has to be made in the Feishu UI.
 
 A table synced from another data source is read-only: creating, updating and deleting records all \
 fail on it.
@@ -411,7 +443,8 @@ no rows rather than an error.
               + " fieldsJson of FeishuCreateBitableRecord is keyed by field name and its values are"
               + " shaped by field type, and a name alone does not say whether a column is text, a"
               + " single select or a link — FeishuBitableFieldReference explains what each type"
-              + " takes.")
+              + " takes. It is also where the field_id that FeishuUpdateBitableField needs comes"
+              + " from.")
   @SneakyThrows
   public JsonNode listBitableFields(
       @ToolParam(description = "The app_token identifying the bitable") String appToken,
@@ -769,6 +802,114 @@ no rows rather than an error.
   }
 
   @Tool(
+      name = "FeishuCreateBitableField",
+      description =
+          "Add a column to a table and return it with the field_id it was given. This is how a"
+              + " table gets the shape the data needs — a status to filter on, an owner, a due"
+              + " date, an attachment cell — when it was not defined up front with"
+              + " FeishuCreateBitableTable.\n"
+              + "type is the numeric field type: 1 text, 2 number, 3 single select, 4 multi select,"
+              + " 5 date, 7 checkbox, 11 person, 13 phone, 15 url, 17 attachment, 18 single link,"
+              + " 20 formula, 21 duplex link, 22 location, 23 group chat, 1001 created time, 1002"
+              + " last modified time, 1003 created by, 1004 last modified by, 1005 auto number. A"
+              + " lookup field (19) cannot be created. uiType narrows some of them — a progress bar"
+              + " and a rating are both type 2 — and propertyJson carries the column's own"
+              + " settings, both as FeishuBitableFieldReference describes.\n"
+              + "A field name has to be unique within the table, and its leading and trailing"
+              + " spaces are stripped.")
+  public JsonNode createBitableField(
+      @ToolParam(description = "The app_token identifying the bitable") String appToken,
+      @ToolParam(description = "The table_id of the table") String tableId,
+      @ToolParam(description = "Name of the new column, unique within the table") String fieldName,
+      @ToolParam(description = "Numeric field type; FeishuBitableFieldReference lists them")
+          Integer type,
+      @ToolParam(
+              description =
+                  "How it shows, e.g. Progress or Rating for a type 2; the type's default when"
+                      + " left out",
+              required = false)
+          String uiType,
+      @ToolParam(
+              description =
+                  "The column's settings as JSON — select options, a link's target table, a date"
+                      + " format — of the shape FeishuBitableFieldReference describes",
+              required = false)
+          String propertyJson,
+      @ToolParam(description = "Description shown on the column", required = false)
+          String description,
+      @ToolParam(
+              description =
+                  "Whether to keep the description off the matching question of a form built on"
+                      + " this table; true when left out",
+              required = false)
+          Boolean disableDescriptionSync,
+      @ToolParam(
+              description = "Idempotency key: pass a UUID so a retry cannot create twice",
+              required = false)
+          String clientToken) {
+    return fieldNode(
+        feishuBitableService.createField(
+            appToken,
+            tableId,
+            fieldName,
+            type,
+            uiType,
+            propertyJson,
+            description,
+            disableDescriptionSync,
+            clientToken));
+  }
+
+  @Tool(
+      name = "FeishuUpdateBitableField",
+      description =
+          "Change a column of a table: its name, its type, or its settings.\n"
+              + "**This overwrites the field rather than patching it.** Whatever is left out here"
+              + " is cleared on the column, not kept — dropping propertyJson while changing a name"
+              + " loses a select field's options and a link field's target table. So read the"
+              + " column with FeishuListBitableFields first and send its whole property back with"
+              + " the one part changed. fieldName and type are both required for the same reason.\n"
+              + "Changing the type converts the values already in the column, and what does not"
+              + " convert is lost. A lookup field (19) cannot be updated, and the table's first"
+              + " column may only be a text, number, date, phone, url, formula or location field.")
+  public JsonNode updateBitableField(
+      @ToolParam(description = "The app_token identifying the bitable") String appToken,
+      @ToolParam(description = "The table_id of the table") String tableId,
+      @ToolParam(description = "The field_id of the column, from FeishuListBitableFields")
+          String fieldId,
+      @ToolParam(description = "Name the column should have afterwards") String fieldName,
+      @ToolParam(description = "Numeric field type the column should have afterwards") Integer type,
+      @ToolParam(description = "How it shows; the type's default when left out", required = false)
+          String uiType,
+      @ToolParam(
+              description =
+                  "The column's settings as JSON, in full — anything left out is cleared, not kept",
+              required = false)
+          String propertyJson,
+      @ToolParam(
+              description = "Description shown on the column; cleared when left out",
+              required = false)
+          String description,
+      @ToolParam(
+              description =
+                  "Whether to keep the description off the matching question of a form built on"
+                      + " this table; true when left out",
+              required = false)
+          Boolean disableDescriptionSync) {
+    return fieldNode(
+        feishuBitableService.updateField(
+            appToken,
+            tableId,
+            fieldId,
+            fieldName,
+            type,
+            uiType,
+            propertyJson,
+            description,
+            disableDescriptionSync));
+  }
+
+  @Tool(
       name = "FeishuBitableFieldReference",
       description =
           "What a bitable field of each type holds, and how a record's fields object is written for"
@@ -787,5 +928,15 @@ no rows rather than an error.
               + " each field type allows, and the date tokens. Read it before filtering a search.")
   public String getBitableFilterGuide() {
     return BITABLE_FILTER_GUIDE;
+  }
+
+  /**
+   * A field as the model sees it. The SDK type is passed through as a tree rather than mapped onto
+   * a record of our own because {@code property} differs per field type and any record would either
+   * flatten it or have to enumerate every type's settings.
+   */
+  @SneakyThrows
+  private JsonNode fieldNode(final AppTableField field) {
+    return objectMapper.readTree(Jsons.DEFAULT.toJson(field));
   }
 }

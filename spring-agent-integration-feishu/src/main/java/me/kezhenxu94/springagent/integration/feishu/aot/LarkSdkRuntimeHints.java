@@ -17,6 +17,8 @@ import com.lark.oapi.service.bitable.v1.model.BatchUpdateAppTableRecordReq;
 import com.lark.oapi.service.bitable.v1.model.BatchUpdateAppTableRecordResp;
 import com.lark.oapi.service.bitable.v1.model.CreateAppReq;
 import com.lark.oapi.service.bitable.v1.model.CreateAppResp;
+import com.lark.oapi.service.bitable.v1.model.CreateAppTableFieldReq;
+import com.lark.oapi.service.bitable.v1.model.CreateAppTableFieldResp;
 import com.lark.oapi.service.bitable.v1.model.CreateAppTableRecordReq;
 import com.lark.oapi.service.bitable.v1.model.CreateAppTableRecordResp;
 import com.lark.oapi.service.bitable.v1.model.CreateAppTableReq;
@@ -41,6 +43,8 @@ import com.lark.oapi.service.bitable.v1.model.SearchAppTableRecordReq;
 import com.lark.oapi.service.bitable.v1.model.SearchAppTableRecordResp;
 import com.lark.oapi.service.bitable.v1.model.UpdateAppReq;
 import com.lark.oapi.service.bitable.v1.model.UpdateAppResp;
+import com.lark.oapi.service.bitable.v1.model.UpdateAppTableFieldReq;
+import com.lark.oapi.service.bitable.v1.model.UpdateAppTableFieldResp;
 import com.lark.oapi.service.bitable.v1.model.UpdateAppTableRecordReq;
 import com.lark.oapi.service.bitable.v1.model.UpdateAppTableRecordResp;
 import com.lark.oapi.service.cardkit.v1.model.ContentCardElementReq;
@@ -159,6 +163,10 @@ public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
           BatchUpdateAppTableRecordResp.class,
           CreateAppReq.class,
           CreateAppResp.class,
+          CreateAppTableFieldReq.class,
+          CreateAppTableFieldResp.class,
+          UpdateAppTableFieldReq.class,
+          UpdateAppTableFieldResp.class,
           CreateAppTableRecordReq.class,
           CreateAppTableRecordResp.class,
           CreateAppTableReq.class,

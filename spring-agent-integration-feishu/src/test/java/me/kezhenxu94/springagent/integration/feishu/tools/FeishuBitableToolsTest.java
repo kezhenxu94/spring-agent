@@ -11,6 +11,8 @@ import static org.mockito.Mockito.when;
 
 import com.lark.oapi.Client;
 import com.lark.oapi.service.bitable.v1.model.App;
+import com.lark.oapi.service.bitable.v1.model.AppTableField;
+import com.lark.oapi.service.bitable.v1.model.AppTableFieldProperty;
 import com.lark.oapi.service.bitable.v1.model.AppTableView;
 import com.lark.oapi.service.bitable.v1.model.CreateAppTableRespBody;
 import com.lark.oapi.service.bitable.v1.model.DisplayApp;
@@ -279,6 +281,63 @@ class FeishuBitableToolsTest {
   }
 
   @Test
+  @DisplayName("createBitableField returns the column with the field_id it was given")
+  void createBitableField() {
+    final var field = new AppTableField();
+    field.setFieldId("fldA");
+    field.setFieldName("Status");
+    field.setType(3);
+    when(feishuBitableService.createField(
+            "appToken",
+            "tblA",
+            "Status",
+            3,
+            "SingleSelect",
+            "{\"options\":[{\"name\":\"Doing\"}]}",
+            "what stage it is at",
+            null,
+            "uuid"))
+        .thenReturn(field);
+
+    final var result =
+        tools.createBitableField(
+            "appToken",
+            "tblA",
+            "Status",
+            3,
+            "SingleSelect",
+            "{\"options\":[{\"name\":\"Doing\"}]}",
+            "what stage it is at",
+            null,
+            "uuid");
+
+    assertThat(result.path("field_id").asString()).isEqualTo("fldA");
+    assertThat(result.path("type").asInt()).isEqualTo(3);
+  }
+
+  @Test
+  @DisplayName("updateBitableField passes the whole property through, since an update overwrites")
+  void updateBitableField() {
+    final var field = new AppTableField();
+    field.setFieldId("fldA");
+    field.setFieldName("Owner");
+    field.setType(11);
+    final var property = new AppTableFieldProperty();
+    property.setMultiple(true);
+    field.setProperty(property);
+    when(feishuBitableService.updateField(
+            "appToken", "tblA", "fldA", "Owner", 11, null, "{\"multiple\":true}", null, null))
+        .thenReturn(field);
+
+    final var result =
+        tools.updateBitableField(
+            "appToken", "tblA", "fldA", "Owner", 11, null, "{\"multiple\":true}", null, null);
+
+    assertThat(result.path("field_name").asString()).isEqualTo("Owner");
+    assertThat(result.path("property").path("multiple").asBoolean()).isTrue();
+  }
+
+  @Test
   @DisplayName("createBitableView returns the new view's id, name and type")
   void createBitableView() {
     final var view = new AppTableView();
@@ -472,7 +531,9 @@ class FeishuBitableToolsTest {
     assertThat(tools.getBitableFieldReference())
         .contains("link_record_ids")
         .contains("milliseconds")
-        .contains("FeishuUploadBitableAttachment");
+        .contains("FeishuUploadBitableAttachment")
+        .contains("auto_serial")
+        .contains("FeishuCreateBitableField");
     assertThat(tools.getBitableFilterGuide())
         .contains("conjunction")
         .contains("ExactDate")

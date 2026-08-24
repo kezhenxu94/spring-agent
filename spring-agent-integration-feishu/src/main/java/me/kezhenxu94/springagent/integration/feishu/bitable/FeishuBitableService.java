@@ -7,6 +7,9 @@ import com.lark.oapi.Client;
 import com.lark.oapi.core.utils.Jsons;
 import com.lark.oapi.service.bitable.v1.model.App;
 import com.lark.oapi.service.bitable.v1.model.AppTableCreateHeader;
+import com.lark.oapi.service.bitable.v1.model.AppTableField;
+import com.lark.oapi.service.bitable.v1.model.AppTableFieldDescription;
+import com.lark.oapi.service.bitable.v1.model.AppTableFieldProperty;
 import com.lark.oapi.service.bitable.v1.model.AppTableRecord;
 import com.lark.oapi.service.bitable.v1.model.AppTableView;
 import com.lark.oapi.service.bitable.v1.model.BatchCreateAppTableRecordReq;
@@ -22,6 +25,7 @@ import com.lark.oapi.service.bitable.v1.model.BatchGetAppTableRecordReqBody;
 import com.lark.oapi.service.bitable.v1.model.BatchUpdateAppTableRecordReq;
 import com.lark.oapi.service.bitable.v1.model.BatchUpdateAppTableRecordReqBody;
 import com.lark.oapi.service.bitable.v1.model.CreateAppReq;
+import com.lark.oapi.service.bitable.v1.model.CreateAppTableFieldReq;
 import com.lark.oapi.service.bitable.v1.model.CreateAppTableRecordReq;
 import com.lark.oapi.service.bitable.v1.model.CreateAppTableReq;
 import com.lark.oapi.service.bitable.v1.model.CreateAppTableReqBody;
@@ -46,6 +50,7 @@ import com.lark.oapi.service.bitable.v1.model.SearchAppTableRecordReqBody;
 import com.lark.oapi.service.bitable.v1.model.Sort;
 import com.lark.oapi.service.bitable.v1.model.UpdateAppReq;
 import com.lark.oapi.service.bitable.v1.model.UpdateAppReqBody;
+import com.lark.oapi.service.bitable.v1.model.UpdateAppTableFieldReq;
 import com.lark.oapi.service.bitable.v1.model.UpdateAppTableRecordReq;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -274,6 +279,130 @@ public class FeishuBitableService {
       throw new IllegalStateException("Failed to delete bitable tables: " + resp.getMsg());
     }
     log.info("Deleted tables {} of bitable {}", tableIds, appToken);
+  }
+
+  @SneakyThrows
+  public AppTableField createField(
+      final String appToken,
+      final String tableId,
+      final String fieldName,
+      final Integer type,
+      final String uiType,
+      final String propertyJson,
+      final String description,
+      final Boolean disableDescriptionSync,
+      final String clientToken) {
+    final var resp =
+        feishu
+            .bitable()
+            .v1()
+            .appTableField()
+            .create(
+                CreateAppTableFieldReq.newBuilder()
+                    .appToken(appToken)
+                    .tableId(tableId)
+                    .clientToken(clientToken)
+                    .appTableField(
+                        field(
+                            fieldName,
+                            type,
+                            uiType,
+                            propertyJson,
+                            description,
+                            disableDescriptionSync))
+                    .build());
+    if (!resp.success()) {
+      log.error(
+          "Failed to create field '{}' in table {} of bitable {}: {}, {}",
+          fieldName,
+          tableId,
+          appToken,
+          resp.getCode(),
+          resp.getMsg());
+      throw new IllegalStateException("Failed to create bitable field: " + resp.getMsg());
+    }
+    final var created = resp.getData().getField();
+    log.info(
+        "Created field '{}' in table {} of bitable {}: fieldId={}",
+        fieldName,
+        tableId,
+        appToken,
+        created.getFieldId());
+    return created;
+  }
+
+  @SneakyThrows
+  public AppTableField updateField(
+      final String appToken,
+      final String tableId,
+      final String fieldId,
+      final String fieldName,
+      final Integer type,
+      final String uiType,
+      final String propertyJson,
+      final String description,
+      final Boolean disableDescriptionSync) {
+    final var resp =
+        feishu
+            .bitable()
+            .v1()
+            .appTableField()
+            .update(
+                UpdateAppTableFieldReq.newBuilder()
+                    .appToken(appToken)
+                    .tableId(tableId)
+                    .fieldId(fieldId)
+                    .appTableField(
+                        field(
+                            fieldName,
+                            type,
+                            uiType,
+                            propertyJson,
+                            description,
+                            disableDescriptionSync))
+                    .build());
+    if (!resp.success()) {
+      log.error(
+          "Failed to update field {} of table {} in bitable {}: {}, {}",
+          fieldId,
+          tableId,
+          appToken,
+          resp.getCode(),
+          resp.getMsg());
+      throw new IllegalStateException("Failed to update bitable field: " + resp.getMsg());
+    }
+    log.info("Updated field {} of table {} in bitable {}", fieldId, tableId, appToken);
+    return resp.getData().getField();
+  }
+
+  /**
+   * The field body create and update share. It is the same shape for both because an update is a
+   * full overwrite rather than a patch: whatever is left out here is cleared on the field, not
+   * kept.
+   */
+  private static AppTableField field(
+      final String fieldName,
+      final Integer type,
+      final String uiType,
+      final String propertyJson,
+      final String description,
+      final Boolean disableDescriptionSync) {
+    return AppTableField.newBuilder()
+        .fieldName(fieldName)
+        .type(type)
+        .uiType(uiType)
+        .property(
+            propertyJson == null || propertyJson.isBlank()
+                ? null
+                : parse(propertyJson, AppTableFieldProperty.class, "propertyJson"))
+        .description(
+            description == null
+                ? null
+                : AppTableFieldDescription.newBuilder()
+                    .text(description)
+                    .disableSync(disableDescriptionSync)
+                    .build())
+        .build();
   }
 
   @SneakyThrows
