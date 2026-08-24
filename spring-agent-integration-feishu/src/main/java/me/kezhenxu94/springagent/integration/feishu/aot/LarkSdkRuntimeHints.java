@@ -3,6 +3,46 @@ package me.kezhenxu94.springagent.integration.feishu.aot;
 import com.google.gson.annotations.JsonAdapter;
 import com.lark.oapi.event.cardcallback.model.P2CardActionTrigger;
 import com.lark.oapi.event.cardcallback.model.P2CardActionTriggerResponse;
+import com.lark.oapi.service.bitable.v1.model.BatchCreateAppTableRecordReq;
+import com.lark.oapi.service.bitable.v1.model.BatchCreateAppTableRecordResp;
+import com.lark.oapi.service.bitable.v1.model.BatchCreateAppTableReq;
+import com.lark.oapi.service.bitable.v1.model.BatchCreateAppTableResp;
+import com.lark.oapi.service.bitable.v1.model.BatchDeleteAppTableRecordReq;
+import com.lark.oapi.service.bitable.v1.model.BatchDeleteAppTableRecordResp;
+import com.lark.oapi.service.bitable.v1.model.BatchDeleteAppTableReq;
+import com.lark.oapi.service.bitable.v1.model.BatchDeleteAppTableResp;
+import com.lark.oapi.service.bitable.v1.model.BatchGetAppTableRecordReq;
+import com.lark.oapi.service.bitable.v1.model.BatchGetAppTableRecordResp;
+import com.lark.oapi.service.bitable.v1.model.BatchUpdateAppTableRecordReq;
+import com.lark.oapi.service.bitable.v1.model.BatchUpdateAppTableRecordResp;
+import com.lark.oapi.service.bitable.v1.model.CreateAppReq;
+import com.lark.oapi.service.bitable.v1.model.CreateAppResp;
+import com.lark.oapi.service.bitable.v1.model.CreateAppTableRecordReq;
+import com.lark.oapi.service.bitable.v1.model.CreateAppTableRecordResp;
+import com.lark.oapi.service.bitable.v1.model.CreateAppTableReq;
+import com.lark.oapi.service.bitable.v1.model.CreateAppTableResp;
+import com.lark.oapi.service.bitable.v1.model.CreateAppTableViewReq;
+import com.lark.oapi.service.bitable.v1.model.CreateAppTableViewResp;
+import com.lark.oapi.service.bitable.v1.model.DeleteAppTableViewReq;
+import com.lark.oapi.service.bitable.v1.model.DeleteAppTableViewResp;
+import com.lark.oapi.service.bitable.v1.model.GetAppReq;
+import com.lark.oapi.service.bitable.v1.model.GetAppResp;
+import com.lark.oapi.service.bitable.v1.model.GetAppTableViewReq;
+import com.lark.oapi.service.bitable.v1.model.GetAppTableViewResp;
+import com.lark.oapi.service.bitable.v1.model.ListAppTableFieldReq;
+import com.lark.oapi.service.bitable.v1.model.ListAppTableFieldResp;
+import com.lark.oapi.service.bitable.v1.model.ListAppTableReq;
+import com.lark.oapi.service.bitable.v1.model.ListAppTableResp;
+import com.lark.oapi.service.bitable.v1.model.ListAppTableViewReq;
+import com.lark.oapi.service.bitable.v1.model.ListAppTableViewResp;
+import com.lark.oapi.service.bitable.v1.model.PatchAppTableReq;
+import com.lark.oapi.service.bitable.v1.model.PatchAppTableResp;
+import com.lark.oapi.service.bitable.v1.model.SearchAppTableRecordReq;
+import com.lark.oapi.service.bitable.v1.model.SearchAppTableRecordResp;
+import com.lark.oapi.service.bitable.v1.model.UpdateAppReq;
+import com.lark.oapi.service.bitable.v1.model.UpdateAppResp;
+import com.lark.oapi.service.bitable.v1.model.UpdateAppTableRecordReq;
+import com.lark.oapi.service.bitable.v1.model.UpdateAppTableRecordResp;
 import com.lark.oapi.service.cardkit.v1.model.ContentCardElementReq;
 import com.lark.oapi.service.cardkit.v1.model.ContentCardElementReqBody;
 import com.lark.oapi.service.cardkit.v1.model.CreateCardReq;
@@ -102,6 +142,49 @@ public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
   /** Mechanically the {@code com.lark.oapi.**.model} types imported across this module. */
   private static final List<Class<?>> ROOTS =
       List.of(
+          // Bitable, request and response both: unlike the other services listed here, whose
+          // response types were never named, Gson deserialises the whole *Resp into being, so a
+          // response with no field access parses to an object whose every member is null.
+          BatchCreateAppTableRecordReq.class,
+          BatchCreateAppTableRecordResp.class,
+          BatchCreateAppTableReq.class,
+          BatchCreateAppTableResp.class,
+          BatchDeleteAppTableRecordReq.class,
+          BatchDeleteAppTableRecordResp.class,
+          BatchDeleteAppTableReq.class,
+          BatchDeleteAppTableResp.class,
+          BatchGetAppTableRecordReq.class,
+          BatchGetAppTableRecordResp.class,
+          BatchUpdateAppTableRecordReq.class,
+          BatchUpdateAppTableRecordResp.class,
+          CreateAppReq.class,
+          CreateAppResp.class,
+          CreateAppTableRecordReq.class,
+          CreateAppTableRecordResp.class,
+          CreateAppTableReq.class,
+          CreateAppTableResp.class,
+          CreateAppTableViewReq.class,
+          CreateAppTableViewResp.class,
+          DeleteAppTableViewReq.class,
+          DeleteAppTableViewResp.class,
+          GetAppReq.class,
+          GetAppResp.class,
+          GetAppTableViewReq.class,
+          GetAppTableViewResp.class,
+          ListAppTableFieldReq.class,
+          ListAppTableFieldResp.class,
+          ListAppTableReq.class,
+          ListAppTableResp.class,
+          ListAppTableViewReq.class,
+          ListAppTableViewResp.class,
+          PatchAppTableReq.class,
+          PatchAppTableResp.class,
+          SearchAppTableRecordReq.class,
+          SearchAppTableRecordResp.class,
+          UpdateAppReq.class,
+          UpdateAppResp.class,
+          UpdateAppTableRecordReq.class,
+          UpdateAppTableRecordResp.class,
           P2CardActionTrigger.class,
           P2CardActionTriggerResponse.class,
           ContentCardElementReq.class,
