@@ -32,7 +32,8 @@ class FeishuQuestionFormTest {
   private FeishuQuestionForm form() {
     final var messages =
         new FeishuMessages(
-            new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
+            new FeishuProperties(
+                null, null, null, null, null, null, null, Locale.ENGLISH, null, null));
     final var form = new FeishuQuestionForm(om, messages);
     form.questionForm = new ClassPathResource("feishu/question-form.json");
     return form;

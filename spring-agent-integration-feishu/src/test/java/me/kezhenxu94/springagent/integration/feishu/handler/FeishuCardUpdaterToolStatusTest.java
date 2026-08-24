@@ -50,7 +50,8 @@ class FeishuCardUpdaterToolStatusTest {
         .thenReturn(ok);
     final var messages =
         new FeishuMessages(
-            new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
+            new FeishuProperties(
+                null, null, null, null, null, null, null, Locale.ENGLISH, null, null));
     updater =
         FeishuCardUpdater.forRun(
             new FeishuCard(feishu, "card-1", restTemplate, new UserHome(userHomeRoot), messages),

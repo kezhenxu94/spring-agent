@@ -24,7 +24,8 @@ class FeishuMessageCardTest {
   void setUp() {
     final var messages =
         new FeishuMessages(
-            new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
+            new FeishuProperties(
+                null, null, null, null, null, null, null, Locale.ENGLISH, null, null));
     card =
         new FeishuMessageCard(
             objectMapper,

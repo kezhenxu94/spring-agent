@@ -607,6 +607,11 @@ app:
     tenant-id: ${FEISHU_TENANT_ID}
     tenant-domain: ${FEISHU_TENANT_DOMAIN}
     bot-open-id: ${FEISHU_BOT_OPEN_ID}
+    # Which of the two products this app is registered with: FeiShu (the Chinese product,
+    # open.feishu.cn) or LarkSuite (the international one, open.larksuite.com). An app id/secret
+    # pair is only valid against the product it was created on, so this must match where the app
+    # was registered. Defaults to FeiShu.
+    base-url: ${FEISHU_BASE_URL:FeiShu}
     # How long any one call to Feishu may take. Stated because the SDK's own default is no timeout
     # at all — it builds its OkHttp client with callTimeout(0), which means wait for ever — and what
     # that costs is not a missed card update but a stuck turn: every writer to a card takes the same

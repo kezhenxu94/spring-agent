@@ -63,7 +63,8 @@ class FeishuCardListenerSubagentTest {
   void setUp() throws Exception {
     final var messages =
         new FeishuMessages(
-            new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
+            new FeishuProperties(
+                null, null, null, null, null, null, null, Locale.ENGLISH, null, null));
     final var om = new JsonMapper();
     final var panels = new FeishuSubagentPanel(om, messages);
     panels.subagentPanel = new ClassPathResource("feishu/subagent-panel.json");

@@ -60,7 +60,8 @@ class FeishuCardUpdaterQueuedMessageTest {
         .thenReturn(inserted);
     messages =
         new FeishuMessages(
-            new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
+            new FeishuProperties(
+                null, null, null, null, null, null, null, Locale.ENGLISH, null, null));
     card = new FeishuCard(feishu, "card-1", restTemplate, new UserHome(userHomeRoot), messages);
     om = new JsonMapper();
   }

@@ -44,6 +44,7 @@ public class FeishuAutoConfiguration {
   @ConditionalOnMissingBean
   Client feishuClient(final FeishuProperties feishuProperties) {
     return new Client.Builder(feishuProperties.appId(), feishuProperties.appSecret())
+        .openBaseUrl(feishuProperties.baseUrl())
         // Stated rather than left to the SDK, whose default is no timeout: it builds its OkHttp
         // client with callTimeout(0), which means wait for ever. What that costs is not a missed
         // card update but a stuck turn — the card's writers share one lock and hold it across the

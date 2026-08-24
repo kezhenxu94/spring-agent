@@ -56,7 +56,8 @@ class FeishuCardUpdaterErrorTest {
         .thenReturn(ok);
     final var messages =
         new FeishuMessages(
-            new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
+            new FeishuProperties(
+                null, null, null, null, null, null, null, Locale.ENGLISH, null, null));
     card = new FeishuCard(feishu, "card-1", restTemplate, new UserHome(userHomeRoot), messages);
     updater =
         FeishuCardUpdater.forRun(card, new JsonMapper(), null, messages, cardElements(messages));
@@ -102,7 +103,8 @@ class FeishuCardUpdaterErrorTest {
         .thenReturn(replaced);
     final var messages =
         new FeishuMessages(
-            new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
+            new FeishuProperties(
+                null, null, null, null, null, null, null, Locale.ENGLISH, null, null));
     final var panels = new FeishuSubagentPanel(new JsonMapper(), messages);
     panels.subagentPanel = new ClassPathResource("feishu/subagent-panel.json");
     card.insertBeforeFooter(

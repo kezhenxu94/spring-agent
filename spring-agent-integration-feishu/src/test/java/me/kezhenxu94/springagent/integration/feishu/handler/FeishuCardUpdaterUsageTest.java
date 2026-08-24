@@ -51,7 +51,8 @@ class FeishuCardUpdaterUsageTest {
 
   private final FeishuMessages messages =
       new FeishuMessages(
-          new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
+          new FeishuProperties(
+              null, null, null, null, null, null, null, Locale.ENGLISH, null, null));
 
   @BeforeEach
   void setUp() throws Exception {

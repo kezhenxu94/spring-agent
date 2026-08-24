@@ -75,7 +75,8 @@ class FeishuCardSequenceTest {
 
     final var messages =
         new FeishuMessages(
-            new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
+            new FeishuProperties(
+                null, null, null, null, null, null, null, Locale.ENGLISH, null, null));
     card = new FeishuCard(feishu, "card-1", null, new UserHome(userHomeRoot), messages);
   }
 
@@ -84,7 +85,8 @@ class FeishuCardSequenceTest {
   void writersShareOneIncreasingSequence() throws Exception {
     final var messages =
         new FeishuMessages(
-            new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
+            new FeishuProperties(
+                null, null, null, null, null, null, null, Locale.ENGLISH, null, null));
     final var panels = panels(messages);
     final var run =
         FeishuCardUpdater.forRun(card, new JsonMapper(), null, messages, cardElements(messages));

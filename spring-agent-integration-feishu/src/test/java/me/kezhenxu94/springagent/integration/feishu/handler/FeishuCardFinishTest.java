@@ -51,7 +51,8 @@ class FeishuCardFinishTest {
 
     final var messages =
         new FeishuMessages(
-            new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
+            new FeishuProperties(
+                null, null, null, null, null, null, null, Locale.ENGLISH, null, null));
     card = new FeishuCard(feishu, "card-1", null, new UserHome(userHomeRoot), messages);
   }
 

@@ -61,7 +61,7 @@ class FeishuDocToolsTest {
             feishuDocxService,
             new JsonMapper(),
             new FeishuProperties(
-                null, null, "lv3wgjcyixc.feishu.cn", null, null, null, null, null, null),
+                null, null, "lv3wgjcyixc.feishu.cn", null, null, null, null, null, null, null),
             new FeishuPermissionTools(feishu));
   }
 

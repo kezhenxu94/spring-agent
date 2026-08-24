@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.integration.feishu.config;
 
+import com.lark.oapi.core.enums.BaseUrlEnum;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
@@ -10,6 +11,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * Feishu tenant and application credentials.
  *
+ * @param baseUrl which of the two products this app is registered with: {@code FeiShu} (the Chinese
+ *     product, open.feishu.cn) or {@code LarkSuite} (the international one, open.larksuite.com). An
+ *     app id/secret pair is only valid against the product it was created on, so this must match
+ *     where the app was registered. Defaults to {@code FeiShu}.
  * @param locale which language the cards speak. Defaults to the host's, so setting it is for a
  *     workspace whose language differs from the machine the agent runs on. See {@link
  *     FeishuMessages} for what it selects.
@@ -31,6 +36,7 @@ public record FeishuProperties(
     String botOpenId,
     String verificationToken,
     Locale locale,
+    BaseUrlEnum baseUrl,
     Duration requestTimeout) {
 
   /** Generous for a card update, which is a small write to a nearby service. */
@@ -39,6 +45,9 @@ public record FeishuProperties(
   public FeishuProperties {
     if (requestTimeout == null || requestTimeout.isZero() || requestTimeout.isNegative()) {
       requestTimeout = DEFAULT_REQUEST_TIMEOUT;
+    }
+    if (baseUrl == null) {
+      baseUrl = BaseUrlEnum.FeiShu;
     }
   }
 

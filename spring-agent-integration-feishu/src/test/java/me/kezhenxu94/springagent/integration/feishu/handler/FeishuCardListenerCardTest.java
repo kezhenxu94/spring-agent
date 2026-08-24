@@ -58,7 +58,7 @@ class FeishuCardListenerCardTest {
   private FeishuCardListener listenerIn(final Locale locale) {
     final var messages =
         new FeishuMessages(
-            new FeishuProperties(null, null, null, null, null, null, null, locale, null));
+            new FeishuProperties(null, null, null, null, null, null, null, locale, null, null));
     final var listener =
         new FeishuCardListener(
             feishu,
