@@ -89,6 +89,7 @@ public class FeishuEventHandler {
   @Bean(initMethod = "start", destroyMethod = "disconnect")
   public Client client() {
     return new Client.Builder(feishuProperties.appId(), feishuProperties.appSecret())
+        .domain(feishuProperties.baseUrl().getUrl())
         .eventHandler(eventDispatcher())
         .build();
   }
