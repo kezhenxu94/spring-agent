@@ -23,9 +23,6 @@ import com.lark.oapi.service.docx.v1.model.ListDocumentBlockReq;
 import com.lark.oapi.service.docx.v1.model.PatchDocumentBlockReq;
 import com.lark.oapi.service.docx.v1.model.RawContentDocumentReq;
 import com.lark.oapi.service.docx.v1.model.UpdateBlockRequest;
-import com.lark.oapi.service.drive.v1.model.UploadAllMediaReq;
-import com.lark.oapi.service.drive.v1.model.UploadAllMediaReqBody;
-import java.io.File;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -428,39 +425,5 @@ public class FeishuDocxService {
     }
     log.info("Converted {} content to {} block(s)", contentType, resp.getData().getBlocks().length);
     return Jsons.DEFAULT.toJson(resp.getData());
-  }
-
-  @SneakyThrows
-  public String uploadMedia(
-      final String fileName, final String parentType, final String parentNode, final File file) {
-    final var resp =
-        feishu
-            .drive()
-            .v1()
-            .media()
-            .uploadAll(
-                UploadAllMediaReq.newBuilder()
-                    .uploadAllMediaReqBody(
-                        UploadAllMediaReqBody.newBuilder()
-                            .fileName(fileName)
-                            .parentType(parentType)
-                            .parentNode(parentNode)
-                            .size((int) file.length())
-                            .file(file)
-                            .build())
-                    .build());
-    if (!resp.success()) {
-      log.error(
-          "Failed to upload media '{}' for parent node {}: {}, {}",
-          fileName,
-          parentNode,
-          resp.getCode(),
-          resp.getMsg());
-      throw new IllegalStateException("Failed to upload media: " + resp.getMsg());
-    }
-    final var fileToken = resp.getData().getFileToken();
-    log.info(
-        "Uploaded media '{}' for parent node {}: fileToken={}", fileName, parentNode, fileToken);
-    return fileToken;
   }
 }

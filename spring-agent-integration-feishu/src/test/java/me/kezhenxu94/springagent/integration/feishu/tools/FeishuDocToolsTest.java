@@ -17,6 +17,7 @@ import java.util.Map;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import me.kezhenxu94.springagent.integration.feishu.docx.FeishuDocxService;
+import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -59,6 +60,7 @@ class FeishuDocToolsTest {
     tools =
         new FeishuDocTools(
             feishuDocxService,
+            new FeishuDriveService(feishu),
             new JsonMapper(),
             new FeishuProperties(
                 null, null, "lv3wgjcyixc.feishu.cn", null, null, null, null, null, null, null),

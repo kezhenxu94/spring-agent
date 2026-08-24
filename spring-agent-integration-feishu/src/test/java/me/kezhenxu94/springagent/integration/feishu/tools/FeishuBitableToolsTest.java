@@ -20,15 +20,19 @@ import com.lark.oapi.service.drive.v1.V1;
 import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberReq;
 import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberResp;
 import com.lark.oapi.service.drive.v1.resource.PermissionMember;
+import java.io.File;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.integration.feishu.bitable.FeishuBitableService;
+import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.model.ToolContext;
@@ -38,6 +42,7 @@ import tools.jackson.databind.json.JsonMapper;
 class FeishuBitableToolsTest {
 
   @Mock private FeishuBitableService feishuBitableService;
+  @Mock private FeishuDriveService feishuDriveService;
   @Mock private Client feishu;
   @Mock private DriveService driveService;
   @Mock private V1 driveV1;
@@ -66,7 +71,10 @@ class FeishuBitableToolsTest {
 
     tools =
         new FeishuBitableTools(
-            feishuBitableService, new FeishuPermissionTools(feishu), new JsonMapper());
+            feishuBitableService,
+            feishuDriveService,
+            new FeishuPermissionTools(feishu),
+            new JsonMapper());
   }
 
   @Test
@@ -420,11 +428,51 @@ class FeishuBitableToolsTest {
   }
 
   @Test
+  @DisplayName("uploadBitableAttachment uploads against the base itself and defaults to a file")
+  void uploadBitableAttachment(@TempDir final java.nio.file.Path directory) throws Exception {
+    final var file = Files.writeString(directory.resolve("shot.png"), "x");
+    when(feishuDriveService.uploadMedia(
+            "shot.png", "bitable_file", "appToken", new File(file.toString())))
+        .thenReturn("boxcnabc");
+
+    final var token = tools.uploadBitableAttachment("appToken", file.toString(), "shot.png", null);
+
+    assertThat(token).isEqualTo("boxcnabc");
+  }
+
+  @Test
+  @DisplayName("uploadBitableAttachment refuses a parent type a bitable cell cannot refer to")
+  void uploadBitableAttachmentWithAForeignParentType(@TempDir final java.nio.file.Path directory)
+      throws Exception {
+    final var file = Files.writeString(directory.resolve("shot.png"), "x");
+
+    // docx_image would upload happily and only fail later, as the record write rejecting the token.
+    assertThatThrownBy(
+            () ->
+                tools.uploadBitableAttachment(
+                    "appToken", file.toString(), "shot.png", "docx_image"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("bitable_image or bitable_file");
+    verifyNoInteractions(feishuDriveService);
+  }
+
+  @Test
+  @DisplayName("uploadBitableAttachment says so when the path is not a file, rather than uploading")
+  void uploadBitableAttachmentWithAMissingFile() {
+    assertThatThrownBy(
+            () -> tools.uploadBitableAttachment("appToken", "/nope/shot.png", "shot.png", null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("existing file");
+    verifyNoInteractions(feishuDriveService);
+  }
+
+  @Test
   @DisplayName("the guides name the shapes a record write and a search filter actually take")
   void guides() {
     assertThat(tools.getBitableFieldReference())
         .contains("link_record_ids")
-        .contains("milliseconds");
+        .contains("milliseconds")
+        .contains("FeishuUploadBitableAttachment");
     assertThat(tools.getBitableFilterGuide())
         .contains("conjunction")
         .contains("ExactDate")
