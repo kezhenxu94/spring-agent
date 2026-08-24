@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.integration.feishu.tools;
 
+import java.io.File;
 import java.util.List;
 import lombok.Builder;
 import lombok.RequiredArgsConstructor;
@@ -8,6 +9,7 @@ import lombok.extern.jackson.Jacksonized;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.integration.feishu.bitable.FeishuBitableService;
+import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -41,6 +43,7 @@ public class FeishuBitableTools {
   private static final int MAX_RECORDS_PER_DELETE = 500;
 
   final FeishuBitableService feishuBitableService;
+  final FeishuDriveService feishuDriveService;
   final FeishuPermissionTools feishuPermissionTools;
   final JsonMapper objectMapper;
 
@@ -98,8 +101,10 @@ yet creates the option
 13 Phone: a string matching (+)?digits, at most 64 characters
 15 Url: an object, {"text": "Anthropic", "link": "https://www.anthropic.com"}
 17 Attachment: read as [{"file_token": ..., "name": ..., "type": ..., "size": ..., "url": ..., \
-"tmp_url": ...}], **write as [{"file_token": "..."}]** — upload the file first and pass its token. \
-At most 100 in a cell
+"tmp_url": ...}], **write as [{"file_token": "..."}]**. A file_token is not something you can make \
+up or carry over from elsewhere: get one from FeishuUploadBitableAttachment, which uploads a local \
+file into *this* base. A token belonging to another base or document is rejected. At most 100 in a \
+cell
 18 Single link / 21 Duplex link: read as {"link_record_ids": ["recA", "recB"]}, **write as the plain \
 array ["recA", "recB"]** of record ids in the linked table. At most 500 in a cell
 19 Lookup / 20 Formula: read-only, {"type": <the underlying type>, "value": [...]}. The value is \
@@ -116,6 +121,13 @@ At most 10 in a cell
 So a fieldsJson for FeishuCreateBitableRecord looks like
 {"Title": "Ship the release", "Owner": [{"id": "ou_abc"}], "Due": 1702449755000, "Status": "Doing", \
 "Tags": ["urgent", "backend"], "Done": false, "Link": {"text": "PR", "link": "https://..."}}
+
+Writing a picture or a file into an attachment cell is therefore two steps, not one:
+1. FeishuUploadBitableAttachment with the base's appToken and the local path, which answers with a \
+file_token
+2. FeishuCreateBitableRecord (or an update, or a batch write) with that token in the cell: \
+{"Screenshot": [{"file_token": "boxcnrHpsg1QDqXAAAyachabcef"}]}
+Several files in one cell means several uploads and one array of tokens.
 
 The ui_type values FeishuCreateBitableTable accepts for a new field are Text, Barcode, Number, \
 Progress, Currency, Rating, SingleSelect, MultiSelect, DateTime, Checkbox, User, GroupChat, Phone, \
@@ -712,6 +724,48 @@ no rows rather than an error.
     }
     feishuBitableService.batchDeleteRecords(appToken, tableId, recordIds);
     return "Deleted " + recordIds.size() + " record(s) from table " + tableId + ".";
+  }
+
+  @Tool(
+      name = "FeishuUploadBitableAttachment",
+      description =
+          "Upload a local image or file into a bitable and return the file_token that an attachment"
+              + " cell refers to it by. **This is step one of putting a picture or a file in a"
+              + " record**; step two is writing [{\"file_token\": \"<what this returned>\"}]"
+              + " into that field with FeishuCreateBitableRecord or one of the update tools.\n"
+              + "The token belongs to the base it was uploaded into: one taken from another base,"
+              + " from a document, or from an attachment cell read back earlier is refused, so"
+              + " upload again rather than reusing a token. An attachment cell holds at most 100"
+              + " files, each its own upload."
+              + " FeishuBitableFieldReference has the rest of the field shapes.")
+  public String uploadBitableAttachment(
+      @ToolParam(
+              description =
+                  "The app_token of the bitable the attachment is destined for; the token is bound"
+                      + " to it")
+          String appToken,
+      @ToolParam(description = "Absolute path of the local file") String filePath,
+      @ToolParam(description = "Filename to show in the cell") String fileName,
+      @ToolParam(
+              description =
+                  "bitable_image for an image, bitable_file for anything else; bitable_file when"
+                      + " left out",
+              required = false)
+          String parentType) {
+    final var file = new File(filePath);
+    if (!file.isFile()) {
+      throw new IllegalArgumentException(
+          "filePath does not point to an existing file: " + filePath);
+    }
+    final var targetParentType =
+        parentType == null || parentType.isBlank() ? "bitable_file" : parentType;
+    if (!"bitable_image".equals(targetParentType) && !"bitable_file".equals(targetParentType)) {
+      // Any other parent_type uploads the file somewhere a bitable cell then cannot refer to, and
+      // Feishu reports that only later, as the record write failing.
+      throw new IllegalArgumentException(
+          "parentType must be bitable_image or bitable_file, got " + targetParentType);
+    }
+    return feishuDriveService.uploadMedia(fileName, targetParentType, appToken, file);
   }
 
   @Tool(

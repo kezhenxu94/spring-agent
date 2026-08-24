@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import me.kezhenxu94.springagent.integration.feishu.docx.FeishuDocxService;
+import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -23,6 +24,7 @@ import tools.jackson.databind.json.JsonMapper;
 @RequiredArgsConstructor
 public class FeishuDocTools {
   final FeishuDocxService feishuDocxService;
+  final FeishuDriveService feishuDriveService;
   final JsonMapper objectMapper;
   final FeishuProperties feishuProperties;
   final FeishuPermissionTools feishuPermissionTools;
@@ -558,6 +560,6 @@ nothing more.
       throw new IllegalArgumentException(
           "filePath does not point to an existing file: " + filePath);
     }
-    return feishuDocxService.uploadMedia(fileName, parentType, blockId, file);
+    return feishuDriveService.uploadMedia(fileName, parentType, blockId, file);
   }
 }
