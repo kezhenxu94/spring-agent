@@ -74,7 +74,7 @@ class FeishuCardUpdaterQueuedMessageTest {
   @Test
   @DisplayName("a message waiting is quoted on the card, and then said to have been picked up")
   void queuedThenRead() throws Exception {
-    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements());
+    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
 
     updater.onMessageQueued("it should be kezhenxu94/spring-agent");
 
@@ -92,7 +92,7 @@ class FeishuCardUpdaterQueuedMessageTest {
   @Test
   @DisplayName("every message gets a quoted line of its own, saying where each one stands")
   void oneLinePerMessage() throws Exception {
-    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements());
+    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
 
     updater.onMessageQueued("the first one");
     updater.onQueuedMessageRead();
@@ -108,7 +108,7 @@ class FeishuCardUpdaterQueuedMessageTest {
   @Test
   @DisplayName("a message written over several lines is folded onto the one line it is given")
   void multiLineMessageIsFolded() throws Exception {
-    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements());
+    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
 
     updater.onMessageQueued("  it should be\n   kezhenxu94/spring-agent  ");
 
@@ -120,12 +120,32 @@ class FeishuCardUpdaterQueuedMessageTest {
   @Test
   @DisplayName("a message a line cannot show is still said to have arrived")
   void aMessageWithNothingToShow() throws Exception {
-    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements());
+    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
 
     updater.onMessageQueued(null);
 
     assertThat(lastWrite().getContentCardElementReqBody().getContent())
         .contains(messages.get("card-message-unshown"));
+  }
+
+  @Test
+  @DisplayName("the answer is put on the card first, being what the queued line is placed above")
+  void theAnswerIsAddedBeforeTheLineThatAnchorsOnIt() throws Exception {
+    // Both are elements the card gains on first use, and this one is placed above the answer — so a
+    // message queued before the model has said anything has to add the answer's element itself.
+    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
+
+    updater.onMessageQueued("it should be kezhenxu94/spring-agent");
+
+    final var captor = ArgumentCaptor.forClass(CreateCardElementReq.class);
+    verify(feishu.cardkit().v1().cardElement(), atLeastOnce()).create(captor.capture());
+    final var inserts = captor.getAllValues();
+    assertThat(inserts).hasSize(2);
+    assertThat(inserts.get(0).getCreateCardElementReqBody().getTargetElementId()).isEqualTo("stop");
+    assertThat(inserts.get(0).getCreateCardElementReqBody().getElements())
+        .contains("\"element_id\":\"message\"");
+    assertThat(inserts.get(1).getCreateCardElementReqBody().getTargetElementId())
+        .isEqualTo("message");
   }
 
   @Test
@@ -152,9 +172,8 @@ class FeishuCardUpdaterQueuedMessageTest {
   }
 
   /** The real elements: what the card gains as the run first has something to put in them. */
-  private static FeishuCardElements cardElements() {
-    final var elements = new FeishuCardElements(new JsonMapper());
-    elements.cardElements = new ClassPathResource("feishu/card-elements.json");
-    return elements;
+  private static FeishuCardElements cardElements(final FeishuMessages messages) {
+    return new FeishuCardElements(
+        new JsonMapper(), messages, new ClassPathResource("feishu/card-elements.json"));
   }
 }

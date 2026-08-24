@@ -1,17 +1,52 @@
 {
   "comment": [
-    "The parts of the reply card a run only sometimes has anything to put in, added to the card the",
-    "first time it does rather than sitting empty on every card: an element the card carries is",
-    "space the card gives up, and most runs write no todo list and are interrupted by nobody.",
+    "Every element of the reply card that comes and goes, as opposed to the frame it lives in.",
+    "reply-card.json holds the card's configuration and its footer — the divider and the",
+    "conversation hint, which every card carries from the moment it is sent to after it has",
+    "finished — and nothing else; everything a run puts on the card and takes off it again is here.",
     "Where each one goes is decided in FeishuCardElements, which also sets the ids the run streams",
     "into — so a deployment replacing this file is free to restyle these elements and nothing else.",
-    "'queued' holds what the user said while the run was working, one quoted line per message, and",
-    "goes above the answer so the card reads in the order things were said: the message Feishu",
-    "quotes above the card, then this, then the reply. 'todo' is the run's task list, under the",
-    "answer. 'usage' is what the turn has cost, in the card's footer. This key is ignored.",
-    "reply-card.json keeps the elements every run writes to — the answer, the stop button, the",
-    "footer divider and the conversation hint — and those are the anchors these are placed against."
+    "'stop' is the button that cancels the run. It goes on the card as the card is created, since a",
+    "run is stoppable from the moment it is on screen, and comes off again when the run ends.",
+    "The rest are added the first time the run has something to put in them rather than sitting",
+    "empty on every card: an element the card carries is space the card gives up, and most runs",
+    "write no todo list and are interrupted by nobody. 'message' is the answer itself — until the",
+    "model says its first word there is nothing to show, and a streaming card says as much for",
+    "itself in the chat list. 'queued' holds what the user said",
+    "while the run was working, one quoted line per message, and goes above the answer so the card",
+    "reads in the order things were said: the message Feishu quotes above the card, then this, then",
+    "the reply. 'todo' is the run's task list, under the answer. 'usage' is what the turn has cost,",
+    "in the card's footer. This key is ignored."
   ],
+  "stop": {
+    "tag": "button",
+    "text": {
+      "tag": "plain_text",
+      "content": "{stop}"
+    },
+    "type": "danger_filled",
+    "width": "default",
+    "size": "tiny",
+    "margin": "4px 0 8px 0",
+    "icon": {
+      "tag": "standard_icon",
+      "token": "w1-h1_outlined"
+    },
+    "behaviors": [
+      {
+        "type": "callback",
+        "value": {
+          "button": "stop"
+        }
+      }
+    ]
+  },
+  "message": {
+    "tag": "markdown",
+    "content": "",
+    "text_align": "left",
+    "text_size": "normal_v2"
+  },
   "queued": {
     "tag": "markdown",
     "content": "",

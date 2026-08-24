@@ -6,6 +6,7 @@ import java.util.Locale;
 import java.util.stream.StreamSupport;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
+import me.kezhenxu94.springagent.integration.feishu.handler.FeishuCardElements;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,12 +22,15 @@ class FeishuMessageCardTest {
 
   @BeforeEach
   void setUp() {
+    final var messages =
+        new FeishuMessages(
+            new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
     card =
         new FeishuMessageCard(
             objectMapper,
-            new FeishuMessages(
-                new FeishuProperties(
-                    null, null, null, null, null, null, null, Locale.ENGLISH, null)),
+            messages,
+            new FeishuCardElements(
+                objectMapper, messages, new ClassPathResource("feishu/card-elements.json")),
             new ClassPathResource("feishu/reply-card.json"));
   }
 

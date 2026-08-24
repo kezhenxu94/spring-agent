@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import lombok.RequiredArgsConstructor;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
+import me.kezhenxu94.springagent.integration.feishu.handler.FeishuCardElements;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
@@ -26,6 +27,13 @@ public class FeishuMessageCard {
   private final JsonMapper objectMapper;
   private final FeishuMessages messages;
 
+  /**
+   * Where the element the markdown goes into comes from: the card template no longer ships one,
+   * since a run streaming into the card adds it as it writes its first word. Taken from the same
+   * place that run takes it, so an answer sent whole looks like an answer that was streamed.
+   */
+  private final FeishuCardElements elements;
+
   // The template arrives as a constructor argument, not through a @Value field the way the classes
   // that read it for themselves have to do it: a field is an injection point of its own, and AOT
   // writes a plain assignment for it that cannot target a final field. This stays final because
@@ -44,17 +52,18 @@ public class FeishuMessageCard {
     if (config instanceof ObjectNode configNode) {
       configNode.put("streaming_mode", false);
     }
-    final var elements = (ArrayNode) card.path("body").path("elements");
-    final var iterator = elements.iterator();
+    // Neither is in the shipped template — a card gains both as it runs, and this one never ran —
+    // but a deployment's own card may still carry them, and a dead stop button on a finished
+    // message is worse than one that was never there.
+    final var body = (ArrayNode) card.path("body").path("elements");
+    final var iterator = body.iterator();
     while (iterator.hasNext()) {
-      final var el = iterator.next();
-      final var elementId = el.path("element_id").asString();
-      if ("stop".equals(elementId) || "usage".equals(elementId)) {
+      final var elementId = iterator.next().path("element_id").asString();
+      if (FeishuCardElements.STOP.equals(elementId) || "usage".equals(elementId)) {
         iterator.remove();
-      } else if ("message".equals(elementId)) {
-        ((ObjectNode) el).put("content", markdown);
       }
     }
+    body.insert(0, elements.element(FeishuCardElements.MESSAGE).put("content", markdown));
     return objectMapper.writeValueAsString(card);
   }
 }

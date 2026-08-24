@@ -72,7 +72,7 @@ class FeishuCardUpdaterUsageTest {
             // A tenth of a cent per thousand tokens each way, so the arithmetic is checkable.
             Map.of("the-model", new ModelPricing(1.0, 1.0, 1.0, Currency.USD)),
             messages,
-            cardElements());
+            cardElements(messages));
   }
 
   /** The real builder: what a panel holds is the point of the assertions below. */
@@ -182,9 +182,8 @@ class FeishuCardUpdaterUsageTest {
   }
 
   /** The real elements: what the card gains as the run first has something to put in them. */
-  private static FeishuCardElements cardElements() {
-    final var elements = new FeishuCardElements(new JsonMapper());
-    elements.cardElements = new ClassPathResource("feishu/card-elements.json");
-    return elements;
+  private static FeishuCardElements cardElements(final FeishuMessages messages) {
+    return new FeishuCardElements(
+        new JsonMapper(), messages, new ClassPathResource("feishu/card-elements.json"));
   }
 }

@@ -58,7 +58,8 @@ class FeishuCardUpdaterErrorTest {
         new FeishuMessages(
             new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
     card = new FeishuCard(feishu, "card-1", restTemplate, new UserHome(userHomeRoot), messages);
-    updater = FeishuCardUpdater.forRun(card, new JsonMapper(), null, messages, cardElements());
+    updater =
+        FeishuCardUpdater.forRun(card, new JsonMapper(), null, messages, cardElements(messages));
   }
 
   private String lastContentSent() throws Exception {
@@ -144,9 +145,8 @@ class FeishuCardUpdaterErrorTest {
   }
 
   /** The real elements: what the card gains as the run first has something to put in them. */
-  private static FeishuCardElements cardElements() {
-    final var elements = new FeishuCardElements(new JsonMapper());
-    elements.cardElements = new ClassPathResource("feishu/card-elements.json");
-    return elements;
+  private static FeishuCardElements cardElements(final FeishuMessages messages) {
+    return new FeishuCardElements(
+        new JsonMapper(), messages, new ClassPathResource("feishu/card-elements.json"));
   }
 }

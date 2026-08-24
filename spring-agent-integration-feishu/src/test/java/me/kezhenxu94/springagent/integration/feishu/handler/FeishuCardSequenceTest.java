@@ -87,7 +87,7 @@ class FeishuCardSequenceTest {
             new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
     final var panels = panels(messages);
     final var run =
-        FeishuCardUpdater.forRun(card, new JsonMapper(), null, messages, cardElements());
+        FeishuCardUpdater.forRun(card, new JsonMapper(), null, messages, cardElements(messages));
     card.insertBeforeFooter(
         panels.forInsert("sub_1", "Reading the log", "Read the log and say what broke", null),
         "sub_1");
@@ -144,9 +144,8 @@ class FeishuCardSequenceTest {
   }
 
   /** The real elements: what the card gains as the run first has something to put in them. */
-  private static FeishuCardElements cardElements() {
-    final var elements = new FeishuCardElements(new JsonMapper());
-    elements.cardElements = new ClassPathResource("feishu/card-elements.json");
-    return elements;
+  private static FeishuCardElements cardElements(final FeishuMessages messages) {
+    return new FeishuCardElements(
+        new JsonMapper(), messages, new ClassPathResource("feishu/card-elements.json"));
   }
 }

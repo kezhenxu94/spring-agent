@@ -27,6 +27,8 @@ import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Gives a Feishu-originated agent run a card to stream into, whichever way the run was started: it
@@ -306,9 +308,24 @@ public class FeishuCardListener implements AgentResponseListener {
     }
   }
 
+  /**
+   * Creates the card the run streams into: the template — the card's configuration and its footer —
+   * with the stop button put above that footer.
+   *
+   * <p>The button is part of the card from the moment it is sent rather than inserted afterwards,
+   * since a run is stoppable as soon as it is on screen and a second call to add it would leave a
+   * card nobody could stop in between. It comes from the elements file all the same, because it is
+   * one of the elements that come and go — {@code FeishuCard#finish()} takes it off again — and
+   * because everything above it on the card is anchored to it.
+   */
   private String createCard(final String runId) throws Exception {
-    final var cardJson =
-        messages.renderCard(feishuReplyCard.getContentAsString(StandardCharsets.UTF_8));
+    final var card =
+        (ObjectNode)
+            om.readTree(
+                messages.renderCard(feishuReplyCard.getContentAsString(StandardCharsets.UTF_8)));
+    ((ArrayNode) card.path("body").path("elements"))
+        .insert(0, cardElements.element(FeishuCardElements.STOP));
+    final var cardJson = om.writeValueAsString(card);
     final var response =
         feishu
             .cardkit()

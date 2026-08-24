@@ -56,7 +56,11 @@ class FeishuCardListenerBackgroundTest {
             new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null));
     final var messageCard =
         new FeishuMessageCard(
-            new JsonMapper(), messages, new ClassPathResource("feishu/reply-card.json"));
+            new JsonMapper(),
+            messages,
+            new FeishuCardElements(
+                new JsonMapper(), messages, new ClassPathResource("feishu/card-elements.json")),
+            new ClassPathResource("feishu/reply-card.json"));
     listener =
         new FeishuCardListener(
             feishu,

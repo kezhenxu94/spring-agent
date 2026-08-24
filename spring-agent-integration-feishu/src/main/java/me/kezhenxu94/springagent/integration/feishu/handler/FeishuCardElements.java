@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
@@ -11,13 +12,19 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * The parts of the reply card a run only sometimes has anything to put in: the messages the user
- * sent while it was working, its task list, and what the turn has cost.
+ * Every element of the reply card that comes and goes: the stop button, the run's answer, the
+ * messages the user sent while it was working, its task list, and what the turn has cost. What is
+ * left in {@code reply-card.json} is the card's configuration and its footer, which is the frame
+ * all of these are placed in.
  *
- * <p>Added to the card the first time the run writes to one, rather than shipped empty in the card
- * itself: an element the card carries is space the card gives up on every reply, and most runs
- * write no todo list and are interrupted by nobody. {@link FeishuCardUpdater} is what adds them,
- * each above the element named here, and streams into them afterwards.
+ * <p>The stop button goes on as the card is created — a run is stoppable from the moment it is on
+ * screen — and the rest the first time the run writes to one, rather than being shipped empty in
+ * the card itself: an element the card carries is space the card gives up on every reply, and most
+ * runs write no todo list and are interrupted by nobody. The answer belongs here for that reason
+ * too: a streaming card already says in the chat list that it is being written, so an empty
+ * markdown element would only add a blank line for as long as the model takes to answer. {@link
+ * FeishuCardListener} puts the button on the card it creates; {@link FeishuCardUpdater} adds the
+ * rest, each above the element named here, and streams into them afterwards.
  *
  * <p>Nothing here talks to Feishu — JSON out — which is what makes the layout testable without a
  * tenant.
@@ -25,6 +32,12 @@ import tools.jackson.databind.node.ObjectNode;
 @Component
 @RequiredArgsConstructor
 public class FeishuCardElements {
+
+  /** The button that cancels the run, for as long as there is a run to cancel. */
+  public static final String STOP = "stop";
+
+  /** What the run itself is saying: the answer, and the tool calls it makes on the way there. */
+  public static final String MESSAGE = "message";
 
   /** What the user said while the run was working. */
   static final String QUEUED = "queued";
@@ -36,26 +49,40 @@ public class FeishuCardElements {
   static final String USAGE = "usage";
 
   /**
-   * Which element of the card each one is added above, and so where it ends up: what the user added
-   * mid-run reads above the answer, the task list under it, and the spend in the footer.
+   * Which element of the card each one is added above, and so where it ends up: the stop button
+   * just above the footer, the answer above the button, what the user added mid-run above the
+   * answer, the task list under the answer, and the spend in the footer.
    *
-   * <p>Decided here rather than in the template, because these are the elements {@code
-   * reply-card.json} is required to keep — the run streams into them by id — and an anchor a
-   * deployment could rename is an insert that fails at runtime.
+   * <p>Decided here rather than in the template, because the two the chain hangs from are the
+   * elements {@code reply-card.json} is required to keep — the footer divider and the hint below it
+   * — and an anchor a deployment could rename is an insert that fails at runtime. The rest anchor
+   * on each other, so each has to be on the card before whatever goes above it can be: the answer
+   * needs the button, which the card is created with, and {@link #QUEUED} needs the answer, which
+   * {@link FeishuCardUpdater} sees to.
    */
   private static final Map<String, String> ANCHORS =
       Map.of(
-          QUEUED, "message",
-          TODO, FeishuCard.FOOTER_ELEMENT_ID,
-          USAGE, "guide");
+          STOP,
+          FeishuCard.FOOTER_ELEMENT_ID,
+          MESSAGE,
+          STOP,
+          QUEUED,
+          MESSAGE,
+          TODO,
+          FeishuCard.FOOTER_ELEMENT_ID,
+          USAGE,
+          "guide");
 
   private final JsonMapper om;
+  private final FeishuMessages messages;
 
-  // Not final, matching FeishuSubagentPanel#subagentPanel: @Value on a field is an injection point
-  // in its own right, and AOT generates a plain field assignment for it, which cannot target a
-  // final field the way the JVM's reflective injection can.
+  // A constructor argument rather than a @Value field, matching FeishuMessageCard: a field is an
+  // injection point of its own, and AOT writes a plain assignment for it that cannot target a final
+  // field. This stays final because lombok.config lists @Value as copyable, so the generated
+  // constructor carries it to the parameter — remove that line and this silently becomes an
+  // unresolved placeholder.
   @Value("${app.feishu.card-elements:classpath:/feishu/card-elements.json}")
-  Resource cardElements;
+  private final Resource cardElements;
 
   /** The element {@code elementId} is added above. */
   String anchorOf(final String elementId) {
@@ -67,22 +94,32 @@ public class FeishuCardElements {
   }
 
   /**
-   * One element as the JSON array the card element API takes for an insert.
+   * One element, as the card should carry it.
    *
    * <p>The id is set here rather than left to the template for the same reason the anchors are: it
-   * is what the run streams into, and a deployment restyling the element has no say in it.
+   * is what the run streams into, and a deployment restyling the element has no say in it. Labels
+   * are filled in here as well, so an element carrying one — the stop button — reads in the
+   * workspace's language whoever puts it on the card.
    */
   @SneakyThrows
-  public String forInsert(final String elementId) {
+  public ObjectNode element(final String elementId) {
     final var template =
-        (ObjectNode) om.readTree(cardElements.getContentAsString(StandardCharsets.UTF_8));
+        (ObjectNode)
+            om.readTree(
+                messages.renderCard(cardElements.getContentAsString(StandardCharsets.UTF_8)));
     final var element = (ObjectNode) template.get(elementId);
     if (element == null) {
       throw new IllegalStateException("No '" + elementId + "' element in " + cardElements);
     }
     element.put("element_id", elementId);
+    return element;
+  }
+
+  /** One element as the JSON array the card element API takes for an insert. */
+  @SneakyThrows
+  public String forInsert(final String elementId) {
     final var array = om.createArrayNode();
-    array.add(element);
+    array.add(element(elementId));
     return om.writeValueAsString(array);
   }
 }

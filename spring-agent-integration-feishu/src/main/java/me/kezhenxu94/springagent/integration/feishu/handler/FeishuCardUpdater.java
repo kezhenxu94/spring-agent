@@ -60,7 +60,11 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   private final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing;
   private final FeishuMessages messages;
 
-  /** The element this run's own words go into: the card's message, or the panel's body. */
+  /**
+   * The element this run's own words go into: the card's message, or the panel's body. On the card
+   * it is one of the elements added as it is first written to — see {@link FeishuCardElements} —
+   * which is why every write to it goes through {@link #sendContent(String)}.
+   */
   private final String contentElementId;
 
   /** Where this run's spend is written. */
@@ -140,7 +144,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         om,
         modelPricing,
         messages,
-        "message",
+        FeishuCardElements.MESSAGE,
         FeishuCardElements.USAGE,
         FeishuCardElements.TODO,
         FeishuCardElements.QUEUED,
@@ -433,6 +437,9 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   }
 
   private synchronized void sendContent(String content) {
+    if (!added(contentElementId)) {
+      return;
+    }
     card.stream(contentElementId, content);
   }
 
@@ -546,7 +553,9 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     if (queuedElementId == null || queued.isEmpty()) {
       return;
     }
-    if (!added(queuedElementId)) {
+    // The answer first: what the user added mid-run is placed above it, so the element it anchors
+    // on has to be on the card before this one can be.
+    if (!added(contentElementId) || !added(queuedElementId)) {
       return;
     }
     final var lines = new ArrayList<String>();

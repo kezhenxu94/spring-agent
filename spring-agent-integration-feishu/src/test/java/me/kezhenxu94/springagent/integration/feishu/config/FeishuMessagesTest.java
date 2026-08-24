@@ -15,7 +15,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The card templates and these messages have to agree on placeholder names, and nothing else checks
- * that they do: a name that matches nothing leaves a literal {@code {generating}} in a live card.
+ * that they do: a name that matches nothing leaves a literal {@code {stop}} in a live card.
  */
 class FeishuMessagesTest {
 
@@ -65,10 +65,18 @@ class FeishuMessagesTest {
   @Test
   @DisplayName("the shipped card has every placeholder these messages can fill, and no others")
   void shippedCardPlaceholdersAllResolve() throws Exception {
-    final var rendered = messagesIn(Locale.ENGLISH).renderCard(shipped("feishu/reply-card.json"));
+    final var messages = messagesIn(Locale.ENGLISH);
+    final var card = messages.renderCard(shipped("feishu/reply-card.json"));
 
-    assertThat(rendered).doesNotContain("{generating}", "{stop}", "{conversationHint}");
-    assertThat(rendered).contains("Generating...", "Stop", "carry on the conversation");
+    assertThat(card).doesNotContain("{conversationHint}");
+    assertThat(card).contains("carry on the conversation");
+
+    // The stop button is labelled in the elements file, not the card: it is one of the elements a
+    // run puts on the card and takes off again, and it is rendered wherever it is read from.
+    final var elements = messages.renderCard(shipped("feishu/card-elements.json"));
+
+    assertThat(elements).doesNotContain("{stop}");
+    assertThat(elements).contains("Stop");
   }
 
   @Test
@@ -84,11 +92,15 @@ class FeishuMessagesTest {
   @Test
   @DisplayName("a translated card is rendered in the language it was asked for")
   void translatedLabelsAreRendered() throws Exception {
-    final var rendered = messagesIn(CHINESE).renderCard(shipped("feishu/reply-card.json"));
+    final var messages = messagesIn(CHINESE);
+    final var card = messages.renderCard(shipped("feishu/reply-card.json"));
 
-    assertThat(rendered).contains("正在生成...", "停止");
-    assertThat(rendered).doesNotContain("Generating...", "\"Stop\"");
-    assertThat(om.readTree(rendered).path("body").path("elements").isArray()).isTrue();
+    assertThat(card).contains("回复这条消息").doesNotContain("{conversationHint}");
+    assertThat(om.readTree(card).path("body").path("elements").isArray()).isTrue();
+
+    final var elements = messages.renderCard(shipped("feishu/card-elements.json"));
+
+    assertThat(elements).contains("停止").doesNotContain("\"Stop\"");
   }
 
   @Test

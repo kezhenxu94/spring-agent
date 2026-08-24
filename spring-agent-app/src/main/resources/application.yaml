@@ -582,16 +582,19 @@ app:
       base-url: ${DASHSCOPE_VISION_BASE_URL:https://ws-x1m3p2roqbf7dij1.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
       model: ${DASHSCOPE_VISION_MODEL:qwen3-vl-plus}
   feishu:
-    # The card the bot replies with, as a Spring resource location — override it with a
-    # `file:/path/to/card.json` of your own to restyle the card or write its labels in another
-    # language. A classpath location other than the default needs its own native-image resource
-    # hint; see FeishuRuntimeHints.
+    # The frame of the card the bot replies with, as a Spring resource location: the card's
+    # configuration — including the streaming summary the chat list shows while a run is working —
+    # and its footer, the divider and the conversation hint that every card carries from the moment
+    # it is sent to after it has finished. Override it with a `file:/path/to/card.json` of your own
+    # to restyle the card or write its labels in another language. A classpath location other than
+    # the default needs its own native-image resource hint; see FeishuRuntimeHints.
     reply-card: ${FEISHU_REPLY_CARD:classpath:/feishu/reply-card.json}
-    # The parts of that card a run only sometimes writes to — what the user said while it was
-    # working, its task list, what the turn cost — added to the card as it first has something to
-    # put in them rather than shipped empty on every reply. Same rules as above; a file of your own
-    # may restyle these three elements, but the card above has to keep the elements they are placed
-    # against (see FeishuCardElements).
+    # Everything a run puts on that card and takes off it again: the stop button, the answer, what
+    # the user said while the run was working, its task list, what the turn cost. The button goes on
+    # as the card is created — a run is stoppable as soon as it is on screen — and the rest as the
+    # run first has something to put in them, rather than sitting empty on every reply. Same rules
+    # as above; a file of your own may restyle these five elements, but the card above has to keep
+    # the footer they are anchored to (see FeishuCardElements).
     card-elements: ${FEISHU_CARD_ELEMENTS:classpath:/feishu/card-elements.json}
     # Which language the cards speak — their own words, as opposed to anything the model wrote:
     # the labels on the reply card and the question form, and the toasts a button answers with.

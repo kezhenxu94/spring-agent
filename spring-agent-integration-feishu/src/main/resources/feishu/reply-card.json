@@ -26,38 +26,9 @@
     "padding": "8px 12px",
     "elements": [
       {
-        "tag": "markdown",
-        "content": "<font color='grey'>{generating}</font>",
-        "text_align": "left",
-        "text_size": "normal_v2",
-        "element_id": "message"
-      },
-      {
-        "tag": "button",
-        "text": {
-          "tag": "plain_text",
-          "content": "{stop}"
-        },
-        "type": "danger_filled",
-        "width": "default",
-        "size": "tiny",
-        "icon": {
-          "tag": "standard_icon",
-          "token": "w1-h1_outlined"
-        },
-        "behaviors": [
-          {
-            "type": "callback",
-            "value": {
-              "button": "stop"
-            }
-          }
-        ],
-        "element_id": "stop"
-      },
-      {
         "tag": "hr",
-        "element_id": "guide_divider"
+        "element_id": "guide_divider",
+        "margin": "4px 0"
       },
       {
         "tag": "markdown",
