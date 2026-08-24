@@ -55,7 +55,9 @@ public class FeishuWikiTools {
               + " FeishuSheetUpdateRange and the rest) to read or change it.** When it is docx or"
               + " doc, pass the objToken as documentId to the doc tools:"
               + " FeishuGetDocumentRawContent for the plain text, FeishuListDocBlocks and"
-              + " FeishuGetDocBlockChildren for the block structure.")
+              + " FeishuGetDocBlockChildren for the block structure. When it is bitable, pass the"
+              + " objToken as appToken to the bitable tools: FeishuListBitableTables for what it"
+              + " holds and FeishuSearchBitableRecords for the rows of one of its tables.")
   @SneakyThrows
   public WikiNodeInfo getWikiNodeInfo(
       @ToolParam(

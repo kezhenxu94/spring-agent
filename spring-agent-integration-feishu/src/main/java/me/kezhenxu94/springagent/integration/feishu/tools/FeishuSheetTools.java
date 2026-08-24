@@ -96,7 +96,11 @@ FeishuSheetSetRangeStyle: writing content and styling it are two different opera
               + "Use it whenever a list owed to the user runs past ten rows, a file listing or"
               + " query result say: rather than spelling them out in the reply, create a"
               + " spreadsheet, write the rows with FeishuSheetUpdateRange, and reply with nothing"
-              + " but the link.")
+              + " but the link.\n"
+              + "A spreadsheet is a grid of cells. When the rows have structure the user will want"
+              + " to query later — a status to filter on, an owner to group by, a date to sort by —"
+              + " FeishuCreateBitable gives them typed columns and views instead, and is the better"
+              + " choice.")
   @SneakyThrows
   public CreatedSpreadsheet createSpreadsheet(
       @ToolParam(description = "Title of the new spreadsheet") String title,
