@@ -31,7 +31,10 @@
     "reads as the card's own text with a chevron beside it — 'auto_when_fold' is what keeps the",
     "closed line as narrow as its title while the thinking, once opened, still gets the whole width",
     "to wrap in, and 'follow_text' is what puts the chevron beside the title rather than off at the",
-    "right edge of a row nothing else fills.",
+    "right edge of a row nothing else fills. The chevron points right while the pane is closed and",
+    "turns to point down as it opens, which is what the 90 degrees is: the angle is what the icon is",
+    "rotated by when expanded, not the angle it ends at, so an arrow that already points down would",
+    "want -180 and this one wants a quarter turn.",
     "'todo' is the run's task list, under the answer. 'usage' is what the turn has cost,",
     "in the card's footer. This key is ignored."
   ],
@@ -92,11 +95,11 @@
       "vertical_align": "center",
       "icon": {
         "tag": "standard_icon",
-        "token": "down-small-ccm_outlined",
+        "token": "right-small-ccm_outlined",
         "size": "16px 16px"
       },
       "icon_position": "follow_text",
-      "icon_expanded_angle": -180
+      "icon_expanded_angle": 90
     },
     "elements": [
       {
