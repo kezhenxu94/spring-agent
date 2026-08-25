@@ -87,9 +87,10 @@ class FeishuCardUpdaterReasoningTest {
     assertThat(write.getContentCardElementReqBody().getContent())
         .isEqualTo("The user asked for the repository, so I should look it up.");
 
-    // The panel the run streams into, collapsed, titled in the workspace's language.
+    // The panel the run streams into, open — the thinking is happening as it arrives — and titled
+    // in the workspace's language.
     final var panel = insertOf("reasoning");
-    assertThat(panel).contains("\"tag\":\"collapsible_panel\"").contains("\"expanded\":false");
+    assertThat(panel).contains("\"tag\":\"collapsible_panel\"").contains("\"expanded\":true");
     assertThat(panel).contains("\"element_id\":\"reasoning_body\"");
     assertThat(panel).contains(messages.get("card-reasoning"));
   }

@@ -23,9 +23,13 @@
     "reads in the order things were said: the message Feishu quotes above the card, then this, then",
     "the reply. 'reasoning' is what the model thought its way through, on an endpoint that reports",
     "it, in a panel of its own between the queued messages and the answer: it is not the answer,",
-    "and a reader who wants it goes looking for it, so it arrives collapsed and stays on the card",
-    "collapsed after the run ends. Its first nested element is the one the run streams the thinking",
-    "into, which is why a deployment restyling this panel has to keep something there to write to.",
+    "so it is never folded into one. It is added the moment there is thinking to put in it and so",
+    "arrives open, because thinking is the only thing happening at that moment and a reader",
+    "watching a card do nothing is owed the one thing it is doing. Nothing shuts it again: a reader",
+    "who closes it has closed it for good, since Feishu reports a panel's chevron to nobody and a",
+    "run tidying the pane away could only do it by overruling a choice it cannot see them make.",
+    "Its first nested element is the one the run streams the thinking into, which is why a",
+    "deployment restyling this panel has to keep something there to write to.",
     "It has no border and no padding, unlike a subagent's panel: a subagent is a piece of work with",
     "a beginning and an end, worth drawing a box around, and this is a line the reader opens. So it",
     "reads as the card's own text with a chevron beside it — 'auto_when_fold' is what keeps the",
@@ -84,7 +88,7 @@
   },
   "reasoning": {
     "tag": "collapsible_panel",
-    "expanded": false,
+    "expanded": true,
     "vertical_spacing": "4px",
     "header": {
       "title": {
