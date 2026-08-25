@@ -119,6 +119,10 @@ public class FeishuCardElements {
    * goes above it too, so a panel anchored there stays above the answer when it arrives. And the
    * queued messages anchor on the panel once there is one, which is what keeps them at the top.
    *
+   * <p>The task list moves for the same reason at the other end of the card: the footer grows
+   * upwards as the spend line joins the hint, and a list anchored on the hint alone would come to
+   * rest under the spend rather than above it.
+   *
    * @param onCard the optional elements already added, which is what makes this answerable
    */
   String anchorOf(final String elementId, final Set<String> onCard) {
@@ -127,6 +131,9 @@ public class FeishuCardElements {
     }
     if (QUEUED.equals(elementId) && onCard.contains(REASONING)) {
       return REASONING;
+    }
+    if (TODO.equals(elementId) && onCard.contains(USAGE)) {
+      return USAGE;
     }
     return anchorOf(elementId);
   }

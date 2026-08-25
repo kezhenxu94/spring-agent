@@ -139,6 +139,14 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    */
   private String failureNotice = "";
 
+  /**
+   * How many tool calls are outstanding. Counted rather than flagged so that the line naming one
+   * comes off the card when the last call of the round returns and not when the first does: a round
+   * can call several tools, and taking the line down while another call is still out would say the
+   * run is idle when it is not.
+   */
+  private int toolCallsInFlight;
+
   /** The run the card was created for: it owns the card's elements and finishes it. */
   public static FeishuCardUpdater forRun(
       final FeishuCard card,
@@ -386,6 +394,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    */
   public synchronized void setToolStatus(
       String toolName, String toolInput, ToolContext toolContext) {
+    toolCallsInFlight++;
     final var input = parseObject(toolInput);
     final var description = input == null ? null : singleLine(input.path(DESCRIPTION_FIELD));
     log.info(
@@ -397,6 +406,25 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     final var fields =
         input == null ? Strings.nullToEmpty(toolInput) : formatFields(input, description != null);
     sendContent(lastBaseContent + "\n" + header + quote(fields));
+  }
+
+  /**
+   * Takes the tool line off the card once every call of the round has come back, leaving what the
+   * run had said before it.
+   *
+   * <p>Nothing else does: the line is written under the answer and is replaced the next time the
+   * model writes a word. On a model that thinks before it writes, and on a turn whose next word is
+   * a long way off, that leaves a call that returned in a moment sitting on the card as though the
+   * run were still waiting on it — which is the one thing the line is there to say.
+   */
+  public synchronized void clearToolStatus() {
+    if (toolCallsInFlight > 0) {
+      toolCallsInFlight--;
+    }
+    if (toolCallsInFlight > 0) {
+      return;
+    }
+    sendContent(withFailure(lastBaseContent));
   }
 
   /** The input parsed as a JSON object, or {@code null} if it is neither JSON nor an object. */
@@ -480,6 +508,11 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
             card.cardId() + ":" + elementId);
     if (inserted) {
       added.add(elementId);
+      // The spend line is part of the footer, and it goes in above the hint — so from here on it is
+      // the top of the footer, and anything placed above the footer has to clear it too.
+      if (FeishuCardElements.USAGE.equals(elementId)) {
+        card.footerGrewTo(elementId);
+      }
     } else {
       log.warn(
           "No {} element on card {}, so there is nowhere to write it", elementId, card.cardId());
@@ -665,8 +698,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     if (items.isEmpty() && !added.contains(todoElementId)) {
       return;
     }
-    final var markdown =
-        items.isEmpty() ? "" : "---\n" + messages.get("card-todo-heading") + "\n" + items;
+    final var markdown = items.isEmpty() ? "" : messages.get("card-todo-heading") + "\n" + items;
     log.info(
         "updateTodoList: cardId={}, itemCount={}",
         card.cardId(),

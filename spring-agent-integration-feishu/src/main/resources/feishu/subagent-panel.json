@@ -11,7 +11,10 @@
     "into both of them by id. The brief has no id of its own because nothing ever rewrites it alone.",
     "The header fills the panel's width and carries its own horizontal padding, so the title reads",
     "as a row of its own rather than as text floating beside the chevron; the chevron therefore sits",
-    "at the right edge rather than following the text. This key is ignored when the panel is built."
+    "at the right edge rather than following the text. The chevron itself is the one the thinking",
+    "pane uses, and turns the same way: pointing right while the panel is closed and a quarter turn",
+    "down as it opens, so the two panels on a card open the same way. This key is ignored when the",
+    "panel is built."
   ],
   "panel": {
     "tag": "collapsible_panel",
@@ -30,11 +33,11 @@
       "padding": "4px 8px 4px 8px",
       "icon": {
         "tag": "standard_icon",
-        "token": "down-small-ccm_outlined",
+        "token": "right-small-ccm_outlined",
         "size": "16px 16px"
       },
       "icon_position": "right",
-      "icon_expanded_angle": -180
+      "icon_expanded_angle": 90
     },
     "border": {
       "color": "grey",

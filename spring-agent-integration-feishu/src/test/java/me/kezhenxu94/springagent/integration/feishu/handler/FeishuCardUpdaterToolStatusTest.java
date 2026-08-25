@@ -69,6 +69,36 @@ class FeishuCardUpdaterToolStatusTest {
   }
 
   @Test
+  @DisplayName("the line comes off the card when the call comes back, before the model writes")
+  void theLineComesOffWhenTheCallReturns() throws Exception {
+    updater.onContent("Let me look.");
+    updater.setToolStatus("Bash", "{\"description\":\"Listing files\"}", null);
+    assertThat(lastContentSent()).isEqualTo("Let me look.\nListing files");
+
+    updater.clearToolStatus();
+
+    // What the run had said, and nothing about a call that is over. Nothing else would take it
+    // down until the model wrote its next word, which on a thinking model is a long wait.
+    assertThat(lastContentSent()).isEqualTo("Let me look.");
+  }
+
+  @Test
+  @DisplayName("a round calling several tools keeps its line until the last of them returns")
+  void theLineStaysWhileAnotherCallIsStillOut() throws Exception {
+    updater.setToolStatus("Bash", "{\"description\":\"Listing files\"}", null);
+    updater.setToolStatus("Bash", "{\"description\":\"Reading the log\"}", null);
+
+    updater.clearToolStatus();
+
+    // The first call back does not speak for the second: the run is still waiting on something.
+    assertThat(lastContentSent()).isEqualTo("\nReading the log");
+
+    updater.clearToolStatus();
+
+    assertThat(lastContentSent()).isEmpty();
+  }
+
+  @Test
   @DisplayName("a description in the input becomes the line, and is not repeated in the fields")
   void descriptionLeadsTheLine() throws Exception {
     updater.setToolStatus(

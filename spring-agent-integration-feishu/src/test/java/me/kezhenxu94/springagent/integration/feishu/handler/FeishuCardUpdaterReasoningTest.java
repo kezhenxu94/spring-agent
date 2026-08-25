@@ -27,6 +27,9 @@ import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springaicommunity.agent.tools.TodoWriteTool.Todos;
+import org.springaicommunity.agent.tools.TodoWriteTool.Todos.Status;
+import org.springaicommunity.agent.tools.TodoWriteTool.Todos.TodoItem;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.client.RestTemplate;
 import tools.jackson.databind.json.JsonMapper;
@@ -146,6 +149,23 @@ class FeishuCardUpdaterReasoningTest {
     updater.onContent("Here you go.");
 
     assertThat(insertedElements()).containsExactly("message");
+  }
+
+  @Test
+  @DisplayName("everything added mid-run clears the footer, which grows as the run spends")
+  void theFooterKeepsItsPlaceAtTheBottom() throws Exception {
+    // The footer is the conversation hint, joined from above by the spend line once the run has
+    // named a model. Anything added after that has to be placed above the spend line and not
+    // merely above the hint, or it comes to rest inside the footer.
+    final var updater =
+        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), null);
+
+    updater.onModel("the-model");
+    updater.handle(new Todos(List.of(new TodoItem("read it", Status.pending, "reading it"))));
+    card.insertBeforeFooter("[{\"tag\":\"markdown\",\"content\":\"a panel\"}]", "panel-1");
+
+    // usage above the hint; the task list and the panel above the usage line, not under it.
+    assertThat(anchors()).containsExactly("guide", "usage", "usage");
   }
 
   @Test

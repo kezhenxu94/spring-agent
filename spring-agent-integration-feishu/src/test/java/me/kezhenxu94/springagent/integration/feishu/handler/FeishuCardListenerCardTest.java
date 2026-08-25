@@ -104,7 +104,7 @@ class FeishuCardListenerCardTest {
     // is a run nobody can stop until the insert lands. Nothing else is there: what the run says,
     // what the user says back, its task list and what it spent are all added as it first has
     // something to put in them.
-    assertThat(elementIdsOfTheCreatedCard()).containsExactly("stop", "guide_divider", "guide");
+    assertThat(elementIdsOfTheCreatedCard()).containsExactly("stop", "guide");
   }
 
   @Test

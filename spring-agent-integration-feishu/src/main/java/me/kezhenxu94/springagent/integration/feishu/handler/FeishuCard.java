@@ -60,10 +60,12 @@ public class FeishuCard {
   private static final int CODE_STREAMING_MODE_CLOSED = 300309;
 
   /**
-   * The divider above the card's footer, and so the anchor anything added mid-run is placed before:
-   * it keeps the usage line and the conversation hint at the bottom where a reader expects them.
+   * The bottom of the card's footer: the conversation hint, the one element every card carries from
+   * the moment it is sent until after it has finished. Anything added mid-run is placed above the
+   * footer, which is what keeps the spend line and the hint at the bottom where a reader expects
+   * them.
    */
-  static final String FOOTER_ELEMENT_ID = "guide_divider";
+  static final String FOOTER_ELEMENT_ID = "guide";
 
   private static final Pattern IMAGE_PATTERN = Pattern.compile("!\\[(.*?)\\]\\(([^)\\s]+)\\)");
 
@@ -83,12 +85,27 @@ public class FeishuCard {
   }
 
   /**
+   * The topmost element of the footer, which is what "above the footer" has to mean for an insert.
+   *
+   * <p>The footer grows upwards: the hint is there from the start and the spend line joins it above
+   * once the run has named a model. So this moves when it does — anchored on the hint alone, a
+   * subagent's panel added after the first model call would come to rest under the spend line,
+   * which is the one thing the footer is for keeping at the bottom.
+   */
+  private volatile String footerElementId = FOOTER_ELEMENT_ID;
+
+  /** Says that {@code elementId} has joined the footer, above whatever was its top until now. */
+  void footerGrewTo(final String elementId) {
+    this.footerElementId = elementId;
+  }
+
+  /**
    * Adds elements to the card, above the footer, and returns whether they landed.
    *
    * @param uuid an idempotency key, so a retry cannot leave the card holding two copies
    */
   public synchronized boolean insertBeforeFooter(final String elementsJson, final String uuid) {
-    return insertBefore(FOOTER_ELEMENT_ID, elementsJson, uuid);
+    return insertBefore(footerElementId, elementsJson, uuid);
   }
 
   /**
