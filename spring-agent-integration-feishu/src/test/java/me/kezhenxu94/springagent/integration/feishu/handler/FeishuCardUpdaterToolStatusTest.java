@@ -58,7 +58,8 @@ class FeishuCardUpdaterToolStatusTest {
             new JsonMapper(),
             null,
             messages,
-            cardElements(messages));
+            cardElements(messages),
+            null);
   }
 
   private String lastContentSent() throws Exception {

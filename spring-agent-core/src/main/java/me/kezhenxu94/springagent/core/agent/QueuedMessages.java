@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 
@@ -36,12 +37,15 @@ public final class QueuedMessages {
 
   private final Queue<Queued> waiting = new ConcurrentLinkedQueue<>();
 
-  /** Said out loud once per read, so a surface can show that the message landed. */
-  private final Runnable onRead;
+  /**
+   * Said out loud once per read, naming the messages that were read, so a surface can show that
+   * they landed — and show it against the messages themselves, not merely somewhere.
+   */
+  private final Consumer<List<String>> onRead;
 
   private boolean open = true;
 
-  QueuedMessages(final Runnable onRead) {
+  QueuedMessages(final Consumer<List<String>> onRead) {
     this.onRead = onRead;
   }
 
@@ -67,18 +71,20 @@ public final class QueuedMessages {
       return List.of();
     }
     final var texts = new ArrayList<String>();
+    final var read = new ArrayList<String>();
     for (Queued queued = waiting.poll(); queued != null; queued = waiting.poll()) {
       try {
         final var text = queued.message().get();
         if (!Strings.isNullOrEmpty(text)) {
           texts.add(text);
+          read.add(queued.request().requestId());
         }
       } catch (Exception e) {
         log.warn("Could not read a message queued onto a running run; dropping it", e);
       }
     }
     if (!texts.isEmpty()) {
-      onRead.run();
+      onRead.accept(List.copyOf(read));
     }
     return texts;
   }

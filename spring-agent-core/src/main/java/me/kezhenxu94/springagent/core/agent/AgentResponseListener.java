@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.core.agent;
 
+import java.util.List;
 import org.springframework.ai.chat.metadata.Usage;
 
 /**
@@ -115,13 +116,21 @@ public interface AgentResponseListener {
    *     necessarily what the model will read: a surface turning a message into something a model
    *     can work with may have to fetch what it carries, and that is not done until the message is
    *     read. Null or empty where the surface has nothing short to show.
+   * @param requestId the id of the request that message arrived as — which is the surface's own id
+   *     for it, so a surface that can mark a message as noticed where the message itself is has
+   *     something to mark. The run it joins never answers this request, so this is the only place
+   *     the id is offered.
    */
-  default void onMessageQueued(String message) {}
+  default void onMessageQueued(String requestId, String message) {}
 
   /**
    * Everything that was waiting has been read into the run, so the model is working with it now.
+   *
+   * @param requestIds the ids of the messages actually read, in the order they were queued — which
+   *     is not always all of them: one whose text could not be produced is dropped rather than
+   *     failing the run, and a surface saying it was taken in would be saying something false.
    */
-  default void onQueuedMessageRead() {}
+  default void onQueuedMessageRead(List<String> requestIds) {}
 
   default void onError(Throwable error) {}
 

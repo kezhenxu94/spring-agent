@@ -66,6 +66,7 @@ public class FeishuCardListener implements AgentResponseListener {
   final FeishuQuestionForm questionForm;
   final FeishuSubagentPanel subagentPanel;
   final FeishuCardElements cardElements;
+  final FeishuMessageReactions reactions;
   final FeishuMessageCard messageCard;
 
   // Not final, matching FeishuTools#feishuReplyCard: @Value on a field is an injection point in its
@@ -146,7 +147,7 @@ public class FeishuCardListener implements AgentResponseListener {
               messages);
       final var cardUpdater =
           FeishuCardUpdater.forRun(
-              card, om, appConfiguration.ai().modelPricing(), messages, cardElements);
+              card, om, appConfiguration.ai().modelPricing(), messages, cardElements, reactions);
       registry.addResponseListener(cardUpdater);
       registry.addTodoEventHandler(cardUpdater);
       registry.addToolContext(FeishuCardUpdater.TOOL_CONTEXT_KEY.key(), cardUpdater);

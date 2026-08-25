@@ -12,6 +12,7 @@ import com.lark.oapi.service.cardkit.v1.model.ContentCardElementResp;
 import com.lark.oapi.service.cardkit.v1.model.CreateCardElementReq;
 import com.lark.oapi.service.cardkit.v1.model.CreateCardElementResp;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
 import me.kezhenxu94.springagent.core.tools.UserHome;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
@@ -75,16 +76,17 @@ class FeishuCardUpdaterQueuedMessageTest {
   @Test
   @DisplayName("a message waiting is quoted on the card, and then said to have been picked up")
   void queuedThenRead() throws Exception {
-    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
+    final var updater =
+        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), null);
 
-    updater.onMessageQueued("it should be kezhenxu94/spring-agent");
+    updater.onMessageQueued("m-1", "it should be kezhenxu94/spring-agent");
 
     assertThat(lastWrite().getElementId()).isEqualTo("queued");
     assertThat(lastWrite().getContentCardElementReqBody().getContent())
         .startsWith("> ")
         .contains("Queued: it should be kezhenxu94/spring-agent");
 
-    updater.onQueuedMessageRead();
+    updater.onQueuedMessageRead(List.of());
 
     assertThat(lastWrite().getContentCardElementReqBody().getContent())
         .isEqualTo("> <font color='grey'>Picked up: it should be kezhenxu94/spring-agent</font>");
@@ -93,11 +95,12 @@ class FeishuCardUpdaterQueuedMessageTest {
   @Test
   @DisplayName("every message gets a quoted line of its own, saying where each one stands")
   void oneLinePerMessage() throws Exception {
-    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
+    final var updater =
+        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), null);
 
-    updater.onMessageQueued("the first one");
-    updater.onQueuedMessageRead();
-    updater.onMessageQueued("the second one");
+    updater.onMessageQueued("m-2", "the first one");
+    updater.onQueuedMessageRead(List.of());
+    updater.onMessageQueued("m-3", "the second one");
 
     final var content = lastWrite().getContentCardElementReqBody().getContent();
     assertThat(content.lines())
@@ -109,9 +112,10 @@ class FeishuCardUpdaterQueuedMessageTest {
   @Test
   @DisplayName("a message written over several lines is folded onto the one line it is given")
   void multiLineMessageIsFolded() throws Exception {
-    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
+    final var updater =
+        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), null);
 
-    updater.onMessageQueued("  it should be\n   kezhenxu94/spring-agent  ");
+    updater.onMessageQueued("m-4", "  it should be\n   kezhenxu94/spring-agent  ");
 
     assertThat(lastWrite().getContentCardElementReqBody().getContent().lines()).hasSize(1);
     assertThat(lastWrite().getContentCardElementReqBody().getContent())
@@ -121,9 +125,10 @@ class FeishuCardUpdaterQueuedMessageTest {
   @Test
   @DisplayName("a message a line cannot show is still said to have arrived")
   void aMessageWithNothingToShow() throws Exception {
-    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
+    final var updater =
+        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), null);
 
-    updater.onMessageQueued(null);
+    updater.onMessageQueued("m-5", null);
 
     assertThat(lastWrite().getContentCardElementReqBody().getContent())
         .contains(messages.get("card-message-unshown"));
@@ -134,9 +139,10 @@ class FeishuCardUpdaterQueuedMessageTest {
   void theAnswerIsAddedBeforeTheLineThatAnchorsOnIt() throws Exception {
     // Both are elements the card gains on first use, and this one is placed above the answer — so a
     // message queued before the model has said anything has to add the answer's element itself.
-    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
+    final var updater =
+        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), null);
 
-    updater.onMessageQueued("it should be kezhenxu94/spring-agent");
+    updater.onMessageQueued("m-6", "it should be kezhenxu94/spring-agent");
 
     final var captor = ArgumentCaptor.forClass(CreateCardElementReq.class);
     verify(feishu.cardkit().v1().cardElement(), atLeastOnce()).create(captor.capture());
@@ -147,6 +153,42 @@ class FeishuCardUpdaterQueuedMessageTest {
         .contains("\"element_id\":\"message\"");
     assertThat(inserts.get(1).getCreateCardElementReqBody().getTargetElementId())
         .isEqualTo("message");
+  }
+
+  @Test
+  @DisplayName("the message itself is marked, as seen and then as taken in")
+  void theMessageIsMarkedWhereItWasSent() throws Exception {
+    // The card says the same thing, but the card is a different message from theirs and on a phone
+    // it is often not the one on screen. A reaction is where the person who just typed is looking.
+    final var reactions = org.mockito.Mockito.mock(FeishuMessageReactions.class);
+    final var updater =
+        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), reactions);
+
+    updater.onMessageQueued("om-1", "it should be kezhenxu94/spring-agent");
+
+    verify(reactions).queued("om-1");
+    verify(reactions, org.mockito.Mockito.never()).read(org.mockito.ArgumentMatchers.anyString());
+
+    updater.onQueuedMessageRead(List.of("om-1"));
+
+    verify(reactions).read("om-1");
+  }
+
+  @Test
+  @DisplayName("a message the run never managed to read is not marked as taken in")
+  void anUnreadMessageIsNotMarkedRead() throws Exception {
+    // A message whose text could not be produced is dropped rather than failing the run, and is
+    // not among the ids handed over — marking it read would be saying something false about it.
+    final var reactions = org.mockito.Mockito.mock(FeishuMessageReactions.class);
+    final var updater =
+        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), reactions);
+
+    updater.onMessageQueued("om-1", "the one that was read");
+    updater.onMessageQueued("om-2", "the one that was dropped");
+    updater.onQueuedMessageRead(List.of("om-1"));
+
+    verify(reactions).read("om-1");
+    verify(reactions, org.mockito.Mockito.never()).read("om-2");
   }
 
   @Test
@@ -165,8 +207,8 @@ class FeishuCardUpdaterQueuedMessageTest {
             "reading",
             "read it");
 
-    updater.onMessageQueued("it should be kezhenxu94/spring-agent");
-    updater.onQueuedMessageRead();
+    updater.onMessageQueued("m-7", "it should be kezhenxu94/spring-agent");
+    updater.onQueuedMessageRead(List.of());
 
     verify(feishu.cardkit().v1().cardElement(), org.mockito.Mockito.never())
         .content(any(ContentCardElementReq.class));

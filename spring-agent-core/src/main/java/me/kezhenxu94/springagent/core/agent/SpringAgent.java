@@ -207,7 +207,7 @@ public class SpringAgent {
         request.requestId(),
         live.request().requestId(),
         request.conversationId());
-    notify(live.listeners(), listener -> listener.onMessageQueued(display));
+    notify(live.listeners(), l -> l.onMessageQueued(request.requestId(), display));
     return true;
   }
 
@@ -325,7 +325,7 @@ public class SpringAgent {
 
     final var cancelFlag = new AtomicBoolean(false);
     final var queued =
-        new QueuedMessages(() -> notify(listeners, AgentResponseListener::onQueuedMessageRead));
+        new QueuedMessages(read -> notify(listeners, l -> l.onQueuedMessageRead(read)));
     final var liveRun =
         new LiveRun(request, cancelFlag, listeners, new ConcurrentHashMap<>(), queued);
     if (requestId != null) {

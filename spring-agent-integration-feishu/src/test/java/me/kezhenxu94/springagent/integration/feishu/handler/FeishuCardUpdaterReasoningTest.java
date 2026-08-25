@@ -74,7 +74,8 @@ class FeishuCardUpdaterReasoningTest {
   @Test
   @DisplayName("the thinking goes in a panel of its own, not in the answer")
   void thinkingGoesInItsOwnPanel() throws Exception {
-    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
+    final var updater =
+        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), null);
 
     updater.onReasoning("The user asked for the repository, so I should look it up.");
 
@@ -96,7 +97,8 @@ class FeishuCardUpdaterReasoningTest {
     // Thinking arrives before the first word of the answer, so there is no answer element to anchor
     // on yet. The panel takes the stop button instead, which every card has from the moment it is
     // sent and which the answer is itself placed above — so the answer still lands below the panel.
-    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
+    final var updater =
+        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), null);
 
     updater.onReasoning("Thinking about it.");
     updater.onContent("Here you go.");
@@ -108,10 +110,11 @@ class FeishuCardUpdaterReasoningTest {
   @Test
   @DisplayName("what the user said mid-run stays above the thinking, whichever arrives first")
   void queuedMessagesStayAtTheTop() throws Exception {
-    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
+    final var updater =
+        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), null);
 
     updater.onReasoning("Thinking about it.");
-    updater.onMessageQueued("actually, the other repository");
+    updater.onMessageQueued("m-1", "actually, the other repository");
 
     // The answer is added by the queued line, which is placed above it; the queued line then
     // anchors on the panel rather than the answer, which is what keeps it at the very top.
@@ -122,9 +125,10 @@ class FeishuCardUpdaterReasoningTest {
   @Test
   @DisplayName("thinking that arrives after a queued message still lands below it")
   void thinkingAfterAQueuedMessage() throws Exception {
-    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
+    final var updater =
+        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), null);
 
-    updater.onMessageQueued("actually, the other repository");
+    updater.onMessageQueued("m-2", "actually, the other repository");
     updater.onReasoning("Thinking about it.");
 
     // The answer is on the card by now, so the panel anchors on it and lands between the two.
@@ -135,7 +139,8 @@ class FeishuCardUpdaterReasoningTest {
   @Test
   @DisplayName("a turn on an endpoint that reports no thinking never carries the panel")
   void noThinkingNoPanel() throws Exception {
-    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
+    final var updater =
+        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), null);
 
     updater.onReasoning("");
     updater.onContent("Here you go.");

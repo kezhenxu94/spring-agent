@@ -60,7 +60,8 @@ class FeishuCardUpdaterErrorTest {
                 null, null, null, null, null, null, null, Locale.ENGLISH, null, null));
     card = new FeishuCard(feishu, "card-1", restTemplate, new UserHome(userHomeRoot), messages);
     updater =
-        FeishuCardUpdater.forRun(card, new JsonMapper(), null, messages, cardElements(messages));
+        FeishuCardUpdater.forRun(
+            card, new JsonMapper(), null, messages, cardElements(messages), null);
   }
 
   private String lastContentSent() throws Exception {

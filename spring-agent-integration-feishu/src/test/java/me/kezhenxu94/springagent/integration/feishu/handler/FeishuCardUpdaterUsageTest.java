@@ -73,7 +73,8 @@ class FeishuCardUpdaterUsageTest {
             // A tenth of a cent per thousand tokens each way, so the arithmetic is checkable.
             Map.of("the-model", new ModelPricing(1.0, 1.0, 1.0, Currency.USD)),
             messages,
-            cardElements(messages));
+            cardElements(messages),
+            null);
   }
 
   /** The real builder: what a panel holds is the point of the assertions below. */

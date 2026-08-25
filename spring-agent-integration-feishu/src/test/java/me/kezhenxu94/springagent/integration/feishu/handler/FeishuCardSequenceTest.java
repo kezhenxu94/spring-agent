@@ -89,7 +89,8 @@ class FeishuCardSequenceTest {
                 null, null, null, null, null, null, null, Locale.ENGLISH, null, null));
     final var panels = panels(messages);
     final var run =
-        FeishuCardUpdater.forRun(card, new JsonMapper(), null, messages, cardElements(messages));
+        FeishuCardUpdater.forRun(
+            card, new JsonMapper(), null, messages, cardElements(messages), null);
     card.insertBeforeFooter(
         panels.forInsert("sub_1", "Reading the log", "Read the log and say what broke", null),
         "sub_1");

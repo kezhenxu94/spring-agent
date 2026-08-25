@@ -82,6 +82,7 @@ class FeishuCardListenerSubagentTest {
             // The parent's card is created here, and a card is created with its stop button.
             new FeishuCardElements(
                 om, messages, new ClassPathResource("feishu/card-elements.json")),
+            new FeishuMessageReactions(feishu),
             new FeishuMessageCard(
                 om,
                 messages,

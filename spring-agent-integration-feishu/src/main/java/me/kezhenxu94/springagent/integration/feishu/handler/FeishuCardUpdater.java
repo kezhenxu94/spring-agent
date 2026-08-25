@@ -88,6 +88,13 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    */
   private final FeishuCardElements elements;
 
+  /**
+   * How a message queued onto this run is marked where the person who sent it is looking, which is
+   * their own message rather than the card. Null for a subagent, which is not something the user
+   * replies to.
+   */
+  private final FeishuMessageReactions reactions;
+
   /** Which of them are on the card, so that each is added once and streamed into thereafter. */
   private final Set<String> added = new LinkedHashSet<>();
 
@@ -138,7 +145,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       final JsonMapper om,
       final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing,
       final FeishuMessages messages,
-      final FeishuCardElements elements) {
+      final FeishuCardElements elements,
+      final FeishuMessageReactions reactions) {
     return new FeishuCardUpdater(
         card,
         om,
@@ -149,6 +157,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         FeishuCardElements.TODO,
         FeishuCardElements.QUEUED,
         elements,
+        reactions,
         null,
         null,
         null,
@@ -184,6 +193,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         // A panel arrives complete, so a subagent has nothing to add to the card element by
         // element: everything it writes into was inserted with the panel itself.
         null,
+        // And nothing said mid-run was addressed to it, so it has no message to mark.
+        null,
         panels,
         subagentId,
         description,
@@ -200,6 +211,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       final String todoElementId,
       final String queuedElementId,
       final FeishuCardElements elements,
+      final FeishuMessageReactions reactions,
       final FeishuSubagentPanel panels,
       final String subagentId,
       final String description,
@@ -213,6 +225,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     this.todoElementId = todoElementId;
     this.queuedElementId = queuedElementId;
     this.elements = elements;
+    this.reactions = reactions;
     this.panels = panels;
     this.subagentId = subagentId;
     this.description = description;
@@ -558,17 +571,26 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   }
 
   @Override
-  public synchronized void onMessageQueued(final String message) {
+  public synchronized void onMessageQueued(final String requestId, final String message) {
     queued.add(
         Strings.isNullOrEmpty(message) ? messages.get("card-message-unshown") : oneLine(message));
     showQueued();
+    // On their message as well as on the card. The card is a different message from theirs, and on
+    // a phone it is often not the one on screen — so the card alone leaves the person who just
+    // typed unable to tell whether anything registered.
+    if (reactions != null) {
+      reactions.queued(requestId);
+    }
   }
 
   /** All of it at once, which is how the run reads it: one call empties the whole queue. */
   @Override
-  public synchronized void onQueuedMessageRead() {
+  public synchronized void onQueuedMessageRead(final List<String> requestIds) {
     read = queued.size();
     showQueued();
+    if (reactions != null) {
+      requestIds.forEach(reactions::read);
+    }
   }
 
   /**
