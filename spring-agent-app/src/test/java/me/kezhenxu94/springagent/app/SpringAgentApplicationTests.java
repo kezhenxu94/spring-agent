@@ -9,6 +9,8 @@ import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -80,6 +82,18 @@ class SpringAgentApplicationTests extends AbstractIntegrationTest {
     // The permission rules name the tool exactly as it is registered; a near miss reads fine to a
     // human and leaves the model calling something that does not exist.
     assertThat(rendered).contains("AskUserQuestionTool");
+  }
+
+  @Test
+  @DisplayName("the advisor that logs the rejected request is actually at DEBUG")
+  void requestLoggingIsEnabled() {
+    // application.yaml turns this on so that a request the model endpoint refuses can be read back
+    // afterwards; without it a `400: Unknown` is unattributable, which is the whole reason the
+    // level is set. Asserted through the class rather than the logger name so that spring-ai moving
+    // SimpleLoggerAdvisor breaks the build instead of silently un-setting the level — and asserted
+    // at all because nothing else would notice: the block being re-commented, or the FQCN drifting,
+    // leaves a perfectly healthy application that has simply stopped recording the evidence.
+    assertThat(LoggerFactory.getLogger(SimpleLoggerAdvisor.class).isDebugEnabled()).isTrue();
   }
 
   @Test

@@ -57,6 +57,12 @@ dependencies {
   testImplementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-jdbc'
   testImplementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-mongodb'
   testImplementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-redis'
+
+  // MockWebServer stands in for the model endpoint in OpenAiErrorBodyTest, which asserts what a
+  // rejected request leaves behind. okhttp itself is already on the runtime classpath, under
+  // Spring AI's OpenAI client; this adds only the test server. Test-only, so the
+  // checkRuntimeClasspathIsolation assertion below is unaffected for the same reason as above.
+  testImplementation libs.okhttp.mockwebserver
 }
 
 // Core is backend-agnostic and must stay that way: it is the module every consumer takes, whichever

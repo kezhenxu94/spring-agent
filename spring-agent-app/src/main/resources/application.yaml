@@ -190,6 +190,36 @@ spring:
             token-uri: https://passport.feishu.cn/suite/passport/oauth/token?client_id=${FEISHU_APP_ID}&client_secret=${FEISHU_APP_SECRET}
             user-info-uri: https://passport.feishu.cn/suite/passport/oauth/userinfo
             user-name-attribute: name
+# What a rejected request leaves behind, for whoever has to explain the failure.
+#
+# A rejection normally explains itself: openai-java renders a JSON error body straight into the
+# exception message. What it cannot render is a body that is not JSON — an empty one, an nginx error
+# page, a gateway's own plain-text refusal. Its error handler catches every parse failure and
+# substitutes JsonMissing, which prints as the single word "Unknown", so the run fails with
+# `BadRequestException: 400: Unknown` and the bytes are gone: Spring AI's client hands the SDK a
+# one-shot byteStream and nobody keeps a copy. OpenAiErrorBodyLoggingInterceptor is wired in for
+# exactly that case and logs the body at WARN, unconditionally — it only ever fires on a request
+# that already failed, so it needs no switch. OpenAiErrorBodyTest holds that line.
+#
+# The body says what the endpoint objected to. The level below answers the next question, which is
+# *which request* it objected to.
+logging:
+  level:
+    # The whole outgoing ChatClientRequest, once per model call: the rendered system prompt, the
+    # replayed conversation and every tool result in it. That is the message array the endpoint
+    # refused, and reading it is how a malformed history or an over-long context gets identified —
+    # neither of which the error body alone can distinguish.
+    #
+    # This logs conversation content and tool output. It is on because a rejection nobody can
+    # explain costs more than the noise does, but it is the reason this application's logs hold what
+    # users wrote: treat them accordingly, and turn it off with
+    # LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_AI_CHAT_CLIENT_ADVISOR_SIMPLELOGGERADVISOR=INFO rather than
+    # by editing this file, so a deployment can decide for itself.
+    org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: DEBUG
+    # The wire, when the question is about the request Spring AI actually built rather than the one
+    # it was asked for — headers, and the JSON body as sent. Louder still than the above, and rarely
+    # what is wanted, so it stays off.
+    # org.springframework.ai.openai: DEBUG
 management:
   endpoint:
     health:

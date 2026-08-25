@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.core.agent;
 
 import com.google.common.base.Strings;
+import com.openai.errors.OpenAIServiceException;
 import java.io.InterruptedIOException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -456,6 +457,7 @@ public class SpringAgent {
         .doOnError(
             error -> {
               log.error("Agent request {} failed", requestId, error);
+              logProviderRejection(requestId, error);
               notify(listeners, l -> l.onError(error));
             })
         .doFinally(
@@ -822,6 +824,32 @@ public class SpringAgent {
     variables.put("chatId", Strings.nullToEmpty(request.chatId()));
     variables.put("chatType", request.chatType());
     return variables;
+  }
+
+  /**
+   * Ties a run to the model endpoint's own record of refusing it.
+   *
+   * <p>The stack trace already carries the SDK's exception, but not in a form anyone can act on: an
+   * advisor rewraps every failure as {@code IllegalStateException("Stream processing failed")}, and
+   * a rejection whose body was not JSON reduces to the word {@code Unknown} (see {@link
+   * me.kezhenxu94.springagent.core.config.OpenAiErrorBodyLoggingInterceptor}, which logs the body
+   * itself). What is missing is the handle a gateway operator searches by, next to the id of the
+   * run that hit it — the HTTP layer knows the request id but not the run, and this line knows
+   * both.
+   */
+  private static void logProviderRejection(final String requestId, final Throwable error) {
+    for (var cause = error; cause != null; cause = cause.getCause()) {
+      if (cause instanceof OpenAIServiceException rejected) {
+        log.error(
+            "Agent request {} was rejected by the model endpoint: status={}, request-id={},"
+                + " body={}",
+            requestId,
+            rejected.statusCode(),
+            rejected.headers().values("x-request-id"),
+            rejected.body());
+        return;
+      }
+    }
   }
 
   private Flux<ChatResponse> rawStream(

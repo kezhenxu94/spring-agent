@@ -22,6 +22,7 @@ import org.springframework.ai.model.tool.DefaultToolCallingManager;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.http.okhttp.OpenAiHttpClientBuilderCustomizer;
 import org.springframework.ai.tool.resolution.ToolCallbackResolver;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -136,6 +137,22 @@ public class SpringAgentCoreAutoConfiguration {
     return new InterceptingToolCallingManager(defaultManager, interceptors, messages);
   }
 
+  /**
+   * Puts the provider's own words back into the log when it rejects a request.
+   *
+   * <p>Spring AI applies every customizer bean of this type to the OkHttp client behind each OpenAI
+   * model, which is the only seam that still sees the response bytes — see {@link
+   * OpenAiErrorBodyLoggingInterceptor} for why they are otherwise unrecoverable. Not behind a
+   * property: it only ever fires on a request that already failed, and a 4xx nobody can explain is
+   * the reason it exists.
+   */
+  @Bean
+  @ConditionalOnMissingBean(name = "openAiErrorBodyLoggingCustomizer")
+  OpenAiHttpClientBuilderCustomizer openAiErrorBodyLoggingCustomizer() {
+    final var interceptor = new OpenAiErrorBodyLoggingInterceptor();
+    return builder -> builder.interceptor(interceptor);
+  }
+
   // Name-based: two ChatClient beans here, so a type-based condition would have the first
   // suppress the second.
   @Bean
@@ -147,7 +164,12 @@ public class SpringAgentCoreAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean(name = "visionChatClient")
   @Qualifier("vision")
-  ChatClient visionChatClient(final SpringAgentProperties appConfiguration) {
+  ChatClient visionChatClient(
+      final SpringAgentProperties appConfiguration,
+      // Spring AI applies these to the models its own auto-configuration builds; this model is
+      // built here, so it has to ask for them itself or it would be the one endpoint whose
+      // rejections stay unreadable — and it is a gateway, which is where unreadable ones come from.
+      final List<OpenAiHttpClientBuilderCustomizer> httpClientCustomizers) {
     final var vision = appConfiguration.dashscope().vision();
     final var chatModel =
         OpenAiChatModel.builder()
@@ -157,6 +179,7 @@ public class SpringAgentCoreAutoConfiguration {
                     .apiKey(vision.apiKey())
                     .model(vision.model())
                     .build())
+            .httpClientBuilderCustomizers(httpClientCustomizers)
             .build();
     return ChatClient.builder(chatModel).build();
   }

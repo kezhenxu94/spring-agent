@@ -25,6 +25,12 @@ springboot = "4.1.1"
 # version the condition simply does not match, no error is logged, and chat memory silently falls
 # back to the in-memory repository. ChatMemoryRedisTest is what would catch a regression here.
 jedis = "7.4.1"
+# Not BOM-managed: spring-boot-dependencies manages okhttp itself but not mockwebserver, which
+# ships from the same release train and has to match it. okhttp is here transitively, under Spring
+# AI's OpenAI client (SpringAiOpenAiHttpClient); check what that resolves to before bumping this,
+# because MockWebServer and okhttp share internals and a mismatch fails at run time, not at compile
+# time. Test-only, so it never reaches a published runtime classpath.
+okhttp = "4.12.0"
 sqlite-jdbc = "3.53.2.1"
 testcontainers = "2.0.3"
 
@@ -44,6 +50,7 @@ spring-ai-bom = { module = "org.springframework.ai:spring-ai-bom", version.ref =
 spring-shell-starter = { module = "org.springframework.shell:spring-shell-starter-ffm", version.ref = "spring-shell" }
 jedis = { module = "redis.clients:jedis", version.ref = "jedis" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
+okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver", version.ref = "okhttp" }
 larksuite-oapi = { module = "com.larksuite.oapi:oapi-sdk", version.ref = "larksuite-oapi" }
 testcontainers-core = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }
