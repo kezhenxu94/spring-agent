@@ -507,7 +507,11 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       spend.add(model, usage);
     }
     if (added(spendElementId)) {
-      card.stream(spendElementId, spend.render(startedAt));
+      // Grey, like the conversation hint it sits beside: both are the card talking about the run
+      // rather than the run talking, and the footer reads as one line when they are the same
+      // colour. The subagent panels' own spend line is left alone — it is inside a panel, not in
+      // this footer.
+      card.stream(spendElementId, "<font color='grey'>" + spend.render(startedAt) + "</font>");
     }
   }
 

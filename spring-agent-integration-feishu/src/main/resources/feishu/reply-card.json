@@ -26,11 +26,6 @@
     "padding": "8px 12px",
     "elements": [
       {
-        "tag": "hr",
-        "element_id": "guide_divider",
-        "margin": "4px 0"
-      },
-      {
         "tag": "markdown",
         "content": "<font color='grey'>{conversationHint}</font>",
         "text_align": "left",

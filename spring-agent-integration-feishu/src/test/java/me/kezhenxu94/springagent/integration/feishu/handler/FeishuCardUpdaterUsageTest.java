@@ -88,7 +88,9 @@ class FeishuCardUpdaterUsageTest {
   void theModelIsNamedFirst() throws Exception {
     updater.onModel("the-model");
 
-    assertThat(lastFooter()).isEqualTo("the-model");
+    // Grey, like the conversation hint below it, and so asserted whole here rather than by what it
+    // says: this is the one case where the footer's whole content is known.
+    assertThat(lastFooter()).isEqualTo("<font color='grey'>the-model</font>");
   }
 
   @Test
