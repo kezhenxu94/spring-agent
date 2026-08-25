@@ -353,6 +353,11 @@ public class SpringAgent {
     // it is what failed.
     final var mcpTools = new AtomicReference<McpTools>();
     final var contentBuffer = new StringBuilder();
+    // The thinking of the model calls this turn has already finished, and the thinking of the one
+    // it is in. Two buffers rather than one because what the endpoint reports is cumulative within
+    // a call and starts over at the next — see where they are read.
+    final var reasoningBuffer = new StringBuilder();
+    final var reasoningOfThisCall = new AtomicReference<>("");
     final var modelNotified = new AtomicBoolean(false);
 
     Flux.defer(
@@ -436,6 +441,24 @@ public class SpringAgent {
               if (result == null) return;
               final var output = result.getOutput();
               if (output == null) return;
+              // Before the answer, and before the early return below: while the model is still
+              // thinking it has written no answer yet, so a chunk carrying reasoning carries no
+              // text at all.
+              //
+              // Spring AI's OpenAI client accumulates the endpoint's reasoning fragments across
+              // the chunks of one call, so what arrives here is that call's thinking in full, not
+              // the latest piece of it — and it starts over at the next call of the turn, which is
+              // what the prefix test below detects. The key is Spring AI's own, spelled out here
+              // because it is private to OpenAiChatModel.
+              if (output.getMetadata().get("reasoningContent") instanceof String reasoning
+                  && !reasoning.isEmpty()) {
+                if (!reasoning.startsWith(reasoningOfThisCall.get())) {
+                  reasoningBuffer.append(reasoningOfThisCall.get()).append("\n\n");
+                }
+                reasoningOfThisCall.set(reasoning);
+                final var reasoningSoFar = reasoningBuffer + reasoning;
+                notify(listeners, l -> l.onReasoning(reasoningSoFar));
+              }
               final var content = output.getText();
               if (Strings.isNullOrEmpty(content)) return;
               contentBuffer.append(content);

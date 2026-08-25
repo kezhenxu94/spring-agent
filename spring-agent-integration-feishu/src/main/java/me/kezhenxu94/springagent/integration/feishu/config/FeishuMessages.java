@@ -52,6 +52,7 @@ public class FeishuMessages {
   public String renderCard(final String cardJson) {
     return cardJson
         .replace("{stop}", jsonEscaped(get("card-stop")))
+        .replace("{reasoning}", jsonEscaped(get("card-reasoning")))
         .replace("{conversationHint}", jsonEscaped(get("card-conversation-hint")));
   }
 

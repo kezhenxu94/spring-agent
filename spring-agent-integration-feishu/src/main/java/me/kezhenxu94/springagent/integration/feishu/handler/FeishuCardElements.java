@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.integration.feishu.handler;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
@@ -42,6 +43,15 @@ public class FeishuCardElements {
   /** What the user said while the run was working. */
   static final String QUEUED = "queued";
 
+  /** The panel holding what the model thought its way through, on an endpoint that reports it. */
+  static final String REASONING = "reasoning";
+
+  /**
+   * The element inside that panel the thinking is streamed into. The panel is what the card carries
+   * and what an insert names; this is what a write names.
+   */
+  static final String REASONING_BODY = "reasoning_body";
+
   /** The run's task list. */
   static final String TODO = "todo";
 
@@ -68,6 +78,8 @@ public class FeishuCardElements {
           STOP,
           QUEUED,
           MESSAGE,
+          REASONING,
+          MESSAGE,
           TODO,
           FeishuCard.FOOTER_ELEMENT_ID,
           USAGE,
@@ -84,13 +96,39 @@ public class FeishuCardElements {
   @Value("${app.feishu.card-elements:classpath:/feishu/card-elements.json}")
   private final Resource cardElements;
 
-  /** The element {@code elementId} is added above. */
+  /** The element {@code elementId} is added above, on a card carrying nothing else optional. */
   String anchorOf(final String elementId) {
     final var anchor = ANCHORS.get(elementId);
     if (anchor == null) {
       throw new IllegalArgumentException("No anchor for card element " + elementId);
     }
     return anchor;
+  }
+
+  /**
+   * The element {@code elementId} is added above, given the ones the card already carries.
+   *
+   * <p>Two of them move, because three elements want the same stretch of card — what the user added
+   * mid-run at the very top, then what the model thought, then what it answered — and which arrives
+   * first is the run's to decide, not this file's. An insert names one element and lands
+   * immediately above it, so an anchor fixed to {@link #MESSAGE} would put whichever of the other
+   * two came second below the one that came first, which is the wrong way round half the time.
+   *
+   * <p>So the reasoning panel anchors on the answer once there is one and on the stop button until
+   * then — the button is the one element every card has from the moment it is sent, and the answer
+   * goes above it too, so a panel anchored there stays above the answer when it arrives. And the
+   * queued messages anchor on the panel once there is one, which is what keeps them at the top.
+   *
+   * @param onCard the optional elements already added, which is what makes this answerable
+   */
+  String anchorOf(final String elementId, final Set<String> onCard) {
+    if (REASONING.equals(elementId) && !onCard.contains(MESSAGE)) {
+      return STOP;
+    }
+    if (QUEUED.equals(elementId) && onCard.contains(REASONING)) {
+      return REASONING;
+    }
+    return anchorOf(elementId);
   }
 
   /**
@@ -112,6 +150,17 @@ public class FeishuCardElements {
       throw new IllegalStateException("No '" + elementId + "' element in " + cardElements);
     }
     element.put("element_id", elementId);
+    // The reasoning panel is the one element with something inside it that the run writes to, so
+    // what is inside gets an id here as well, for the reason the panel does: a deployment
+    // restyling the panel has no say in what the run streams into.
+    if (REASONING.equals(elementId)) {
+      final var body = element.path("elements");
+      if (!body.isArray() || body.isEmpty()) {
+        throw new IllegalStateException(
+            "The '" + REASONING + "' element in " + cardElements + " has nothing to write into");
+      }
+      ((ObjectNode) body.get(0)).put("element_id", REASONING_BODY);
+    }
     return element;
   }
 

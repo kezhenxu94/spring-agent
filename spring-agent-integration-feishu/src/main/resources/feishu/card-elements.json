@@ -21,7 +21,18 @@
     "itself in the chat list. 'queued' holds what the user said",
     "while the run was working, one quoted line per message, and goes above the answer so the card",
     "reads in the order things were said: the message Feishu quotes above the card, then this, then",
-    "the reply. 'todo' is the run's task list, under the answer. 'usage' is what the turn has cost,",
+    "the reply. 'reasoning' is what the model thought its way through, on an endpoint that reports",
+    "it, in a panel of its own between the queued messages and the answer: it is not the answer,",
+    "and a reader who wants it goes looking for it, so it arrives collapsed and stays on the card",
+    "collapsed after the run ends. Its first nested element is the one the run streams the thinking",
+    "into, which is why a deployment restyling this panel has to keep something there to write to.",
+    "It has no border and no padding, unlike a subagent's panel: a subagent is a piece of work with",
+    "a beginning and an end, worth drawing a box around, and this is a line the reader opens. So it",
+    "reads as the card's own text with a chevron beside it — 'auto_when_fold' is what keeps the",
+    "closed line as narrow as its title while the thinking, once opened, still gets the whole width",
+    "to wrap in, and 'follow_text' is what puts the chevron beside the title rather than off at the",
+    "right edge of a row nothing else fills.",
+    "'todo' is the run's task list, under the answer. 'usage' is what the turn has cost,",
     "in the card's footer. This key is ignored."
   ],
   "stop": {
@@ -65,6 +76,34 @@
         "width": "weighted",
         "weight": 1,
         "elements": []
+      }
+    ]
+  },
+  "reasoning": {
+    "tag": "collapsible_panel",
+    "expanded": false,
+    "vertical_spacing": "4px",
+    "header": {
+      "title": {
+        "tag": "markdown",
+        "content": "{reasoning}"
+      },
+      "width": "auto_when_fold",
+      "vertical_align": "center",
+      "icon": {
+        "tag": "standard_icon",
+        "token": "down-small-ccm_outlined",
+        "size": "16px 16px"
+      },
+      "icon_position": "follow_text",
+      "icon_expanded_angle": -180
+    },
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "",
+        "text_align": "left",
+        "text_size": "notation"
       }
     ]
   },

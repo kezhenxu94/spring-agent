@@ -32,6 +32,19 @@ public interface AgentResponseListener {
   /** The response accumulated so far, not the latest delta. */
   default void onContent(String contentSoFar) {}
 
+  /**
+   * What the model has thought its way through so far, on an endpoint that reports it — everything
+   * accumulated across the turn, not the latest delta, and not part of the answer: a surface shows
+   * this beside the reply rather than in it.
+   *
+   * <p>A turn is a loop, so a turn that calls tools thinks more than once. Every call's thinking is
+   * kept, one block per call, because the reasoning behind the third tool call is rarely legible
+   * without the reasoning that led to the first.
+   *
+   * <p>Never called at all on an endpoint that reports no reasoning, which is most of them.
+   */
+  default void onReasoning(String reasoningSoFar) {}
+
   default void onUsage(String model, Usage usage) {}
 
   /**

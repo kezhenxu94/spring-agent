@@ -462,7 +462,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     }
     final var inserted =
         card.insertBefore(
-            elements.anchorOf(elementId),
+            elements.anchorOf(elementId, added),
             elements.forInsert(elementId),
             card.cardId() + ":" + elementId);
     if (inserted) {
@@ -533,6 +533,28 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   @Override
   public void onError(Throwable error) {
     showError(error);
+  }
+
+  /**
+   * What the model thought, in a panel of its own above the answer.
+   *
+   * <p>Not folded into the answer: it is not what the run is saying, it is how the run got there,
+   * and most readers want the one without the other. The panel is added the first time there is
+   * thinking to put in it, so a turn on an endpoint that reports none never carries it.
+   */
+  @Override
+  public synchronized void onReasoning(final String reasoningSoFar) {
+    // A subagent writes into a panel that arrived complete, and no thinking of its own was put in
+    // it: its report is what the run it serves is waiting for.
+    if (elements == null || Strings.isNullOrEmpty(reasoningSoFar)) {
+      return;
+    }
+    if (!added(FeishuCardElements.REASONING)) {
+      return;
+    }
+    // Plain, like a subagent's report in its own panel: the panel and its smaller type already say
+    // this is secondary, and quoting it on top of that only narrows it.
+    card.stream(FeishuCardElements.REASONING_BODY, reasoningSoFar);
   }
 
   @Override

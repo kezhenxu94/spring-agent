@@ -1,0 +1,207 @@
+package me.kezhenxu94.springagent.integration.feishu.handler;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.lark.oapi.Client;
+import com.lark.oapi.service.cardkit.v1.model.ContentCardElementReq;
+import com.lark.oapi.service.cardkit.v1.model.ContentCardElementResp;
+import com.lark.oapi.service.cardkit.v1.model.CreateCardElementReq;
+import com.lark.oapi.service.cardkit.v1.model.CreateCardElementResp;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Locale;
+import me.kezhenxu94.springagent.core.tools.UserHome;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Answers;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.web.client.RestTemplate;
+import tools.jackson.databind.json.JsonMapper;
+
+/**
+ * What the model thought on its way to the answer, in a panel of its own.
+ *
+ * <p>Most of what is worth asserting here is where the panel lands. Three elements want the same
+ * stretch of card — what the user said mid-run at the top, then the thinking, then the answer — and
+ * an insert names one element and lands immediately above it, so the order they end up in depends
+ * on the order they arrive in unless the anchors move. These tests are that ordering, arrived at
+ * both ways round.
+ */
+@ExtendWith(MockitoExtension.class)
+class FeishuCardUpdaterReasoningTest {
+
+  @Mock(answer = Answers.RETURNS_DEEP_STUBS)
+  private Client feishu;
+
+  @Mock private RestTemplate restTemplate;
+  @TempDir Path userHomeRoot;
+
+  private FeishuMessages messages;
+  private FeishuCard card;
+  private JsonMapper om;
+
+  @BeforeEach
+  void setUp() throws Exception {
+    final var ok = new ContentCardElementResp();
+    ok.setCode(0);
+    when(feishu.cardkit().v1().cardElement().content(any(ContentCardElementReq.class)))
+        .thenReturn(ok);
+    final var inserted = new CreateCardElementResp();
+    inserted.setCode(0);
+    when(feishu.cardkit().v1().cardElement().create(any(CreateCardElementReq.class)))
+        .thenReturn(inserted);
+    messages =
+        new FeishuMessages(
+            new FeishuProperties(
+                null, null, null, null, null, null, null, Locale.ENGLISH, null, null));
+    card = new FeishuCard(feishu, "card-1", restTemplate, new UserHome(userHomeRoot), messages);
+    om = new JsonMapper();
+  }
+
+  @Test
+  @DisplayName("the thinking goes in a panel of its own, not in the answer")
+  void thinkingGoesInItsOwnPanel() throws Exception {
+    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
+
+    updater.onReasoning("The user asked for the repository, so I should look it up.");
+
+    final var write = lastWrite();
+    assertThat(write.getElementId()).isEqualTo("reasoning_body");
+    assertThat(write.getContentCardElementReqBody().getContent())
+        .isEqualTo("The user asked for the repository, so I should look it up.");
+
+    // The panel the run streams into, collapsed, titled in the workspace's language.
+    final var panel = insertOf("reasoning");
+    assertThat(panel).contains("\"tag\":\"collapsible_panel\"").contains("\"expanded\":false");
+    assertThat(panel).contains("\"element_id\":\"reasoning_body\"");
+    assertThat(panel).contains(messages.get("card-reasoning"));
+  }
+
+  @Test
+  @DisplayName("thinking before the model has answered puts the panel above where the answer goes")
+  void theThinkingComesBeforeTheAnswer() throws Exception {
+    // Thinking arrives before the first word of the answer, so there is no answer element to anchor
+    // on yet. The panel takes the stop button instead, which every card has from the moment it is
+    // sent and which the answer is itself placed above — so the answer still lands below the panel.
+    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
+
+    updater.onReasoning("Thinking about it.");
+    updater.onContent("Here you go.");
+
+    assertThat(anchors()).containsExactly("stop", "stop");
+    assertThat(insertedElements()).containsExactly("reasoning", "message");
+  }
+
+  @Test
+  @DisplayName("what the user said mid-run stays above the thinking, whichever arrives first")
+  void queuedMessagesStayAtTheTop() throws Exception {
+    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
+
+    updater.onReasoning("Thinking about it.");
+    updater.onMessageQueued("actually, the other repository");
+
+    // The answer is added by the queued line, which is placed above it; the queued line then
+    // anchors on the panel rather than the answer, which is what keeps it at the very top.
+    assertThat(insertedElements()).containsExactly("reasoning", "message", "queued");
+    assertThat(anchors()).containsExactly("stop", "stop", "reasoning");
+  }
+
+  @Test
+  @DisplayName("thinking that arrives after a queued message still lands below it")
+  void thinkingAfterAQueuedMessage() throws Exception {
+    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
+
+    updater.onMessageQueued("actually, the other repository");
+    updater.onReasoning("Thinking about it.");
+
+    // The answer is on the card by now, so the panel anchors on it and lands between the two.
+    assertThat(insertedElements()).containsExactly("message", "queued", "reasoning");
+    assertThat(anchors()).containsExactly("stop", "message", "message");
+  }
+
+  @Test
+  @DisplayName("a turn on an endpoint that reports no thinking never carries the panel")
+  void noThinkingNoPanel() throws Exception {
+    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages));
+
+    updater.onReasoning("");
+    updater.onContent("Here you go.");
+
+    assertThat(insertedElements()).containsExactly("message");
+  }
+
+  @Test
+  @DisplayName("a subagent's thinking has nowhere to go, and goes nowhere")
+  void aSubagentHasNoPanelForIt() throws Exception {
+    // A subagent writes into a panel that arrived complete. Streaming into the run's own reasoning
+    // panel would show the subagent's thinking as the thinking of the run waiting on it.
+    final var updater =
+        FeishuCardUpdater.forSubagent(
+            card,
+            om,
+            null,
+            messages,
+            new FeishuSubagentPanel(om, messages),
+            "sub-1",
+            "reading",
+            "read it");
+
+    updater.onReasoning("Thinking about it.");
+
+    verify(feishu.cardkit().v1().cardElement(), never()).content(any(ContentCardElementReq.class));
+  }
+
+  private ContentCardElementReq lastWrite() throws Exception {
+    final var captor = ArgumentCaptor.forClass(ContentCardElementReq.class);
+    verify(feishu.cardkit().v1().cardElement(), atLeastOnce()).content(captor.capture());
+    return captor.getValue();
+  }
+
+  private List<CreateCardElementReq> inserts() throws Exception {
+    final var captor = ArgumentCaptor.forClass(CreateCardElementReq.class);
+    verify(feishu.cardkit().v1().cardElement(), atLeastOnce()).create(captor.capture());
+    return captor.getAllValues();
+  }
+
+  /** The elements added to the card, in the order they were added. */
+  private List<String> insertedElements() throws Exception {
+    return inserts().stream()
+        .map(insert -> insert.getCreateCardElementReqBody().getUuid())
+        .map(uuid -> uuid.substring(uuid.indexOf(':') + 1))
+        .toList();
+  }
+
+  /** What each of them was placed above. */
+  private List<String> anchors() throws Exception {
+    return inserts().stream()
+        .map(insert -> insert.getCreateCardElementReqBody().getTargetElementId())
+        .toList();
+  }
+
+  private String insertOf(final String elementId) throws Exception {
+    return inserts().stream()
+        .filter(insert -> insert.getCreateCardElementReqBody().getUuid().endsWith(":" + elementId))
+        .map(insert -> insert.getCreateCardElementReqBody().getElements())
+        .findFirst()
+        .orElseThrow();
+  }
+
+  /** The real elements: what the card gains as the run first has something to put in them. */
+  private static FeishuCardElements cardElements(final FeishuMessages messages) {
+    return new FeishuCardElements(
+        new JsonMapper(), messages, new ClassPathResource("feishu/card-elements.json"));
+  }
+}
