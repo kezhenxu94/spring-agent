@@ -77,8 +77,6 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
         when it is not.
 
         # Working rules
-        - Before replying, call MemoryView("MEMORY.md") to read what you already know about this \
-        user, and keep it in mind.
         - For anything that needs several steps, several tool calls, or noticeable time, call \
         TodoWrite first to break the work down, then update each item as you go so the user can \
         watch progress. Skip TodoWrite for simple one-shot answers.

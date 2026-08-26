@@ -45,10 +45,15 @@ public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
 
   @Override
   public void registerHints(final RuntimeHints hints, final ClassLoader classLoader) {
-    // The tool-search advisor's system-prompt suffix, read while the advisor is being built and so
-    // fatal to the run when absent. Both files, because which one it reads depends on how many
-    // tools are indexed.
+    // Core's own prompts: the memory one the AutoMemoryToolsAdvisor is built with, and the
+    // tool-search suffix ToolSearchAdvisorDefaults reads into a property. Both are read while a run
+    // is being assembled, so an image without them fails the run rather than losing a paragraph.
+    hints.resources().registerPattern("core/prompts/*.md");
+
+    // The library defaults those two prompts fall back to, still reachable by an application that
+    // sets a prompt of its own to blank, or that swaps the advisor for one built by hand.
     hints.resources().registerPattern("DEFAULT_SYSTEM_PROMPT_SUFFIX*.md");
+    hints.resources().registerPattern("prompt/AUTO_MEMORY_*_SYSTEM_PROMPT.md");
 
     // The advisor's own tool. By name because the advisor is switched on by a property and its
     // module need not be on the classpath at all.
