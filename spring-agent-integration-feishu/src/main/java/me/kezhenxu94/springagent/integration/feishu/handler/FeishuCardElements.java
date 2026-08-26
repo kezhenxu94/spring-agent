@@ -171,6 +171,22 @@ public class FeishuCardElements {
     return element;
   }
 
+  /**
+   * The reasoning pane as a whole element, open or closed, holding {@code reasoning}.
+   *
+   * <p>Whole, because whether a panel is open is not something a stream can express — the run
+   * replaces the element, and a replacement that left out the thinking would take it off the card
+   * along with the chevron that was the point of the replacement.
+   */
+  @SneakyThrows
+  public String reasoningPanel(final boolean expanded, final String reasoning) {
+    final var element = element(REASONING);
+    element.put("expanded", expanded);
+    ((ObjectNode) element.path("elements").get(0))
+        .put("content", reasoning == null ? "" : reasoning);
+    return om.writeValueAsString(element);
+  }
+
   /** One element as the JSON array the card element API takes for an insert. */
   @SneakyThrows
   public String forInsert(final String elementId) {

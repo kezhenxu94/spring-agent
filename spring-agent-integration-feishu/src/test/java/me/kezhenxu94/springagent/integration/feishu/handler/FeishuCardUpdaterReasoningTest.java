@@ -12,9 +12,11 @@ import com.lark.oapi.service.cardkit.v1.model.ContentCardElementReq;
 import com.lark.oapi.service.cardkit.v1.model.ContentCardElementResp;
 import com.lark.oapi.service.cardkit.v1.model.CreateCardElementReq;
 import com.lark.oapi.service.cardkit.v1.model.CreateCardElementResp;
+import com.lark.oapi.service.cardkit.v1.model.UpdateCardElementReq;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.tools.UserHome;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
@@ -93,6 +95,39 @@ class FeishuCardUpdaterReasoningTest {
     assertThat(panel).contains("\"tag\":\"collapsible_panel\"").contains("\"expanded\":true");
     assertThat(panel).contains("\"element_id\":\"reasoning_body\"");
     assertThat(panel).contains(messages.get("card-reasoning"));
+  }
+
+  @Test
+  @DisplayName("the pane is folded away when the run ends, with the thinking still in it")
+  void thePaneIsClosedAtTheEnd() throws Exception {
+    final var updater =
+        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), null);
+
+    updater.onReasoning("Thinking about it.");
+    updater.onContent("Here you go.");
+
+    // Open for the length of the run: nothing rewrites it while the run is going.
+    assertThat(replacements()).isEmpty();
+
+    updater.onFinished(AgentOutcome.COMPLETED);
+
+    assertThat(replacements()).hasSize(1);
+    assertThat(replacements().get(0))
+        .contains("\"expanded\":false")
+        .contains("Thinking about it.")
+        .contains("\"element_id\":\"reasoning_body\"");
+  }
+
+  @Test
+  @DisplayName("a run that never thought has no pane to fold away")
+  void nothingToCloseWithoutAPane() throws Exception {
+    final var updater =
+        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), null);
+
+    updater.onContent("Here you go.");
+    updater.onFinished(AgentOutcome.COMPLETED);
+
+    assertThat(replacements()).isEmpty();
   }
 
   @Test
@@ -188,6 +223,17 @@ class FeishuCardUpdaterReasoningTest {
     updater.onReasoning("Thinking about it.");
 
     verify(feishu.cardkit().v1().cardElement(), never()).content(any(ContentCardElementReq.class));
+  }
+
+  /** The pane rewritten whole, which is the only way its chevron can change. */
+  private List<String> replacements() throws Exception {
+    final var captor = ArgumentCaptor.forClass(UpdateCardElementReq.class);
+    verify(feishu.cardkit().v1().cardElement(), org.mockito.Mockito.atLeast(0))
+        .update(captor.capture());
+    return captor.getAllValues().stream()
+        .filter(update -> "reasoning".equals(update.getElementId()))
+        .map(update -> update.getUpdateCardElementReqBody().getElement())
+        .toList();
   }
 
   private ContentCardElementReq lastWrite() throws Exception {

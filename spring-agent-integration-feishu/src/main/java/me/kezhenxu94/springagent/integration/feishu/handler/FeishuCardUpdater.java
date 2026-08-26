@@ -147,6 +147,12 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    */
   private int toolCallsInFlight;
 
+  /**
+   * Everything the model has thought, kept because closing the pane at the end of the run replaces
+   * the element whole and a replacement without it would empty the pane it is closing.
+   */
+  private String reasoning = "";
+
   /** The run the card was created for: it owns the card's elements and finishes it. */
   public static FeishuCardUpdater forRun(
       final FeishuCard card,
@@ -598,6 +604,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     if (!added(FeishuCardElements.REASONING)) {
       return;
     }
+    reasoning = reasoningSoFar;
     // Plain, like a subagent's report in its own panel: the panel and its smaller type already say
     // this is secondary, and quoting it on top of that only narrows it.
     card.stream(FeishuCardElements.REASONING_BODY, reasoningSoFar);
@@ -668,6 +675,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   @Override
   public synchronized void onFinished(AgentOutcome outcome) {
     if (!isSubagent()) {
+      closeReasoningPane();
       card.finish();
       return;
     }
@@ -681,6 +689,26 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
             withFailure(lastBaseContent),
             spend.render(startedAt)),
         subagentId + ":end");
+  }
+
+  /**
+   * Folds the thinking away as the run ends, leaving it on the card for whoever wants it.
+   *
+   * <p>The pane is open for the length of the run because while the model is thinking that is the
+   * only thing happening and a reader watching an otherwise still card is owed it. Once there is an
+   * answer above it, it is an aside behind one, and a finished card that is mostly working-out is a
+   * finished card nobody reads. This is the only time it is closed — Feishu reports a panel's
+   * chevron to nobody, so anything more often would be overruling a reader's own choice over and
+   * over rather than once, at the moment the thing they were watching stopped.
+   */
+  private void closeReasoningPane() {
+    if (elements == null || !added.contains(FeishuCardElements.REASONING)) {
+      return;
+    }
+    card.replace(
+        FeishuCardElements.REASONING,
+        elements.reasoningPanel(false, reasoning),
+        card.cardId() + ":reasoning:end");
   }
 
   @Override
