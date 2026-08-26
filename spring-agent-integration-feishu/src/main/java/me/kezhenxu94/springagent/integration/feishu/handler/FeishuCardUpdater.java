@@ -283,7 +283,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
 
     /** The one line of it: models, tokens, cost and how long, or nothing at all if nothing ran. */
     private String render(final Instant since) {
-      final var models = String.join(" + ", this.models);
+      final var models = String.join(" + ", this.models) + effort();
       if (promptTokens == 0 && completionTokens == 0) {
         return models;
       }
@@ -298,6 +298,20 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
           completionTokens,
           cost.isEmpty() ? "" : " · " + cost,
           formatElapsed(Duration.between(since, Instant.now())));
+    }
+
+    /**
+     * How hard the run asked the model to think, as a segment of its own after the models — the
+     * footer's other facts are separated the same way, and it applies to every call the turn made
+     * rather than to one of the models named.
+     *
+     * <p>Empty where no effort is configured, so the footer reads as it always did. An updater
+     * writing into a subagent panel is built without card elements — a panel is rendered whole
+     * rather than assembled from them — so there is nothing to read it from there either.
+     */
+    private String effort() {
+      final var effort = elements == null ? null : elements.reasoningEffort();
+      return effort == null || effort.isBlank() ? "" : " · " + effort;
     }
   }
 

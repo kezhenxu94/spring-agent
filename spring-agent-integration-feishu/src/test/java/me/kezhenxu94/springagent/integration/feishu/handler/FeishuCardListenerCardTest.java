@@ -71,7 +71,7 @@ class FeishuCardListenerCardTest {
             null,
             new FeishuSubagentPanel(om, messages),
             new FeishuCardElements(
-                om, messages, new ClassPathResource("feishu/card-elements.json")),
+                om, messages, new ClassPathResource("feishu/card-elements.json"), null),
             new FeishuMessageReactions(feishu),
             mock(FeishuMessageCard.class));
     listener.feishuReplyCard = new ClassPathResource("feishu/reply-card.json");

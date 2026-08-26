@@ -91,6 +91,21 @@ spring:
       chat:
         model: ${OPENAI_MODEL}
         temperature: 0
+        # How much the model thinks before it answers, and as much as there is: the ladder the SDK
+        # knows is minimal, medium, high, xhigh, none. `xhigh` because this agent's turns are tool
+        # calling ones — which tool to reach for, and whether the result answers the question — and
+        # that is the part a model gets wrong when it is hurried, not the prose. It is also the
+        # expensive end: thinking tokens are billed at the thinking rate (app.ai.model-pricing) and
+        # the reasoning a surface shows gets correspondingly longer.
+        #
+        # Only meaningful on a reasoning model, and only on an endpoint that reads the field: an
+        # OpenAI-compatible gateway in front of a non-reasoning model ignores it, and a few reject
+        # an unknown field outright rather than dropping it, which fails every request. The value
+        # is passed through as written — ReasoningEffort.of() builds an open enum, so a word that
+        # is not on the ladder above is sent as-is and refused by the endpoint rather than here.
+        # Set OPENAI_REASONING_EFFORT to step down it, or to an empty value to stop sending the
+        # field at all.
+        reasoning-effort: ${OPENAI_REASONING_EFFORT:xhigh}
         # OkHttp's callTimeout, not a read timeout — it bounds the entire streaming call, so it has
         # to outlast the longest single model turn. See the app's application.yaml for why the two
         # cannot be told apart here.
