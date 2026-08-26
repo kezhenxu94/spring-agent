@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.core.config;
 
+import java.util.Locale;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import org.springframework.boot.EnvironmentPostProcessor;
@@ -20,13 +21,28 @@ import org.springframework.core.env.MapPropertySource;
  * that user's MCP servers offer, the same in every conversation they have, so keyed by conversation
  * every new thread pays to embed the same few hundred descriptions again.
  *
- * <p>Contributed as the lowest-precedence property source, so an application that does set the
+ * <p>Defaults {@code system-message-suffix} in the same breath, to core's own {@code
+ * tool-search-suffix} prompt in the workspace's language. The advisor appends that text to the end
+ * of the system message, which makes it the last thing the model reads and so the strongest single
+ * influence on how it works — and upstream's default is one English sentence saying a tool search
+ * exists. It says nothing about what the search answers with (names, not definitions), nor when
+ * those tools arrive (the next message, not this one), so a model told to use a tool it cannot see
+ * spends its reasoning working the protocol out from scratch, in the language that sentence was
+ * written in.
+ *
+ * <p>Contributed as the lowest-precedence property source, so an application that does set either
  * property still wins — including one that points the advisor back at the conversation id.
  */
 public class ToolSearchAdvisorDefaults implements EnvironmentPostProcessor, Ordered {
 
   private static final String SESSION_ID_KEY_NAME =
       "spring.ai.chat.client.tool-search-advisor.session-id-key-name";
+
+  private static final String SYSTEM_MESSAGE_SUFFIX =
+      "spring.ai.chat.client.tool-search-advisor.system-message-suffix";
+
+  /** The prompt file, without its locale suffix or extension. */
+  static final String SUFFIX_PROMPT = "tool-search-suffix";
 
   @Override
   public void postProcessEnvironment(
@@ -36,12 +52,17 @@ public class ToolSearchAdvisorDefaults implements EnvironmentPostProcessor, Orde
         .addLast(
             new MapPropertySource(
                 "springAgentToolSearchAdvisorDefaults",
-                Map.of(SESSION_ID_KEY_NAME, SpringAgent.TOOL_INDEX_KEY)));
+                Map.of(
+                    SESSION_ID_KEY_NAME,
+                    SpringAgent.TOOL_INDEX_KEY,
+                    SYSTEM_MESSAGE_SUFFIX,
+                    LocalizedPrompt.text(
+                        SUFFIX_PROMPT, environment.getProperty("app.locale", Locale.class)))));
   }
 
   /**
    * Last, so that the property sources this appends after include the ones config data loaded from
-   * {@code application.yaml}.
+   * {@code application.yaml} — which is also what makes {@code app.locale} readable here.
    */
   @Override
   public int getOrder() {

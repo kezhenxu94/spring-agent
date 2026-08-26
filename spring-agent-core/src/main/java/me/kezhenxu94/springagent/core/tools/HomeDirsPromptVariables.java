@@ -6,6 +6,7 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.PromptVariablesContributor;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
 import org.springframework.stereotype.Component;
 
 /**
@@ -24,6 +25,7 @@ public class HomeDirsPromptVariables implements PromptVariablesContributor {
   public static final String VARIABLE = "homeDirs";
 
   private final UserWorkspaceFactory userWorkspaceFactory;
+  private final CoreMessages messages;
 
   @Override
   public Map<String, Object> variables(final AgentRequest request) {
@@ -32,19 +34,12 @@ public class HomeDirsPromptVariables implements PromptVariablesContributor {
     }
 
     final var lines = new ArrayList<String>();
-    lines.add(
-        describe(userWorkspaceFactory.forOwner(request.userId()), "yours alone, nobody else sees"));
+    lines.add(describe(userWorkspaceFactory.forOwner(request.userId()), "home-dir-own"));
     if (!Strings.isNullOrEmpty(request.groupId())) {
-      lines.add(
-          describe(
-              userWorkspaceFactory.forGroup(request.groupId()),
-              "shared with everyone in this group chat"));
+      lines.add(describe(userWorkspaceFactory.forGroup(request.groupId()), "home-dir-group"));
     }
     if (!Strings.isNullOrEmpty(request.tenantId())) {
-      lines.add(
-          describe(
-              userWorkspaceFactory.forTenant(request.tenantId()),
-              "shared across the whole company"));
+      lines.add(describe(userWorkspaceFactory.forTenant(request.tenantId()), "home-dir-tenant"));
     }
     return Map.of(VARIABLE, String.join("\n", lines));
   }
@@ -53,9 +48,14 @@ public class HomeDirsPromptVariables implements PromptVariablesContributor {
    * A home is described by its root and the folders it may hold, not by what is in it: the
    * directories are made when something is first written to them, so listing what exists now would
    * be a snapshot the model cannot act on.
+   *
+   * <p>Through the bundle, because this lands inside the application's system prompt: a deployment
+   * that wrote that prompt in its own language would otherwise find three English sentences in the
+   * middle of it.
+   *
+   * @param audience the message key naming who else can see this home
    */
   private String describe(final UserHome home, final String audience) {
-    return "- %s — %s. Holds memories/, skills/, workspace/ and artifacts/."
-        .formatted(home.root(), audience);
+    return messages.get("home-dir", home.root(), messages.get(audience));
   }
 }

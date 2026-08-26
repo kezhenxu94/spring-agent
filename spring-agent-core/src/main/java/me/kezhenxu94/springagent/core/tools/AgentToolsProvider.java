@@ -16,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
+import me.kezhenxu94.springagent.core.config.LocalizedPrompt;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
@@ -43,6 +44,9 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class AgentToolsProvider {
+
+  /** The memory prompt's file, without its locale suffix or extension. */
+  public static final String MEMORY_PROMPT = "auto-memory";
 
   private final UserWorkspaceFactory userWorkspaceFactory;
   private final McpServerConfigRepo mcpServerConfigRepo;
@@ -157,7 +161,18 @@ public class AgentToolsProvider {
 
     final var advisors =
         List.<Advisor>of(
-            AutoMemoryToolsAdvisor.builder().memoriesRootDirectory(memoriesRootDirectory).build());
+            AutoMemoryToolsAdvisor.builder()
+                .memoriesRootDirectory(memoriesRootDirectory)
+                // Core's own prompt, in the workspace's language, rather than the library's: the
+                // advisor appends whatever this is to the end of the system message on every
+                // request, and the default is two thousand words of English. A workspace whose
+                // prompt is not English gets that English tail last and closest to the model, which
+                // is enough to make it reason in English about a conversation it answers in
+                // another language. The text also has to be true of this deployment — the default
+                // says MEMORY.md is always loaded into context, and here nothing loads it.
+                .memorySystemPrompt(
+                    LocalizedPrompt.resource(MEMORY_PROMPT, appConfiguration.locale()))
+                .build());
 
     return new AgentComposition(tools.toArray(), advisors, agentTools.mcpTools());
   }

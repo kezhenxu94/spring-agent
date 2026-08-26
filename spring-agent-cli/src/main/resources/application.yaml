@@ -57,6 +57,11 @@ spring:
             # SPRING_AI_CHAT_MEMORY tables would never be created.
             initialize-schema: always
       client:
+        # Only `toolSearchTool` and whatever a search has already named reach the model on any one
+        # iteration, so the suffix appended to the system prompt is what teaches it the protocol.
+        # `system-message-suffix` is not set here on purpose: core defaults it (see
+        # ToolSearchAdvisorDefaults) to its own prompt in the app.locale language, since upstream's
+        # is a single English sentence. Set it here to say something else.
         tool-search-advisor:
           enabled: true
           tool-index-type: vector
