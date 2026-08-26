@@ -6,6 +6,7 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
+import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
@@ -96,6 +97,17 @@ public class FeishuCardElements {
   @Value("${app.feishu.card-elements:classpath:/feishu/card-elements.json}")
   private final Resource cardElements;
 
+  /**
+   * The chat options a run is sent with, for the one of them the card reports: how hard the model
+   * was asked to think, shown beside the model in the usage footer.
+   *
+   * <p>The bean the autoconfiguration binds, rather than the same property read back through a
+   * placeholder of our own: a setting that belongs to another module is then named once, where it
+   * is declared, instead of a second time here where a rename upstream would leave this silently
+   * blank.
+   */
+  private final OpenAiChatProperties chatProperties;
+
   /** The element {@code elementId} is added above, on a card carrying nothing else optional. */
   String anchorOf(final String elementId) {
     final var anchor = ANCHORS.get(elementId);
@@ -185,6 +197,16 @@ public class FeishuCardElements {
     ((ObjectNode) element.path("elements").get(0))
         .put("content", reasoning == null ? "" : reasoning);
     return om.writeValueAsString(element);
+  }
+
+  /**
+   * How hard the model was asked to think, or null where nothing was asked: a deployment that
+   * states no effort, or a chat model that is not OpenAI-shaped. Never read back from an answer,
+   * because it is not in one — a chat completion reports the reasoning tokens it produced but never
+   * the effort it was asked for, so the request side is the only side that knows.
+   */
+  public String reasoningEffort() {
+    return chatProperties == null ? null : chatProperties.getReasoningEffort();
   }
 
   /** One element as the JSON array the card element API takes for an insert. */

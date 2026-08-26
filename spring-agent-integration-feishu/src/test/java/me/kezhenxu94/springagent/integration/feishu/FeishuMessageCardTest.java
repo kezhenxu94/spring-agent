@@ -31,7 +31,7 @@ class FeishuMessageCardTest {
             objectMapper,
             messages,
             new FeishuCardElements(
-                objectMapper, messages, new ClassPathResource("feishu/card-elements.json")),
+                objectMapper, messages, new ClassPathResource("feishu/card-elements.json"), null),
             new ClassPathResource("feishu/reply-card.json"));
   }
 

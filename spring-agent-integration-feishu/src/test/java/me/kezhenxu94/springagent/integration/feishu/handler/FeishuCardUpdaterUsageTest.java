@@ -29,6 +29,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.metadata.DefaultUsage;
+import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.client.RestTemplate;
 import tools.jackson.databind.json.JsonMapper;
@@ -91,6 +92,37 @@ class FeishuCardUpdaterUsageTest {
 
     // Grey, like the conversation hint below it, and so asserted whole here rather than by what it
     // says: this is the one case where the footer's whole content is known.
+    assertThat(lastFooter()).isEqualTo("<font color='grey'>the-model</font>");
+  }
+
+  @Test
+  @DisplayName("the effort the run was sent with is a segment of its own, after the models")
+  void theEffortFollowsTheModel() throws Exception {
+    updater =
+        FeishuCardUpdater.forRun(
+            card,
+            new JsonMapper(),
+            Map.of(),
+            messages,
+            new FeishuCardElements(
+                new JsonMapper(),
+                messages,
+                new ClassPathResource("feishu/card-elements.json"),
+                chatPropertiesWithEffort("xhigh")),
+            null);
+
+    updater.onModel("the-model");
+    updater.onUsage("another-model", new DefaultUsage(1_000, 2_000, 3_000));
+
+    // Once after the models, not per model: the same effort was sent on every call of the turn.
+    assertThat(lastFooter()).contains("the-model + another-model · xhigh · ↑1000 ↓2000");
+  }
+
+  @Test
+  @DisplayName("a deployment that states no effort names the model alone, not empty brackets")
+  void noEffortConfigured() throws Exception {
+    updater.onModel("the-model");
+
     assertThat(lastFooter()).isEqualTo("<font color='grey'>the-model</font>");
   }
 
@@ -185,9 +217,16 @@ class FeishuCardUpdaterUsageTest {
     return footers.get(footers.size() - 1).getContentCardElementReqBody().getContent();
   }
 
+  /** The chat options a deployment stating an effort is configured with. */
+  private static OpenAiChatProperties chatPropertiesWithEffort(final String effort) {
+    final var properties = new OpenAiChatProperties();
+    properties.setReasoningEffort(effort);
+    return properties;
+  }
+
   /** The real elements: what the card gains as the run first has something to put in them. */
   private static FeishuCardElements cardElements(final FeishuMessages messages) {
     return new FeishuCardElements(
-        new JsonMapper(), messages, new ClassPathResource("feishu/card-elements.json"));
+        new JsonMapper(), messages, new ClassPathResource("feishu/card-elements.json"), null);
   }
 }
