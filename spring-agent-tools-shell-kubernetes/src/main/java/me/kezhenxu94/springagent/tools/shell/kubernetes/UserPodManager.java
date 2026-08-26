@@ -32,6 +32,7 @@ public class UserPodManager {
   public static final String LABEL_APP_VALUE = "spring-agent-shell";
   public static final String LABEL_SHELL_POD = "springagent.io/shell-pod";
   public static final String LABEL_OWNER_USER_ID = "springagent.io/owner-user-id";
+  public static final String LABEL_SCOPE_KEY = "springagent.io/scope-key";
   public static final String LABEL_SHELL_POD_ROLE = "springagent.io/shell-pod-role";
   public static final String SHELL_POD_ROLE_ADMIN = "admin";
   public static final String CONTAINER_NAME = "shell";
@@ -43,22 +44,23 @@ public class UserPodManager {
 
   /**
    * @param groupId the group (e.g. Feishu group chat id) this call came from, or null/blank for
-   *     none. Only used to decide what to mount when a new Pod is actually created — Pod identity
-   *     stays keyed on userId alone, so a Pod created for one group keeps that group's mounts even
-   *     if the same user later calls from a different group.
+   *     none. Pod identity is keyed on (userId, groupId, tenantId) together, so calls from a
+   *     different group/tenant get their own Pod with that scope's mounts, instead of reusing a Pod
+   *     that was created for a different scope and lacks them.
    * @param tenantId the tenant (e.g. Feishu tenant key) this call came from, or null/blank for
-   *     none. Same one-time-at-creation treatment as groupId.
+   *     none. Part of the Pod identity key, same as groupId.
    */
   public String ensurePodFor(final String userId, final String groupId, final String tenantId) {
     final var ns = namespace();
-    final var existing = findRunningPod(ns, userId);
+    final var scopeKey = scopeKey(userId, groupId, tenantId);
+    final var existing = findRunningPod(ns, userId, scopeKey);
     if (existing.isPresent()) {
       return existing.get().getMetadata().getName();
     }
 
-    final var jobName = jobName(userId);
-    createJob(ns, jobName, userId, groupId, tenantId);
-    return waitForRunningPod(ns, userId, jobName);
+    final var jobName = jobName(scopeKey);
+    createJob(ns, jobName, userId, groupId, tenantId, scopeKey);
+    return waitForRunningPod(ns, userId, scopeKey, jobName);
   }
 
   private void createJob(
@@ -66,14 +68,15 @@ public class UserPodManager {
       final String jobName,
       final String userId,
       final String groupId,
-      final String tenantId) {
+      final String tenantId,
+      final String scopeKey) {
     try {
       kubernetesClient
           .batch()
           .v1()
           .jobs()
           .inNamespace(ns)
-          .resource(buildJob(jobName, userId, groupId, tenantId))
+          .resource(buildJob(jobName, userId, groupId, tenantId, scopeKey))
           .create();
       log.info("Created shell sandbox Job {} for user {}", jobName, userId);
       return;
@@ -92,7 +95,7 @@ public class UserPodManager {
           .v1()
           .jobs()
           .inNamespace(ns)
-          .resource(buildJob(jobName, userId, groupId, tenantId))
+          .resource(buildJob(jobName, userId, groupId, tenantId, scopeKey))
           .create();
       return;
     }
@@ -123,7 +126,7 @@ public class UserPodManager {
           .v1()
           .jobs()
           .inNamespace(ns)
-          .resource(buildJob(jobName, userId, groupId, tenantId))
+          .resource(buildJob(jobName, userId, groupId, tenantId, scopeKey))
           .create();
       log.info("Recreated shell sandbox Job {} for user {}", jobName, userId);
     } else {
@@ -147,12 +150,14 @@ public class UserPodManager {
     return false;
   }
 
-  private Optional<Pod> findRunningPod(final String ns, final String userId) {
+  private Optional<Pod> findRunningPod(
+      final String ns, final String userId, final String scopeKey) {
     final var pods =
         kubernetesClient
             .pods()
             .inNamespace(ns)
             .withLabel(LABEL_OWNER_USER_ID, userId)
+            .withLabel(LABEL_SCOPE_KEY, scopeKey)
             .list()
             .getItems();
     return pods.stream()
@@ -160,11 +165,12 @@ public class UserPodManager {
         .findFirst();
   }
 
-  private String waitForRunningPod(final String ns, final String userId, final String jobName) {
+  private String waitForRunningPod(
+      final String ns, final String userId, final String scopeKey, final String jobName) {
     final var timeoutSeconds = properties.startupTimeout().getSeconds();
     final var deadline = System.nanoTime() + properties.startupTimeout().toNanos();
     while (System.nanoTime() < deadline) {
-      final var pod = findRunningPod(ns, userId);
+      final var pod = findRunningPod(ns, userId, scopeKey);
       if (pod.isPresent()) {
         return pod.get().getMetadata().getName();
       }
@@ -192,8 +198,17 @@ public class UserPodManager {
     return kubernetesClient.getNamespace();
   }
 
-  static String jobName(final String userId) {
-    return "spring-agent-shell-" + shortHash(userId);
+  static String jobName(final String scopeKey) {
+    return "spring-agent-shell-" + scopeKey;
+  }
+
+  /**
+   * A short hash identifying the (userId, groupId, tenantId) combination, safe for use as both a
+   * Kubernetes resource-name suffix and a label value.
+   */
+  static String scopeKey(final String userId, final String groupId, final String tenantId) {
+    return shortHash(
+        userId + " " + (groupId == null ? "" : groupId) + " " + (tenantId == null ? "" : tenantId));
   }
 
   public String credentialsSecretName(final String userId) {
@@ -239,11 +254,16 @@ public class UserPodManager {
   }
 
   private Job buildJob(
-      final String jobName, final String userId, final String groupId, final String tenantId) {
+      final String jobName,
+      final String userId,
+      final String groupId,
+      final String tenantId,
+      final String scopeKey) {
     final var labels = new HashMap<String, String>();
     labels.put(LABEL_APP, LABEL_APP_VALUE);
     labels.put(LABEL_SHELL_POD, "true");
     labels.put(LABEL_OWNER_USER_ID, userId);
+    labels.put(LABEL_SCOPE_KEY, scopeKey);
     if (appConfiguration.ai().admins().contains(userId)) {
       labels.put(LABEL_SHELL_POD_ROLE, SHELL_POD_ROLE_ADMIN);
     }
