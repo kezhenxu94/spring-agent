@@ -122,7 +122,7 @@ class SubagentSchedulerStarvationTest {
     final var tools = new SubagentTools(agent, properties, messages);
     final var offered =
         Stream.concat(Stream.of(ToolCallbacks.from(tools)), Stream.of(look())).toArray();
-    when(agentToolsProvider.compose(any(), any(), any(), any(), anyBoolean()))
+    when(agentToolsProvider.compose(any(), any(), any(), any(), anyBoolean(), any()))
         .thenReturn(
             new AgentComposition(offered, List.of(), new McpTools(List.of(), new ToolCallback[0])));
   }
@@ -402,6 +402,7 @@ class SubagentSchedulerStarvationTest {
             null,
             Set.of(),
             Map.of(),
+            null,
             null,
             new SpringAgentProperties.Ai.Tools(
                 null, new SpringAgentProperties.Ai.Tools.Subagent(3, WAIT_POLL, null)),

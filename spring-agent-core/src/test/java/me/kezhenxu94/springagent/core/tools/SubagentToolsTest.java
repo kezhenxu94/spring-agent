@@ -282,6 +282,7 @@ class SubagentToolsTest {
             Set.of(),
             Map.of(),
             null,
+            null,
             new SpringAgentProperties.Ai.Tools(
                 null,
                 new SpringAgentProperties.Ai.Tools.Subagent(

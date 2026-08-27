@@ -58,7 +58,8 @@ class FeishuChatAccessTest {
         feishu,
         new SpringAgentProperties(
             null,
-            new SpringAgentProperties.Ai(null, admins, Map.of(), null, null, null, null, null),
+            new SpringAgentProperties.Ai(
+                null, admins, Map.of(), null, null, null, null, null, null),
             Locale.ENGLISH));
   }
 

@@ -87,7 +87,8 @@ class AgentToolsProviderAskTest {
               mock(McpServerConfigRepo.class),
               mock(McpClientFactory.class),
               context,
-              properties());
+              properties(),
+              mock(org.springframework.beans.factory.ObjectProvider.class));
       return provider.compose(
           AgentRequest.builder()
               .scenario(BuiltInScenarios.CHAT)
@@ -99,7 +100,8 @@ class AgentToolsProviderAskTest {
           todos -> {},
           // Answers nothing, as an asynchronous channel does and a broken synchronous one would.
           questions -> Map.of(),
-          answersArriveLater);
+          answersArriveLater,
+          references -> {});
     }
   }
 
@@ -119,6 +121,7 @@ class AgentToolsProviderAskTest {
             null,
             Set.of(),
             Map.of(),
+            null,
             null,
             new Tools(new AskUserQuestion(true, null), null),
             "You are an agent.",

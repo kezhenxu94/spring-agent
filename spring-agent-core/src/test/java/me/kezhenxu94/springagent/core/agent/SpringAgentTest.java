@@ -104,7 +104,7 @@ class SpringAgentTest {
 
   @BeforeEach
   void setUp() throws Exception {
-    when(agentToolsProvider.compose(any(), any(), any(), any(), anyBoolean()))
+    when(agentToolsProvider.compose(any(), any(), any(), any(), anyBoolean(), any()))
         .thenReturn(
             new AgentComposition(
                 new Object[0],
@@ -302,7 +302,7 @@ class SpringAgentTest {
               return "sub-1";
             });
     try {
-      when(agentToolsProvider.compose(any(), any(), any(), any(), anyBoolean()))
+      when(agentToolsProvider.compose(any(), any(), any(), any(), anyBoolean(), any()))
           .thenReturn(
               new AgentComposition(
                   new Object[] {callback},
@@ -409,7 +409,7 @@ class SpringAgentTest {
   @Test
   @DisplayName("a run that cannot be composed reports FAILED rather than failing silently")
   void compositionFailureRun() throws Exception {
-    when(agentToolsProvider.compose(any(), any(), any(), any(), anyBoolean()))
+    when(agentToolsProvider.compose(any(), any(), any(), any(), anyBoolean(), any()))
         .thenThrow(new IOException("no workspace"));
 
     final var listener = fireAndAwait(request());
@@ -448,7 +448,7 @@ class SpringAgentTest {
     assertThat(listener.outcomes).containsExactly(AgentOutcome.FAILED);
     assertThat(listener.errors).hasSize(1);
     assertThat(listener.errors.getFirst()).hasMessage("nowhere to put the answer");
-    verify(agentToolsProvider, times(0)).compose(any(), any(), any(), any(), anyBoolean());
+    verify(agentToolsProvider, times(0)).compose(any(), any(), any(), any(), anyBoolean(), any());
   }
 
   @Test
@@ -664,7 +664,7 @@ class SpringAgentTest {
   /** What the run told compose() about whether an answer can arrive inside the call. */
   private boolean answersArriveLaterFromRun() throws Exception {
     final var endsTurn = ArgumentCaptor.forClass(Boolean.class);
-    verify(agentToolsProvider).compose(any(), any(), any(), any(), endsTurn.capture());
+    verify(agentToolsProvider).compose(any(), any(), any(), any(), endsTurn.capture(), any());
     return endsTurn.getValue();
   }
 
@@ -934,7 +934,8 @@ class SpringAgentTest {
     fireAndAwait(request);
 
     final var composed = ArgumentCaptor.forClass(QuestionHandler.class);
-    verify(agentToolsProvider).compose(any(), any(), any(), composed.capture(), anyBoolean());
+    verify(agentToolsProvider)
+        .compose(any(), any(), any(), composed.capture(), anyBoolean(), any());
     return composed
         .getValue()
         .handle(
@@ -944,7 +945,8 @@ class SpringAgentTest {
   /** The one handler the run composed out of everything registered. */
   private QuestionHandler handlerFromRun() throws Exception {
     final var composed = ArgumentCaptor.forClass(QuestionHandler.class);
-    verify(agentToolsProvider).compose(any(), any(), any(), composed.capture(), anyBoolean());
+    verify(agentToolsProvider)
+        .compose(any(), any(), any(), composed.capture(), anyBoolean(), any());
     return composed.getValue();
   }
 
@@ -966,7 +968,7 @@ class SpringAgentTest {
     assertThat(listener.finished.await(5, TimeUnit.SECONDS)).isTrue();
     assertThat(listener.outcomes).containsExactly(AgentOutcome.FAILED);
     assertThat(listener.errors).hasSize(1);
-    verify(agentToolsProvider, times(0)).compose(any(), any(), any(), any(), anyBoolean());
+    verify(agentToolsProvider, times(0)).compose(any(), any(), any(), any(), anyBoolean(), any());
   }
 
   private RecordingListener fireAndAwait(final AgentRequest.AgentRequestBuilder request) {
@@ -1083,6 +1085,7 @@ class SpringAgentTest {
             null,
             Set.of(),
             Map.of(),
+            null,
             null,
             null,
             "You are {userId} in {chatId} ({chatType}), thread {threadId}, parent {parentId},"
@@ -1266,7 +1269,7 @@ class SpringAgentTest {
     final var chatMemory =
         MessageWindowChatMemory.builder().chatMemoryRepository(chatMemoryRepository).build();
     try {
-      when(agentToolsProvider.compose(any(), any(), any(), any(), anyBoolean()))
+      when(agentToolsProvider.compose(any(), any(), any(), any(), anyBoolean(), any()))
           .thenReturn(
               new AgentComposition(
                   tools,
@@ -1299,7 +1302,7 @@ class SpringAgentTest {
     final var repository = new ToolMessageDroppingRepository();
     final var chatMemory =
         MessageWindowChatMemory.builder().chatMemoryRepository(repository).build();
-    when(agentToolsProvider.compose(any(), any(), any(), any(), anyBoolean()))
+    when(agentToolsProvider.compose(any(), any(), any(), any(), anyBoolean(), any()))
         .thenReturn(
             new AgentComposition(
                 new Object[] {toolCallback("CurrentDateTime", "2026-08-16T10:00:00+08:00")},

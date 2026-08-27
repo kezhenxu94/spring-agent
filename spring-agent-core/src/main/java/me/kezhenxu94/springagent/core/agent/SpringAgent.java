@@ -373,7 +373,8 @@ public class SpringAgent {
                         toolContext,
                         fanOut(todoEventHandlers),
                         questionHandler,
-                        answersArriveLater);
+                        answersArriveLater,
+                        references -> notify(listeners, l -> l.onKnowledgeRetrieved(references)));
                 mcpTools.set(composition.mcpTools());
                 return rawStream(request, composition, toolContext);
               } catch (Exception e) {
