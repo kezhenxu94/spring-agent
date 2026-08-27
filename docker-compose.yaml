@@ -9,6 +9,29 @@
 # the reason they are the defaults — so their profiles start nothing and exist only so the commands
 # below read the same whichever pair you pick.
 #
+# There is a third, `rag`, which is not an axis but a feature: the knowledge base, off unless asked
+# for. It starts the same Milvus the vector store profile does, because the tool search index and
+# the knowledge base share a server and differ only by collection. It is separate from the
+# `milvus` profile so that a knowledge base does not force the tool index off the simple in-heap
+# store — the two are independent choices, and the commonest one is `simple` plus `rag`:
+#
+#   COMPOSE_PROFILES=rag docker compose up -d          # Milvus only, app run separately
+#   RAG_ENABLED=true ./gradlew :spring-agent-app:bootRun
+#
+# RAG_ENABLED belongs to whichever process runs the agent, not to the profile: the profile starts
+# Milvus, the variable is what tells the application to use it. Set it on the compose command only
+# when the `app` profile is also in play. Turning it on without a reachable Milvus stops the
+# application from starting rather than quietly running without a knowledge base.
+#
+# app.ai.rag.milvus.host defaults to localhost, which is what the published port above is, so an
+# agent run from an IDE or bootRun against a compose Milvus needs nothing else said. Inside the
+# compose network that default is wrong, which is why the app service overrides it to `milvus`.
+#
+# Only one COMPOSE_PROFILES assignment takes effect — writing it twice on one command line silently
+# keeps the last, so combine profiles with a comma:
+#
+#   COMPOSE_PROFILES=milvus,rag docker compose up -d
+#
 # The agent itself is a third profile, `app`, so the backend profiles are usable without it. To
 # bring up only the servers and run the agent from an IDE or `./gradlew bootRun` against them:
 #
@@ -49,7 +72,27 @@
 # Requires Docker Compose v2.20 or newer, for `depends_on: required: false` — that is what lets one
 # app service wait on whichever backend a profile actually started and ignore the rest.
 
+# Docker injects any proxy configured in ~/.docker/config.json into every container it starts, and
+# this is the list that keeps it away from traffic between them. Costs nothing on a machine with no
+# proxy set; without it, on a machine with one, nothing here works and every symptom points at the
+# wrong service.
+#
+# Both halves are needed, because clients reach each other both ways:
+#
+#   the service names — a Go client consults NO_PROXY by *hostname*, before resolving it, so a
+#   proxy whose own no-proxy list covers private IP ranges still swallows `etcd:2379`. Milvus then
+#   dials etcd through the host proxy, gets no gRPC preface back, and aborts, reporting a problem
+#   with etcd — which is healthy and innocent.
+#
+#   the private ranges — Milvus standalone runs its coordinators in one process and connects to
+#   them over its own container IP on high ports. Those are addresses, not names, so no list of
+#   service names can cover them, and proxying them breaks Milvus internally rather than visibly:
+#   the container stays up and simply never becomes healthy.
+x-no-proxy: &no-proxy "localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,etcd,minio,milvus,redis,mongodb,app"
+
 x-app-env: &app-env
+  NO_PROXY: *no-proxy
+  no_proxy: *no-proxy
   # Defaults matching application.yaml, so `docker compose up` with no variables set runs the
   # combination that needs no server at all.
   PERSISTENCE_TYPE: ${PERSISTENCE_TYPE:-jpa}
@@ -60,6 +103,17 @@ x-app-env: &app-env
   REDIS_PORT: 6379
   MILVUS_HOST: milvus
   MILVUS_PORT: 19530
+  # The knowledge base, which is a different thing from MILVUS_HOST above: that one is the tool
+  # search index, this one is retrieval over what users have asked the agent to remember. They are
+  # separate settings because they are separate collections and either can be absent — hence also
+  # the separate `rag` profile, which is how you get a knowledge base without moving the tool index
+  # off the simple in-heap store.
+  #
+  # Off unless asked for, matching application.yaml: turning it on without a reachable Milvus stops
+  # the application from starting, so the profile and this flag are meant to be set together.
+  RAG_ENABLED: ${RAG_ENABLED:-false}
+  RAG_MILVUS_HOST: milvus
+  RAG_MILVUS_PORT: 19530
   # Relaxed binding onto spring.data.mongodb.uri. application.yaml has no placeholder for it, so
   # this is set in its canonical environment-variable spelling rather than through one.
   SPRING_DATA_MONGODB_URI: mongodb://mongodb:27017/spring-agent
@@ -133,30 +187,44 @@ services:
       retries: 20
 
   # Milvus standalone still needs an etcd for metadata and a MinIO for segment storage; the three
-  # together are what the milvus profile means.
+  # together are what the milvus and rag profiles both mean. One Milvus serves both — the tool
+  # search index and the knowledge base keep separate collections on it, never separate servers —
+  # so asking for both profiles starts these once, not twice.
   etcd:
-    profiles: [milvus]
+    profiles: [milvus, rag]
     image: quay.io/coreos/etcd:v3.5.5
     environment:
+      # The healthcheck below dials this service by name, so it is subject to the same proxy
+      # interception; see x-no-proxy above.
+      NO_PROXY: *no-proxy
+      no_proxy: *no-proxy
       ETCD_AUTO_COMPACTION_MODE: revision
       ETCD_AUTO_COMPACTION_RETENTION: "1000"
       ETCD_QUOTA_BACKEND_BYTES: "4294967296"
       ETCD_SNAPSHOT_COUNT: "50000"
     command:
       - etcd
-      - --advertise-client-urls=http://127.0.0.1:2379
+      # The service name, not 127.0.0.1. This is the address etcd hands back to clients as its own,
+      # and Milvus runs in a different container: told to come back on loopback, it dials itself,
+      # finds nothing, and aborts the whole process with "error reading server preface: EOF" —
+      # naming neither etcd nor the setting responsible.
+      - --advertise-client-urls=http://etcd:2379
       - --listen-client-urls=http://0.0.0.0:2379
       - --data-dir=/etcd
     volumes:
       - etcd-data:/etcd
     healthcheck:
-      test: ["CMD", "etcdctl", "endpoint", "health"]
+      # Through the same address and port Milvus uses, rather than etcdctl's default of
+      # 127.0.0.1:2379. The loopback check passes whenever the process is up at all, including when
+      # nothing outside the container can reach it — which made this report healthy while Milvus was
+      # failing to connect, and sent every investigation to the wrong service.
+      test: ["CMD", "etcdctl", "--endpoints=http://etcd:2379", "endpoint", "health"]
       interval: 10s
       timeout: 5s
       retries: 20
 
   minio:
-    profiles: [milvus]
+    profiles: [milvus, rag]
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
     environment:
       MINIO_ACCESS_KEY: minioadmin
@@ -171,7 +239,7 @@ services:
       retries: 20
 
   milvus:
-    profiles: [milvus]
+    profiles: [milvus, rag]
     # The same version VectorStoreMilvusTest pins, so what runs here and what the tests assert
     # against cannot diverge.
     image: milvusdb/milvus:v2.4.13
@@ -179,6 +247,19 @@ services:
     environment:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: minio:9000
+      # See x-no-proxy above: without this, Milvus reaches etcd and MinIO through whatever proxy
+      # the host has configured, and fails at startup on a machine that has one.
+      NO_PROXY: *no-proxy
+      no_proxy: *no-proxy
+    # Milvus does not wait for its own dependencies: it dials etcd and MinIO on startup and exits if
+    # they are not answering yet. Without this it loses that race often enough on a cold machine to
+    # look intermittent, and the failure surfaces as the agent being unable to reach Milvus rather
+    # than as anything naming etcd.
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     ports:
       - "${MILVUS_HOST_PORT:-19530}:19530"
       # Metrics and the health endpoint the healthcheck below uses.

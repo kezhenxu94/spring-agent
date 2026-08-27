@@ -48,6 +48,7 @@ There is **no CI workflow that builds or tests**. The three workflows publish on
 spring-agent-core              the agent runtime; backend-agnostic
 spring-agent-persistence-{jpa,mongodb,redis}
 spring-agent-tools-shell-{kubernetes,docker}
+spring-agent-rag-milvus       the knowledge base; the only implementation of core's KnowledgeBase
 spring-agent-integration-feishu
 spring-agent-app               deployable server; depends on every backend module
 spring-agent-cli               laptop command line; jpa + local shell only
@@ -75,6 +76,14 @@ Both are evaluated during AOT, so in a **native image they are build-time decisi
 **One domain model serves every backend.** The records in `core/dao/models/` carry JPA, MongoDB *and* Redis mapping annotations at once (`@Entity` + `@Document` + `@RedisHash`, both `@Id` flavours). This works because an annotation whose type is absent at runtime is discarded on reflection — which is also why core declares those persistence APIs `compileOnly`. Repository *contracts* live in `core/dao/repo/`; each `spring-agent-persistence-*` module implements them. When adding a model or a query, update all three implementations, and note that Redis has no query planner: an `@Indexed` field is the definition of what can be filtered on, not a tuning knob.
 
 **Vector store** backs the tool-search index only, not retrieval over user data: `spring.ai.vectorstore.type` is `simple` (in-heap, mirrored to a JSON file) or `milvus`. Milvus is a dependency of `spring-agent-app` only, deliberately kept out of core.
+
+**The knowledge base is a separate thing from that vector store**, and confusing the two is the easy mistake here. Retrieval over user data — what a user, group or tenant has asked the agent to remember — lives behind the `KnowledgeBase` SPI in `core/knowledge/`, implemented by `spring-agent-rag-milvus`, in its own Milvus collection with its own connection under `app.ai.rag.milvus.*`. It deliberately does not read `spring.ai.vectorstore.type`, so a deployment can run the tool index in the heap and the knowledge base in Milvus.
+
+That module holds its `MilvusVectorStore` as a private field rather than publishing it as a bean. This is load-bearing: Spring AI's Milvus auto-configuration declares its own store `@ConditionalOnMissingBean`, so publishing a second one would make *that* back off and silently take the tool-search index's store with it. It also drops to the raw Milvus client for `list`, because no portable `VectorStore` interface can enumerate — which is the whole reason a knowledge base is a backend module rather than something core implements over any store.
+
+Scoping is one definition, `core/knowledge/KnowledgeScopeFilter`, used both for retrieval and — via `MilvusFilterExpressionConverter` — for the raw listing query. Chunks carry `owner`/`group`/`tenant`, always all three, blank where they do not apply, and **a filter clause is only ever emitted for a non-blank identity**: a blank one would match every document that stores a blank there, which is every other user's. `KnowledgeScopeFilterTest` covers that case by name; read it before changing the filter.
+
+Core registers the knowledge tools only when a `KnowledgeBase` bean exists, ordered with `@AutoConfiguration(afterName = ...)` naming the module's class as a string. Rename that class and the tools silently stop being registered.
 
 Schema is owned by the application (`ddl-auto: update`) — there is no Flyway or Liquibase.
 
@@ -104,3 +113,11 @@ PERSISTENCE_TYPE=redis VECTORSTORE_TYPE=milvus \
 ```
 
 Add `app` to `COMPOSE_PROFILES` to run everything in containers. The defaults (`jpa` + `simple`) need no server at all.
+
+The knowledge base has a profile of its own, `rag`, which is a feature rather than a third axis — it starts the same Milvus (plus its etcd and MinIO) that the `milvus` profile does, since the tool-search index and the knowledge base share a server and differ only by collection. It is separate so a knowledge base does not drag the tool index off the simple in-heap store:
+
+```sh
+RAG_ENABLED=true COMPOSE_PROFILES=rag docker compose up      # simple tool index, Milvus knowledge base
+```
+
+`RAG_ENABLED` and the profile go together: the profile starts Milvus, the variable is what makes the application use it, and turning it on with no Milvus reachable stops startup rather than quietly running without a knowledge base. That is why `app.ai.rag.enabled` defaults to false — the same reasoning as `app.ai.tools.shell.type` defaulting to `none`.
