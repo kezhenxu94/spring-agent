@@ -1,6 +1,8 @@
 package me.kezhenxu94.springagent.integration.feishu.handler;
 
+import com.google.common.base.Strings;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
@@ -11,13 +13,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Every element of the reply card that comes and goes: the stop button, the run's answer, the
- * messages the user sent while it was working, its task list, and what the turn has cost. What is
- * left in {@code reply-card.json} is the card's configuration and its footer, which is the frame
- * all of these are placed in.
+ * messages the user sent while it was working, the tool calls it made, its task list, and what the
+ * turn has cost. What is left in {@code reply-card.json} is the card's configuration and its
+ * footer, which is the frame all of these are placed in.
  *
  * <p>The spend row goes on as the card is created, because the stop button rides in it — a run is
  * stoppable from the moment it is on screen — and the rest the first time the run writes to one,
@@ -58,6 +61,18 @@ public class FeishuCardElements {
    */
   static final String REASONING_BODY = "reasoning_body";
 
+  /**
+   * The pane holding every tool call the turn has made: the one it is on now in the title, and the
+   * ones before it nested inside, a pane each.
+   */
+  static final String TOOLS = "tools";
+
+  /**
+   * One call inside that pane. Not an element of the card — the run builds one per call and nests
+   * them in {@link #TOOLS} — so it is never inserted by id and never carries one.
+   */
+  private static final String TOOL_CALL = "tool_call";
+
   /** The run's task list. */
   static final String TODO = "todo";
 
@@ -74,17 +89,25 @@ public class FeishuCardElements {
   static final String USAGE_BODY = "usage_body";
 
   /**
-   * Which element of the card each one is added above, and so where it ends up: everything the run
-   * says above the spend row, the task list and the sources between the two, in that order.
+   * The card's own elements from top to bottom, which is what decides where each one is added.
    *
-   * <p>Decided here rather than in the template, because the element the chain hangs from — the
-   * spend row — is one this file gives its id to, and an anchor a deployment could rename is an
-   * insert that fails at runtime. The rest anchor on each other, so each has to be on the card
-   * before whatever goes above it can be: the answer needs the spend row, which the card is created
-   * with, and {@link #QUEUED} needs the answer, which {@link FeishuCardUpdater} sees to.
+   * <p>An insert names one element and lands immediately above it, so what an element is added
+   * above depends on which of the others are there already — and which of them are there is the
+   * run's to decide, not this file's. A model may think before it writes or write before it thinks,
+   * call a tool before saying a word, and retrieve knowledge before any of that. So the order is
+   * stated once here and the anchor derived from it, rather than written down per element as a rule
+   * that holds for the arrivals someone thought of.
+   *
+   * <p>The spend row is last because it is the one element every card has from the moment it is
+   * sent, which is what makes every other anchor answerable. The reading, top to bottom: what the
+   * user added mid-run, what the model thought, what it answered, what it did, what it means to do
+   * next, what it read, what it cost.
+   *
+   * <p>Stated here rather than in the template, because these are ids this file gives out, and an
+   * anchor a deployment could rename is an insert that fails at runtime.
    */
-  private static final Map<String, String> ANCHORS =
-      Map.of(MESSAGE, USAGE, QUEUED, MESSAGE, REASONING, MESSAGE, TODO, USAGE, REFERENCES, USAGE);
+  private static final List<String> ORDER =
+      List.of(QUEUED, REASONING, MESSAGE, TOOLS, TODO, REFERENCES, USAGE);
 
   /** The elements whose first nested element the run writes into, and the id it writes to. */
   private static final Map<String, String> BODY_IDS =
@@ -112,48 +135,25 @@ public class FeishuCardElements {
    */
   private final OpenAiChatProperties chatProperties;
 
-  /** The element {@code elementId} is added above, on a card carrying nothing else optional. */
-  String anchorOf(final String elementId) {
-    final var anchor = ANCHORS.get(elementId);
-    if (anchor == null) {
-      throw new IllegalArgumentException("No anchor for card element " + elementId);
-    }
-    return anchor;
-  }
-
   /**
-   * The element {@code elementId} is added above, given the ones the card already carries.
-   *
-   * <p>Two of them move, because three elements want the same stretch of card — what the user added
-   * mid-run at the very top, then what the model thought, then what it answered — and which arrives
-   * first is the run's to decide, not this file's. An insert names one element and lands
-   * immediately above it, so an anchor fixed to {@link #MESSAGE} would put whichever of the other
-   * two came second below the one that came first, which is the wrong way round half the time.
-   *
-   * <p>So the reasoning panel anchors on the answer once there is one and on the spend row until
-   * then — that row is the one element every card has from the moment it is sent, and the answer
-   * goes above it too, so a panel anchored there stays above the answer when it arrives. And the
-   * queued messages anchor on the panel once there is one, which is what keeps them at the top.
-   *
-   * <p>The task list moves for the same reason at the other end of the card: the sources join the
-   * footer above the spend row, and a list anchored on that row alone would come to rest under them
-   * rather than above. So the footer reads outwards from the answer: what the run did, then what it
-   * read, then what it cost. Both are optional, which is why the list names the sources only when
-   * they are there rather than assuming a panel the turn never needed.
+   * The element {@code elementId} is added above: the first element below it in {@link #ORDER} that
+   * the card already has, which is what puts it in its place whatever order the run built the card
+   * in.
    *
    * @param onCard the optional elements already added, which is what makes this answerable
    */
   String anchorOf(final String elementId, final Set<String> onCard) {
-    if (REASONING.equals(elementId) && !onCard.contains(MESSAGE)) {
-      return USAGE;
+    final var place = ORDER.indexOf(elementId);
+    if (place < 0) {
+      throw new IllegalArgumentException("No place on the card for element " + elementId);
     }
-    if (QUEUED.equals(elementId) && onCard.contains(REASONING)) {
-      return REASONING;
+    for (final var below : ORDER.subList(place + 1, ORDER.size())) {
+      // The spend row is on every card from the moment it is sent, so the search always ends.
+      if (USAGE.equals(below) || onCard.contains(below)) {
+        return below;
+      }
     }
-    if (TODO.equals(elementId) && onCard.contains(REFERENCES)) {
-      return REFERENCES;
-    }
-    return anchorOf(elementId);
+    throw new IllegalStateException("Nothing to anchor " + elementId + " on");
   }
 
   /**
@@ -199,6 +199,41 @@ public class FeishuCardElements {
       button.put("element_id", STOP);
     }
     return element;
+  }
+
+  /**
+   * The spend row as the card is created: the stop button, and nothing else.
+   *
+   * <p>The button rides in this row because a run is stoppable from the moment it is on screen, but
+   * until the run names a model there is nothing to say about what it has spent — and a column
+   * holding an empty line is still a column, so the row's spacing would leave the button standing
+   * off the left edge as though something were beside it. The spend column joins the row the first
+   * time there is a line to put in it, which {@link FeishuCardUpdater} does by replacing the row
+   * whole: a column cannot be added to a row already on the card.
+   *
+   * <p>The first column is the one dropped, matching where {@link #bodyOf} looks for the line — a
+   * deployment moving the spend out of the first column would have the run writing into the wrong
+   * one anyway.
+   */
+  public ObjectNode stopButtonRow() {
+    final var row = element(USAGE);
+    ((ArrayNode) row.path("columns")).remove(0);
+    return row;
+  }
+
+  /**
+   * The whole spend row with {@code spend} in it: what replaces the button-only row the card was
+   * created with, the first time the turn has something to report.
+   *
+   * <p>The line is filled in here rather than streamed in afterwards so that the row arrives
+   * already saying it, which is one call to Feishu instead of two and no card that flickers through
+   * an empty column on the way.
+   */
+  @SneakyThrows
+  public String usageRow(final String spend) {
+    final var row = element(USAGE);
+    bodyOf(row).put("content", spend == null ? "" : spend);
+    return om.writeValueAsString(row);
   }
 
   /**
@@ -267,6 +302,80 @@ public class FeishuCardElements {
     return closing < 0
         ? title + suffix
         : title.substring(0, closing) + suffix + title.substring(closing);
+  }
+
+  /**
+   * One tool call as the pane shows it: the line naming the call, and what a reader sees on opening
+   * it. Rendered by {@link FeishuCardUpdater}, which is what knows how a call is worth reading.
+   */
+  public record ToolCall(String title, String body) {}
+
+  /**
+   * The tool pane as a whole element: the call the run is on now in the title, that call's input
+   * under it, and every call before it nested inside, oldest first.
+   *
+   * <p>Whole every time, because the pane grows a pane per call and a card element insert can only
+   * name an element of the card, never one inside another. Which is also why {@code expanded} is
+   * passed in: a replacement decides afresh whether the pane is open, so the run has to say each
+   * time what it was.
+   *
+   * @param hidden how many calls are too old to be shown a pane each, said in one line rather than
+   *     dropped in silence
+   */
+  @SneakyThrows
+  public String toolsPane(
+      final boolean expanded,
+      final String title,
+      final String latestInput,
+      final int hidden,
+      final List<ToolCall> earlier) {
+    final var element = element(TOOLS);
+    element.put("expanded", expanded);
+    fillTitle(element, title);
+    final var elements = (ArrayNode) element.path("elements");
+    final var latest = (ObjectNode) elements.get(0);
+    latest.put("content", Strings.nullToEmpty(latestInput));
+    if (hidden > 0) {
+      // Styled by copying the element above it rather than by a template entry of its own: it is
+      // the same kind of line, and a deployment restyling one has said what it wants of the other.
+      elements.add(
+          latest.deepCopy().put("content", messages.get("card-tool-calls-earlier", hidden)));
+    }
+    for (final var call : earlier) {
+      elements.add(toolCallPane(call));
+    }
+    return om.writeValueAsString(element);
+  }
+
+  /** One call inside the pane: a pane of its own, closed, opening onto what the call did. */
+  @SneakyThrows
+  private ObjectNode toolCallPane(final ToolCall call) {
+    final var template =
+        (ObjectNode)
+            om.readTree(
+                    messages.renderCard(cardElements.getContentAsString(StandardCharsets.UTF_8)))
+                .get(TOOL_CALL);
+    if (template == null) {
+      throw new IllegalStateException("No '" + TOOL_CALL + "' element in " + cardElements);
+    }
+    final var pane = template.deepCopy();
+    fillTitle(pane, call.title());
+    ((ObjectNode) pane.path("elements").get(0)).put("content", Strings.nullToEmpty(call.body()));
+    return pane;
+  }
+
+  /**
+   * Puts {@code title} into a panel header's title, where the template said it goes.
+   *
+   * <p>Substituted into what the template wrote rather than replacing it, so that the styling
+   * around the placeholder — the grey the other panes' titles are set in — stays in the file a
+   * deployment can edit.
+   */
+  private static void fillTitle(final ObjectNode panel, final String title) {
+    final var element = (ObjectNode) panel.path("header").path("title");
+    element.put(
+        "content",
+        element.path("content").asString().replace("{title}", Strings.nullToEmpty(title)));
   }
 
   /**

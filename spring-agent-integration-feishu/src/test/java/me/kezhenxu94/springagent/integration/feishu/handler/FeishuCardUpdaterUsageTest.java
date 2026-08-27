@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.integration.feishu.handler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -11,7 +12,10 @@ import com.lark.oapi.service.cardkit.v1.model.ContentCardElementReq;
 import com.lark.oapi.service.cardkit.v1.model.ContentCardElementResp;
 import com.lark.oapi.service.cardkit.v1.model.CreateCardElementReq;
 import com.lark.oapi.service.cardkit.v1.model.CreateCardElementResp;
+import com.lark.oapi.service.cardkit.v1.model.UpdateCardElementReq;
+import com.lark.oapi.service.cardkit.v1.model.UpdateCardElementResp;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Locale;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.ModelPricing;
@@ -32,6 +36,7 @@ import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.client.RestTemplate;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -66,6 +71,12 @@ class FeishuCardUpdaterUsageTest {
     inserted.setCode(0);
     when(feishu.cardkit().v1().cardElement().create(any(CreateCardElementReq.class)))
         .thenReturn(inserted);
+    // And the spend row is replaced whole the first time there is a line to put in it, since that
+    // is when the column holding it joins the row.
+    final var updated = new UpdateCardElementResp();
+    updated.setCode(0);
+    when(feishu.cardkit().v1().cardElement().update(any(UpdateCardElementReq.class)))
+        .thenReturn(updated);
     card = new FeishuCard(feishu, "card-1", restTemplate, new UserHome(userHomeRoot), messages);
     updater =
         FeishuCardUpdater.forRun(
@@ -93,6 +104,27 @@ class FeishuCardUpdaterUsageTest {
     // Grey, like the conversation hint below it, and so asserted whole here rather than by what it
     // says: this is the one case where the footer's whole content is known.
     assertThat(lastFooter()).isEqualTo("<font color='grey'>the-model</font>");
+  }
+
+  @Test
+  @DisplayName("the spend column joins the row the first time there is a line for it")
+  void theRowGrowsItsSpendColumnOnTheFirstReport() throws Exception {
+    updater.onModel("the-model");
+
+    // The card is created with the button alone in the row, so the first report is the whole row
+    // again with the column in it — and the line already written, rather than an empty column the
+    // card shows for as long as a second call takes to land.
+    final var row = lastSpendRow();
+    final var spend = spendColumnOf(row);
+    assertThat(spend.path("element_id").asString()).isEqualTo("usage_body");
+    assertThat(spend.path("content").asString()).isEqualTo("<font color='grey'>the-model</font>");
+    // The button comes back with it, keeping the id the run ends by deleting.
+    final var button = row.path("columns").path(1).path("elements").path(0);
+    assertThat(button.path("tag").asString()).isEqualTo("button");
+    assertThat(button.path("element_id").asString()).isEqualTo("stop");
+    // And once the column is there, the reports after it are streamed rather than replacing it.
+    updater.onUsage("the-model", new DefaultUsage(1_000, 2_000, 3_000));
+    assertThat(lastContentOf("usage_body")).contains("↑1000 ↓2000");
   }
 
   @Test
@@ -202,8 +234,40 @@ class FeishuCardUpdaterUsageTest {
         "Read the timeline and say when it starts");
   }
 
+  /**
+   * The spend line as the card last had it, wherever it was written: the first report arrives as
+   * the row itself, because that is when the column holding the line joins it, and every report
+   * after that is streamed into the column.
+   */
   private String lastFooter() throws Exception {
-    return lastContentOf("usage_body");
+    final var streamed = new ArrayList<String>();
+    final var contents = ArgumentCaptor.forClass(ContentCardElementReq.class);
+    verify(feishu.cardkit().v1().cardElement(), atLeast(0)).content(contents.capture());
+    contents.getAllValues().stream()
+        .filter(request -> "usage_body".equals(request.getElementId()))
+        .forEach(request -> streamed.add(request.getContentCardElementReqBody().getContent()));
+    if (!streamed.isEmpty()) {
+      return streamed.get(streamed.size() - 1);
+    }
+    return spendColumnOf(lastSpendRow()).path("content").asString();
+  }
+
+  /** The spend row as it was last put on the card. */
+  private JsonNode lastSpendRow() throws Exception {
+    final var updates = ArgumentCaptor.forClass(UpdateCardElementReq.class);
+    verify(feishu.cardkit().v1().cardElement(), atLeastOnce()).update(updates.capture());
+    final var rows =
+        updates.getAllValues().stream()
+            .filter(request -> "usage".equals(request.getElementId()))
+            .toList();
+    assertThat(rows).as("the spend row was never put on the card").isNotEmpty();
+    return new JsonMapper()
+        .readTree(rows.get(rows.size() - 1).getUpdateCardElementReqBody().getElement());
+  }
+
+  /** The element in that row the spend is written into, which is the first column's first. */
+  private static JsonNode spendColumnOf(final JsonNode row) {
+    return row.path("columns").path(0).path("elements").path(0);
   }
 
   private String lastContentOf(final String elementId) throws Exception {

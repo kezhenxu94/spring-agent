@@ -184,11 +184,12 @@ public class FeishuCard {
 
   /**
    * Replaces one element of the card outright, for a change no streamed content can express — a
-   * different title, say. Failures are logged and left: a panel that keeps its old title is worth
-   * more than a run that ends here.
+   * different title, say, or a row growing a column. Failures are logged and left: a panel that
+   * keeps its old title is worth more than a run that ends here. Returns whether it landed, for the
+   * callers that go on to write into what the replacement brought with it.
    */
   @SneakyThrows
-  public synchronized void replace(
+  public synchronized boolean replace(
       final String elementId, final String elementJson, final String uuid) {
     final var seq = sequence.getAndIncrement();
     final var response =
@@ -215,7 +216,9 @@ public class FeishuCard {
           seq,
           response.getCode(),
           response.getMsg());
+      return false;
     }
+    return true;
   }
 
   @SneakyThrows
