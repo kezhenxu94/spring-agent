@@ -42,6 +42,7 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
       Set<String> admins,
       Map<String, ModelPricing> modelPricing,
       VectorStore vectorstore,
+      Rag rag,
       Tools tools,
       String systemPrompt,
       String scheduledTaskPrompt,
@@ -75,6 +76,16 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
         tools only reach your own memories/, so read a shared MEMORY.md as an ordinary file. Put \
         a file in a shared home when it is meant for the people who share it, and in your own \
         when it is not.
+
+        # What you already remember
+        Anything written to the knowledge base is searched automatically before you answer, \
+        across the user's own, this group's, and the company-wide one. When a relevant passage \
+        exists you will have been given it already, so do not call SearchKnowledge to confirm \
+        what is in front of you; call it when you want to search again with different words, or \
+        to check what is stored on a topic before answering. Offer to write something down with \
+        IndexKnowledge when the user tells you something worth keeping past this conversation, \
+        and pass its docId to update a document that has changed rather than storing a second \
+        copy of it.
 
         # Working rules
         - For anything that needs several steps, several tool calls, or noticeable time, call \
@@ -203,6 +214,9 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
       }
       if (vectorstore == null) {
         vectorstore = new VectorStore(null);
+      }
+      if (rag == null) {
+        rag = new Rag(false, 0, 0d, 0, 0);
       }
       if (tools == null) {
         tools = new Tools(null, null);
@@ -348,6 +362,82 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
           if (file == null || file.isBlank()) {
             file = "data/vectorstore.json";
           }
+        }
+      }
+    }
+
+    /**
+     * The knowledge base: what a user, group or tenant has told the agent to remember, retrieved
+     * before the model answers.
+     *
+     * <p>Read only where a {@code KnowledgeBase} implementation is installed — that is, where a
+     * {@code spring-agent-rag-*} module is on the classpath. Nothing here brings one into being,
+     * and a deployment with no such module simply has no knowledge base: the tools are not
+     * registered and no retrieval happens, whatever these say.
+     *
+     * <p>Where a knowledge base is chunked and stored is that module's business, not this record's.
+     * What is here is the part core decides: whether to consult it, and how much it may contribute
+     * to a turn.
+     *
+     * @param enabled whether this deployment has a knowledge base at all. <b>Off by default</b>,
+     *     and deliberately: a knowledge base needs a vector database that the default deployment
+     *     does not run, so defaulting it on would mean every application that merely has a {@code
+     *     spring-agent-rag-*} module on its classpath refusing to start until one appeared. The
+     *     same reasoning as {@code app.ai.tools.shell.type} defaulting to {@code none}.
+     *     <p>This gates both the implementation bean and the automatic retrieval before each
+     *     answer, so turning it on requires a reachable database and turning it off requires
+     *     nothing. Individual runs opt out separately through {@code
+     *     AgentScenario.knowledgeRetrieval()}.
+     * @param topK how many chunks retrieval may put in front of the model. Every one of them is
+     *     context the model pays for on the turn, so this trades recall against the prompt budget
+     * @param similarityThreshold how close a chunk must be to be worth including, between 0 and 1.
+     *     Too low and every turn drags in unrelated text that the model then has to reason around;
+     *     too high and a knowledge base that is worded differently from the question never
+     *     contributes at all
+     * @param chunkSize the token target a document is split into. Chunks the retriever hands over
+     *     whole, so this is also the granularity at which knowledge is either relevant or not
+     * @param listPageSize how many documents a listing returns when the caller does not say
+     */
+    public record Rag(
+        boolean enabled, int topK, double similarityThreshold, int chunkSize, int listPageSize) {
+
+      public static final int DEFAULT_TOP_K = 4;
+
+      /**
+       * A raw cosine similarity, compared against the score the vector store returns.
+       *
+       * <p>This is model-dependent and worth measuring rather than trusting. Embeddings from a
+       * modern model occupy a narrow cone, so two unrelated texts in the same language routinely
+       * score 0.3 to 0.5: a threshold near the bottom of that band admits everything, and with a
+       * knowledge base holding one document the effect is that every question retrieves it. That
+       * was the earlier default here, and it made retrieval look broken rather than permissive.
+       *
+       * <p>There is no value that is right for every embedding model, so this is a starting point
+       * and not a recommendation. {@code SearchKnowledge} is the instrument for replacing it: it
+       * ignores this threshold on purpose and prints what each passage scored, so the number can be
+       * set from what the model in use actually produces — ask it something the knowledge base
+       * covers and something it does not, and put the threshold between the two.
+       */
+      public static final double DEFAULT_SIMILARITY_THRESHOLD = 0.45d;
+
+      public static final int DEFAULT_CHUNK_SIZE = 800;
+      public static final int DEFAULT_LIST_PAGE_SIZE = 20;
+
+      public Rag {
+        // Zero means "unset" rather than "none": a record's primitives default to zero when the
+        // property is absent, and a topK of zero would silently disable retrieval while the
+        // enabled flag still claimed it was on.
+        if (topK <= 0) {
+          topK = DEFAULT_TOP_K;
+        }
+        if (similarityThreshold <= 0d || similarityThreshold > 1d) {
+          similarityThreshold = DEFAULT_SIMILARITY_THRESHOLD;
+        }
+        if (chunkSize <= 0) {
+          chunkSize = DEFAULT_CHUNK_SIZE;
+        }
+        if (listPageSize <= 0) {
+          listPageSize = DEFAULT_LIST_PAGE_SIZE;
         }
       }
     }

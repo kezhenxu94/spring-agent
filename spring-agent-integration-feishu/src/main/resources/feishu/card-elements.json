@@ -41,8 +41,23 @@
     "turns to point down as it opens, which is what the 90 degrees is: the angle is what the icon is",
     "rotated by when expanded, not the angle it ends at, so an arrow that already points down would",
     "want -180 and this one wants a quarter turn.",
-    "'todo' is the run's task list, under the answer. 'usage' is what the turn has cost,",
-    "in the card's footer. This key is ignored."
+    "'todo' is the run's task list, under the answer. 'references' is where the knowledge the run",
+    "was given came from, and 'usage' is what the turn has cost, both in the card's footer with",
+    "the sources above the spend. They are worth showing because retrieval happens",
+    "without the model asking for it and leaves no tool call behind: without them a reader cannot",
+    "tell that anything was consulted, let alone what. A turn that retrieved nothing adds no",
+    "element rather than an empty one.",
+    "Both panel titles are notation-sized, the card's smallest: a closed panel is a line offering",
+    "something rather than saying it, and at body size the chevron line competes with the answer",
+    "it sits beside. The size lives on the title's markdown rather than on the panel, because it is",
+    "the header text being sized and not what the panel holds — the contents carry their own.",
+    "It is a closed panel, unlike 'reasoning' which is born open: thinking is the only thing",
+    "happening while a run is working and is worth showing unprompted, whereas sources are a",
+    "question a reader asks only once they have read the answer. So it arrives as one narrow grey",
+    "line with a chevron — 'auto_when_fold' keeps the closed line as short as its title rather than",
+    "letting it span the card, and 'follow_text' puts the chevron beside that title instead of off",
+    "at the right edge. Like the reasoning panel, its first nested element is what the run writes",
+    "into, so a deployment restyling this has to keep something there. This key is ignored."
   ],
   "stop": {
     "tag": "column_set",
@@ -95,7 +110,8 @@
     "header": {
       "title": {
         "tag": "markdown",
-        "content": "{reasoning}"
+        "content": "{reasoning}",
+        "text_size": "notation"
       },
       "width": "auto_when_fold",
       "vertical_align": "center",
@@ -133,6 +149,35 @@
     "content": "",
     "text_align": "left",
     "text_size": "normal_v2"
+  },
+  "references": {
+    "tag": "collapsible_panel",
+    "expanded": false,
+    "vertical_spacing": "4px",
+    "header": {
+      "title": {
+        "tag": "markdown",
+        "content": "<font color='grey'>{references}</font>",
+        "text_size": "notation"
+      },
+      "width": "auto_when_fold",
+      "vertical_align": "center",
+      "icon": {
+        "tag": "standard_icon",
+        "token": "right-small-ccm_outlined",
+        "size": "16px 16px"
+      },
+      "icon_position": "follow_text",
+      "icon_expanded_angle": 90
+    },
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "",
+        "text_align": "left",
+        "text_size": "notation"
+      }
+    ]
   },
   "usage": {
     "tag": "markdown",

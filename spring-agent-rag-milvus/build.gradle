@@ -1,0 +1,29 @@
+plugins {
+  id 'springagent.java-library-conventions'
+}
+
+description = 'A Milvus-backed knowledge base for spring-agent-core: indexing, retrieval and enumeration of a user, group or tenant scoped corpus.'
+
+dependencies {
+  api project(':spring-agent-core')
+
+  // The store, not the starter. The starter carries Spring AI's auto-configuration, which is bound
+  // to spring.ai.vectorstore.type and publishes a VectorStore bean; both are the wrong thing here.
+  // That property chooses what backs the *tool search index*, and coupling to it would make a
+  // deployment with a simple tool index and a Milvus knowledge base impossible to express. This
+  // module holds its own client and its own collection, configured under app.ai.rag.milvus.
+  //
+  // Keeping the store out of the bean factory also keeps a second VectorStore bean from appearing:
+  // Spring AI's own milvus auto-configuration declares its store @ConditionalOnMissingBean, so
+  // publishing one here would silently switch off the tool search index's store instead.
+  implementation 'org.springframework.ai:spring-ai-milvus-store'
+
+  // Reads whatever a user points at — pdf, docx, pptx, html, plain text — through one API. This is
+  // the module's heaviest dependency by far (tika-parsers-standard-package pulls POI and PDFBox),
+  // and the reason it lives here rather than in core, whose runtime classpath forbids it.
+  implementation 'org.springframework.ai:spring-ai-tika-document-reader'
+
+  testImplementation libs.testcontainers.core
+  testImplementation libs.testcontainers.junit.jupiter
+  testImplementation libs.testcontainers.milvus
+}

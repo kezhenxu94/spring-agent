@@ -101,6 +101,7 @@ class AgentToolsProviderScenarioTest {
         mock(McpServerConfigRepo.class),
         mock(McpClientFactory.class),
         context,
-        mock(SpringAgentProperties.class));
+        mock(SpringAgentProperties.class),
+        mock(org.springframework.beans.factory.ObjectProvider.class));
   }
 }

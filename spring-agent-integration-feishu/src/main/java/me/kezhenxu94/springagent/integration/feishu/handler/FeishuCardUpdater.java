@@ -18,6 +18,8 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeReference;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
 import me.kezhenxu94.springagent.core.tools.ToolContextKey;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
@@ -72,6 +74,11 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
 
   /** The todo list's element, or null for a run whose elements have nowhere to put one. */
   private final String todoElementId;
+
+  /**
+   * Where the run says what knowledge it was given, or null on a panel that has no such element.
+   */
+  private final String referencesElementId;
 
   /**
    * Where what the user said mid-run is acknowledged, or null for a run with nowhere to say it. Its
@@ -153,6 +160,13 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    */
   private String reasoning = "";
 
+  /**
+   * Every document the run has been given, keyed by id so the same one retrieved again is the same
+   * reference. Retrieval runs once per tool round, so a turn making several tool calls reports the
+   * same passages repeatedly; without this the list would grow a duplicate on each of them.
+   */
+  private final Map<String, KnowledgeReference> references = new LinkedHashMap<>();
+
   /** The run the card was created for: it owns the card's elements and finishes it. */
   public static FeishuCardUpdater forRun(
       final FeishuCard card,
@@ -169,6 +183,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         FeishuCardElements.MESSAGE,
         FeishuCardElements.USAGE,
         FeishuCardElements.TODO,
+        FeishuCardElements.REFERENCES,
         FeishuCardElements.QUEUED,
         elements,
         reactions,
@@ -201,6 +216,10 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         // A panel holds a report and what it cost, and nothing else: a subagent's todo list would
         // have nowhere to go, so it is not offered one to write into.
         null,
+        // Nor its references. A subagent retrieves knowledge of its own, but the panel has no
+        // element for it and the run's footer speaks for the turn as a whole — a subagent's
+        // sources belong in the report it writes, not in a second list beside the main one.
+        null,
         // Nor is a subagent something the user replies to: what they say mid-run is queued onto the
         // run they can see, which is the one that started this.
         null,
@@ -223,6 +242,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       final String contentElementId,
       final String spendElementId,
       final String todoElementId,
+      final String referencesElementId,
       final String queuedElementId,
       final FeishuCardElements elements,
       final FeishuMessageReactions reactions,
@@ -237,6 +257,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     this.contentElementId = contentElementId;
     this.spendElementId = spendElementId;
     this.todoElementId = todoElementId;
+    this.referencesElementId = referencesElementId;
     this.queuedElementId = queuedElementId;
     this.elements = elements;
     this.reactions = reactions;
@@ -530,7 +551,11 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       added.add(elementId);
       // The spend line is part of the footer, and it goes in above the hint — so from here on it is
       // the top of the footer, and anything placed above the footer has to clear it too.
-      if (FeishuCardElements.USAGE.equals(elementId)) {
+      // References go in above the spend, so whichever of the two is highest is the top of the
+      // footer and the thing anything placed above the footer has to clear.
+      if (FeishuCardElements.REFERENCES.equals(elementId)
+          || (FeishuCardElements.USAGE.equals(elementId)
+              && !added.contains(FeishuCardElements.REFERENCES))) {
         card.footerGrewTo(elementId);
       }
     } else {
@@ -594,6 +619,100 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   @Override
   public void onUsage(String model, Usage usage) {
     updateUsageFooter(model, usage);
+  }
+
+  @Override
+  public void onKnowledgeRetrieved(List<KnowledgeReference> retrieved) {
+    updateReferencesFooter(retrieved);
+  }
+
+  /**
+   * Names, in the footer's knowledge-sources panel, the documents the run was given before it
+   * answered.
+   *
+   * <p>Worth the line because retrieval is the one thing a run does that leaves no other trace: the
+   * model did not ask for it, so it appears among no tool calls, and the passages reach the model
+   * folded into the user's own message. Without this the reader sees an answer informed by
+   * something they cannot identify, and cannot tell a well-sourced answer from a confident guess.
+   *
+   * <p>Cumulative over the turn, and de-duplicated by document, for the same reason the spend line
+   * is a total: retrieval runs once per tool round, so the last report is not the whole of what the
+   * turn read.
+   */
+  public synchronized void updateReferencesFooter(final List<KnowledgeReference> retrieved) {
+    if (referencesElementId == null || retrieved == null || retrieved.isEmpty()) {
+      return;
+    }
+    for (final var reference : retrieved) {
+      references.merge(
+          reference.docId(),
+          reference,
+          (existing, incoming) -> existing.score() == null ? incoming : existing);
+    }
+    if (references.isEmpty() || !added(referencesElementId)) {
+      return;
+    }
+    // Into the panel's body, not the panel: the panel is what the card carries and what an insert
+    // names, and this is what a write names — the same split the reasoning pane has.
+    card.stream(FeishuCardElements.REFERENCES_BODY, renderReferences());
+  }
+
+  /**
+   * One grey line per document: what it is called, which knowledge base it came from, and where it
+   * came from originally when that says something the title does not.
+   *
+   * <p>The colour is opened and closed on each line rather than wrapped around the block. A font
+   * tag does not survive the line breaks and list markup between its ends — the opening tag is
+   * closed off by the first line and the trailing one is left with nothing to close, so it shows up
+   * on the card as the literal text {@code </font>}. Every other coloured thing on this card is a
+   * single line for the same reason.
+   *
+   * <p>Grey and notation-sized like the spend line beside it: both are the card talking about the
+   * run rather than the run talking, and the footer reads as one block when they match.
+   */
+  private String renderReferences() {
+    final var rendered = new StringBuilder();
+    for (final var reference : references.values()) {
+      final var title =
+          Strings.isNullOrEmpty(reference.title()) ? reference.docId() : reference.title();
+      final var source = reference.source();
+      final var line = new StringBuilder();
+      if (isLink(source)) {
+        // The title becomes the link rather than the address being printed beside it: a wiki URL
+        // is long, says nothing a reader wants to read, and the one useful thing about it is that
+        // it can be clicked.
+        line.append('[').append(title).append("](").append(source).append(')');
+        line.append(" · ").append(scopeLabel(reference.scope()));
+      } else {
+        line.append(title).append(" · ").append(scopeLabel(reference.scope()));
+        // Only when it adds something. A note stored from the conversation has no origin but
+        // itself, and repeating the title would pad every line to say nothing.
+        if (!Strings.isNullOrEmpty(source) && !source.equals(title)) {
+          line.append(" · ").append(source);
+        }
+      }
+      rendered.append("- <font color='grey'>").append(line).append("</font>\n");
+    }
+    return rendered.toString().stripTrailing();
+  }
+
+  /**
+   * Whether the source is something a reader can open.
+   *
+   * <p>Only http and https: a file path is not reachable from the phone the card is being read on,
+   * so linking one would offer a reader something that cannot work.
+   */
+  private static boolean isLink(final String source) {
+    return source != null && (source.startsWith("http://") || source.startsWith("https://"));
+  }
+
+  private String scopeLabel(final KnowledgeScope.Target scope) {
+    return messages.get(
+        switch (scope) {
+          case GROUP -> "reference-scope-group";
+          case TENANT -> "reference-scope-tenant";
+          case OWN -> "reference-scope-own";
+        });
   }
 
   @Override
@@ -690,6 +809,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   public synchronized void onFinished(AgentOutcome outcome) {
     if (!isSubagent()) {
       closeReasoningPane();
+      countReferences();
       card.finish();
       return;
     }
@@ -715,6 +835,28 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    * chevron to nobody, so anything more often would be overruling a reader's own choice over and
    * over rather than once, at the moment the thing they were watching stopped.
    */
+  /**
+   * Puts the number of sources into the panel's title, once, as the run ends.
+   *
+   * <p>The count belongs in the title because that is the only part of a closed panel anyone reads:
+   * it is what tells them whether the chevron is worth opening. A title cannot be streamed into, so
+   * this replaces the element whole.
+   *
+   * <p>Once, and at the end, for the reason the reasoning pane closes itself only then: replacing
+   * the element resets whether it is open, Feishu reports a reader's chevron to nobody, and
+   * references accumulate over a turn — so updating the count as each one arrived would snap the
+   * panel shut under anyone who had opened it, once per tool round.
+   */
+  private void countReferences() {
+    if (elements == null || referencesElementId == null || references.isEmpty()) {
+      return;
+    }
+    card.replace(
+        referencesElementId,
+        elements.referencesPanel(references.size(), renderReferences()),
+        card.cardId() + ":references:end");
+  }
+
   private void closeReasoningPane() {
     if (elements == null || !added.contains(FeishuCardElements.REASONING)) {
       return;

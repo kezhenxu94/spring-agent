@@ -54,7 +54,12 @@ class AgentToolsProviderGlobalMcpServersTest {
     try (var context = new AnnotationConfigApplicationContext(NoGlobalTools.class)) {
       final var provider =
           new AgentToolsProvider(
-              workspaces, repo, mock(McpClientFactory.class), context, properties());
+              workspaces,
+              repo,
+              mock(McpClientFactory.class),
+              context,
+              properties(),
+              mock(org.springframework.beans.factory.ObjectProvider.class));
 
       provider.compose(
           AgentRequest.builder()
@@ -66,7 +71,8 @@ class AgentToolsProviderGlobalMcpServersTest {
           Map.of(),
           todos -> {},
           questions -> Map.of(),
-          true);
+          true,
+          references -> {});
 
       final var identifiers = ArgumentCaptor.forClass(java.util.Collection.class);
       verify(repo).findAccessibleTo(eq("ou_1"), identifiers.capture());
@@ -86,7 +92,12 @@ class AgentToolsProviderGlobalMcpServersTest {
     try (var context = new AnnotationConfigApplicationContext(NoGlobalTools.class)) {
       final var provider =
           new AgentToolsProvider(
-              workspaces, repo, mock(McpClientFactory.class), context, properties());
+              workspaces,
+              repo,
+              mock(McpClientFactory.class),
+              context,
+              properties(),
+              mock(org.springframework.beans.factory.ObjectProvider.class));
 
       provider.build("ou_1", null, Map.of());
 
@@ -104,6 +115,7 @@ class AgentToolsProviderGlobalMcpServersTest {
             null,
             Set.of(),
             Map.of(),
+            null,
             null,
             new Tools(new AskUserQuestion(true, null), null),
             "You are an agent.",

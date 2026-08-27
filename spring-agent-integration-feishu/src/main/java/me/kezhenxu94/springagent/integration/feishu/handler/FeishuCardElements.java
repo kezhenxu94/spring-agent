@@ -19,6 +19,8 @@ import tools.jackson.databind.node.ObjectNode;
  * left in {@code reply-card.json} is the card's configuration and its footer, which is the frame
  * all of these are placed in.
  *
+ * <p>*
+ *
  * <p>The stop button goes on as the card is created — a run is stoppable from the moment it is on
  * screen — and the rest the first time the run writes to one, rather than being shipped empty in
  * the card itself: an element the card carries is space the card gives up on every reply, and most
@@ -56,6 +58,12 @@ public class FeishuCardElements {
   /** The run's task list. */
   static final String TODO = "todo";
 
+  /** Where the knowledge the run was handed came from: the closed panel in the footer. */
+  static final String REFERENCES = "references";
+
+  /** The element inside that panel the sources are written into. */
+  static final String REFERENCES_BODY = "references_body";
+
   /** What the turn has spent. */
   static final String USAGE = "usage";
 
@@ -83,8 +91,14 @@ public class FeishuCardElements {
           MESSAGE,
           TODO,
           FeishuCard.FOOTER_ELEMENT_ID,
+          REFERENCES,
+          "guide",
           USAGE,
           "guide");
+
+  /** The panels whose first nested element the run writes into, and the id it writes to. */
+  private static final Map<String, String> BODY_IDS =
+      Map.of(REASONING, REASONING_BODY, REFERENCES, REFERENCES_BODY);
 
   private final JsonMapper om;
   private final FeishuMessages messages;
@@ -132,8 +146,12 @@ public class FeishuCardElements {
    * queued messages anchor on the panel once there is one, which is what keeps them at the top.
    *
    * <p>The task list moves for the same reason at the other end of the card: the footer grows
-   * upwards as the spend line joins the hint, and a list anchored on the hint alone would come to
-   * rest under the spend rather than above it.
+   * upwards as the spend line and the references join the hint, and a list anchored on the hint
+   * alone would come to rest under them rather than above. References sit between the two — above
+   * the spend, below the task list — so the footer reads outwards from the answer: what the run
+   * did, then what it read, then what it cost. Each of the three is optional and any of them can be
+   * missing, which is why each names the lowest element actually present rather than assuming the
+   * one below it exists.
    *
    * @param onCard the optional elements already added, which is what makes this answerable
    */
@@ -144,7 +162,13 @@ public class FeishuCardElements {
     if (QUEUED.equals(elementId) && onCard.contains(REASONING)) {
       return REASONING;
     }
+    if (TODO.equals(elementId) && onCard.contains(REFERENCES)) {
+      return REFERENCES;
+    }
     if (TODO.equals(elementId) && onCard.contains(USAGE)) {
+      return USAGE;
+    }
+    if (REFERENCES.equals(elementId) && onCard.contains(USAGE)) {
       return USAGE;
     }
     return anchorOf(elementId);
@@ -169,18 +193,56 @@ public class FeishuCardElements {
       throw new IllegalStateException("No '" + elementId + "' element in " + cardElements);
     }
     element.put("element_id", elementId);
-    // The reasoning panel is the one element with something inside it that the run writes to, so
-    // what is inside gets an id here as well, for the reason the panel does: a deployment
-    // restyling the panel has no say in what the run streams into.
-    if (REASONING.equals(elementId)) {
+    // The two panels are the elements with something inside them that the run writes to, so what
+    // is inside gets an id here as well, for the reason the panel does: a deployment restyling a
+    // panel has no say in what the run streams into.
+    final var bodyId = BODY_IDS.get(elementId);
+    if (bodyId != null) {
       final var body = element.path("elements");
       if (!body.isArray() || body.isEmpty()) {
         throw new IllegalStateException(
-            "The '" + REASONING + "' element in " + cardElements + " has nothing to write into");
+            "The '" + elementId + "' element in " + cardElements + " has nothing to write into");
       }
-      ((ObjectNode) body.get(0)).put("element_id", REASONING_BODY);
+      ((ObjectNode) body.get(0)).put("element_id", bodyId);
     }
     return element;
+  }
+
+  /**
+   * The knowledge-sources panel as a whole element, its title carrying how many documents it holds
+   * and its body carrying them.
+   *
+   * <p>Whole, because the count is in the title and a title is not something a stream can reach —
+   * the same reason the reasoning pane is replaced rather than written into when it closes.
+   *
+   * <p>Stays closed: the count is what a closed panel is for, telling a reader how much is behind
+   * the chevron so they can decide whether to open it.
+   */
+  @SneakyThrows
+  public String referencesPanel(final int count, final String sources) {
+    final var element = element(REFERENCES);
+    final var title = (ObjectNode) element.path("header").path("title");
+    title.put("content", titleWithCount(title.path("content").asText(), count));
+    ((ObjectNode) element.path("elements").get(0)).put("content", sources == null ? "" : sources);
+    return om.writeValueAsString(element);
+  }
+
+  /**
+   * The panel's title with the count on the end of it, inside whatever the template wrapped the
+   * title in.
+   *
+   * <p>Appending to the rendered title rather than composing one here is what keeps the styling in
+   * {@code card-elements.json}, where a deployment can change it. But appending naively would put
+   * the count after the closing tag, so a grey title would be followed by a black count — hence
+   * going in before it. A template whose title carries no such wrapper simply gets the count on the
+   * end, which is the same thing for a title that never opened a tag.
+   */
+  private static String titleWithCount(final String title, final int count) {
+    final var suffix = "(" + count + ")";
+    final var closing = title.lastIndexOf("</");
+    return closing < 0
+        ? title + suffix
+        : title.substring(0, closing) + suffix + title.substring(closing);
   }
 
   /**

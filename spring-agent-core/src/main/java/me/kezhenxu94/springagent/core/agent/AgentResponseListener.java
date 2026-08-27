@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.core.agent;
 
 import java.util.List;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeReference;
 import org.springframework.ai.chat.metadata.Usage;
 
 /**
@@ -47,6 +48,19 @@ public interface AgentResponseListener {
   default void onReasoning(String reasoningSoFar) {}
 
   default void onUsage(String model, Usage usage) {}
+
+  /**
+   * The knowledge the run was given before it answered, once per turn that retrieved anything.
+   *
+   * <p>For a surface that wants to say where an answer came from. Retrieval happens without the
+   * model asking and without appearing among the tool calls, so a reader has no other way to tell
+   * that anything was consulted — which is the difference between an answer they can check and one
+   * they have to take on faith.
+   *
+   * <p>Not called at all on a turn that retrieved nothing, so a surface can treat being called as
+   * meaning there is something worth showing.
+   */
+  default void onKnowledgeRetrieved(List<KnowledgeReference> references) {}
 
   /**
    * Something happened in a run started by this one — so a surface can show work happening

@@ -12,6 +12,7 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
@@ -20,6 +21,9 @@ import me.kezhenxu94.springagent.core.config.LocalizedPrompt;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeReference;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
 import me.kezhenxu94.springagent.core.tools.mcp.McpClientFactory;
 import me.kezhenxu94.springagent.core.tools.mcp.ServerNameToolPrefixGenerator;
 import org.springaicommunity.agent.advisors.AutoMemoryToolsAdvisor;
@@ -29,14 +33,19 @@ import org.springaicommunity.agent.tools.FileSystemTools;
 import org.springaicommunity.agent.tools.SkillsTool;
 import org.springaicommunity.agent.tools.TodoWriteTool;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
+import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
+import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
+import org.springframework.ai.rag.generation.augmentation.ContextualQueryAugmenter;
+import org.springframework.ai.rag.retrieval.search.DocumentRetriever;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
@@ -53,6 +62,14 @@ public class AgentToolsProvider {
   private final McpClientFactory mcpClientFactory;
   private final ApplicationContext applicationContext;
   private final SpringAgentProperties appConfiguration;
+
+  /**
+   * The knowledge base, where a {@code spring-agent-rag-*} module supplies one. An {@link
+   * ObjectProvider} because core ships no implementation: having none is an ordinary configuration,
+   * not a missing dependency, and injecting the type directly would refuse to start every
+   * deployment that does not want a knowledge base.
+   */
+  private final ObjectProvider<KnowledgeBase> knowledgeBase;
 
   public record AgentTools(
       FileSystemTools fileSystemTools, Optional<ToolCallback> skillsTool, McpTools mcpTools) {}
@@ -101,7 +118,8 @@ public class AgentToolsProvider {
       final Map<String, Object> toolContext,
       final TodoEventHandler todoEventHandler,
       final QuestionHandler questionHandler,
-      final boolean answersArriveLater)
+      final boolean answersArriveLater,
+      final Consumer<List<KnowledgeReference>> knowledgeHandler)
       throws IOException {
     final var agentTools = build(request.userId(), request.chatId(), toolContext);
     // From here on the MCP clients are live, and the caller only learns of them by being handed the
@@ -110,7 +128,12 @@ public class AgentToolsProvider {
     // yet.
     try {
       return composeWith(
-          agentTools, request, todoEventHandler, questionHandler, answersArriveLater);
+          agentTools,
+          request,
+          todoEventHandler,
+          questionHandler,
+          answersArriveLater,
+          knowledgeHandler);
     } catch (Throwable t) {
       agentTools.mcpTools().close();
       throw t;
@@ -122,7 +145,8 @@ public class AgentToolsProvider {
       final AgentRequest request,
       final TodoEventHandler todoEventHandler,
       final QuestionHandler questionHandler,
-      final boolean answersArriveLater)
+      final boolean answersArriveLater,
+      final Consumer<List<KnowledgeReference>> knowledgeHandler)
       throws IOException {
     final var memoriesRootDirectory =
         userWorkspaceFactory
@@ -159,22 +183,105 @@ public class AgentToolsProvider {
     }
     tools.addAll(globalToolCallbacks());
 
-    final var advisors =
-        List.<Advisor>of(
-            AutoMemoryToolsAdvisor.builder()
-                .memoriesRootDirectory(memoriesRootDirectory)
-                // Core's own prompt, in the workspace's language, rather than the library's: the
-                // advisor appends whatever this is to the end of the system message on every
-                // request, and the default is two thousand words of English. A workspace whose
-                // prompt is not English gets that English tail last and closest to the model, which
-                // is enough to make it reason in English about a conversation it answers in
-                // another language. The text also has to be true of this deployment — the default
-                // says MEMORY.md is always loaded into context, and here nothing loads it.
-                .memorySystemPrompt(
-                    LocalizedPrompt.resource(MEMORY_PROMPT, appConfiguration.locale()))
-                .build());
+    final var advisors = new ArrayList<Advisor>();
+    knowledgeRetrieval(request, knowledgeHandler).ifPresent(advisors::add);
+    advisors.add(
+        AutoMemoryToolsAdvisor.builder()
+            .memoriesRootDirectory(memoriesRootDirectory)
+            // Core's own prompt, in the workspace's language, rather than the library's: the
+            // advisor appends whatever this is to the end of the system message on every
+            // request, and the default is two thousand words of English. A workspace whose
+            // prompt is not English gets that English tail last and closest to the model, which
+            // is enough to make it reason in English about a conversation it answers in
+            // another language. The text also has to be true of this deployment — the default
+            // says MEMORY.md is always loaded into context, and here nothing loads it.
+            .memorySystemPrompt(LocalizedPrompt.resource(MEMORY_PROMPT, appConfiguration.locale()))
+            .build());
 
-    return new AgentComposition(tools.toArray(), advisors, agentTools.mcpTools());
+    return new AgentComposition(tools.toArray(), List.copyOf(advisors), agentTools.mcpTools());
+  }
+
+  /**
+   * The advisor that consults the knowledge base before the model answers, scoped to what this
+   * request may read.
+   *
+   * <p>Three independent gates, all of which have to open: a {@code spring-agent-rag-*} module has
+   * to be installed, the deployment has to want automatic retrieval, and the scenario has to be one
+   * where it makes sense. They are separate because they answer to different people — whoever
+   * assembles the build, whoever configures the deployment, and whoever wrote the scenario.
+   *
+   * <p>The scope filter is baked into the retriever rather than passed as a per-request advisor
+   * parameter, which is available but unnecessary here: a fresh advisor is built for every request
+   * anyway, so there is nothing for a parameter to vary.
+   *
+   * <p>{@code allowEmptyContext} is load-bearing. Spring AI's default is to instruct the model not
+   * to answer when retrieval found nothing, which for a general-purpose agent would turn every
+   * question the knowledge base has no opinion about — that is, nearly all of them — into a
+   * refusal. Here retrieval is an augmentation, not the point of the run.
+   */
+  private Optional<Advisor> knowledgeRetrieval(
+      final AgentRequest request, final Consumer<List<KnowledgeReference>> knowledgeHandler) {
+    final var rag = appConfiguration.ai().rag();
+    if (!rag.enabled() || !request.scenario().knowledgeRetrieval()) {
+      return Optional.empty();
+    }
+    return Optional.ofNullable(knowledgeBase.getIfAvailable())
+        .map(
+            base ->
+                RetrievalAugmentationAdvisor.builder()
+                    .documentRetriever(
+                        reporting(
+                            base.retrieverFor(
+                                new KnowledgeScope(
+                                    request.userId(), request.groupId(), request.tenantId())),
+                            knowledgeHandler))
+                    .queryAugmenter(
+                        ContextualQueryAugmenter.builder().allowEmptyContext(true).build())
+                    // After the chat memory advisor, and this is the constraint that decides the
+                    // number — not tidiness.
+                    //
+                    // Augmentation rewrites the user message to carry the retrieved passages, and
+                    // MessageChatMemoryAdvisor.before() writes the request's user message into the
+                    // conversation history. Order this ahead of memory and the augmented message is
+                    // what gets persisted: the passages become a permanent part of the history,
+                    // replayed on every later turn whether or not they are relevant, and no change
+                    // of threshold or scope can dislodge them afterwards.
+                    //
+                    // The cost of sitting here instead is that ToolCallingAdvisor re-invokes
+                    // everything ordered after it once per tool round, so a turn with several tool
+                    // calls searches more than once. That is wasted embedding calls, and it is the
+                    // cheaper of the two failures by a wide margin — the other one corrupts data.
+                    .order(ToolCallingAdvisor.DEFAULT_ORDER + 200)
+                    .build());
+  }
+
+  /**
+   * The retriever, wrapped so that what it found is reported as well as used.
+   *
+   * <p>A decorator rather than reading the documents back out of the advisor's response context,
+   * which is where Spring AI also leaves them: retrieval is the only thing that knows it happened,
+   * and the run streams rather than handing back a response for anything to inspect afterwards.
+   *
+   * <p>Reporting must never break retrieval, so a listener that throws is logged and swallowed —
+   * the alternative is a surface's rendering bug costing the user their answer. Nothing is reported
+   * when nothing was found, so being called means there is something to show.
+   */
+  private static DocumentRetriever reporting(
+      final DocumentRetriever delegate, final Consumer<List<KnowledgeReference>> handler) {
+    if (handler == null) {
+      return delegate;
+    }
+    return query -> {
+      final var documents = delegate.retrieve(query);
+      if (documents != null && !documents.isEmpty()) {
+        try {
+          handler.accept(KnowledgeReference.of(documents));
+        } catch (Exception e) {
+          log.warn("A knowledge reference listener failed", e);
+        }
+      }
+      return documents;
+    };
   }
 
   /**

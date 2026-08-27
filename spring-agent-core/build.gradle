@@ -42,6 +42,16 @@ dependencies {
   // org.springframework.ai:spring-ai-starter-vector-store-milvus itself and sets
   // spring.ai.vectorstore.type=milvus; Spring AI's own auto-configuration takes it from there.
   api 'org.springframework.ai:spring-ai-vector-store'
+  // Spring AI's modular RAG: DocumentRetriever appears in the KnowledgeBase contract that the
+  // spring-agent-rag-* modules implement, and RetrievalAugmentationAdvisor is what attaches
+  // retrieval to a run. api rather than implementation for the first of those reasons.
+  //
+  // It reaches no configuration transitively — nothing else in Spring AI depends on it — so it has
+  // to be named here. Its own dependencies are spring-ai-client-chat and spring-ai-vector-store,
+  // both already present, so this adds no third-party weight and nothing for the isolation check
+  // below to catch. Storage stays out of core: the module holding Milvus and Tika is the one that
+  // implements the contract.
+  api 'org.springframework.ai:spring-ai-rag'
 
   implementation libs.guava
   implementation libs.jakarta.annotation.api

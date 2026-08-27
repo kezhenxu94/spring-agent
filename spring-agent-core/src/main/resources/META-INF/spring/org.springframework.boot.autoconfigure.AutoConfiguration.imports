@@ -2,3 +2,4 @@ me.kezhenxu94.springagent.core.config.SpringAgentCoreAutoConfiguration
 me.kezhenxu94.springagent.core.config.VectorStoreConfiguration
 me.kezhenxu94.springagent.core.config.ToolSearchIndexConfiguration
 me.kezhenxu94.springagent.core.config.LocalShellToolsConfiguration
+me.kezhenxu94.springagent.core.config.KnowledgeToolsConfiguration

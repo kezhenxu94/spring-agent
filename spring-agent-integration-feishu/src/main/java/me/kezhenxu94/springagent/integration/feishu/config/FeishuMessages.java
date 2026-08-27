@@ -53,6 +53,7 @@ public class FeishuMessages {
     return cardJson
         .replace("{stop}", jsonEscaped(get("card-stop")))
         .replace("{reasoning}", jsonEscaped(get("card-reasoning")))
+        .replace("{references}", jsonEscaped(get("card-references")))
         .replace("{conversationHint}", jsonEscaped(get("card-conversation-hint")));
   }
 

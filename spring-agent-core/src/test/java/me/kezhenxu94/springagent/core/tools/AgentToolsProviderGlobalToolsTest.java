@@ -59,7 +59,8 @@ class AgentToolsProviderGlobalToolsTest {
               mock(McpServerConfigRepo.class),
               mock(McpClientFactory.class),
               context,
-              properties());
+              properties(),
+              mock(org.springframework.beans.factory.ObjectProvider.class));
 
       final var composition =
           provider.compose(
@@ -72,7 +73,8 @@ class AgentToolsProviderGlobalToolsTest {
               Map.of(),
               todos -> {},
               questions -> Map.of(),
-              true);
+              true,
+              references -> {});
 
       assertThat(composition.tools())
           .filteredOn(ToolCallback.class::isInstance)
@@ -111,6 +113,7 @@ class AgentToolsProviderGlobalToolsTest {
             null,
             Set.of(),
             Map.of(),
+            null,
             null,
             new Tools(new AskUserQuestion(true, null), null),
             "You are an agent.",

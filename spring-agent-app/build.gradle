@@ -64,6 +64,10 @@ dependencies {
   implementation project(':spring-agent-tools-shell-kubernetes')
   implementation project(':spring-agent-tools-shell-docker')
   implementation project(':spring-agent-integration-feishu')
+  // The knowledge base. Optional for an SDK consumer, and the only implementation of core's
+  // KnowledgeBase contract, so taking it is what decides a deployment has one at all — there is no
+  // property that turns a knowledge base on without it. app.ai.rag.enabled turns it back off.
+  implementation project(':spring-agent-rag-milvus')
 
   implementation 'org.springframework.boot:spring-boot-starter-actuator'
   implementation 'org.springframework.boot:spring-boot-starter-security'
@@ -76,6 +80,11 @@ dependencies {
   // brings milvus-sdk-java, grpc, protobuf, okhttp and kotlin-stdlib. Spring AI's own
   // auto-configuration backs off unless spring.ai.vectorstore.type is milvus, so having it here
   // costs a deployment that runs the simple store nothing but disk.
+  //
+  // This is the *tool search index*, not the knowledge base, and the two are separate on purpose —
+  // spring-agent-rag-milvus above holds its own client and its own collection under app.ai.rag.
+  // Removing this line in the belief that the module replaces it would leave the tool index with
+  // nowhere to go whenever spring.ai.vectorstore.type is milvus.
   implementation 'org.springframework.ai:spring-ai-starter-vector-store-milvus'
 
   // Internals of the library modules; the assembly test mocks these beans.

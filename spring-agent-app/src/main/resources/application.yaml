@@ -285,7 +285,7 @@ app:
     type: ${PERSISTENCE_TYPE:jpa}
   ai:
     # The agent's system prompt. Rendered per request with these variables:
-    # {userId} {chatId} {chatType} {threadId} {parentId} {mentions} {replyFormat}
+    # {userId} {chatId} {chatType} {messageId} {threadId} {parentId} {mentions} {replyFormat}
     # {homeDirs} — referencing any other name will fail the render. Override this to
     # give the agent its own persona, house rules, or domain knowledge.
     #
@@ -307,6 +307,7 @@ app:
       - Sender user ID: {userId}
       - Chat ID: {chatId}
       - Chat type: {chatType} (whether this is a direct message or a group chat)
+      - This message's ID: {messageId}
       - Thread ID: {threadId} (empty unless the message belongs to a thread)
       - Parent message ID: {parentId} (set when the user replies to or quotes a message)
       - Mentioned users: {mentions}
@@ -318,6 +319,19 @@ app:
       Your memory tools only reach your own memories/, so read a shared MEMORY.md as an
       ordinary file. Put a file in a shared home when it is meant for the people who
       share it, and in your own when it is not.
+
+      # What you already remember
+      Anything written to the knowledge base is searched automatically before you answer,
+      across the user's own, this group's, and the company-wide one. When a relevant
+      passage exists you will have been given it already, so do not call SearchKnowledge
+      to confirm what is in front of you; call it when you want to search again with
+      different words, or to check what is stored on a topic before answering. Offer to
+      write something down with IndexKnowledge when the user tells you something worth
+      keeping past this conversation. Its docId says what the document is, and storing
+      the same thing again under the same id updates it instead of leaving two copies
+      that both match searches: use the token from a document's link, the URL of a page,
+      the absolute path of a file, or {messageId} for something the user simply told you
+      here.
 
       # Working rules
       - If {parentId} is not empty, the user is replying to or quoting an earlier
@@ -440,6 +454,68 @@ app:
         # reloaded on startup; if it is missing or unreadable the index is simply rebuilt, at the
         # cost of re-embedding the tool descriptions.
         file: ${VECTORSTORE_FILE:data/vectorstore.json}
+    rag:
+      # The knowledge base: what a user, a group or the whole company has told the agent to write
+      # down, searched before every answer and managed with the ListKnowledgeBase, IndexKnowledge,
+      # SearchKnowledge and DeleteKnowledge tools.
+      #
+      # This is not the same thing as the vector store above, and the separation is deliberate. That
+      # one holds the tool search index — a rebuildable cache of tool descriptions, chosen with
+      # spring.ai.vectorstore.type. This one holds user data, in its own Milvus collection, with its
+      # own connection. Keeping them apart means the knowledge base does not dilute tool search,
+      # clearing the tool index cannot touch user data, and a deployment can run the tool index in
+      # the heap while keeping its knowledge base in Milvus. That last combination is the reason
+      # this has its own connection settings rather than borrowing spring.ai.vectorstore.milvus.
+      #
+      # A knowledge base exists at all only because spring-agent-rag-milvus is on the classpath; it
+      # is the sole implementation of core's KnowledgeBase contract. Nothing here conjures one, and
+      # a build without that module simply has no knowledge base and no knowledge tools.
+      # Off by default, and on purpose: a knowledge base needs a Milvus, and the default
+      # deployment (jpa + simple, no containers at all) runs none. Turning this on without one
+      # reachable at app.ai.rag.milvus.host below stops the application from starting, the same
+      # way pointing app.persistence.type at a database that is not there would. Bring Milvus up
+      # first — COMPOSE_PROFILES=...,milvus — then set RAG_ENABLED=true.
+      #
+      # This gates the whole feature: with it off there is no knowledge base, no knowledge tools,
+      # no connection, and no automatic search. With it on, every incoming message is embedded to
+      # search the knowledge base whether or not it has anything to say; individual kinds of run
+      # opt out separately, in AgentScenario.knowledgeRetrieval().
+      enabled: ${RAG_ENABLED:false}
+      #
+      # How many passages an automatic search may put in front of the model. Each one is context the
+      # model pays for on every turn, so this trades recall against the prompt budget.
+      top-k: ${RAG_TOP_K:4}
+      # How close a passage must be to count: a raw cosine similarity between 0 and 1, compared
+      # against the score the vector store returns.
+      #
+      # No value here is right for every embedding model, so treat this as a starting point and
+      # measure. Embeddings from a modern model sit in a narrow cone: set it too low and unrelated
+      # text clears the bar, so a knowledge base holding one document returns it for every question
+      # asked; set it too high and a question the knowledge base plainly answers retrieves nothing.
+      # The gap between those two is often narrower than it sounds.
+      #
+      # SearchKnowledge is the instrument. It ignores this threshold on purpose and prints the score
+      # of every passage it returns, so it still shows evidence when this is set too high. Ask it
+      # something the knowledge base covers and something it does not, then put the threshold
+      # between the two scores.
+      similarity-threshold: ${RAG_SIMILARITY_THRESHOLD:0.45}
+      # The token target a document is split into. Also the granularity at which knowledge is either
+      # relevant or not, since a chunk is handed to the model whole.
+      chunk-size: ${RAG_CHUNK_SIZE:800}
+      # How many documents ListKnowledgeBase returns when the model does not say.
+      list-page-size: ${RAG_LIST_PAGE_SIZE:20}
+      milvus:
+        # Only read when spring-agent-rag-milvus is on the classpath. Deliberately separate from
+        # spring.ai.vectorstore.milvus above, which configures the tool search index.
+        host: ${RAG_MILVUS_HOST:localhost}
+        port: ${RAG_MILVUS_PORT:19530}
+        # A collection of its own, never the tool index's.
+        collection-name: ${RAG_MILVUS_COLLECTION:spring_agent_knowledge}
+        # Must match the embedding model. Changing the model invalidates everything already stored,
+        # and unlike the tool index the knowledge base does not rebuild itself — re-indexing is a
+        # manual act, so treat a change here as data loss until it is done.
+        embedding-dimension: ${RAG_MILVUS_DIMENSION:1024}
+        initialize-schema: true
     tools:
       ask-user-question:
         # Whether the agent may stop and ask the user a multiple-choice question when a request is
@@ -614,6 +690,11 @@ app:
         non-thinking-input-per-million: 12.0
         thinking-input-per-million: 12.0
         output-per-million: 36.0
+        currency: CNY
+      '[qwen3.8-flash]':
+        non-thinking-input-per-million: 0.8
+        thinking-input-per-million: 0.8
+        output-per-million: 2.7
         currency: CNY
       '[gpt-5.6-luna]':
         non-thinking-input-per-million: 1.0

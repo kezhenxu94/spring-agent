@@ -22,4 +22,18 @@ public interface AgentScenario {
   default boolean offers(final Object tool) {
     return true;
   }
+
+  /**
+   * Whether the run consults the knowledge base automatically, retrieving what the user's, group's
+   * and tenant's knowledge has to say about the message before the model sees it.
+   *
+   * <p>It does by default; override to false for a run whose prompt is not a question anyone has
+   * knowledge about, since retrieval costs an embedding of every message whether or not anything
+   * comes back. Turning it off here is independent of the deployment-wide switch and of whether any
+   * {@code KnowledgeBase} implementation is installed at all — all three have to agree before
+   * anything is retrieved.
+   */
+  default boolean knowledgeRetrieval() {
+    return true;
+  }
 }
