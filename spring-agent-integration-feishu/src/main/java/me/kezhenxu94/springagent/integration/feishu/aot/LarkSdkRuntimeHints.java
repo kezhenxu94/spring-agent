@@ -113,6 +113,8 @@ import com.lark.oapi.service.sheets.v3.model.CreateSpreadsheetReq;
 import com.lark.oapi.service.sheets.v3.model.QuerySpreadsheetSheetReq;
 import com.lark.oapi.service.sheets.v3.model.Spreadsheet;
 import com.lark.oapi.service.wiki.v2.model.GetNodeSpaceReq;
+import com.lark.oapi.service.wiki.v2.model.ListSpaceNodeReq;
+import com.lark.oapi.service.wiki.v2.model.ListSpaceNodeResp;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
@@ -260,7 +262,9 @@ public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
           CreateSpreadsheetReq.class,
           QuerySpreadsheetSheetReq.class,
           Spreadsheet.class,
-          GetNodeSpaceReq.class);
+          GetNodeSpaceReq.class,
+          ListSpaceNodeReq.class,
+          ListSpaceNodeResp.class);
 
   /**
    * Our own {@code @Query} holders, registered by name because they are package-private to {@code

@@ -311,8 +311,8 @@ public class FeishuCardElements {
   public record ToolCall(String title, String body) {}
 
   /**
-   * The tool pane as a whole element: the call the run is on now in the title, that call's input
-   * under it, and every call before it nested inside, oldest first.
+   * The tool pane as a whole element: the run's state in the title, and every call it has made
+   * nested inside as a pane of its own, oldest first.
    *
    * <p>Whole every time, because the pane grows a pane per call and a card element insert can only
    * name an element of the card, never one inside another. Which is also why {@code expanded} is
@@ -324,24 +324,18 @@ public class FeishuCardElements {
    */
   @SneakyThrows
   public String toolsPane(
-      final boolean expanded,
-      final String title,
-      final String latestInput,
-      final int hidden,
-      final List<ToolCall> earlier) {
+      final boolean expanded, final String title, final int hidden, final List<ToolCall> calls) {
     final var element = element(TOOLS);
     element.put("expanded", expanded);
     fillTitle(element, title);
     final var elements = (ArrayNode) element.path("elements");
-    final var latest = (ObjectNode) elements.get(0);
-    latest.put("content", Strings.nullToEmpty(latestInput));
+    // The template's one line is the style for the line standing in for the calls too old to show,
+    // and nothing else: every call is a pane, so with none dropped the pane holds panes alone.
+    final var line = (ObjectNode) elements.remove(0);
     if (hidden > 0) {
-      // Styled by copying the element above it rather than by a template entry of its own: it is
-      // the same kind of line, and a deployment restyling one has said what it wants of the other.
-      elements.add(
-          latest.deepCopy().put("content", messages.get("card-tool-calls-earlier", hidden)));
+      elements.add(line.put("content", messages.get("card-tool-calls-earlier", hidden)));
     }
-    for (final var call : earlier) {
+    for (final var call : calls) {
       elements.add(toolCallPane(call));
     }
     return om.writeValueAsString(element);

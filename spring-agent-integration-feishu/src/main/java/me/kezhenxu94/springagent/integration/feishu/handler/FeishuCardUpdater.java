@@ -536,21 +536,24 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     if (elements == null || toolCalls.isEmpty()) {
       return;
     }
-    final var latest = toolCalls.get(toolCalls.size() - 1);
-    final var earlier = toolCalls.subList(0, toolCalls.size() - 1);
-    final var hidden = Math.max(0, earlier.size() - CALLS_SHOWN);
+    final var running = callStillOut();
+    final var hidden = Math.max(0, toolCalls.size() - CALLS_SHOWN);
     final var shown =
-        earlier.subList(hidden, earlier.size()).stream()
+        toolCalls.subList(hidden, toolCalls.size()).stream()
             .map(call -> new FeishuCardElements.ToolCall(call.toolName, call.rendered()))
             .toList();
     final var pane =
         elements.toolsPane(
             expanded,
-            // The tool the run is on, not what the model said the call was for: this title names
-            // the whole trail, and a description reading as one call's sentence would make a pane
-            // holding twenty of them look like it holds one.
-            messages.get("card-tool-calls", latest.toolName),
-            blockquote(clipped(latest.input, CALL_INPUT_CHARACTERS)),
+            running != null
+                // The tool the run is on, not what the model said the call was for: this title
+                // names the whole trail, and a description reading as one call's sentence would
+                // make a pane holding twenty of them look like it holds one.
+                ? messages.get("card-tool-calls", running.toolName)
+                // Nothing is out, so the title names the trail by its size instead. Going on
+                // naming the last call would say the run is on a call that is over, and it is the
+                // title a finished card keeps.
+                : messages.get("card-tool-calls-done", toolCalls.size()),
             hidden,
             shown);
     if (added.contains(FeishuCardElements.TOOLS)) {
@@ -568,6 +571,26 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         card.cardId() + ":tools")) {
       added.add(FeishuCardElements.TOOLS);
     }
+  }
+
+  /**
+   * The call the run is waiting on, which is the newest one still out — a round's calls come back
+   * in whatever order they finish in, and the newest is the one a reader is watching for. It names
+   * the pane while it is out; {@code null} once every call is back, and the pane is then named by
+   * how many it holds.
+   *
+   * <p>Naming it is all it gets: every call sits in the pane, the one out included, so that what a
+   * call returned lands with what it was given. Held above the list instead, the newest call showed
+   * what it was given and never what it came back with, and a turn whose last act was a tool call
+   * left that call's result off the card altogether.
+   */
+  private ToolCall callStillOut() {
+    for (var i = toolCalls.size() - 1; i >= 0; i--) {
+      if (toolCalls.get(i).result == null) {
+        return toolCalls.get(i);
+      }
+    }
+    return null;
   }
 
   /** Folds the pane away as the run ends, for the reason the reasoning pane is folded away. */
