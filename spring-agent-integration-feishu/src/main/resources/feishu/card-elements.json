@@ -175,13 +175,9 @@
               "tag": "plain_text",
               "content": "{stop}"
             },
-            "type": "danger_filled",
+            "type": "danger_text",
             "width": "default",
             "size": "tiny",
-            "icon": {
-              "tag": "standard_icon",
-              "token": "w1-h1_outlined"
-            },
             "behaviors": [
               {
                 "type": "callback",
