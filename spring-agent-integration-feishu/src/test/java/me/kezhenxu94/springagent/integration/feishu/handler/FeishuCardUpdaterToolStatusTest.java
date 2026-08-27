@@ -35,10 +35,11 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The pane holding what the run has done. It says on its title which tool the run is on, which is
- * what a reader watching a working card wants, and keeps every call before it behind a chevron,
- * which is what a reader checking a finished answer wants. A subagent has no pane and says its
- * calls in a line under its own report, which is the other half of the tests here.
+ * The pane holding what the run has done. Its title says which tool the run is on, which is what a
+ * reader watching a working card wants, and every call it has made — the one still out included —
+ * is a pane inside it, which is what a reader checking a finished answer wants. A subagent has no
+ * pane and says its calls in a line under its own report, which is the other half of the tests
+ * here.
  */
 @ExtendWith(MockitoExtension.class)
 class FeishuCardUpdaterToolStatusTest {
@@ -93,16 +94,16 @@ class FeishuCardUpdaterToolStatusTest {
     assertThat(pane.path("element_id").asString()).isEqualTo("tools");
     // Which tool the run is on, so that a folded pane still says what is happening.
     assertThat(title(pane)).isEqualTo("Tool calls — Bash ...");
-    // And the call's input under it, quoted: a call is something the run asked for. The model's
-    // description is one of the fields, since no line above says it any more.
-    assertThat(pane.path("elements").path(0).path("content").asString())
-        .isEqualTo("> command: ls -la\n> description: Listing files");
+    // The call itself is inside, like every other: named by its tool, opening onto what it was
+    // given. The model's description is one of those fields, since no line above says it any more.
+    assertThat(title(call(pane, 0))).isEqualTo("Bash");
+    assertThat(bodyOf(call(pane, 0))).isEqualTo("> command: ls -la\n> description: Listing files");
     // Open, because while a run is calling tools that is the only thing there is to watch.
     assertThat(pane.path("expanded").asBoolean()).isTrue();
   }
 
   @Test
-  @DisplayName("the newest call is the title and the ones before it are panes below, oldest first")
+  @DisplayName("every call is a pane inside, oldest first, the one still out among them")
   void everyCallIsKept() throws Exception {
     updater.setToolStatus("Bash", "{\"description\":\"Listing files\"}", null);
     updater.setToolStatus("ReadFile", "{\"description\":\"Reading the log\"}", null);
@@ -111,13 +112,30 @@ class FeishuCardUpdaterToolStatusTest {
     final var pane = lastPane();
     assertThat(title(pane)).isEqualTo("Tool calls — Kubectl ...");
     final var elements = pane.path("elements");
-    // The latest call's input first, then the trail: oldest at the top, newest at the bottom, each
-    // named by its tool so the trail reads as a list of what the run used.
-    assertThat(title(elements.path(1))).isEqualTo("Bash");
-    assertThat(title(elements.path(2))).isEqualTo("ReadFile");
+    // Oldest at the top, newest at the bottom, each named by its tool so the trail reads as a list
+    // of what the run used. The call the title names is the last of them, not held out above.
+    assertThat(title(elements.path(0))).isEqualTo("Bash");
+    assertThat(title(elements.path(1))).isEqualTo("ReadFile");
+    assertThat(title(elements.path(2))).isEqualTo("Kubectl");
     assertThat(elements).hasSize(3);
     // Each one closed: a turn can make dozens of calls and a reader wants one of them.
-    assertThat(elements.path(1).path("expanded").asBoolean()).isFalse();
+    assertThat(elements.path(0).path("expanded").asBoolean()).isFalse();
+  }
+
+  @Test
+  @DisplayName("once every call is back the pane is named by how many it holds")
+  void theFinishedPaneIsNamedByItsSize() throws Exception {
+    updater.setToolStatus("Bash", "{\"command\":\"ls\"}", null);
+    updater.setToolStatus("ReadFile", "{\"path\":\"a.txt\"}", null);
+    updater.clearToolStatus("Bash", "{}", "a.txt");
+    updater.clearToolStatus("ReadFile", "{}", "hello");
+
+    final var pane = lastPane();
+    // Nothing is out, so no tool is the one the run is on. Going on naming the last call would say
+    // the run is still waiting on a call that is over.
+    assertThat(title(pane)).isEqualTo("Tool calls (2)");
+    // And the last call is in the list with the rest, which is the only place its result shows.
+    assertThat(bodyOf(call(pane, 1))).isEqualTo("> path: a.txt\n\n```\nhello\n```");
   }
 
   @Test
@@ -128,8 +146,7 @@ class FeishuCardUpdaterToolStatusTest {
     updater.setToolStatus("Bash", "{\"description\":\"Reading the log\"}", null);
 
     // Set as code: tool output is a log or a listing, and its shape is most of what makes it read.
-    assertThat(
-            lastPane().path("elements").path(1).path("elements").path(0).path("content").asString())
+    assertThat(bodyOf(call(lastPane(), 0)))
         .isEqualTo("> command: ls\n> description: Listing files\n\n```\na.txt\nb.txt\n```");
   }
 
@@ -139,9 +156,8 @@ class FeishuCardUpdaterToolStatusTest {
     updater.setToolStatus("Bash", "{\"command\":\"sleep 60\"}", null);
     updater.setToolStatus("Bash", "{\"command\":\"ls\"}", null);
 
-    assertThat(
-            lastPane().path("elements").path(1).path("elements").path(0).path("content").asString())
-        .isEqualTo("> command: sleep 60");
+    assertThat(bodyOf(call(lastPane(), 0))).isEqualTo("> command: sleep 60");
+    assertThat(bodyOf(call(lastPane(), 1))).isEqualTo("> command: ls");
   }
 
   @Test
@@ -153,8 +169,10 @@ class FeishuCardUpdaterToolStatusTest {
 
     final var pane = lastPane();
     assertThat(pane.path("expanded").asBoolean()).isFalse();
-    // Folded, not emptied: the trail is the point of keeping it.
+    // Folded, not emptied: the trail is the point of keeping it. And still named by the call that
+    // never came back, since that is what was true when the run stopped.
     assertThat(title(pane)).isEqualTo("Tool calls — Bash ...");
+    assertThat(title(call(pane, 0))).isEqualTo("Bash");
   }
 
   @Test
@@ -167,9 +185,9 @@ class FeishuCardUpdaterToolStatusTest {
     final var elements = lastPane().path("elements");
     assertThat(title(lastPane())).isEqualTo("Tool calls — Tool24 ...");
     // The line stands where the calls it stands for would have been: above the oldest one shown.
-    assertThat(elements.path(1).path("content").asString()).isEqualTo("… and 3 earlier calls");
-    assertThat(title(elements.path(2))).isEqualTo("Tool4");
-    assertThat(title(elements.path(elements.size() - 1))).isEqualTo("Tool23");
+    assertThat(elements.path(0).path("content").asString()).isEqualTo("… and 4 earlier calls");
+    assertThat(title(elements.path(1))).isEqualTo("Tool5");
+    assertThat(title(elements.path(elements.size() - 1))).isEqualTo("Tool24");
   }
 
   @Test
@@ -181,7 +199,7 @@ class FeishuCardUpdaterToolStatusTest {
         null);
 
     // Nothing above it says what the call was for any more, so leaving it out would lose it.
-    assertThat(insertedPane().path("elements").path(0).path("content").asString())
+    assertThat(bodyOf(call(insertedPane(), 0)))
         .isEqualTo("> command: ls -la\n> description: List files in the current directory");
   }
 
@@ -192,8 +210,7 @@ class FeishuCardUpdaterToolStatusTest {
 
     final var pane = insertedPane();
     assertThat(title(pane)).isEqualTo("Tool calls \u2014 Bash ...");
-    assertThat(pane.path("elements").path(0).path("content").asString())
-        .isEqualTo("> command: ls -la\n> timeout: 1000");
+    assertThat(bodyOf(call(pane, 0))).isEqualTo("> command: ls -la\n> timeout: 1000");
   }
 
   @Test
@@ -255,8 +272,7 @@ class FeishuCardUpdaterToolStatusTest {
 
     final var pane = insertedPane();
     assertThat(title(pane)).isEqualTo("Tool calls \u2014 Bash ...");
-    assertThat(pane.path("elements").path(0).path("content").asString())
-        .isEqualTo("> not json at all");
+    assertThat(bodyOf(call(pane, 0))).isEqualTo("> not json at all");
   }
 
   @Test
@@ -264,8 +280,7 @@ class FeishuCardUpdaterToolStatusTest {
   void containerFieldsSurvive() throws Exception {
     updater.setToolStatus("TodoWrite", "{\"todos\":[{\"content\":\"do it\"}]}", null);
 
-    assertThat(insertedPane().path("elements").path(0).path("content").asString())
-        .isEqualTo("> todos: [{\"content\":\"do it\"}]");
+    assertThat(bodyOf(call(insertedPane(), 0))).isEqualTo("> todos: [{\"content\":\"do it\"}]");
   }
 
   @Test
@@ -275,7 +290,7 @@ class FeishuCardUpdaterToolStatusTest {
 
     final var pane = insertedPane();
     assertThat(title(pane)).isEqualTo("Tool calls \u2014 DateTime ...");
-    assertThat(pane.path("elements").path(0).path("content").asString()).isEmpty();
+    assertThat(bodyOf(call(pane, 0))).isEmpty();
   }
 
   /** A subagent of that run, panel and all, as {@code FeishuCardListener} attaches one. */
@@ -321,6 +336,16 @@ class FeishuCardUpdaterToolStatusTest {
     return panes.isEmpty()
         ? insertedPane()
         : om.readTree(panes.get(panes.size() - 1).getUpdateCardElementReqBody().getElement());
+  }
+
+  /** The i-th call's pane inside the tool pane, counting from the oldest one it shows. */
+  private static JsonNode call(final JsonNode pane, final int index) {
+    return pane.path("elements").path(index);
+  }
+
+  /** What opening one call's pane shows. */
+  private static String bodyOf(final JsonNode callPane) {
+    return callPane.path("elements").path(0).path("content").asString();
   }
 
   /** A panel's title without the styling the template wrapped it in. */
