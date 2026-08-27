@@ -615,6 +615,11 @@ app:
         thinking-input-per-million: 12.0
         output-per-million: 36.0
         currency: CNY
+      '[qwen3.8-flash]':
+        non-thinking-input-per-million: 0.8
+        thinking-input-per-million: 0.8
+        output-per-million: 2.7
+        currency: CNY
       '[gpt-5.6-luna]':
         non-thinking-input-per-million: 1.0
         thinking-input-per-million: 1.0
