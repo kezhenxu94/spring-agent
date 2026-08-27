@@ -59,14 +59,6 @@ public class FeishuCard {
 
   private static final int CODE_STREAMING_MODE_CLOSED = 300309;
 
-  /**
-   * The bottom of the card's footer: the conversation hint, the one element every card carries from
-   * the moment it is sent until after it has finished. Anything added mid-run is placed above the
-   * footer, which is what keeps the spend line and the hint at the bottom where a reader expects
-   * them.
-   */
-  static final String FOOTER_ELEMENT_ID = "guide";
-
   private static final Pattern IMAGE_PATTERN = Pattern.compile("!\\[(.*?)\\]\\(([^)\\s]+)\\)");
 
   private static final String FILE_SCHEME = "file:";
@@ -87,12 +79,13 @@ public class FeishuCard {
   /**
    * The topmost element of the footer, which is what "above the footer" has to mean for an insert.
    *
-   * <p>The footer grows upwards: the hint is there from the start and the spend line joins it above
-   * once the run has named a model. So this moves when it does — anchored on the hint alone, a
-   * subagent's panel added after the first model call would come to rest under the spend line,
-   * which is the one thing the footer is for keeping at the bottom.
+   * <p>It starts at the spend row, which every card is sent carrying — the conversation hint is
+   * below it and the stop button rides in it — and moves up as the footer grows: the sources join
+   * it above once a turn has retrieved anything. Anchored on the hint alone, a subagent's panel
+   * would come to rest under the spend row, which is the one thing the footer is for keeping at the
+   * bottom.
    */
-  private volatile String footerElementId = FOOTER_ELEMENT_ID;
+  private volatile String footerElementId = FeishuCardElements.USAGE;
 
   /** Says that {@code elementId} has joined the footer, above whatever was its top until now. */
   void footerGrewTo(final String elementId) {
@@ -279,7 +272,9 @@ public class FeishuCard {
             .delete(
                 DeleteCardElementReq.newBuilder()
                     .cardId(cardId)
-                    .elementId("stop")
+                    // The button inside the spend row, not the row: the spend line stays on the
+                    // card after the run that wrote it has ended.
+                    .elementId(FeishuCardElements.STOP)
                     .deleteCardElementReqBody(
                         DeleteCardElementReqBody.newBuilder()
                             .sequence(sequence.getAndIncrement())

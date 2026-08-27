@@ -61,7 +61,7 @@ class FeishuCardUpdaterUsageTest {
     ok.setCode(0);
     when(feishu.cardkit().v1().cardElement().content(any(ContentCardElementReq.class)))
         .thenReturn(ok);
-    // The footer is one of the elements the card gains on first use, so writing it inserts it.
+    // The elements the run writes to that the card does not ship with are inserted on first use.
     final var inserted = new CreateCardElementResp();
     inserted.setCode(0);
     when(feishu.cardkit().v1().cardElement().create(any(CreateCardElementReq.class)))
@@ -203,7 +203,7 @@ class FeishuCardUpdaterUsageTest {
   }
 
   private String lastFooter() throws Exception {
-    return lastContentOf("usage");
+    return lastContentOf("usage_body");
   }
 
   private String lastContentOf(final String elementId) throws Exception {

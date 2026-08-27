@@ -6,14 +6,22 @@
     "finished — and nothing else; everything a run puts on the card and takes off it again is here.",
     "Where each one goes is decided in FeishuCardElements, which also sets the ids the run streams",
     "into — so a deployment replacing this file is free to restyle these elements and nothing else.",
-    "'stop' is the button that cancels the run. It goes on the card as the card is created, since a",
-    "run is stoppable from the moment it is on screen, and comes off again when the run ends. It is",
-    "a button in a two-column row rather than a button, because a button placed straight in the",
-    "card body is stretched to the full width of the row on mobile, which turns cancelling a run",
-    "into the widest thing on the card. Half a row is as far as it can grow inside the first column,",
-    "and on desktop, where nothing stretches it, it stays as wide as its label. The second column is",
-    "empty on purpose: it is what reserves the other half. The element id lands on the row, not on",
-    "the button, so taking 'stop' off the card takes the whole row with it.",
+    "'usage' is what the turn has cost and, at the right edge of the same row, the button that",
+    "cancels the run. It is the one element here that ships with the card as the card is created:",
+    "a run is stoppable from the moment it is on screen, so the button cannot wait to be inserted,",
+    "and every card names a model in the end anyway, so the row costs the card nothing it would not",
+    "have given up later. The button is down here rather than in a row of its own under the answer",
+    "because a button under the answer is a target that moves — every word the model streams and",
+    "every panel a reader opens above it shifts it, which is how 'let me see what it read' becomes",
+    "'stop the run'. On the last line of the card it moves only with the line it shares, and it is",
+    "the only thing clickable on it. The weights are what put it beside the spend rather than out at",
+    "the right edge of the card: the first two columns are each only as wide as what they hold, and",
+    "the empty third one takes whatever is left of the row. Beside the text is where it belongs —",
+    "far right on a wide card it reads as belonging to the card rather than to the run the line is",
+    "about, and the pointer has the width of the card to travel. Weightless columns are also what",
+    "keeps the button from being stretched the way one placed straight in the card body is on",
+    "mobile. The element id lands on the button, not on the row, because the run ends by taking the",
+    "button off the card and the spend line has to outlive it.",
     "The rest are added the first time the run has something to put in them rather than sitting",
     "empty on every card: an element the card carries is space the card gives up, and most runs",
     "write no todo list and are interrupted by nobody. 'message' is the answer itself — until the",
@@ -59,50 +67,6 @@
     "at the right edge. Like the reasoning panel, its first nested element is what the run writes",
     "into, so a deployment restyling this has to keep something there. This key is ignored."
   ],
-  "stop": {
-    "tag": "column_set",
-    "flex_mode": "none",
-    "horizontal_spacing": "8px",
-    "margin": "4px 0 4px 0",
-    "columns": [
-      {
-        "tag": "column",
-        "width": "weighted",
-        "weight": 0,
-        "vertical_align": "center",
-        "elements": [
-          {
-            "tag": "button",
-            "text": {
-              "tag": "plain_text",
-              "content": "{stop}"
-            },
-            "type": "danger_filled",
-            "width": "default",
-            "size": "tiny",
-            "icon": {
-              "tag": "standard_icon",
-              "token": "w1-h1_outlined"
-            },
-            "behaviors": [
-              {
-                "type": "callback",
-                "value": {
-                  "button": "stop"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "tag": "column",
-        "width": "weighted",
-        "weight": 1,
-        "elements": []
-      }
-    ]
-  },
   "reasoning": {
     "tag": "collapsible_panel",
     "expanded": true,
@@ -180,9 +144,61 @@
     ]
   },
   "usage": {
-    "tag": "markdown",
-    "content": "",
-    "text_align": "left",
-    "text_size": "notation"
+    "tag": "column_set",
+    "flex_mode": "none",
+    "horizontal_spacing": "8px",
+    "margin": "2px 0 0 0",
+    "columns": [
+      {
+        "tag": "column",
+        "width": "weighted",
+        "weight": 0,
+        "vertical_align": "center",
+        "elements": [
+          {
+            "tag": "markdown",
+            "content": "",
+            "text_align": "left",
+            "text_size": "notation"
+          }
+        ]
+      },
+      {
+        "tag": "column",
+        "width": "weighted",
+        "weight": 0,
+        "vertical_align": "center",
+        "elements": [
+          {
+            "tag": "button",
+            "text": {
+              "tag": "plain_text",
+              "content": "{stop}"
+            },
+            "type": "danger_filled",
+            "width": "default",
+            "size": "tiny",
+            "icon": {
+              "tag": "standard_icon",
+              "token": "w1-h1_outlined"
+            },
+            "behaviors": [
+              {
+                "type": "callback",
+                "value": {
+                  "button": "stop"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tag": "column",
+        "width": "weighted",
+        "weight": 1,
+        "elements": []
+      }
+    ]
   }
 }
