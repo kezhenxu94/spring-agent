@@ -175,22 +175,27 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       final FeishuMessages messages,
       final FeishuCardElements elements,
       final FeishuMessageReactions reactions) {
-    return new FeishuCardUpdater(
-        card,
-        om,
-        modelPricing,
-        messages,
-        FeishuCardElements.MESSAGE,
-        FeishuCardElements.USAGE,
-        FeishuCardElements.TODO,
-        FeishuCardElements.REFERENCES,
-        FeishuCardElements.QUEUED,
-        elements,
-        reactions,
-        null,
-        null,
-        null,
-        null);
+    final var updater =
+        new FeishuCardUpdater(
+            card,
+            om,
+            modelPricing,
+            messages,
+            FeishuCardElements.MESSAGE,
+            FeishuCardElements.USAGE_BODY,
+            FeishuCardElements.TODO,
+            FeishuCardElements.REFERENCES,
+            FeishuCardElements.QUEUED,
+            elements,
+            reactions,
+            null,
+            null,
+            null,
+            null);
+    // The spend row is the one element the card is sent carrying, since the stop button rides in it
+    // — so what the run writes the spend into is there from the start and is never inserted.
+    updater.added.add(FeishuCardElements.USAGE_BODY);
+    return updater;
   }
 
   /**
@@ -549,13 +554,9 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
             card.cardId() + ":" + elementId);
     if (inserted) {
       added.add(elementId);
-      // The spend line is part of the footer, and it goes in above the hint — so from here on it is
-      // the top of the footer, and anything placed above the footer has to clear it too.
-      // References go in above the spend, so whichever of the two is highest is the top of the
-      // footer and the thing anything placed above the footer has to clear.
-      if (FeishuCardElements.REFERENCES.equals(elementId)
-          || (FeishuCardElements.USAGE.equals(elementId)
-              && !added.contains(FeishuCardElements.REFERENCES))) {
+      // The sources go in above the spend row, so from here on they are the top of the footer, and
+      // anything placed above the footer has to clear them too.
+      if (FeishuCardElements.REFERENCES.equals(elementId)) {
         card.footerGrewTo(elementId);
       }
     } else {
