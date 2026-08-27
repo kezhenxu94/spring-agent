@@ -13,11 +13,14 @@ package me.kezhenxu94.springagent.core.knowledge;
  * text came from. Both may be absent — a note the user simply told the agent came from nowhere but
  * the conversation.
  *
- * @param docId the document to replace, or null to store a new one under a generated id. Naming an
- *     existing id is how a document that changes — a design doc revised through the day — stays one
- *     document rather than accumulating a copy per revision, each of them still matching searches
- *     and contradicting the others. Replacement is scoped to {@code target}, so an id belonging to
- *     a scope not being written is not replaced but simply not found
+ * @param docId what this document is, stated by the caller and required. Indexing is therefore
+ *     idempotent: the same thing indexed again replaces the copy already stored instead of
+ *     accumulating one per revision, each still matching searches and contradicting the others.
+ *     There is no generated id, because an id nobody chose is an id nobody can index under twice —
+ *     which is the whole of the duplication problem. So it has to be something about the source
+ *     that will be the same next time: the token in a document link, a URL, an absolute path, the
+ *     id of the message the content was given in. Replacement is scoped to {@code target}, so an id
+ *     belonging to a scope not being written is not replaced but simply not found
  */
 public record KnowledgeSource(
     KnowledgeScope scope,
@@ -30,6 +33,13 @@ public record KnowledgeSource(
   public KnowledgeSource {
     text = blankToNull(text);
     source = blankToNull(source);
+    docId = blankToNull(docId);
+    if (docId == null) {
+      // A backstop rather than the check anyone should hit: KnowledgeBaseTools refuses the call
+      // and tells the model what to use, which is something an exception cannot do. This is here so
+      // that no other caller can reintroduce the unnamed document that duplicates on every index.
+      throw new IllegalArgumentException("A docId is required: see KnowledgeSource#docId");
+    }
   }
 
   public static KnowledgeSource ofText(
@@ -62,11 +72,6 @@ public record KnowledgeSource(
   /** Where a reader is sent to find this document, or blank when it came from the conversation. */
   public String attribution() {
     return source == null ? "" : source;
-  }
-
-  /** Whether this replaces an existing document rather than storing a new one. */
-  public boolean replaces() {
-    return docId != null && !docId.isBlank();
   }
 
   /** The scope values a chunk of this source is stamped with: only the owning one is set. */

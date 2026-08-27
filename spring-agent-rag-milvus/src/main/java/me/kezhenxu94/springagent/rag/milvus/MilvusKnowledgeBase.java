@@ -18,7 +18,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
@@ -134,18 +133,19 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
     }
 
     final var owning = source.owningScope();
-    final var docId = source.replaces() ? source.docId() : UUID.randomUUID().toString();
-    if (source.replaces()) {
-      // Delete before adding, not after: the new document has a different number of chunks than the
-      // old one whenever the text changed, so there is no chunk-by-chunk overwrite to rely on and
-      // anything left behind would go on matching searches alongside its own replacement.
-      //
-      // Scoped to the scope being written rather than to everything the requester can read. A user
-      // who may read the company knowledge base must not be able to destroy a document in it by
-      // re-indexing that id as their own; here a mismatched id matches nothing, so the write
-      // quietly becomes a new document instead of somebody else's loss.
-      store.delete(KnowledgeScopeFilter.documentOwnedBy(owning, docId));
-    }
+    final var docId = source.docId();
+    // Every index is a replacement, because every document is indexed under an id its caller chose
+    // — an id naming nothing yet simply deletes nothing and this stores the first copy.
+    //
+    // Delete before adding, not after: the new document has a different number of chunks than the
+    // old one whenever the text changed, so there is no chunk-by-chunk overwrite to rely on and
+    // anything left behind would go on matching searches alongside its own replacement.
+    //
+    // Scoped to the scope being written rather than to everything the requester can read. A user
+    // who may read the company knowledge base must not be able to destroy a document in it by
+    // re-indexing that id as their own; here a mismatched id matches nothing, so the write quietly
+    // becomes a document of their own instead of somebody else's loss.
+    store.delete(KnowledgeScopeFilter.documentOwnedBy(owning, docId));
 
     final var splitter =
         TokenTextSplitter.builder().withChunkSize(agentProperties.ai().rag().chunkSize()).build();
@@ -179,12 +179,7 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
     }
 
     store.add(stamped);
-    log.debug(
-        "{} {} into {} chunks as {}",
-        source.replaces() ? "Replaced" : "Indexed",
-        source.title(),
-        stamped.size(),
-        docId);
+    log.debug("Indexed {} into {} chunks as {}", source.title(), stamped.size(), docId);
     return docId;
   }
 

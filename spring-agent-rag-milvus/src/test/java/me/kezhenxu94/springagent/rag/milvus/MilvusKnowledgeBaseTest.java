@@ -117,7 +117,9 @@ class MilvusKnowledgeBaseTest {
       final KnowledgeScope.Target target,
       final String title,
       final String text) {
-    return knowledgeBase.index(KnowledgeSource.ofText(scope, target, title, text, null, null));
+    // The title doubles as the document id here: an id is required of every caller, and every
+    // title in these tests names one document.
+    return knowledgeBase.index(KnowledgeSource.ofText(scope, target, title, text, null, title));
   }
 
   private static List<String> searchTitles(final KnowledgeScope reader, final String query) {
@@ -344,7 +346,12 @@ class MilvusKnowledgeBaseTest {
       final var owner = scope("bar-owner", "", "");
       base.index(
           KnowledgeSource.ofText(
-              owner, KnowledgeScope.Target.OWN, "bar-alpha", "all about alpha things", null, null));
+              owner,
+              KnowledgeScope.Target.OWN,
+              "bar-alpha",
+              "all about alpha things",
+              null,
+              "bar-alpha"));
 
       // Automatic retrieval applies the configured threshold, and an orthogonal query scores 0.
       final var retrieved =
@@ -376,7 +383,7 @@ class MilvusKnowledgeBaseTest {
               "bar-alice-doc",
               "alpha secrets of alice",
               null,
-              null));
+              "bar-alice-doc"));
 
       assertThat(base.search(bob, "alpha", 10)).isEmpty();
       assertThat(base.search(alice, "alpha", 10)).isNotEmpty();

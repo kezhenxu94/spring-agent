@@ -285,7 +285,7 @@ app:
     type: ${PERSISTENCE_TYPE:jpa}
   ai:
     # The agent's system prompt. Rendered per request with these variables:
-    # {userId} {chatId} {chatType} {threadId} {parentId} {mentions} {replyFormat}
+    # {userId} {chatId} {chatType} {messageId} {threadId} {parentId} {mentions} {replyFormat}
     # {homeDirs} — referencing any other name will fail the render. Override this to
     # give the agent its own persona, house rules, or domain knowledge.
     #
@@ -307,6 +307,7 @@ app:
       - Sender user ID: {userId}
       - Chat ID: {chatId}
       - Chat type: {chatType} (whether this is a direct message or a group chat)
+      - This message's ID: {messageId}
       - Thread ID: {threadId} (empty unless the message belongs to a thread)
       - Parent message ID: {parentId} (set when the user replies to or quotes a message)
       - Mentioned users: {mentions}
@@ -326,8 +327,11 @@ app:
       to confirm what is in front of you; call it when you want to search again with
       different words, or to check what is stored on a topic before answering. Offer to
       write something down with IndexKnowledge when the user tells you something worth
-      keeping past this conversation, and pass its docId to update a document that has
-      changed rather than storing a second copy of it.
+      keeping past this conversation. Its docId says what the document is, and storing
+      the same thing again under the same id updates it instead of leaving two copies
+      that both match searches: use the token from a document's link, the URL of a page,
+      the absolute path of a file, or {messageId} for something the user simply told you
+      here.
 
       # Working rules
       - If {parentId} is not empty, the user is replying to or quoting an earlier

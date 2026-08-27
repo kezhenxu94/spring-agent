@@ -125,10 +125,21 @@ Usage:
   document cannot be traced back to the page it came from and the reader is shown a title with
   nothing to open. Leave it out only for something the user simply told you, in which case the
   message you are answering is recorded as the origin.
-- docId updates an existing document in place, replacing all of its previous content. Use this for
-  anything that gets revised — a design doc, a runbook, a spec. Get the id from ListKnowledgeBase.
-- Without docId a new document is stored every time, so re-indexing a revised file without one
-  leaves both versions in the knowledge base, each matching searches and contradicting the other.
+- docId is required, and is what this document *is*. Indexing the same thing again under the same
+  id replaces it; a different id stores a second copy that matches searches alongside the first and
+  contradicts it. So make the best id you can out of what you were given — something about this
+  content that will be the same the next time you are handed it:
+  - A Feishu document, wiki page, sheet or base: the token in its link — the part after /docx/,
+    /wiki/, /sheets/ or /base/. Take it from the link as it stands; a wiki link and the document
+    behind it are two links, and count as two documents.
+  - A page, ticket or pull request fetched from the web: its URL.
+  - A file in a workspace: its absolute path.
+  - Something the user told you in this conversation: the id of the message they told you in.
+  - A document you stored before and are revising: its id from ListKnowledgeBase.
+- If none of those fit — content with no origin you can name, or two things you cannot tell apart —
+  ask the user what to file it under, with AskUserQuestionTool, rather than making an id up. An
+  invented id looks like it worked and duplicates the document the next time this subject comes
+  round, which nobody finds out about until the two copies contradict each other in an answer.
 """)
   public String indexKnowledge(
       @ToolParam(description = "A short descriptive title for the document") String title,
@@ -147,15 +158,22 @@ Usage:
               description = "The content itself; leave out to read the source as a file")
           String text,
       @ToolParam(
-              required = false,
               description =
-                  "Id of an existing document to replace, from ListKnowledgeBase; omit to store a"
-                      + " new one")
+                  "What this document is: a Feishu document token, a URL, an absolute file path,"
+                      + " the id of the message it was told to you in, or the id of the document"
+                      + " being updated. Indexing again under the same id replaces it")
           String docId,
       final ToolContext context) {
 
     if (title == null || title.isBlank()) {
       return messages.get("knowledge-title-required");
+    }
+    if (docId == null || docId.isBlank()) {
+      // Refused rather than filled in with an id of our own. A generated id is a document that can
+      // never be indexed over, so the next call storing the same source stores a second copy —
+      // which is exactly the duplication this parameter exists to prevent. The model is the only
+      // party that knows what it is holding, so it is the one asked.
+      return messages.get("knowledge-doc-id-missing");
     }
     final var hasText = text != null && !text.isBlank();
     final var hasSource = source != null && !source.isBlank();
@@ -194,11 +212,7 @@ Usage:
 
     try {
       final var storedId = knowledgeBase.index(knowledge);
-      return messages.get(
-          knowledge.replaces() ? "knowledge-updated" : "knowledge-indexed",
-          title,
-          messages.get(scopeLabel(target)),
-          storedId);
+      return messages.get("knowledge-indexed", title, messages.get(scopeLabel(target)), storedId);
     } catch (RuntimeException e) {
       return messages.get("knowledge-index-failed", e.getMessage());
     }

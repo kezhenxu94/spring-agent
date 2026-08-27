@@ -66,6 +66,9 @@ class SpringAgentApplicationTests extends AbstractIntegrationTest {
                     "userId", "ou_1",
                     "chatId", "oc_1",
                     "chatType", "p2p",
+                    // The message being answered, which the prompt hands the model as the id to
+                    // index something the user simply said under.
+                    "messageId", "om_1",
                     "threadId", "",
                     "parentId", "",
                     "mentions", "none",

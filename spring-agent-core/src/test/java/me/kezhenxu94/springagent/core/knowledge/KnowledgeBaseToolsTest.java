@@ -98,7 +98,7 @@ class KnowledgeBaseToolsTest {
     @DisplayName("text pasted with no source is attributed to the message being answered")
     void pastedTextFallsBackToTheMessage() {
       tools.indexKnowledge(
-          "Staging URL", "own", null, "staging is at 10.0.0.7", null, context("om_42"));
+          "Staging URL", "own", null, "staging is at 10.0.0.7", "om_42", context("om_42"));
 
       assertThat(indexed.get().attribution()).isEqualTo("om_42");
     }
@@ -111,7 +111,7 @@ class KnowledgeBaseToolsTest {
           "own",
           "https://wiki.example.com/idol",
           "the requirements",
-          null,
+          "https://wiki.example.com/idol",
           context("om_42"));
 
       assertThat(indexed.get().attribution()).isEqualTo("https://wiki.example.com/idol");
@@ -120,7 +120,8 @@ class KnowledgeBaseToolsTest {
     @Test
     @DisplayName("a surface with no message id records no origin rather than inventing one")
     void noMessageIdLeavesItBlank() {
-      tools.indexKnowledge("A note", "own", null, "something worth keeping", null, context(null));
+      tools.indexKnowledge(
+          "A note", "own", null, "something worth keeping", "a-note", context(null));
 
       assertThat(indexed.get().attribution()).isEmpty();
     }
@@ -132,7 +133,8 @@ class KnowledgeBaseToolsTest {
       java.nio.file.Files.createDirectories(file.getParent());
       java.nio.file.Files.writeString(file, "how to release");
 
-      tools.indexKnowledge("Runbook", "own", file.toString(), null, null, context("om_42"));
+      tools.indexKnowledge(
+          "Runbook", "own", file.toString(), null, file.toString(), context("om_42"));
 
       assertThat(indexed.get().attribution()).isEqualTo(file.toString());
       assertThat(indexed.get().mustBeRead()).isTrue();
@@ -145,9 +147,23 @@ class KnowledgeBaseToolsTest {
     @Test
     @DisplayName("neither content nor a source to read is refused, and says so")
     void nothingToStore() {
-      final var result = tools.indexKnowledge("A title", "own", null, null, null, context("om_42"));
+      final var result =
+          tools.indexKnowledge("A title", "own", null, null, "an-id", context("om_42"));
 
       assertThat(result).contains("Nothing to store");
+      assertThat(indexed.get()).isNull();
+    }
+
+    @Test
+    @DisplayName("a document with no id is refused, and is told what to identify it by")
+    void noDocIdIsRefused() {
+      // Filling one in would store a document nothing can ever index over, so the next call about
+      // the same thing stores a second copy — the duplication the required id exists to prevent.
+      final var result =
+          tools.indexKnowledge(
+              "The oncall rota", "own", null, "Kez is on call", null, context("om_42"));
+
+      assertThat(result).contains("docId is required");
       assertThat(indexed.get()).isNull();
     }
 
@@ -155,7 +171,8 @@ class KnowledgeBaseToolsTest {
     @DisplayName("a file outside every reachable workspace is refused")
     void pathOutsideTheWorkspace() {
       final var result =
-          tools.indexKnowledge("Secrets", "own", "/etc/passwd", null, null, context("om_42"));
+          tools.indexKnowledge(
+              "Secrets", "own", "/etc/passwd", null, "/etc/passwd", context("om_42"));
 
       assertThat(result).contains("Access denied");
       assertThat(indexed.get()).isNull();
@@ -168,7 +185,7 @@ class KnowledgeBaseToolsTest {
       // and never seen again.
       final var result =
           tools.indexKnowledge(
-              "Team norms", "group", null, "we deploy on Fridays", null, context("om_42"));
+              "Team norms", "group", null, "we deploy on Fridays", "om_42", context("om_42"));
 
       assertThat(result).contains("no group");
       assertThat(indexed.get()).isNull();

@@ -847,6 +847,11 @@ public class SpringAgent {
     variables.put("userId", Strings.nullToEmpty(request.userId()));
     variables.put("chatId", Strings.nullToEmpty(request.chatId()));
     variables.put("chatType", request.chatType());
+    // The message being answered, which the model otherwise has no way of naming: it reaches the
+    // tools through the tool context and never appears in what the model is shown. It is what the
+    // model is told to index something the user simply said under, so that saying the same thing
+    // again is one document rather than two — see KnowledgeBaseTools#indexKnowledge.
+    variables.put("messageId", Strings.nullToEmpty(request.replyMessageId()));
     return variables;
   }
 
