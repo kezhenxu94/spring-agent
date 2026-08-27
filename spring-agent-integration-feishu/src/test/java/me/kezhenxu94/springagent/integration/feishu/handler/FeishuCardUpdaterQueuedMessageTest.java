@@ -148,7 +148,8 @@ class FeishuCardUpdaterQueuedMessageTest {
     verify(feishu.cardkit().v1().cardElement(), atLeastOnce()).create(captor.capture());
     final var inserts = captor.getAllValues();
     assertThat(inserts).hasSize(2);
-    assertThat(inserts.get(0).getCreateCardElementReqBody().getTargetElementId()).isEqualTo("stop");
+    assertThat(inserts.get(0).getCreateCardElementReqBody().getTargetElementId())
+        .isEqualTo("usage");
     assertThat(inserts.get(0).getCreateCardElementReqBody().getElements())
         .contains("\"element_id\":\"message\"");
     assertThat(inserts.get(1).getCreateCardElementReqBody().getTargetElementId())

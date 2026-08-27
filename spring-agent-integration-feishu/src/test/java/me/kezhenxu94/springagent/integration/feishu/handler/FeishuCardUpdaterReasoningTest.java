@@ -142,7 +142,7 @@ class FeishuCardUpdaterReasoningTest {
     updater.onReasoning("Thinking about it.");
     updater.onContent("Here you go.");
 
-    assertThat(anchors()).containsExactly("stop", "stop");
+    assertThat(anchors()).containsExactly("usage", "usage");
     assertThat(insertedElements()).containsExactly("reasoning", "message");
   }
 
@@ -158,7 +158,7 @@ class FeishuCardUpdaterReasoningTest {
     // The answer is added by the queued line, which is placed above it; the queued line then
     // anchors on the panel rather than the answer, which is what keeps it at the very top.
     assertThat(insertedElements()).containsExactly("reasoning", "message", "queued");
-    assertThat(anchors()).containsExactly("stop", "stop", "reasoning");
+    assertThat(anchors()).containsExactly("usage", "usage", "reasoning");
   }
 
   @Test
@@ -172,7 +172,7 @@ class FeishuCardUpdaterReasoningTest {
 
     // The answer is on the card by now, so the panel anchors on it and lands between the two.
     assertThat(insertedElements()).containsExactly("message", "queued", "reasoning");
-    assertThat(anchors()).containsExactly("stop", "message", "message");
+    assertThat(anchors()).containsExactly("usage", "message", "message");
   }
 
   @Test
@@ -190,8 +190,8 @@ class FeishuCardUpdaterReasoningTest {
   @Test
   @DisplayName("everything added mid-run clears the footer, which grows as the run spends")
   void theFooterKeepsItsPlaceAtTheBottom() throws Exception {
-    // The footer is the conversation hint, joined from above by the spend line once the run has
-    // named a model. Anything added after that has to be placed above the spend line and not
+    // The footer is the spend row and, below it, the conversation hint — both there from the
+    // moment the card is sent. Anything added mid-run has to be placed above the spend row and not
     // merely above the hint, or it comes to rest inside the footer.
     final var updater =
         FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), null);
@@ -200,8 +200,8 @@ class FeishuCardUpdaterReasoningTest {
     updater.handle(new Todos(List.of(new TodoItem("read it", Status.pending, "reading it"))));
     card.insertBeforeFooter("[{\"tag\":\"markdown\",\"content\":\"a panel\"}]", "panel-1");
 
-    // usage above the hint; the task list and the panel above the usage line, not under it.
-    assertThat(anchors()).containsExactly("guide", "usage", "usage");
+    // The task list and the panel above the spend row, not under it.
+    assertThat(anchors()).containsExactly("usage", "usage");
   }
 
   @Test

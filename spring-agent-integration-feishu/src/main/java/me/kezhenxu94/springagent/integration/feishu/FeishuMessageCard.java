@@ -52,9 +52,11 @@ public class FeishuMessageCard {
     if (config instanceof ObjectNode configNode) {
       configNode.put("streaming_mode", false);
     }
-    // Neither is in the shipped template — a card gains both as it runs, and this one never ran —
-    // but a deployment's own card may still carry them, and a dead stop button on a finished
-    // message is worse than one that was never there.
+    // The spend row is not in the shipped template — a card is sent carrying it, and this message
+    // is not a card a run streams into — but a deployment's own template may still carry it, and a
+    // dead stop button on a finished message is worse than one that was never there. Taking the row
+    // takes the button with it, since the button rides inside it; the row's own id is checked as
+    // well for a template still carrying the button in a row of its own.
     final var body = (ArrayNode) card.path("body").path("elements");
     final var iterator = body.iterator();
     while (iterator.hasNext()) {

@@ -41,7 +41,8 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * What the card holds the moment it is sent, which is not the same as what the template says: the
  * template is the card's frame, and every element a run puts on the card and takes off again comes
- * from the elements file — the stop button among them, which has to be there from the start.
+ * from the elements file — the spend row among them, which has to be there from the start because
+ * the stop button rides in it.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -96,15 +97,42 @@ class FeishuCardListenerCardTest {
   }
 
   @Test
-  @DisplayName("the card is sent with its stop button, above the footer it is anchored to")
+  @DisplayName("the card is sent with the spend row the stop button rides in, above the hint")
   void theCardIsCreatedWithItsStopButton() throws Exception {
     listenerIn(Locale.ENGLISH).onStart(registryForAChatRun());
 
-    // The button is part of the card rather than inserted afterwards, since a card sent without one
-    // is a run nobody can stop until the insert lands. Nothing else is there: what the run says,
-    // what the user says back, its task list and what it spent are all added as it first has
-    // something to put in them.
-    assertThat(elementIdsOfTheCreatedCard()).containsExactly("stop", "guide");
+    // The row is part of the card rather than inserted afterwards, since a card sent without it is
+    // a run nobody can stop until the insert lands. Nothing else is there: what the run says, what
+    // the user says back, its task list and what it read are all added as it first has something to
+    // put in them.
+    assertThat(elementIdsOfTheCreatedCard()).containsExactly("usage", "guide");
+  }
+
+  @Test
+  @DisplayName("the button sits next to the spend line, not out at the edge of the card")
+  void theStopButtonIsTheRightHandEndOfTheSpendRow() throws Exception {
+    listenerIn(Locale.ENGLISH).onStart(registryForAChatRun());
+
+    final var row =
+        StreamSupport.stream(
+                om.readTree(createdCard()).path("body").path("elements").spliterator(), false)
+            .filter(element -> "usage".equals(element.path("element_id").asString()))
+            .findFirst()
+            .orElseThrow();
+    final var columns = row.path("columns");
+    // Both are only as wide as what they hold and an empty column takes the rest of the row, which
+    // is what keeps the button beside the spend instead of out at the card's right edge.
+    assertThat(columns.path(0).path("elements").path(0).path("element_id").asString())
+        .isEqualTo("usage_body");
+    assertThat(columns.path(0).path("weight").asInt()).isZero();
+    final var button = columns.path(1).path("elements").path(0);
+    assertThat(button.path("tag").asString()).isEqualTo("button");
+    assertThat(columns.path(1).path("weight").asInt()).isZero();
+    assertThat(columns.path(2).path("weight").asInt()).isEqualTo(1);
+    assertThat(columns.path(2).path("elements")).isEmpty();
+    // On the button rather than on the row, because the run ends by deleting this id and the spend
+    // line has to survive it — see FeishuCard#finish().
+    assertThat(button.path("element_id").asString()).isEqualTo("stop");
   }
 
   @Test

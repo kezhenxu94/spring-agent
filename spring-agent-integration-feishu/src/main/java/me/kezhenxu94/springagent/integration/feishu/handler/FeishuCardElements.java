@@ -19,16 +19,15 @@ import tools.jackson.databind.node.ObjectNode;
  * left in {@code reply-card.json} is the card's configuration and its footer, which is the frame
  * all of these are placed in.
  *
- * <p>*
- *
- * <p>The stop button goes on as the card is created — a run is stoppable from the moment it is on
- * screen — and the rest the first time the run writes to one, rather than being shipped empty in
- * the card itself: an element the card carries is space the card gives up on every reply, and most
- * runs write no todo list and are interrupted by nobody. The answer belongs here for that reason
- * too: a streaming card already says in the chat list that it is being written, so an empty
- * markdown element would only add a blank line for as long as the model takes to answer. {@link
- * FeishuCardListener} puts the button on the card it creates; {@link FeishuCardUpdater} adds the
- * rest, each above the element named here, and streams into them afterwards.
+ * <p>The spend row goes on as the card is created, because the stop button rides in it — a run is
+ * stoppable from the moment it is on screen — and the rest the first time the run writes to one,
+ * rather than being shipped empty in the card itself: an element the card carries is space the card
+ * gives up on every reply, and most runs write no todo list and are interrupted by nobody. The
+ * answer belongs here for that reason too: a streaming card already says in the chat list that it
+ * is being written, so an empty markdown element would only add a blank line for as long as the
+ * model takes to answer. {@link FeishuCardListener} puts the spend row on the card it creates;
+ * {@link FeishuCardUpdater} adds the rest, each above the element named here, and streams into them
+ * afterwards.
  *
  * <p>Nothing here talks to Feishu — JSON out — which is what makes the layout testable without a
  * tenant.
@@ -37,7 +36,11 @@ import tools.jackson.databind.node.ObjectNode;
 @RequiredArgsConstructor
 public class FeishuCardElements {
 
-  /** The button that cancels the run, for as long as there is a run to cancel. */
+  /**
+   * The button that cancels the run, for as long as there is a run to cancel: the right-hand end of
+   * the spend row rather than an element of its own, and the id names the button inside that row,
+   * so that taking it off the card at the end of the run leaves the spend line behind.
+   */
   public static final String STOP = "stop";
 
   /** What the run itself is saying: the answer, and the tool calls it makes on the way there. */
@@ -64,41 +67,28 @@ public class FeishuCardElements {
   /** The element inside that panel the sources are written into. */
   static final String REFERENCES_BODY = "references_body";
 
-  /** What the turn has spent. */
+  /** What the turn has spent, and the row the stop button rides at the right-hand end of. */
   static final String USAGE = "usage";
 
+  /** The element inside that row the spend is written into. */
+  static final String USAGE_BODY = "usage_body";
+
   /**
-   * Which element of the card each one is added above, and so where it ends up: the stop button
-   * just above the footer, the answer above the button, what the user added mid-run above the
-   * answer, the task list under the answer, and the spend in the footer.
+   * Which element of the card each one is added above, and so where it ends up: everything the run
+   * says above the spend row, the task list and the sources between the two, in that order.
    *
-   * <p>Decided here rather than in the template, because the two the chain hangs from are the
-   * elements {@code reply-card.json} is required to keep — the footer divider and the hint below it
-   * — and an anchor a deployment could rename is an insert that fails at runtime. The rest anchor
-   * on each other, so each has to be on the card before whatever goes above it can be: the answer
-   * needs the button, which the card is created with, and {@link #QUEUED} needs the answer, which
-   * {@link FeishuCardUpdater} sees to.
+   * <p>Decided here rather than in the template, because the element the chain hangs from — the
+   * spend row — is one this file gives its id to, and an anchor a deployment could rename is an
+   * insert that fails at runtime. The rest anchor on each other, so each has to be on the card
+   * before whatever goes above it can be: the answer needs the spend row, which the card is created
+   * with, and {@link #QUEUED} needs the answer, which {@link FeishuCardUpdater} sees to.
    */
   private static final Map<String, String> ANCHORS =
-      Map.of(
-          STOP,
-          FeishuCard.FOOTER_ELEMENT_ID,
-          MESSAGE,
-          STOP,
-          QUEUED,
-          MESSAGE,
-          REASONING,
-          MESSAGE,
-          TODO,
-          FeishuCard.FOOTER_ELEMENT_ID,
-          REFERENCES,
-          "guide",
-          USAGE,
-          "guide");
+      Map.of(MESSAGE, USAGE, QUEUED, MESSAGE, REASONING, MESSAGE, TODO, USAGE, REFERENCES, USAGE);
 
-  /** The panels whose first nested element the run writes into, and the id it writes to. */
+  /** The elements whose first nested element the run writes into, and the id it writes to. */
   private static final Map<String, String> BODY_IDS =
-      Map.of(REASONING, REASONING_BODY, REFERENCES, REFERENCES_BODY);
+      Map.of(REASONING, REASONING_BODY, REFERENCES, REFERENCES_BODY, USAGE, USAGE_BODY);
 
   private final JsonMapper om;
   private final FeishuMessages messages;
@@ -140,36 +130,28 @@ public class FeishuCardElements {
    * immediately above it, so an anchor fixed to {@link #MESSAGE} would put whichever of the other
    * two came second below the one that came first, which is the wrong way round half the time.
    *
-   * <p>So the reasoning panel anchors on the answer once there is one and on the stop button until
-   * then — the button is the one element every card has from the moment it is sent, and the answer
+   * <p>So the reasoning panel anchors on the answer once there is one and on the spend row until
+   * then — that row is the one element every card has from the moment it is sent, and the answer
    * goes above it too, so a panel anchored there stays above the answer when it arrives. And the
    * queued messages anchor on the panel once there is one, which is what keeps them at the top.
    *
-   * <p>The task list moves for the same reason at the other end of the card: the footer grows
-   * upwards as the spend line and the references join the hint, and a list anchored on the hint
-   * alone would come to rest under them rather than above. References sit between the two — above
-   * the spend, below the task list — so the footer reads outwards from the answer: what the run
-   * did, then what it read, then what it cost. Each of the three is optional and any of them can be
-   * missing, which is why each names the lowest element actually present rather than assuming the
-   * one below it exists.
+   * <p>The task list moves for the same reason at the other end of the card: the sources join the
+   * footer above the spend row, and a list anchored on that row alone would come to rest under them
+   * rather than above. So the footer reads outwards from the answer: what the run did, then what it
+   * read, then what it cost. Both are optional, which is why the list names the sources only when
+   * they are there rather than assuming a panel the turn never needed.
    *
    * @param onCard the optional elements already added, which is what makes this answerable
    */
   String anchorOf(final String elementId, final Set<String> onCard) {
     if (REASONING.equals(elementId) && !onCard.contains(MESSAGE)) {
-      return STOP;
+      return USAGE;
     }
     if (QUEUED.equals(elementId) && onCard.contains(REASONING)) {
       return REASONING;
     }
     if (TODO.equals(elementId) && onCard.contains(REFERENCES)) {
       return REFERENCES;
-    }
-    if (TODO.equals(elementId) && onCard.contains(USAGE)) {
-      return USAGE;
-    }
-    if (REFERENCES.equals(elementId) && onCard.contains(USAGE)) {
-      return USAGE;
     }
     return anchorOf(elementId);
   }
@@ -193,19 +175,61 @@ public class FeishuCardElements {
       throw new IllegalStateException("No '" + elementId + "' element in " + cardElements);
     }
     element.put("element_id", elementId);
-    // The two panels are the elements with something inside them that the run writes to, so what
-    // is inside gets an id here as well, for the reason the panel does: a deployment restyling a
-    // panel has no say in what the run streams into.
+    // The two panels and the spend row are the elements with something inside them that the run
+    // writes to, so what is inside gets an id here as well, for the reason the element itself does:
+    // a deployment restyling one has no say in what the run streams into.
     final var bodyId = BODY_IDS.get(elementId);
     if (bodyId != null) {
-      final var body = element.path("elements");
-      if (!body.isArray() || body.isEmpty()) {
+      final var body = bodyOf(element);
+      if (body == null) {
         throw new IllegalStateException(
             "The '" + elementId + "' element in " + cardElements + " has nothing to write into");
       }
-      ((ObjectNode) body.get(0)).put("element_id", bodyId);
+      body.put("element_id", bodyId);
+    }
+    // And the stop button, which is not an element of the card but a part of the spend row: the id
+    // is how the run takes the button off the card when it ends, and it has to name the button
+    // alone — an id on the row would take the spend line down with it.
+    if (USAGE.equals(elementId)) {
+      final var button = buttonOf(element);
+      if (button == null) {
+        throw new IllegalStateException(
+            "No stop button in the '" + elementId + "' element in " + cardElements);
+      }
+      button.put("element_id", STOP);
     }
     return element;
+  }
+
+  /**
+   * The nested element the run streams into: the first of the element's own, or of its first
+   * column's where it has columns.
+   *
+   * <p>Two shapes because the spend row is a row and the panels are not — its text shares the line
+   * with the stop button, so it lives in a column rather than directly in the element.
+   */
+  private static ObjectNode bodyOf(final ObjectNode element) {
+    final var elements =
+        element.has("columns")
+            ? element.path("columns").path(0).path("elements")
+            : element.path("elements");
+    return elements.isArray() && !elements.isEmpty() ? (ObjectNode) elements.get(0) : null;
+  }
+
+  /**
+   * The button in a row, wherever a deployment has put it: searched for by tag rather than by
+   * position, so that restyling the row — swapping its columns around, say — cannot silently leave
+   * the run with a button it has no way of removing.
+   */
+  private static ObjectNode buttonOf(final ObjectNode element) {
+    for (final var column : element.path("columns")) {
+      for (final var nested : column.path("elements")) {
+        if ("button".equals(nested.path("tag").asString())) {
+          return (ObjectNode) nested;
+        }
+      }
+    }
+    return null;
   }
 
   /**

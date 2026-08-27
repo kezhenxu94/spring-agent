@@ -310,14 +310,15 @@ public class FeishuCardListener implements AgentResponseListener {
   }
 
   /**
-   * Creates the card the run streams into: the template — the card's configuration and its footer —
-   * with the stop button put above that footer.
+   * Creates the card the run streams into: the template — the card's configuration and the
+   * conversation hint — with the spend row put above that hint.
    *
-   * <p>The button is part of the card from the moment it is sent rather than inserted afterwards,
-   * since a run is stoppable as soon as it is on screen and a second call to add it would leave a
-   * card nobody could stop in between. It comes from the elements file all the same, because it is
-   * one of the elements that come and go — {@code FeishuCard#finish()} takes it off again — and
-   * because everything above it on the card is anchored to it.
+   * <p>That row is part of the card from the moment it is sent rather than inserted afterwards,
+   * because the stop button rides at the right-hand end of it: a run is stoppable as soon as it is
+   * on screen, and a second call to add the row would leave a card nobody could stop in between. It
+   * comes from the elements file all the same, because the button on it comes and goes — {@code
+   * FeishuCard#finish()} takes it off again — and because everything else on the card is anchored
+   * to the row.
    */
   private String createCard(final String runId) throws Exception {
     final var card =
@@ -325,7 +326,7 @@ public class FeishuCardListener implements AgentResponseListener {
             om.readTree(
                 messages.renderCard(feishuReplyCard.getContentAsString(StandardCharsets.UTF_8)));
     ((ArrayNode) card.path("body").path("elements"))
-        .insert(0, cardElements.element(FeishuCardElements.STOP));
+        .insert(0, cardElements.element(FeishuCardElements.USAGE));
     final var cardJson = om.writeValueAsString(card);
     final var response =
         feishu
