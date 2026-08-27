@@ -36,6 +36,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.client.RestTemplate;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -109,30 +110,43 @@ class FeishuCardListenerCardTest {
   }
 
   @Test
-  @DisplayName("the button sits next to the spend line, not out at the edge of the card")
-  void theStopButtonIsTheRightHandEndOfTheSpendRow() throws Exception {
+  @DisplayName("the button is alone in the row until the run has something to say it has spent")
+  void theStopButtonIsAloneOnTheRowUntilThereIsSpend() throws Exception {
     listenerIn(Locale.ENGLISH).onStart(registryForAChatRun());
 
-    final var row =
-        StreamSupport.stream(
-                om.readTree(createdCard()).path("body").path("elements").spliterator(), false)
-            .filter(element -> "usage".equals(element.path("element_id").asString()))
-            .findFirst()
-            .orElseThrow();
-    final var columns = row.path("columns");
-    // Both are only as wide as what they hold and an empty column takes the rest of the row, which
-    // is what keeps the button beside the spend instead of out at the card's right edge.
-    assertThat(columns.path(0).path("elements").path(0).path("element_id").asString())
-        .isEqualTo("usage_body");
-    assertThat(columns.path(0).path("weight").asInt()).isZero();
-    final var button = columns.path(1).path("elements").path(0);
+    final var columns = spendRowOfTheCreatedCard().path("columns");
+    // A column holding an empty line is still a column: with one there the row's spacing leaves the
+    // button standing off the left edge as though something were beside it. It joins the row when
+    // there is a line to put in it — FeishuCardUpdaterUsageTest covers that.
+    final var button = columns.path(0).path("elements").path(0);
     assertThat(button.path("tag").asString()).isEqualTo("button");
-    assertThat(columns.path(1).path("weight").asInt()).isZero();
-    assertThat(columns.path(2).path("weight").asInt()).isEqualTo(1);
-    assertThat(columns.path(2).path("elements")).isEmpty();
+    // Only as wide as what it holds, with an empty column taking the rest of the row, which is what
+    // keeps the button at the left of the card rather than stretched across it.
+    assertThat(columns.path(0).path("weight").asInt()).isZero();
+    assertThat(columns.path(1).path("weight").asInt()).isEqualTo(1);
+    assertThat(columns.path(1).path("elements")).isEmpty();
     // On the button rather than on the row, because the run ends by deleting this id and the spend
     // line has to survive it — see FeishuCard#finish().
     assertThat(button.path("element_id").asString()).isEqualTo("stop");
+  }
+
+  @Test
+  @DisplayName("the button's label is the size of the spend it comes to sit beside")
+  void theStopButtonIsSetAtTheSizeOfTheSpendLine() throws Exception {
+    listenerIn(Locale.ENGLISH).onStart(registryForAChatRun());
+
+    // The tiny button size is padding rather than type, so without this the two halves of one line
+    // are set in two sizes.
+    final var button = spendRowOfTheCreatedCard().path("columns").path(0).path("elements").path(0);
+    assertThat(button.path("text").path("text_size").asString()).isEqualTo("notation");
+  }
+
+  private JsonNode spendRowOfTheCreatedCard() throws Exception {
+    return StreamSupport.stream(
+            om.readTree(createdCard()).path("body").path("elements").spliterator(), false)
+        .filter(element -> "usage".equals(element.path("element_id").asString()))
+        .findFirst()
+        .orElseThrow();
   }
 
   @Test

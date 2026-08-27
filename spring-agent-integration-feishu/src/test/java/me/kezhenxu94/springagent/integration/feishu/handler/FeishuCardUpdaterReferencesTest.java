@@ -274,6 +274,41 @@ class FeishuCardUpdaterReferencesTest {
         .create(any(CreateCardElementReq.class));
   }
 
+  @Test
+  @DisplayName("sources retrieved before the run says a word still end up in the footer")
+  void retrievalBeforeTheAnswerStaysInTheFooter() throws Exception {
+    final var updater = updater();
+
+    // Retrieval happens without the model asking for it, so on a turn that retrieves before it
+    // thinks the panel can be the first element the card gains. Everything that arrives after it
+    // has to land above it rather than under it, or the card opens with its own footer.
+    updater.onKnowledgeRetrieved(
+        List.of(reference("d-1", "Release runbook", "runbook.md", KnowledgeScope.Target.OWN)));
+    updater.onReasoning("Let me look that up.");
+    updater.onContent("Here is what it says.");
+
+    // Each one lands above the panel, so the card reads thinking, answer, sources, spend — the
+    // order it would have been built in had the run said something before it read anything.
+    assertThat(insertedAbove("references")).isEqualTo("usage");
+    assertThat(insertedAbove("reasoning")).isEqualTo("references");
+    assertThat(insertedAbove("message")).isEqualTo("references");
+  }
+
+  /** The element {@code elementId} was added above, as the insert that put it there named it. */
+  private String insertedAbove(final String elementId) throws Exception {
+    final var captor = ArgumentCaptor.forClass(CreateCardElementReq.class);
+    verify(feishu.cardkit().v1().cardElement(), atLeastOnce()).create(captor.capture());
+    for (final var request : captor.getAllValues()) {
+      final var body = request.getCreateCardElementReqBody();
+      for (final var element : om.readTree(body.getElements())) {
+        if (elementId.equals(element.path("element_id").asString())) {
+          return body.getTargetElementId();
+        }
+      }
+    }
+    throw new AssertionError(elementId + " was never added to the card");
+  }
+
   /** The whole-element rewrite the run makes as it ends, as opposed to the streamed body. */
   private String lastReplacement() throws Exception {
     final var captor = ArgumentCaptor.forClass(UpdateCardElementReq.class);

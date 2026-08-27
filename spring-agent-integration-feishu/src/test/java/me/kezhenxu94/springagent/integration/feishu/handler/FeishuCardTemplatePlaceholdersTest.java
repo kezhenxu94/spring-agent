@@ -31,6 +31,14 @@ class FeishuCardTemplatePlaceholdersTest {
   private static final List<String> TEMPLATES =
       List.of("feishu/card-elements.json", "feishu/reply-card.json");
 
+  /**
+   * The slots the run fills rather than the message source: the tool pane's title is the call the
+   * run is on, and there is no label of it to translate. Named here so that the check above stays a
+   * check on labels — the mistake it exists to catch is a title that reads {@code {references}} on
+   * a card, and a slot filled from Java is not that mistake.
+   */
+  private static final List<String> RUN_FILLED = List.of("{title}");
+
   private static FeishuMessages messages(final Locale locale) {
     return new FeishuMessages(
         new FeishuProperties(null, null, null, null, null, null, null, locale, null, null));
@@ -47,7 +55,13 @@ class FeishuCardTemplatePlaceholdersTest {
     for (final var template : TEMPLATES) {
       for (final var locale : List.of(Locale.ENGLISH, Locale.SIMPLIFIED_CHINESE)) {
         final var rendered = render(template, locale);
-        final var leftOver = PLACEHOLDER.matcher(rendered).results().map(r -> r.group()).toList();
+        final var leftOver =
+            PLACEHOLDER
+                .matcher(rendered)
+                .results()
+                .map(r -> r.group())
+                .filter(placeholder -> !RUN_FILLED.contains(placeholder))
+                .toList();
         assertThat(leftOver)
             .as("unfilled placeholders in %s for %s — add them to renderCard", template, locale)
             .isEmpty();

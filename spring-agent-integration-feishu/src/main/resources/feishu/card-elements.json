@@ -21,7 +21,14 @@
     "about, and the pointer has the width of the card to travel. Weightless columns are also what",
     "keeps the button from being stretched the way one placed straight in the card body is on",
     "mobile. The element id lands on the button, not on the row, because the run ends by taking the",
-    "button off the card and the spend line has to outlive it.",
+    "button off the card and the spend line has to outlive it. Its label is notation-sized, the",
+    "same as the spend it sits beside: the tiny button size is padding rather than type, so without",
+    "this the two halves of one line are set in two sizes. The row is what the card is created",
+    "with, but the spend column is not — until the run names a model there is nothing to report,",
+    "and an empty column is still a column, so the button would stand off the left edge as if",
+    "something were beside it. The column joins the row with the first line to put in it, which",
+    "means the row is replaced whole: see FeishuCardElements.stopButtonRow(). So a deployment",
+    "restyling this row has to keep the spend first among the columns.",
     "The rest are added the first time the run has something to put in them rather than sitting",
     "empty on every card: an element the card carries is space the card gives up, and most runs",
     "write no todo list and are interrupted by nobody. 'message' is the answer itself — until the",
@@ -49,6 +56,21 @@
     "turns to point down as it opens, which is what the 90 degrees is: the angle is what the icon is",
     "rotated by when expanded, not the angle it ends at, so an arrow that already points down would",
     "want -180 and this one wants a quarter turn.",
+    "'tools' is what the run has done: every tool call the turn made, in a pane under the answer.",
+    "Its title names the tool the run is on now, so a closed pane still says what is happening, and",
+    "the first thing inside it is that call's input, quoted — a call is something the run asked",
+    "for, which is what a quote reads as. Every call before it follows, oldest first, each one a",
+    "pane of its own that opens onto what it was given and what came back: a turn can make dozens",
+    "of calls and a reader wants one of them, so the trail is a list of titles until they ask for",
+    "more. Born open, like 'reasoning' and for the same reason — while the run is calling tools",
+    "that is the only thing to watch — and folded away once the run ends and there is an answer to",
+    "read instead. Adding a pane to a pane is not something a card element insert can do, so the",
+    "run replaces this element whole on every call; a reader who folds it mid-run will see it open",
+    "again on the next one, which is the price of keeping the trail.",
+    "'tool_call' is one of those inner panes, titled by the tool it called and nothing else, so the",
+    "trail reads as a list of what the run used. It is not an element of the card — the run builds one",
+    "per call and nests them here — so unlike everything else in this file it is never inserted by",
+    "id and carries none.",
     "'todo' is the run's task list, under the answer. 'references' is where the knowledge the run",
     "was given came from, and 'usage' is what the turn has cost, both in the card's footer with",
     "the sources above the spend. They are worth showing because retrieval happens",
@@ -75,6 +97,65 @@
       "title": {
         "tag": "markdown",
         "content": "{reasoning}",
+        "text_size": "notation"
+      },
+      "width": "auto_when_fold",
+      "vertical_align": "center",
+      "icon": {
+        "tag": "standard_icon",
+        "token": "right-small-ccm_outlined",
+        "size": "16px 16px"
+      },
+      "icon_position": "follow_text",
+      "icon_expanded_angle": 90
+    },
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "",
+        "text_align": "left",
+        "text_size": "notation"
+      }
+    ]
+  },
+  "tools": {
+    "tag": "collapsible_panel",
+    "expanded": true,
+    "vertical_spacing": "4px",
+    "header": {
+      "title": {
+        "tag": "markdown",
+        "content": "<font color='grey'>{title}</font>",
+        "text_size": "notation"
+      },
+      "width": "auto_when_fold",
+      "vertical_align": "center",
+      "icon": {
+        "tag": "standard_icon",
+        "token": "right-small-ccm_outlined",
+        "size": "16px 16px"
+      },
+      "icon_position": "follow_text",
+      "icon_expanded_angle": 90
+    },
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "",
+        "text_align": "left",
+        "text_size": "notation"
+      }
+    ]
+  },
+  "tool_call": {
+    "tag": "collapsible_panel",
+    "expanded": false,
+    "vertical_spacing": "4px",
+    "margin": "2px 0px 0px 0px",
+    "header": {
+      "title": {
+        "tag": "markdown",
+        "content": "<font color='grey'>{title}</font>",
         "text_size": "notation"
       },
       "width": "auto_when_fold",
@@ -173,7 +254,8 @@
             "tag": "button",
             "text": {
               "tag": "plain_text",
-              "content": "{stop}"
+              "content": "{stop}",
+              "text_size": "notation"
             },
             "type": "danger_text",
             "width": "default",

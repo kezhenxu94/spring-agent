@@ -319,14 +319,17 @@ public class FeishuCardListener implements AgentResponseListener {
    * comes from the elements file all the same, because the button on it comes and goes — {@code
    * FeishuCard#finish()} takes it off again — and because everything else on the card is anchored
    * to the row.
+   *
+   * <p>It goes on carrying the button alone: a card that has not named a model yet has nothing to
+   * spend-report, and the column that will hold the line stays off the row until there is one — see
+   * {@link FeishuCardElements#stopButtonRow()}.
    */
   private String createCard(final String runId) throws Exception {
     final var card =
         (ObjectNode)
             om.readTree(
                 messages.renderCard(feishuReplyCard.getContentAsString(StandardCharsets.UTF_8)));
-    ((ArrayNode) card.path("body").path("elements"))
-        .insert(0, cardElements.element(FeishuCardElements.USAGE));
+    ((ArrayNode) card.path("body").path("elements")).insert(0, cardElements.stopButtonRow());
     final var cardJson = om.writeValueAsString(card);
     final var response =
         feishu

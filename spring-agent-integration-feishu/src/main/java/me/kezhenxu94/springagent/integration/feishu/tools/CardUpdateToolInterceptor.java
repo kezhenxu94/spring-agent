@@ -8,11 +8,13 @@ import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.stereotype.Component;
 
 /**
- * What the card says while a tool call is out, and what it stops saying when the call comes back.
+ * What the card says while a tool call is out, and what it says once the call comes back.
  *
- * <p>Both halves, because the line is written under the answer and would otherwise stand until the
- * model writes its next word. A model that thinks before it writes can leave a long gap there, and
- * a line naming a call that returned in a moment reads as a call that has hung.
+ * <p>Both halves, because what came back is half of what a call was: the run's pane keeps every
+ * call the turn made and opens onto what each one was given and what it returned. A subagent has no
+ * pane and shows its calls inline, where the second half is what takes the line down again — it
+ * would otherwise stand until the model writes its next word, and a model that thinks before it
+ * writes can leave a long gap in which a call that returned in a moment reads as one that has hung.
  */
 @Slf4j
 @Component
@@ -37,7 +39,7 @@ public class CardUpdateToolInterceptor implements ToolCallInterceptor {
     final var updater = updaterFor(toolName, toolContext);
     if (updater != null) {
       try {
-        updater.clearToolStatus();
+        updater.clearToolStatus(toolName, toolInput, toolResult);
       } catch (Exception e) {
         log.warn("Failed to clear tool status for '{}': {}", toolName, e.getMessage());
       }

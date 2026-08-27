@@ -57,6 +57,23 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   /** As much of a message as the card shows on the one line it gives it. */
   private static final int MAX_QUEUED_MESSAGE_LENGTH = 200;
 
+  /**
+   * How many earlier calls get a pane each. A card has a size of its own to stay within and the
+   * whole pane is sent again on every call, so a turn that makes fifty of them cannot carry fifty
+   * transcripts. The ones past this are said in a line rather than dropped in silence, and the
+   * newest are the ones kept: a reader looking at a running turn is looking at what it just did.
+   */
+  private static final int CALLS_SHOWN = 20;
+
+  /**
+   * How much of a call's input and of what it returned the pane holds. Both can be enormous — a
+   * file written whole, a command that prints a log — and neither is what the pane is for: it says
+   * what the run did, and the answer above it says what came of it.
+   */
+  private static final int CALL_INPUT_CHARACTERS = 500;
+
+  private static final int CALL_RESULT_CHARACTERS = 800;
+
   private final FeishuCard card;
   private final JsonMapper om;
   private final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing;
@@ -155,6 +172,18 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   private int toolCallsInFlight;
 
   /**
+   * Every tool call the run has made, in the order it made them, which is the order the pane shows
+   * them in. Kept rather than shown and forgotten: what a turn did is most of what a reader wants
+   * to check an answer against, and a line that comes and goes leaves nothing to check.
+   *
+   * <p>A subagent keeps none of these — its calls are shown inline in its own panel.
+   */
+  private final List<ToolCall> toolCalls = new ArrayList<>();
+
+  /** How many times the pane has been replaced, which is what makes each replacement its own. */
+  private int toolPaneRevision;
+
+  /**
    * Everything the model has thought, kept because closing the pane at the end of the run replaces
    * the element whole and a replacement without it would empty the pane it is closing.
    */
@@ -192,9 +221,6 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
             null,
             null,
             null);
-    // The spend row is the one element the card is sent carrying, since the stop button rides in it
-    // — so what the run writes the spend into is there from the start and is never inserted.
-    updater.added.add(FeishuCardElements.USAGE_BODY);
     return updater;
   }
 
@@ -430,9 +456,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   }
 
   /**
-   * Announces a tool call, above the fields it was called with — on the card for the run it belongs
-   * to, and in its own panel for a subagent, which is the whole of what a reader sees of one while
-   * it works.
+   * Announces a tool call: in the run's tool pane on the card, and inline under what it has said so
+   * far for a subagent, whose panel is the whole of what a reader sees of one while it works.
    *
    * <p>Tools that take a {@code description} — {@code Bash} asks the model for one, in active
    * voice, saying what the command does — describe the call far better than its name does, so that
@@ -451,26 +476,103 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
             : messages.get("card-calling-tool", Strings.nullToEmpty(toolName));
     final var fields =
         input == null ? Strings.nullToEmpty(toolInput) : formatFields(input, description != null);
-    sendContent(lastBaseContent + "\n" + header + quote(fields));
+    if (isSubagent()) {
+      // A panel holds one streamed text and no pane of its own: a subagent is already the aside on
+      // this card, and an aside inside an aside is a chevron nobody opens.
+      sendContent(lastBaseContent + "\n" + header + quote(fields));
+      return;
+    }
+    // In the pane a call is named by its tool and nothing else, so the trail reads as a list of
+    // what was used rather than as a column of sentences of uneven length. Which is why the
+    // description stays among the fields here: it is the model saying what this call was for, and
+    // with the line above it no longer saying so, leaving it out would lose it.
+    toolCalls.add(
+        new ToolCall(
+            toolName, input == null ? Strings.nullToEmpty(toolInput) : formatFields(input, false)));
+    showToolCalls(true);
   }
 
   /**
-   * Takes the tool line off the card once every call of the round has come back, leaving what the
-   * run had said before it.
+   * Says a call has come back: what it returned goes into that call's pane, and for a subagent the
+   * line comes off once every call of the round is in.
    *
-   * <p>Nothing else does: the line is written under the answer and is replaced the next time the
-   * model writes a word. On a model that thinks before it writes, and on a turn whose next word is
-   * a long way off, that leaves a call that returned in a moment sitting on the card as though the
-   * run were still waiting on it — which is the one thing the line is there to say.
+   * <p>The subagent's line has nothing else to take it down: it is written under what the subagent
+   * has said and would stand until the model writes its next word. On a model that thinks before it
+   * writes, and on a turn whose next word is a long way off, that leaves a call that returned in a
+   * moment sitting there as though the run were still waiting on it — the one thing the line is
+   * there to say. The run's own pane keeps the call instead, which is what it is for.
    */
-  public synchronized void clearToolStatus() {
+  public synchronized void clearToolStatus(
+      final String toolName, final String toolInput, final String toolResult) {
     if (toolCallsInFlight > 0) {
       toolCallsInFlight--;
     }
-    if (toolCallsInFlight > 0) {
+    if (isSubagent()) {
+      if (toolCallsInFlight == 0) {
+        sendContent(withFailure(lastBaseContent));
+      }
       return;
     }
-    sendContent(withFailure(lastBaseContent));
+    // The oldest call of that tool still waiting, since a round can have several of the same tool
+    // out at once and they come back in whatever order they finish in.
+    for (final var call : toolCalls) {
+      if (call.toolName.equals(toolName) && call.result == null) {
+        call.result = Strings.nullToEmpty(toolResult);
+        break;
+      }
+    }
+    showToolCalls(true);
+  }
+
+  /**
+   * The pane holding every call the turn has made, as the card should now have it.
+   *
+   * <p>Replaced whole on every call rather than written into: the pane grows a pane per call, and
+   * an insert can only name an element of the card, never one nested in another. The first call
+   * puts it on the card instead, since there is nothing there to replace yet — and it goes on
+   * already holding that call, so no card ever shows an empty pane.
+   */
+  private synchronized void showToolCalls(final boolean expanded) {
+    if (elements == null || toolCalls.isEmpty()) {
+      return;
+    }
+    final var latest = toolCalls.get(toolCalls.size() - 1);
+    final var earlier = toolCalls.subList(0, toolCalls.size() - 1);
+    final var hidden = Math.max(0, earlier.size() - CALLS_SHOWN);
+    final var shown =
+        earlier.subList(hidden, earlier.size()).stream()
+            .map(call -> new FeishuCardElements.ToolCall(call.toolName, call.rendered()))
+            .toList();
+    final var pane =
+        elements.toolsPane(
+            expanded,
+            // The tool the run is on, not what the model said the call was for: this title names
+            // the whole trail, and a description reading as one call's sentence would make a pane
+            // holding twenty of them look like it holds one.
+            messages.get("card-tool-calls", latest.toolName),
+            blockquote(clipped(latest.input, CALL_INPUT_CHARACTERS)),
+            hidden,
+            shown);
+    if (added.contains(FeishuCardElements.TOOLS)) {
+      // A key that changes with the pane: an idempotency key is what stops a retry landing twice,
+      // and reusing one across replacements would have Feishu take the first and ignore the rest.
+      card.replace(
+          FeishuCardElements.TOOLS, pane, card.cardId() + ":tools:" + (++toolPaneRevision));
+      return;
+    }
+    final var array = om.createArrayNode();
+    array.add(om.readTree(pane));
+    if (card.insertBefore(
+        elements.anchorOf(FeishuCardElements.TOOLS, added),
+        array.toString(),
+        card.cardId() + ":tools")) {
+      added.add(FeishuCardElements.TOOLS);
+    }
+  }
+
+  /** Folds the pane away as the run ends, for the reason the reasoning pane is folded away. */
+  private void closeToolsPane() {
+    showToolCalls(false);
   }
 
   /** The input parsed as a JSON object, or {@code null} if it is neither JSON nor an object. */
@@ -513,14 +615,61 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     return value.isContainer() ? value.toString() : value.asString();
   }
 
+  /** The fields under a call's line, on the line below it, where there are any. */
   private static String quote(String text) {
-    if (text.isEmpty()) {
+    final var quoted = blockquote(text);
+    return quoted.isEmpty() ? "" : "\n" + quoted;
+  }
+
+  /**
+   * Text as a block quote: a call's input is something the run asked for rather than something it
+   * said, which is what a quote reads as. Every line is prefixed, blank ones included, or an input
+   * written in paragraphs would come out as several quotes with prose between them.
+   */
+  private static String blockquote(String text) {
+    if (text == null || text.isEmpty()) {
       return "";
     }
-    return "\n"
-        + Arrays.stream(text.split("\n"))
-            .map(line -> "> " + line)
-            .collect(Collectors.joining("\n"));
+    return Arrays.stream(text.split("\n", -1))
+        .map(line -> "> " + line)
+        .collect(Collectors.joining("\n"));
+  }
+
+  /** As much of {@code text} as the pane gives it, saying where it was cut off. */
+  private static String clipped(final String text, final int characters) {
+    final var stripped = Strings.nullToEmpty(text).stripTrailing();
+    return stripped.length() <= characters ? stripped : stripped.substring(0, characters) + "…";
+  }
+
+  /**
+   * One tool call: the line naming it, what it was called with, and what it returned once it has.
+   *
+   * <p>Mutable in that one field alone, because a call is announced before it has a result and the
+   * pane it sits in is rebuilt on every call after it.
+   */
+  private static final class ToolCall {
+    private final String toolName;
+    private final String input;
+    private String result;
+
+    private ToolCall(final String toolName, final String input) {
+      this.toolName = Strings.nullToEmpty(toolName);
+      this.input = input;
+    }
+
+    /**
+     * What opening this call shows: what it was given, quoted, and under it what came back, set as
+     * code — tool output is a log, a listing or a JSON document, and the shapes in it are most of
+     * what makes it readable. A call still out has the input alone, which is what says it is out.
+     */
+    private String rendered() {
+      final var asked = blockquote(clipped(input, CALL_INPUT_CHARACTERS));
+      if (Strings.isNullOrEmpty(result)) {
+        return asked;
+      }
+      final var returned = "```\n" + clipped(result, CALL_RESULT_CHARACTERS) + "\n```";
+      return asked.isEmpty() ? returned : asked + "\n\n" + returned;
+    }
   }
 
   private synchronized void sendContent(String content) {
@@ -598,13 +747,37 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     } else {
       spend.add(model, usage);
     }
-    if (added(spendElementId)) {
-      // Grey, like the conversation hint it sits beside: both are the card talking about the run
-      // rather than the run talking, and the footer reads as one line when they are the same
-      // colour. The subagent panels' own spend line is left alone — it is inside a panel, not in
-      // this footer.
-      card.stream(spendElementId, "<font color='grey'>" + spend.render(startedAt) + "</font>");
+    // Grey, like the conversation hint it sits beside: both are the card talking about the run
+    // rather than the run talking, and the footer reads as one line when they are the same colour.
+    // The subagent panels' own spend line is left alone — it is inside a panel, not in this footer.
+    final var line = "<font color='grey'>" + spend.render(startedAt) + "</font>";
+    if (spendOnCard(line)) {
+      card.stream(spendElementId, line);
     }
+  }
+
+  /**
+   * Makes sure there is somewhere to write the spend line, and returns whether it still has to be
+   * written.
+   *
+   * <p>The card is created carrying the spend row with the stop button alone in it, so the column
+   * the line goes in is not there until the run has a line — see {@link
+   * FeishuCardElements#stopButtonRow()}. Growing a row means replacing it whole, and the
+   * replacement is built with the line already in it, so a first report needs no write of its own.
+   *
+   * <p>A replacement that fails is not remembered, so the next report tries again rather than
+   * leaving the card without a spend line for the rest of the run.
+   */
+  private synchronized boolean spendOnCard(final String line) {
+    if (elements == null || added.contains(spendElementId)) {
+      // A subagent's panel came with its own spend line in it.
+      return true;
+    }
+    if (card.replace(
+        FeishuCardElements.USAGE, elements.usageRow(line), card.cardId() + ":" + spendElementId)) {
+      added.add(spendElementId);
+    }
+    return false;
   }
 
   @Override
@@ -810,6 +983,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   public synchronized void onFinished(AgentOutcome outcome) {
     if (!isSubagent()) {
       closeReasoningPane();
+      closeToolsPane();
       countReferences();
       card.finish();
       return;
