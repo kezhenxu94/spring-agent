@@ -30,8 +30,13 @@ public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
   /**
    * Every tool type spring-ai-agent-utils can hand to a run. The two search tools it also ships,
    * Brave and web fetch, are left out: nothing here constructs them.
+   *
+   * <p>Public because it is this module's one statement of which tools it takes from that library,
+   * and the test that no translation names a tool that no longer exists reads the same list. Adding
+   * an upstream tool then updates the hints and the translations together, rather than leaving the
+   * second to be noticed later.
    */
-  private static final List<Class<?>> TOOL_TYPES =
+  public static final List<Class<?>> TOOL_TYPES =
       List.of(
           AutoMemoryTools.class,
           TodoWriteTool.class,
@@ -49,6 +54,16 @@ public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
     // tool-search suffix ToolSearchAdvisorDefaults reads into a property. Both are read while a run
     // is being assembled, so an image without them fails the run rather than losing a paragraph.
     hints.resources().registerPattern("core/prompts/*.md");
+
+    // Each tool's description in the workspace's language, one file per tool. A pattern of its own
+    // because the one above does not cross a directory separator.
+    hints.resources().registerPattern("core/prompts/tools/*.md");
+
+    // And each parameter's. A plain resource pattern, not registerResourceBundle: ModuleToolTexts
+    // reads these as resources precisely so as not to go through a ResourceBundle, which would
+    // consult the host's locale before the base file.
+    hints.resources().registerPattern("core/tools.properties");
+    hints.resources().registerPattern("core/tools_*.properties");
 
     // The library defaults those two prompts fall back to, still reachable by an application that
     // sets a prompt of its own to blank, or that swaps the advisor for one built by hand.

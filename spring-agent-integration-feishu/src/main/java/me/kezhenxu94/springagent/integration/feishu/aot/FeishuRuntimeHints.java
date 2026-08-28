@@ -84,6 +84,19 @@ public class FeishuRuntimeHints implements RuntimeHintsRegistrar {
     CARD_TEMPLATES.forEach(hints.resources()::registerPattern);
     hints.resources().registerResourceBundle(MESSAGES_BUNDLE);
 
+    // The reference pages three of the tools return as their whole result, and each tool's own
+    // description, both in whichever language the deployment configured. Read while a run is being
+    // answered, so an image without them fails the call rather than losing a paragraph.
+    hints.resources().registerPattern("feishu/prompts/*.md");
+    hints.resources().registerPattern("feishu/prompts/tools/*.md");
+
+    // And each tool parameter's description. A plain resource pattern rather than a resource
+    // bundle:
+    // ModuleToolTexts reads these as resources precisely so as not to go through a ResourceBundle,
+    // which would consult the host's locale ahead of the base file.
+    hints.resources().registerPattern("feishu/tools.properties");
+    hints.resources().registerPattern("feishu/tools_*.properties");
+
     // The parameterized form, not the raw class: it is the generic type that carries the payload's
     // own property hints down from FeishuResponse#data.
     for (final Class<?> payload : RESPONSE_PAYLOADS) {

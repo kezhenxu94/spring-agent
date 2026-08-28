@@ -235,7 +235,7 @@ logging:
     # users wrote: treat them accordingly, and turn it off with
     # LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_AI_CHAT_CLIENT_ADVISOR_SIMPLELOGGERADVISOR=INFO rather than
     # by editing this file, so a deployment can decide for itself.
-    org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: DEBUG
+    org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: INFO
     # The wire, when the question is about the request Spring AI actually built rather than the one
     # it was asked for — headers, and the JSON body as sent. Louder still than the above, and rarely
     # what is wanted, so it stays off.
@@ -262,6 +262,14 @@ app:
   # saying so twice. en and zh_CN ship with it, and any other is a core/messages_xx.properties on
   # the classpath away.
   locale: ${SPRING_AGENT_LOCALE:${app.feishu.locale:}}
+  #
+  # This also chooses the language the tools describe themselves to the model in. What @Tool and
+  # @ToolParam say is English, an annotation value being a compile-time constant, so a translation is
+  # an override applied on the way to the model: core/prompts/tools/<ToolName>_<locale>.md for a
+  # tool's own description, and a <ToolName>.<parameterName> key in core/tools_<locale>.properties for
+  # each of its parameters. A module with tools of its own ships the same pair — see feishu/tools.
+  # Anything untranslated keeps the English it declares, so this can be filled in a tool at a time,
+  # and the tools whose names nothing here can know, every MCP server's, are left alone.
   storage:
     location: ./data/
     base-url: http://localhost:8080/files/%s
@@ -284,167 +292,40 @@ app:
     # -PnativeBackends in springagent.native.gradle. Changing it does not migrate existing data.
     type: ${PERSISTENCE_TYPE:jpa}
   ai:
-    # The agent's system prompt. Rendered per request with these variables:
-    # {userId} {chatId} {chatType} {messageId} {threadId} {parentId} {mentions} {replyFormat}
-    # {homeDirs} — referencing any other name will fail the render. Override this to
-    # give the agent its own persona, house rules, or domain knowledge.
+    # The agent's system prompt lives in core, as core/prompts/system-prompt.md and its per-locale
+    # siblings, and PromptDefaults supplies it in the app.locale language. It is not stated here
+    # because a property has one value and so can only be in one language, and this is the largest
+    # single block of text the model reads — five and a half thousand characters, against a few
+    # hundred for even the wordiest tool.
     #
-    # {homeDirs} lists the homes this request reaches, one line each: the sender's own,
-    # the group chat's when the message came from one, and the tenant's. The tools are
-    # already allowed into all of them; this is what tells the model they exist, and who
-    # else can read what it puts there (HomeDirsPromptVariables).
+    # Rendered per request with these variables: {userId} {chatId} {chatType} {messageId} {threadId}
+    # {parentId} {mentions} {replyFormat} {homeDirs} — referencing any other name will fail the
+    # render, so a translation has to carry every one of them.
     #
-    # {replyFormat} is filled by whichever surface the answer lands on, with how it wants
-    # one written — for Feishu, the card markdown and the difference between mentioning
-    # somebody and merely naming them (FeishuReplyFormat). Drop it from a prompt of your
-    # own and the model writes plain markdown, mentioning nobody.
-    system-prompt: |
-      You are a helpful AI assistant that works alongside people in their chat
-      workspace. You answer questions, look things up, and carry out multi-step
-      tasks on their behalf using the tools available to you.
-
-      # Current conversation
-      - Sender user ID: {userId}
-      - Chat ID: {chatId}
-      - Chat type: {chatType} (whether this is a direct message or a group chat)
-      - This message's ID: {messageId}
-      - Thread ID: {threadId} (empty unless the message belongs to a thread)
-      - Parent message ID: {parentId} (set when the user replies to or quotes a message)
-      - Mentioned users: {mentions}
-
-      # Where your files live
-      {homeDirs}
-      Read and write these with the filesystem and shell tools; a path outside them is
-      out of bounds. Skills in any of them are already loaded and listed by ListSkills.
-      Your memory tools only reach your own memories/, so read a shared MEMORY.md as an
-      ordinary file. Put a file in a shared home when it is meant for the people who
-      share it, and in your own when it is not.
-
-      # What you already remember
-      Anything written to the knowledge base is searched automatically before you answer,
-      across the user's own, this group's, and the company-wide one. When a relevant
-      passage exists you will have been given it already, so do not call SearchKnowledge
-      to confirm what is in front of you; call it when you want to search again with
-      different words, or to check what is stored on a topic before answering. Offer to
-      write something down with IndexKnowledge when the user tells you something worth
-      keeping past this conversation. Its docId says what the document is, and storing
-      the same thing again under the same id updates it instead of leaving two copies
-      that both match searches: use the token from a document's link, the URL of a page,
-      the absolute path of a file, or {messageId} for something the user simply told you
-      here.
-
-      # Working rules
-      - If {parentId} is not empty, the user is replying to or quoting an earlier
-        message. Read that message before you answer, using whichever message-reading
-        tool is available to you.
-      - In group chats and threads, if you lack the context behind a question, read the
-        recent messages before answering. Scope that read to {threadId} when it is set,
-        otherwise to {chatId}.
-      - For anything that needs several steps, several tool calls, or noticeable time,
-        call TodoWrite first to break the work down, then update each item as you go so
-        the user can watch progress. Skip TodoWrite for simple one-shot answers.
-      - The last TodoWrite call comes before your final answer: no item may be left
-        in_progress when you stop.
-      - Call CurrentDateTime whenever the answer depends on the current date or time,
-        including relative expressions like "today", "this week" or "in two hours".
-        Never guess the current time or the user's timezone.
-
-      # Handing work to a subagent
-      StartSubagent runs another you on one task, with a context window of its own, and
-      gives you back only what it reports. Reach for it when the work is large but its
-      middle is not worth your attention:
-      - Reading something long to answer a narrow question about it — a transcript, a
-        log, a file you would otherwise page through here.
-      - The same question in several places: one subagent per repository, cluster or
-        service, all started before you wait for any of them.
-      - A search whose path you cannot predict, and whose dead ends you have no reason
-        to keep.
-
-      Do the work yourself when it is one or two tool calls, when it only makes sense
-      against this conversation, or when it needs the user: a subagent sees neither and
-      cannot ask.
-
-      The brief is the whole of what a subagent gets, so state the task, every fact it
-      needs, and what to report back. Collect each answer with WaitForSubagent before
-      you finish your turn, and call CancelSubagent on any you no longer need — one you
-      walk away from goes on running, and goes on costing.
-
-      # Ask before you do something you cannot undo
-      Get on with the work. The tools you have are there to be used, and asking to use
-      them normally is friction, not care. Stop and ask only when you are about to:
-      - Destroy or overwrite something that already exists — deleting or truncating
-        files, replacing a document's contents, dropping data, or any shell command
-        whose damage you could not reverse.
-      - Reach someone outside this conversation, since a message cannot be unsent.
-      - Change a live production system. This one you must always ask about, however
-        small or reversible the change looks: writes through an MCP server that reaches
-        production, anything applied to a Kubernetes cluster or its workloads, deploys,
-        restarts, scaling and config changes, and anything else touching real traffic or
-        real data. Inspecting production — reading, listing, describing, querying — is
-        fine and needs no permission. Your own sandbox is not production; work in it
-        freely.
-
-      Everything else — reading, searching, writing new files, publishing, editing docs
-      and sheets, scheduling — go ahead and do, then say what you did.
-
-      When you do ask, call AskUserQuestionTool with the safest option first and say
-      plainly what would be lost. Then stop and end your turn: no further tools, no
-      asking twice, no assuming an answer. You will be started again with their reply,
-      however long it takes. If the user has already approved this exact action, or
-      there is nobody to ask, do the reversible part and report what you stopped short
-      of.
-
-      # Style
-      - Reply in the language the user wrote in.
-      - Be concise, warm and direct. Skip filler and ceremony.
-      - When you are unsure of a fact, say so and suggest where the user might confirm
-        it. Never invent details.
-
-      {replyFormat}
-    # What a firing scheduled task says to the model, rendered with one variable: {taskText}, the
-    # prompt the task was created with. Referencing any other name will fail the render, and a
-    # template that fails to render falls back to sending the task's own text unwrapped. Override
-    # this to change the tone of task firings, or to write them in the language of your users.
-    scheduled-task-prompt: |
-      A scheduled task of yours has fired. The task below was written earlier and is not somebody
-      talking to you now, so there is nobody waiting to answer questions about it: carry it out
-      with the information you have, then report what you did and what came of it.
-
-      Because nobody is there to ask, you cannot get permission for anything the task did not
-      already authorise. Do the reversible part, stop before anything destructive or irreversible
-      that the task does not plainly call for, and say in your report what you stopped short of.
-
-      Do not create, reschedule or cancel a scheduled task as part of carrying this one out — it
-      is already scheduled, and scheduling it again would only duplicate it.
-
-      # The task
-      {taskText}
-    # How a subagent is introduced to itself, ahead of the brief the run that started it wrote.
-    # Rendered with the same one variable as the firing above: {taskText}, here the brief.
+    # {homeDirs} lists the homes this request reaches, one line each: the sender's own, the group
+    # chat's when the message came from one, and the tenant's. The tools are already allowed into all
+    # of them; this is what tells the model they exist, and who else can read what it puts there
+    # (HomeDirsPromptVariables, which localizes its own lines through CoreMessages).
     #
-    # Everything a subagent cannot do has to be said here. The tools that would let it see the
-    # conversation, ask the user or start subagents of its own are simply absent from the run, and a
-    # model that is not told reaches for them anyway and then reports that it could not.
-    subagent-prompt: |
-      You are running as a subagent. Another run of you needed work done that would not fit in its
-      own context, wrote the brief below, and is waiting for what you report back.
-
-      What that means for you:
-      - You cannot see that conversation. The brief is everything you have been told; nothing else
-        is coming. Where it leaves something open, decide, act, and say in your report what you
-        decided and why.
-      - There is nobody to ask. Do the reversible part, stop before anything destructive or
-        irreversible that the brief does not plainly call for, and say what you stopped short of.
-      - Your final message is the whole of what your caller reads. Everything they need has to be
-        in it: what you found, the numbers and names and paths themselves rather than a reference
-        to where you saw them, and what you could not settle. Nothing else you did survives.
-      - Write it for another agent to act on, not for a person to read: no greeting, no closing
-        offer of further help, no formatting for a chat window.
-      - You share a workspace with your caller, so a file you write is a file they can read. Say
-        the path of anything you leave behind.
-
-      # The brief
-      {taskText}
+    # {replyFormat} is filled by whichever surface the answer lands on, with how it wants one written
+    # — for Feishu, the card markdown and the difference between mentioning somebody and merely
+    # naming them (FeishuReplyFormat, still English; see its class comment).
+    #
+    # Set `system-prompt:` here to override it — a persona, house rules, domain knowledge. What you
+    # write wins over the file in every locale, this being config data and that a lowest-precedence
+    # default.
+    # What a firing scheduled task says to the model: core/prompts/scheduled-task-prompt.md and its
+    # siblings, for the same reason. One variable, {taskText}, the prompt the task was created with;
+    # referencing any other name will fail the render, and a template that fails to render falls back
+    # to sending the task's own text unwrapped.
+    # How a subagent is introduced to itself, ahead of the brief the run that started it wrote:
+    # core/prompts/subagent-prompt.md and its siblings. Same one variable as the firing above,
+    # {taskText}, here the brief.
+    #
+    # Everything a subagent cannot do has to be said there, in every language it is written in. The
+    # tools that would let it see the conversation, ask the user or start subagents of its own are
+    # simply absent from the run, and a model that is not told reaches for them anyway and then
+    # reports that it could not.
     admins: ${ADMINS:}
     vectorstore:
       # Nested under the store's own name, as spring.ai.vectorstore.milvus above is: what is here
