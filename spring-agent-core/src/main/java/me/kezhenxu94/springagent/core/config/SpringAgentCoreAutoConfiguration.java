@@ -28,6 +28,7 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.http.okhttp.OpenAiHttpClientBuilderCustomizer;
 import org.springframework.ai.tool.resolution.ToolCallbackResolver;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -103,13 +104,20 @@ public class SpringAgentCoreAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  BatchingStrategy embeddingBatchingStrategy() {
+  BatchingStrategy embeddingBatchingStrategy(
+      @Value("${app.ai.embedding.batch-size:10}") final int batchSize) {
     // Spring AI's default TokenCountBatchingStrategy only limits batches by token count
     // (8191), so dozens of short tool descriptions fit in a single embeddings.create
     // call; DashScope's OpenAI-compatible endpoint rejects batches over ~20 rows
     // regardless of token count ("batch size is invalid, it should not be larger than
-    // 20"). Cap by row count instead, well under that limit.
-    return new FixedSizeBatchingStrategy(10);
+    // 20"). Cap by row count instead, and default well under that limit — a provider
+    // that allows larger batches is the reason this is a property.
+    //
+    // Raising it is only half of what makes a cold index quick, and the smaller half:
+    // the batches are embedded one after another, so what a few hundred tool
+    // descriptions cost is decided by how many of these calls run at once. That is
+    // app.ai.embedding.concurrency, and ParallelAddVectorStore.
+    return new FixedSizeBatchingStrategy(batchSize);
   }
 
   @RequiredArgsConstructor

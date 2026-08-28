@@ -1,6 +1,8 @@
 package me.kezhenxu94.springagent.integration.feishu.config;
 
 import com.lark.oapi.Client;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import me.kezhenxu94.springagent.core.tools.i18n.ModuleToolTexts;
 import me.kezhenxu94.springagent.core.tools.i18n.ToolTexts;
@@ -64,6 +66,32 @@ public class FeishuAutoConfiguration {
   ToolTexts feishuToolTexts(final FeishuProperties feishuProperties) {
     return new ModuleToolTexts(
         "feishu/tools", FeishuGuides.TOOLS_LOCATION, feishuProperties.locale());
+  }
+
+  /**
+   * Where a card sends an update it held back when nothing followed it — the last chunk before a
+   * tool call, the end of an answer. See {@code FeishuCard#stream}.
+   *
+   * <p>A pool rather than one thread because the write it makes is an HTTP call taken under the
+   * card's lock, so a card whose writer is mid-call holds this thread until it returns; a single
+   * thread would make one slow card the reason every other card's trailing update was late. Small
+   * all the same: this is the only case a card cannot cover itself — its next chunk flushes
+   * whatever is waiting, and so does the end of the run — and the cost of being late here is a card
+   * that lags for one interval, not a lost update.
+   *
+   * <p>Daemon threads, and {@code shutdownNow} to close: what is queued here is a card update, and
+   * a JVM must not stay up for one.
+   */
+  @Bean(destroyMethod = "shutdownNow")
+  @ConditionalOnMissingBean(name = "feishuCardFlushes")
+  ScheduledExecutorService feishuCardFlushes() {
+    return Executors.newScheduledThreadPool(
+        4,
+        runnable -> {
+          final var thread = new Thread(runnable, "feishu-card-flush");
+          thread.setDaemon(true);
+          return thread;
+        });
   }
 
   @Bean

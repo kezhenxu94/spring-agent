@@ -1,9 +1,12 @@
 package me.kezhenxu94.springagent.core.config;
 
+import me.kezhenxu94.springagent.core.tools.toolsearch.ParallelAddVectorStore;
 import me.kezhenxu94.springagent.core.tools.toolsearch.StatelessVectorToolIndex;
 import org.springframework.ai.chat.client.advisor.toolsearch.autoconfigure.ToolSearchAdvisorAutoConfiguration;
 import org.springframework.ai.tool.toolsearch.ToolIndex;
+import org.springframework.ai.vectorstore.SimpleVectorStore;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -33,7 +36,29 @@ public class ToolSearchIndexConfiguration {
   @Bean
   @ConditionalOnBean(VectorStore.class)
   @ConditionalOnMissingBean(ToolIndex.class)
-  StatelessVectorToolIndex statelessVectorToolIndex(final VectorStore vectorStore) {
-    return new StatelessVectorToolIndex(vectorStore);
+  StatelessVectorToolIndex statelessVectorToolIndex(
+      final VectorStore vectorStore,
+      @Value("${app.ai.embedding.batch-size:10}") final int batchSize,
+      @Value("${app.ai.embedding.concurrency:8}") final int concurrency) {
+    return new StatelessVectorToolIndex(indexing(vectorStore, batchSize, concurrency));
+  }
+
+  /**
+   * The store the index writes through, which for everything but the simple store is {@link
+   * ParallelAddVectorStore}: building an index is a few hundred documents at once and a
+   * server-backed store embeds them a batch at a time, one call after another. See that class.
+   *
+   * <p>The simple store is left alone because it parallelizes its own adds already — it embeds a
+   * document at a time and consults no batching strategy at all, so {@code
+   * VectorStoreConfiguration.ConcurrentSimpleVectorStore} spreads the documents over a pool of its
+   * own. Chunking on top of that would nest one pool per chunk inside the other, and the burst of
+   * embedding calls both exist to bound would be the product of the two.
+   */
+  private static VectorStore indexing(
+      final VectorStore vectorStore, final int batchSize, final int concurrency) {
+    if (vectorStore instanceof SimpleVectorStore || batchSize <= 0 || concurrency <= 1) {
+      return vectorStore;
+    }
+    return new ParallelAddVectorStore(vectorStore, batchSize, concurrency);
   }
 }

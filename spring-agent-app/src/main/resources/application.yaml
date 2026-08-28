@@ -327,6 +327,26 @@ app:
     # simply absent from the run, and a model that is not told reaches for them anyway and then
     # reports that it could not.
     admins: ${ADMINS:}
+    embedding:
+      # How the tool-search index is built, which is a few hundred tool descriptions embedded at
+      # once whenever a user's tool set changes — the first request after a restart, and any
+      # request whose MCP servers offer something different from the last one's. It is paid before
+      # the model has been asked anything, so what it costs is what the user waits.
+      #
+      # How many documents one embeddings call may carry. Capped by the provider rather than by
+      # us: DashScope's OpenAI-compatible endpoint refuses more than twenty rows per call whatever
+      # their token count ("batch size is invalid, it should not be larger than 20"), which is why
+      # the default sits well under that instead of leaving Spring AI's token-counting strategy to
+      # fit dozens into one call. Raise it for a provider that allows more.
+      batch-size: ${EMBEDDING_BATCH_SIZE:10}
+      # How many of those calls may be in flight at once. This is the half that matters: the calls
+      # are made one after another otherwise — Spring AI's `EmbeddingModel.embed` is a plain loop
+      # over the batches — so four hundred tools at ten a call is forty round trips end to end
+      # before the run starts. See ParallelAddVectorStore, which is what spreads them.
+      #
+      # It bounds the burst the embedding endpoint sees, so raise it against what that endpoint
+      # will take rather than against how many cores this runs on. 1 puts the sequential loop back.
+      concurrency: ${EMBEDDING_CONCURRENCY:8}
     vectorstore:
       # Nested under the store's own name, as spring.ai.vectorstore.milvus above is: what is here
       # belongs to the simple store alone and is ignored by every other backend.
@@ -629,3 +649,24 @@ app:
     # before the run waiting on it is released. One call Feishu never answered was enough to hang a
     # whole turn, silently. A callTimeout, so it bounds the whole call rather than a gap within it.
     request-timeout: ${FEISHU_REQUEST_TIMEOUT:30s}
+    # How often the card may be written to while a run streams into it, and how far behind it may
+    # fall before it is written early anyway — whichever comes first.
+    #
+    # These exist because the model streams faster than a card can be written and every chunk it
+    # produces is the whole answer so far. Each chunk used to be an HTTP call, made on the thread
+    # consuming the model's stream and under the card's lock, so a turn cost a round trip per chunk
+    # and the subagents writing to the same card queued behind it. Holding a chunk back loses the
+    # reader nothing, since the next one replaces rather than follows it, and only the newest state
+    # was ever going to be on screen.
+    #
+    # A shorter interval is a smoother-looking card and a slower run; 0 sends every chunk as it
+    # arrives, which is what happened before these existed. The character trigger is what stops a
+    # burst of text from sitting unsent for the rest of an interval; 0 turns it off and leaves the
+    # clock in sole charge. Neither can lose the end of an answer: whatever is waiting is written
+    # when the interval passes, when the card is changed some other way, and when the run ends.
+    #
+    # These are here to name the environment variables, not to supply the values: FeishuCardDefaults
+    # contributes the same two defaults for an application that configures neither, so a consumer of
+    # the module as a library is covered without copying this block. Keep them in step.
+    card-stream-interval: ${FEISHU_CARD_STREAM_INTERVAL:1s}
+    card-stream-characters: ${FEISHU_CARD_STREAM_CHARACTERS:400}

@@ -7,8 +7,10 @@ import com.lark.oapi.service.cardkit.v1.model.CreateCardReqBody;
 import com.lark.oapi.service.im.v1.model.ReplyMessageReq;
 import com.lark.oapi.service.im.v1.model.ReplyMessageReqBody;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -68,12 +70,25 @@ public class FeishuCardListener implements AgentResponseListener {
   final FeishuCardElements cardElements;
   final FeishuMessageReactions reactions;
   final FeishuMessageCard messageCard;
+  final ScheduledExecutorService cardFlushes;
 
   // Not final, matching FeishuTools#feishuReplyCard: @Value on a field is an injection point in its
   // own right, and AOT generates a plain field assignment for it, which cannot target a final field
   // the way the JVM's reflective injection can.
   @Value("${app.feishu.reply-card:classpath:/feishu/reply-card.json}")
   Resource feishuReplyCard;
+
+  // No default on either: FeishuCardDefaults supplies them, so that what they are is stated once
+  // and an application that puts this module on its classpath and configures nothing still gets a
+  // card written at a rate a reader and the Feishu API can both live with.
+
+  /** How often a card may be written to while a run streams into it — see {@code FeishuCard}. */
+  @Value("${app.feishu.card-stream-interval}")
+  Duration cardStreamInterval;
+
+  /** How far behind a card may fall before it is written early, whatever the interval says. */
+  @Value("${app.feishu.card-stream-characters}")
+  int cardStreamCharacters;
 
   /**
    * A run reachable from the card it is streaming into, and the user it was started for: the stop
@@ -144,7 +159,10 @@ public class FeishuCardListener implements AgentResponseListener {
               restTemplate,
               userWorkspaceFactory.forRequest(
                   request.userId(), request.groupId(), request.tenantId()),
-              messages);
+              messages,
+              cardStreamInterval,
+              cardStreamCharacters,
+              cardFlushes);
       final var cardUpdater =
           FeishuCardUpdater.forRun(
               card, om, appConfiguration.ai().modelPricing(), messages, cardElements, reactions);
