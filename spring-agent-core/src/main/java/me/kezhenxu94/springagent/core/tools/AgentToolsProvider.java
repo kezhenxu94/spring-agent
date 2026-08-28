@@ -36,6 +36,7 @@ import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
 import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
 import org.springframework.ai.rag.generation.augmentation.ContextualQueryAugmenter;
@@ -56,6 +57,9 @@ public class AgentToolsProvider {
 
   /** The memory prompt's file, without its locale suffix or extension. */
   public static final String MEMORY_PROMPT = "auto-memory";
+
+  /** The knowledge-retrieval augmentation prompt's file, without its locale suffix or extension. */
+  public static final String KNOWLEDGE_RETRIEVAL_PROMPT = "knowledge-retrieval";
 
   private final UserWorkspaceFactory userWorkspaceFactory;
   private final McpServerConfigRepo mcpServerConfigRepo;
@@ -218,6 +222,13 @@ public class AgentToolsProvider {
    * to answer when retrieval found nothing, which for a general-purpose agent would turn every
    * question the knowledge base has no opinion about — that is, nearly all of them — into a
    * refusal. Here retrieval is an augmentation, not the point of the run.
+   *
+   * <p>The prompt template is overridden for the same reason. Spring AI's default tells the model
+   * to answer strictly from the retrieved passages and "just say you don't know" otherwise — a
+   * classic RAG-QA prompt, and a direct contradiction of a general-purpose agent's own system
+   * prompt, which expects it to use tools and its own knowledge freely. Left at the default, that
+   * contradiction lands on every turn where retrieval finds even a loosely related document, not
+   * just the ones it was written for.
    */
   private Optional<Advisor> knowledgeRetrieval(
       final AgentRequest request, final Consumer<List<KnowledgeReference>> knowledgeHandler) {
@@ -236,7 +247,13 @@ public class AgentToolsProvider {
                                     request.userId(), request.groupId(), request.tenantId())),
                             knowledgeHandler))
                     .queryAugmenter(
-                        ContextualQueryAugmenter.builder().allowEmptyContext(true).build())
+                        ContextualQueryAugmenter.builder()
+                            .allowEmptyContext(true)
+                            .promptTemplate(
+                                new PromptTemplate(
+                                    LocalizedPrompt.resource(
+                                        KNOWLEDGE_RETRIEVAL_PROMPT, appConfiguration.locale())))
+                            .build())
                     // After the chat memory advisor, and this is the constraint that decides the
                     // number — not tidiness.
                     //
