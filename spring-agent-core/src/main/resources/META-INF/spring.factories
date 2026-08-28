@@ -2,4 +2,5 @@ org.springframework.boot.autoconfigure.AutoConfigurationImportFilter=\
 me.kezhenxu94.springagent.core.config.PersistenceAutoConfigurationFilter
 org.springframework.boot.EnvironmentPostProcessor=\
 me.kezhenxu94.springagent.core.config.ToolSearchAdvisorDefaults,\
-  me.kezhenxu94.springagent.core.config.PromptDefaults
+  me.kezhenxu94.springagent.core.config.PromptDefaults,\
+  me.kezhenxu94.springagent.core.config.ToolDefaults

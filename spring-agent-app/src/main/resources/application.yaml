@@ -418,6 +418,10 @@ app:
         embedding-dimension: ${RAG_MILVUS_DIMENSION:1024}
         initialize-schema: true
     tools:
+      # Every value below is also core's own default, supplied by ToolDefaults so that an
+      # application depending on core as a library gets the same behaviour. They are repeated here
+      # to give each one an environment variable to override it with, and to write down why the
+      # value is what it is; keep the numbers agreeing with the constants ToolDefaults reads.
       ask-user-question:
         # Whether the agent may stop and ask the user a multiple-choice question when a request is
         # ambiguous, rather than guessing.

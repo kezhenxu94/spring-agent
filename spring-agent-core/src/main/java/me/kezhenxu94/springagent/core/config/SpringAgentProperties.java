@@ -237,11 +237,16 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
      * between auto-configurations and so has to be readable before any bean exists, and {@code
      * app.ai.tools.publish-file.base-url} is a {@code @Value} on {@code PublishFileTool} so that a
      * deployment which never states it fails at startup rather than on the first published link.
+     *
+     * <p>The values these fall back to are supplied as properties by {@link ToolDefaults}, so an
+     * application that configures nothing is bound the same as one in this repository. The
+     * fallbacks in the compact constructors below remain for a record built directly, and for a
+     * property explicitly set to nothing meaningful.
      */
     public record Tools(AskUserQuestion askUserQuestion, Subagent subagent) {
       public Tools {
         if (askUserQuestion == null) {
-          askUserQuestion = new AskUserQuestion(true, null);
+          askUserQuestion = new AskUserQuestion(AskUserQuestion.DEFAULT_ENABLED, null);
         }
         if (subagent == null) {
           subagent = new Subagent(0, null, null);
@@ -275,7 +280,11 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
        */
       public record Subagent(int maxConcurrent, Duration waitPoll, Duration waitTimeout) {
 
-        public static final int DEFAULT_MAX_CONCURRENT = 3;
+        /**
+         * Enough that fan-out work the model asks for in one go actually runs in one go. Bounded
+         * rather than unbounded because each subagent is a run in full; see {@link #maxConcurrent}.
+         */
+        public static final int DEFAULT_MAX_CONCURRENT = 10;
 
         /**
          * Long enough that a subagent worth starting usually finishes inside the first one, so the
@@ -308,9 +317,22 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
        *     that card.
        */
       public record AskUserQuestion(boolean enabled, Duration ttl) {
+
+        /**
+         * Offered by default, since a run that has nowhere to put the questions is not offered the
+         * tool anyway — a deployment that wants the model to guess rather than ask turns it off.
+         */
+        public static final boolean DEFAULT_ENABLED = true;
+
+        /**
+         * A day, which is about as long as a question is still worth answering: the run that asked
+         * it is over, and the context the user would be answering into has moved on.
+         */
+        public static final Duration DEFAULT_TTL = Duration.ofHours(24);
+
         public AskUserQuestion {
           if (ttl == null || ttl.isNegative() || ttl.isZero()) {
-            ttl = Duration.ofHours(24);
+            ttl = DEFAULT_TTL;
           }
         }
       }

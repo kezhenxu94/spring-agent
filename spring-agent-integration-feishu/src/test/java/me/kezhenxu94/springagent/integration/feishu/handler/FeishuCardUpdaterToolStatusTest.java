@@ -94,10 +94,11 @@ class FeishuCardUpdaterToolStatusTest {
     assertThat(pane.path("element_id").asString()).isEqualTo("tools");
     // Which tool the run is on, so that a folded pane still says what is happening.
     assertThat(title(pane)).isEqualTo("**Tool calls** — Bash ...");
-    // The call itself is inside, like every other: named by its tool, opening onto what it was
-    // given. The model's description is one of those fields, since no line above says it any more.
-    assertThat(title(call(pane, 0))).isEqualTo("Bash");
-    assertThat(bodyOf(call(pane, 0))).isEqualTo("> command: ls -la\n> description: Listing files");
+    // The call itself is inside, like every other: named by its tool and by what the model said
+    // the call was for, opening onto what it was given. The description names the line rather than
+    // sitting among the fields, so a pane full of Bash calls says which is which unopened.
+    assertThat(title(call(pane, 0))).isEqualTo("Bash — Listing files");
+    assertThat(bodyOf(call(pane, 0))).isEqualTo("> command: ls -la");
     // Open, because while a run is calling tools that is the only thing there is to watch.
     assertThat(pane.path("expanded").asBoolean()).isTrue();
   }
@@ -114,9 +115,9 @@ class FeishuCardUpdaterToolStatusTest {
     final var elements = pane.path("elements");
     // Oldest at the top, newest at the bottom, each named by its tool so the trail reads as a list
     // of what the run used. The call the title names is the last of them, not held out above.
-    assertThat(title(elements.path(0))).isEqualTo("Bash");
-    assertThat(title(elements.path(1))).isEqualTo("ReadFile");
-    assertThat(title(elements.path(2))).isEqualTo("Kubectl");
+    assertThat(title(elements.path(0))).isEqualTo("Bash — Listing files");
+    assertThat(title(elements.path(1))).isEqualTo("ReadFile — Reading the log");
+    assertThat(title(elements.path(2))).isEqualTo("Kubectl — Restarting it");
     assertThat(elements).hasSize(3);
     // Each one closed: a turn can make dozens of calls and a reader wants one of them.
     assertThat(elements.path(0).path("expanded").asBoolean()).isFalse();
@@ -147,8 +148,7 @@ class FeishuCardUpdaterToolStatusTest {
 
     // Quoted like the input above it, labelled so the two halves are told apart, and every line
     // of it prefixed so a listing stays one quote rather than breaking into several.
-    assertThat(bodyOf(call(lastPane(), 0)))
-        .isEqualTo("> command: ls\n> description: Listing files\n\n> output: a.txt\n> b.txt");
+    assertThat(bodyOf(call(lastPane(), 0))).isEqualTo("> command: ls\n\n> output: a.txt\n> b.txt");
   }
 
   @Test
@@ -161,6 +161,19 @@ class FeishuCardUpdaterToolStatusTest {
     // characters. Shown as they came, a whole log was one unreadable line.
     assertThat(bodyOf(call(lastPane(), 0)))
         .isEqualTo("> command: dig ns\n\n> output: === NS ===\n> jade.ns.example.com.");
+  }
+
+  @Test
+  @DisplayName("a blank line inside a result stays a line rather than vanishing into its neighbors")
+  void aBlankLineInAResultIsKept() throws Exception {
+    updater.setToolStatus("Bash", "{\"command\":\"whoami\"}", null);
+    updater.clearToolStatus("Bash", "{}", "bash_id: shell_1\n\nroot");
+
+    // Left as "> " with nothing after it, Feishu's card renderer collapses the line, joining
+    // "shell_1" straight into "root" with no separator. A non-breaking space after the marker
+    // keeps the blank line a line, so the two stay apart.
+    assertThat(bodyOf(call(lastPane(), 0)))
+        .isEqualTo("> command: whoami\n\n> output: bash_id: shell_1\n>  \n> root");
   }
 
   @Test
@@ -195,7 +208,7 @@ class FeishuCardUpdaterToolStatusTest {
     // Folded, not emptied: the trail is the point of keeping it. And still named by the call that
     // never came back, since that is what was true when the run stopped.
     assertThat(title(pane)).isEqualTo("**Tool calls** — Bash ...");
-    assertThat(title(call(pane, 0))).isEqualTo("Bash");
+    assertThat(title(call(pane, 0))).isEqualTo("Bash — Listing files");
   }
 
   @Test
@@ -214,16 +227,18 @@ class FeishuCardUpdaterToolStatusTest {
   }
 
   @Test
-  @DisplayName("the model's description of a call is kept, among the fields it was called with")
-  void theDescriptionIsKeptAmongTheFields() throws Exception {
+  @DisplayName("the model's description of a call names its pane, rather than sitting in it")
+  void theDescriptionNamesTheCallsPane() throws Exception {
     updater.setToolStatus(
         "Bash",
         "{\"command\":\"ls -la\",\"description\":\"List files in the current directory\"}",
         null);
 
-    // Nothing above it says what the call was for any more, so leaving it out would lose it.
-    assertThat(bodyOf(call(insertedPane(), 0)))
-        .isEqualTo("> command: ls -la\n> description: List files in the current directory");
+    // The one thing that tells one Bash call from the next without opening either, so it goes on
+    // the line a closed pane shows — and is then left out of the fields, not said twice.
+    assertThat(title(call(insertedPane(), 0)))
+        .isEqualTo("Bash — List files in the current directory");
+    assertThat(bodyOf(call(insertedPane(), 0))).isEqualTo("> command: ls -la");
   }
 
   @Test
@@ -233,6 +248,8 @@ class FeishuCardUpdaterToolStatusTest {
 
     final var pane = insertedPane();
     assertThat(title(pane)).isEqualTo("**Tool calls** \u2014 Bash ...");
+    // The tool alone names it, with nothing after the name to say what the call was for.
+    assertThat(title(call(pane, 0))).isEqualTo("Bash");
     assertThat(bodyOf(call(pane, 0))).isEqualTo("> command: ls -la\n> timeout: 1000");
   }
 

@@ -61,6 +61,9 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    */
   private static final String OUTPUT_PREFIX = "output: ";
 
+  /** What comes between a call's tool and what the model said the call was for. */
+  private static final String TITLE_SEPARATOR = " — ";
+
   /** As much of a message as the card shows on the one line it gives it. */
   private static final int MAX_QUEUED_MESSAGE_LENGTH = 200;
 
@@ -482,7 +485,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    *
    * <p>Tools that take a {@code description} — {@code Bash} asks the model for one, in active
    * voice, saying what the command does — describe the call far better than its name does, so that
-   * text becomes the line and is left out of the fields below rather than said twice.
+   * text names the call in both places and is left out of the fields below rather than said twice.
    */
   public synchronized void setToolStatus(
       String toolName, String toolInput, ToolContext toolContext) {
@@ -503,13 +506,11 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       sendContent(lastBaseContent + "\n" + header + quote(fields));
       return;
     }
-    // In the pane a call is named by its tool and nothing else, so the trail reads as a list of
-    // what was used rather than as a column of sentences of uneven length. Which is why the
-    // description stays among the fields here: it is the model saying what this call was for, and
-    // with the line above it no longer saying so, leaving it out would lose it.
-    toolCalls.add(
-        new ToolCall(
-            toolName, input == null ? Strings.nullToEmpty(toolInput) : formatFields(input, false)));
+    // In the pane a call is named by its tool and, where the model wrote one, by what it said the
+    // call was for: 'Bash' twenty times over is a trail that says nothing, and the description is
+    // the one thing that tells one of those calls from the next without opening it. It is then
+    // left out of the fields, since the line above them now says it.
+    toolCalls.add(new ToolCall(toolName, description, fields));
     showToolCalls(true);
   }
 
@@ -561,7 +562,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     final var hidden = Math.max(0, toolCalls.size() - CALLS_SHOWN);
     final var shown =
         toolCalls.subList(hidden, toolCalls.size()).stream()
-            .map(call -> new FeishuCardElements.ToolCall(call.toolName, call.rendered()))
+            .map(call -> new FeishuCardElements.ToolCall(call.title(), call.rendered()))
             .toList();
     final var pane =
         elements.toolsPane(
@@ -690,13 +691,19 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    * Text as a block quote: a call's input is something the run asked for rather than something it
    * said, which is what a quote reads as. Every line is prefixed, blank ones included, or an input
    * written in paragraphs would come out as several quotes with prose between them.
+   *
+   * <p>A blank line gets a non-breaking space after its marker rather than being left as {@code ">
+   * "}: Feishu's card renderer collapses a quote line that is otherwise empty, joining the line
+   * before it to the line after with nothing between them — a background shell's {@code "bash_id:
+   * X\n\nroot"} came out as {@code X}{@code root} run together. The space is invisible either way;
+   * it only has to be there for Feishu to keep treating the line as a line.
    */
   private static String blockquote(String text) {
     if (text == null || text.isEmpty()) {
       return "";
     }
     return Arrays.stream(text.split("\n", -1))
-        .map(line -> "> " + line)
+        .map(line -> line.isEmpty() ? ">  " : "> " + line)
         .collect(Collectors.joining("\n"));
   }
 
@@ -714,12 +721,34 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    */
   private static final class ToolCall {
     private final String toolName;
+
+    /** What the model said this call was for, or null on a tool that asks for no description. */
+    private final String description;
+
     private final String input;
     private String result;
 
-    private ToolCall(final String toolName, final String input) {
+    private ToolCall(final String toolName, final String description, final String input) {
       this.toolName = Strings.nullToEmpty(toolName);
+      this.description = description;
       this.input = input;
+    }
+
+    /**
+     * The line naming this call in the trail: the tool, and after it what the model said the call
+     * was for where it said anything. The tool stays first so the list still reads down the left
+     * edge as what the run used, with the sentence as the part that tells two calls of it apart.
+     *
+     * <p>Separated by a dash rather than a colon, which is what every other status line on this
+     * card does — {@code card-subagent-*} and {@code card-tool-calls} all read {@code **name** —
+     * detail}. A colon also reads as a label introducing a value, and the sentence after it is not
+     * one: it is what the call is for, and a call's input is where the {@code field: value} pairs
+     * are.
+     */
+    private String title() {
+      return Strings.isNullOrEmpty(description)
+          ? toolName
+          : toolName + TITLE_SEPARATOR + description;
     }
 
     /**
