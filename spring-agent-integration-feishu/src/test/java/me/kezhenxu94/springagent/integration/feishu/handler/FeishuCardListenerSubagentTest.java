@@ -88,7 +88,10 @@ class FeishuCardListenerSubagentTest {
                 messages,
                 new FeishuCardElements(
                     om, messages, new ClassPathResource("feishu/card-elements.json"), null),
-                new ClassPathResource("feishu/reply-card.json")));
+                new ClassPathResource("feishu/reply-card.json")),
+            // Unthrottled, like every card whose interval is left unset: these tests assert on the
+            // calls a write makes, not on when the card lets them out.
+            null);
     listener.feishuReplyCard = new ClassPathResource("feishu/reply-card.json");
 
     final var created = new CreateCardResp();

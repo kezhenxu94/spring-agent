@@ -22,12 +22,19 @@ import java.net.URI;
 import java.net.URLConnection;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.HomeDir;
@@ -54,7 +61,6 @@ import org.springframework.web.client.RestTemplate;
  * subagent's report and in the answer the run writes from it, and the tenant only needs it once.
  */
 @Slf4j
-@RequiredArgsConstructor
 public class FeishuCard {
 
   private static final int CODE_STREAMING_MODE_CLOSED = 300309;
@@ -69,8 +75,74 @@ public class FeishuCard {
   private final HomeDir home;
   private final FeishuMessages messages;
 
+  /**
+   * How long the card may go between streaming writes, and how many characters may pile up before
+   * one goes out early — whichever comes first. Zero on either turns that trigger off, and a zero
+   * interval writes every update through as it arrives.
+   */
+  private final Duration streamInterval;
+
+  private final int streamCharacters;
+
+  /**
+   * Where a write that was held back is sent from when nothing follows it to carry it out. Null
+   * along with a zero interval, on a card that holds nothing back.
+   */
+  private final ScheduledExecutorService flushes;
+
   private final AtomicInteger sequence = new AtomicInteger(2);
   private final ConcurrentMap<String, String> imageKeysBySource = new ConcurrentHashMap<>();
+
+  /**
+   * The latest content each element has been given but not yet been sent, in the order the elements
+   * first fell behind. Guarded by this card's lock, like everything else that writes.
+   */
+  private final Map<String, String> unsent = new LinkedHashMap<>();
+
+  /** What each element was last sent, so an update that changes nothing costs no call. */
+  private final Map<String, String> sent = new HashMap<>();
+
+  /** When the last streaming write returned, or 0 before there has been one. */
+  private long streamedAt;
+
+  /** The write waiting on the clock, so that only one is ever outstanding. */
+  private ScheduledFuture<?> scheduledFlush;
+
+  /**
+   * Set once the run is over. Nothing may be held back after that: streaming mode is closed as the
+   * card finishes, and a write arriving afterwards has to go straight out to be retried against a
+   * reopened card rather than sit in a buffer nothing will drain.
+   */
+  private boolean finished;
+
+  /** A card that writes every update through as it arrives. */
+  public FeishuCard(
+      final Client feishu,
+      final String cardId,
+      final RestTemplate restTemplate,
+      final HomeDir home,
+      final FeishuMessages messages) {
+    this(feishu, cardId, restTemplate, home, messages, Duration.ZERO, 0, null);
+  }
+
+  public FeishuCard(
+      final Client feishu,
+      final String cardId,
+      final RestTemplate restTemplate,
+      final HomeDir home,
+      final FeishuMessages messages,
+      final Duration streamInterval,
+      final int streamCharacters,
+      final ScheduledExecutorService flushes) {
+    this.feishu = feishu;
+    this.cardId = cardId;
+    this.restTemplate = restTemplate;
+    this.home = home;
+    this.messages = messages;
+    this.streamInterval = streamInterval == null ? Duration.ZERO : streamInterval;
+    this.streamCharacters = streamCharacters;
+    this.flushes = flushes;
+  }
 
   public String cardId() {
     return cardId;
@@ -111,6 +183,7 @@ public class FeishuCard {
   @SneakyThrows
   public synchronized boolean insertBefore(
       final String targetElementId, final String elementsJson, final String uuid) {
+    flushUnsent();
     final var seq = sequence.getAndIncrement();
     final var response =
         feishu
@@ -142,9 +215,114 @@ public class FeishuCard {
     return true;
   }
 
-  /** Streams {@code content} into one element, replacing whatever it held. */
+  /**
+   * Streams {@code content} into one element, replacing whatever it held — as soon as the card's
+   * update rate allows, which is not necessarily now.
+   *
+   * <p>Held back rather than sent because the run streams faster than the card can be written.
+   * Every chunk the model produces arrives here as the whole answer so far, and each one used to be
+   * an HTTP call made on the thread consuming the model's stream, under this card's lock: the run
+   * went no faster than Feishu answered, and a turn's cost became the number of chunks times a
+   * round trip — with a card's subagents queued behind the same lock. Coalescing is free precisely
+   * because what arrives is cumulative: a write that has not gone out yet is not delayed by the
+   * next one, it is replaced by it, and only the newest state was ever going to be visible anyway.
+   *
+   * <p>What is not free is a write that nothing follows — the last chunk before a tool call, the
+   * end of the answer — so a held-back write is also put on the clock, and the operations that are
+   * not streaming ({@link #replace}, {@link #insertBefore}, {@link #finish}) drain what is waiting
+   * before they change the card underneath it.
+   */
   public synchronized void stream(final String elementId, final String content) {
-    stream(elementId, content, true);
+    unsent.put(elementId, Strings.nullToEmpty(content));
+    if (dueNow()) {
+      flushUnsent();
+    } else {
+      scheduleFlush();
+    }
+  }
+
+  /**
+   * Whether what is waiting goes out now: because this card holds nothing back, because the
+   * interval has passed since the last write returned, or because enough characters have piled up
+   * that waiting out the rest of it would show the reader an answer well behind the run.
+   */
+  private boolean dueNow() {
+    if (finished || flushes == null || streamInterval.isZero() || streamInterval.isNegative()) {
+      return true;
+    }
+    if (streamedAt == 0) {
+      // The first thing the card says appears at once. Nothing is on it yet, so there is no
+      // updating to rate-limit — only the wait before it stops looking empty.
+      return true;
+    }
+    if (System.nanoTime() - streamedAt >= streamInterval.toNanos()) {
+      return true;
+    }
+    return streamCharacters > 0 && unsentCharacters() >= streamCharacters;
+  }
+
+  /** How far behind the card is, in characters, across every element waiting to be written. */
+  private int unsentCharacters() {
+    var characters = 0;
+    for (final var waiting : unsent.entrySet()) {
+      characters +=
+          Math.abs(waiting.getValue().length() - sent.getOrDefault(waiting.getKey(), "").length());
+    }
+    return characters;
+  }
+
+  /**
+   * Sends everything waiting, and starts the interval again from when the last of them returned
+   * rather than from when it was sent: the interval is there to leave the run's own thread free,
+   * and a slow card would otherwise be the one that got written to most often.
+   */
+  private synchronized void flushUnsent() {
+    if (scheduledFlush != null) {
+      scheduledFlush.cancel(false);
+      scheduledFlush = null;
+    }
+    if (unsent.isEmpty()) {
+      return;
+    }
+    final var writes = new ArrayList<>(unsent.entrySet());
+    unsent.clear();
+    try {
+      for (final var write : writes) {
+        if (write.getValue().equals(sent.get(write.getKey()))) {
+          continue;
+        }
+        sent.put(write.getKey(), write.getValue());
+        stream(write.getKey(), write.getValue(), true);
+      }
+    } finally {
+      streamedAt = System.nanoTime();
+    }
+  }
+
+  /**
+   * Puts the writes that are waiting on the clock, so that a run which goes quiet — a tool call
+   * that takes a minute, an answer that has ended — still leaves the card showing what it last
+   * said. One at a time: whichever write drains the buffer drains all of it.
+   */
+  private void scheduleFlush() {
+    if (scheduledFlush != null) {
+      return;
+    }
+    final var waited = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - streamedAt);
+    final var delay = Math.max(streamInterval.toMillis() - waited, 1);
+    scheduledFlush = flushes.schedule(this::flushOnTime, delay, TimeUnit.MILLISECONDS);
+  }
+
+  private void flushOnTime() {
+    synchronized (this) {
+      scheduledFlush = null;
+      try {
+        flushUnsent();
+      } catch (Exception e) {
+        // The next chunk writes the same content again, and the run must not end on a card update.
+        log.warn("Failed to flush what card {} had waiting", cardId, e);
+      }
+    }
   }
 
   @SneakyThrows
@@ -191,6 +369,9 @@ public class FeishuCard {
   @SneakyThrows
   public synchronized boolean replace(
       final String elementId, final String elementJson, final String uuid) {
+    // Before the replacement, or a write still waiting for this element would land on top of it
+    // afterwards — the old content, carrying the newer sequence, over the element that replaced it.
+    flushUnsent();
     final var seq = sequence.getAndIncrement();
     final var response =
         feishu
@@ -266,6 +447,10 @@ public class FeishuCard {
   @SneakyThrows
   public synchronized void finish() {
     log.info("Finalizing card: cardId={}", cardId);
+    // The last thing the run said is usually still waiting here, and streaming mode is closed
+    // below: after that a held-back write has no card left to stream into.
+    flushUnsent();
+    finished = true;
 
     final var removeActionsResponse =
         feishu

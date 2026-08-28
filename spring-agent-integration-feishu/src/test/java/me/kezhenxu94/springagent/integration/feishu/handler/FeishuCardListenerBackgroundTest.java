@@ -78,7 +78,8 @@ class FeishuCardListenerBackgroundTest {
             null,
             null,
             null,
-            messageCard);
+            messageCard,
+            null);
   }
 
   private AgentRunRegistry registryFor(final boolean background) {

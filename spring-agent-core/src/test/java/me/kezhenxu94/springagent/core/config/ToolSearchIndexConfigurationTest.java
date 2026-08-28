@@ -11,6 +11,7 @@ import org.springframework.ai.tool.toolsearch.ToolIndex;
 import org.springframework.ai.tool.toolsearch.index.regex.RegexToolIndex;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.autoconfigure.context.PropertyPlaceholderAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -31,7 +32,11 @@ class ToolSearchIndexConfigurationTest {
       new ApplicationContextRunner()
           .withConfiguration(
               AutoConfigurations.of(
-                  ToolSearchIndexConfiguration.class, ToolSearchAdvisorAutoConfiguration.class))
+                  // The index bean reads two properties through @Value, which needs the
+                  // placeholder configurer a Boot application always has and a runner does not.
+                  PropertyPlaceholderAutoConfiguration.class,
+                  ToolSearchIndexConfiguration.class,
+                  ToolSearchAdvisorAutoConfiguration.class))
           .withUserConfiguration(AVectorStore.class)
           .withPropertyValues(
               "spring.ai.chat.client.tool-search-advisor.enabled=true",
