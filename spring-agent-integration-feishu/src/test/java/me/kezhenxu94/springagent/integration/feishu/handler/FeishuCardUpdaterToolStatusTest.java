@@ -93,7 +93,7 @@ class FeishuCardUpdaterToolStatusTest {
     final var pane = insertedPane();
     assertThat(pane.path("element_id").asString()).isEqualTo("tools");
     // Which tool the run is on, so that a folded pane still says what is happening.
-    assertThat(title(pane)).isEqualTo("Tool calls — Bash ...");
+    assertThat(title(pane)).isEqualTo("**Tool calls** — Bash ...");
     // The call itself is inside, like every other: named by its tool, opening onto what it was
     // given. The model's description is one of those fields, since no line above says it any more.
     assertThat(title(call(pane, 0))).isEqualTo("Bash");
@@ -110,7 +110,7 @@ class FeishuCardUpdaterToolStatusTest {
     updater.setToolStatus("Kubectl", "{\"description\":\"Restarting it\"}", null);
 
     final var pane = lastPane();
-    assertThat(title(pane)).isEqualTo("Tool calls — Kubectl ...");
+    assertThat(title(pane)).isEqualTo("**Tool calls** — Kubectl ...");
     final var elements = pane.path("elements");
     // Oldest at the top, newest at the bottom, each named by its tool so the trail reads as a list
     // of what the run used. The call the title names is the last of them, not held out above.
@@ -133,7 +133,7 @@ class FeishuCardUpdaterToolStatusTest {
     final var pane = lastPane();
     // Nothing is out, so no tool is the one the run is on. Going on naming the last call would say
     // the run is still waiting on a call that is over.
-    assertThat(title(pane)).isEqualTo("Tool calls (2)");
+    assertThat(title(pane)).isEqualTo("**Tool calls** (2)");
     // And the last call is in the list with the rest, which is the only place its result shows.
     assertThat(bodyOf(call(pane, 1))).isEqualTo("> path: a.txt\n\n> output: hello");
   }
@@ -194,7 +194,7 @@ class FeishuCardUpdaterToolStatusTest {
     assertThat(pane.path("expanded").asBoolean()).isFalse();
     // Folded, not emptied: the trail is the point of keeping it. And still named by the call that
     // never came back, since that is what was true when the run stopped.
-    assertThat(title(pane)).isEqualTo("Tool calls — Bash ...");
+    assertThat(title(pane)).isEqualTo("**Tool calls** — Bash ...");
     assertThat(title(call(pane, 0))).isEqualTo("Bash");
   }
 
@@ -206,7 +206,7 @@ class FeishuCardUpdaterToolStatusTest {
     }
 
     final var elements = lastPane().path("elements");
-    assertThat(title(lastPane())).isEqualTo("Tool calls — Tool24 ...");
+    assertThat(title(lastPane())).isEqualTo("**Tool calls** — Tool24 ...");
     // The line stands where the calls it stands for would have been: above the oldest one shown.
     assertThat(elements.path(0).path("content").asString()).isEqualTo("… and 4 earlier calls");
     assertThat(title(elements.path(1))).isEqualTo("Tool5");
@@ -232,7 +232,7 @@ class FeishuCardUpdaterToolStatusTest {
     updater.setToolStatus("Bash", "{\"command\":\"ls -la\",\"timeout\":1000}", null);
 
     final var pane = insertedPane();
-    assertThat(title(pane)).isEqualTo("Tool calls \u2014 Bash ...");
+    assertThat(title(pane)).isEqualTo("**Tool calls** \u2014 Bash ...");
     assertThat(bodyOf(call(pane, 0))).isEqualTo("> command: ls -la\n> timeout: 1000");
   }
 
@@ -294,7 +294,7 @@ class FeishuCardUpdaterToolStatusTest {
     updater.setToolStatus("Bash", "not json at all", null);
 
     final var pane = insertedPane();
-    assertThat(title(pane)).isEqualTo("Tool calls \u2014 Bash ...");
+    assertThat(title(pane)).isEqualTo("**Tool calls** \u2014 Bash ...");
     assertThat(bodyOf(call(pane, 0))).isEqualTo("> not json at all");
   }
 
@@ -312,7 +312,7 @@ class FeishuCardUpdaterToolStatusTest {
     updater.setToolStatus("DateTime", "", null);
 
     final var pane = insertedPane();
-    assertThat(title(pane)).isEqualTo("Tool calls \u2014 DateTime ...");
+    assertThat(title(pane)).isEqualTo("**Tool calls** \u2014 DateTime ...");
     assertThat(bodyOf(call(pane, 0))).isEmpty();
   }
 
