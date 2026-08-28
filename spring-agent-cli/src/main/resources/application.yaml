@@ -201,6 +201,8 @@ app:
         # index is rebuilt, at the cost of re-embedding the tool descriptions on the next start.
         file: ${VECTORSTORE_FILE:${user.home}/.spring-agent/vectorstore.json}
     tools:
+      # Only what the command line differs from core's own defaults on, which ToolDefaults supplies
+      # — the subagent settings among them, so they are the same here as on the server.
       ask-user-question:
         # Whether the agent may stop and ask a multiple-choice question rather than guessing. The
         # questions are drawn in the terminal and the run waits for the answer, so unlike the chat
