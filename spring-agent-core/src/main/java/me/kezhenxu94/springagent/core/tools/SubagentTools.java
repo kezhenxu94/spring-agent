@@ -165,6 +165,8 @@ you no longer want it, call CancelSubagent.
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
     final var chatId = ToolContexts.get(context, ToolContexts.CHAT_ID);
     final var chatType = ToolContexts.get(context, ToolContexts.CHAT_TYPE);
+    final var groupId = ToolContexts.get(context, ToolContexts.GROUP_ID);
+    final var tenantId = ToolContexts.get(context, ToolContexts.TENANT_ID);
 
     if (Strings.isNullOrEmpty(prompt)) {
       return "Error: prompt is required, and has to say the whole task.";
@@ -200,6 +202,8 @@ you no longer want it, call CancelSubagent.
             .userId(userId)
             .chatId(chatId)
             .chatType(chatType)
+            .groupId(groupId)
+            .tenantId(tenantId)
             // Its own, and not the parent's: the scenario attaches no memory advisor either way,
             // and
             // a conversation of its own keeps it out of every store whatever the backend does.

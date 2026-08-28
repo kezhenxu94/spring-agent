@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
@@ -29,6 +30,7 @@ class KnowledgeBaseToolsTest {
   @TempDir Path location;
 
   private final AtomicReference<KnowledgeSource> indexed = new AtomicReference<>();
+  private final AtomicReference<KnowledgeEntry> moved = new AtomicReference<>();
   private KnowledgeBaseTools tools;
 
   /** Records what it was asked to store, which is the whole of what these tests are about. */
@@ -47,6 +49,13 @@ class KnowledgeBaseToolsTest {
 
         @Override
         public void delete(final KnowledgeScope scope, final String docId) {}
+
+        @Override
+        public Optional<KnowledgeEntry> move(
+            final KnowledgeScope scope, final String docId, final KnowledgeScope.Target target) {
+          moved.set(new KnowledgeEntry(docId, docId, "", 1, null, target));
+          return Optional.of(moved.get());
+        }
 
         @Override
         public DocumentRetriever retrieverFor(final KnowledgeScope scope) {
@@ -176,6 +185,26 @@ class KnowledgeBaseToolsTest {
 
       assertThat(result).contains("Access denied");
       assertThat(indexed.get()).isNull();
+    }
+
+    @Test
+    @DisplayName("a scope that is not one of the three is refused rather than read as \"own\"")
+    void unknownScopeIsRefused() {
+      // Read as "own" it would take a document out of the company knowledge base because of a
+      // typo, which is the one direction this must never go by default.
+      final var result = tools.updateKnowledgeScope("a-doc", "everyone", context("om_42"));
+
+      assertThat(result).contains("Not a knowledge base");
+      assertThat(moved.get()).isNull();
+    }
+
+    @Test
+    @DisplayName("moving a document into a group from a chat with no group is refused")
+    void moveToGroupWithoutAGroup() {
+      final var result = tools.updateKnowledgeScope("a-doc", "group", context("om_42"));
+
+      assertThat(result).contains("no group");
+      assertThat(moved.get()).isNull();
     }
 
     @Test

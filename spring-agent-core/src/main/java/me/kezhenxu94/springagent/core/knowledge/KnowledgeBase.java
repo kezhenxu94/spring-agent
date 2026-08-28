@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.core.knowledge;
 
 import java.util.List;
+import java.util.Optional;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.rag.retrieval.search.DocumentRetriever;
 
@@ -42,6 +43,21 @@ public interface KnowledgeBase {
    * Removes a document and all its chunks, silently doing nothing if {@code scope} cannot reach it.
    */
   void delete(KnowledgeScope scope, String docId);
+
+  /**
+   * Moves a document into another knowledge base, keeping its id, title, origin and content.
+   *
+   * <p>Here rather than on the caller because nothing outside an implementation can read a stored
+   * document's text back — searching returns what a query matched, not a document — and a move is a
+   * rewrite of every chunk's scope. The caller decides who may do it; this only carries it out.
+   *
+   * <p>Scoped like {@link #delete}: a document {@code scope} cannot reach is not found rather than
+   * moved, which is what keeps a copied id from dragging somebody else's document into a scope of
+   * one's own. Moving a document to the base it is already in is a no-op that still reports it.
+   *
+   * @return the document as it now stands, or empty when {@code scope} cannot reach {@code docId}
+   */
+  Optional<KnowledgeEntry> move(KnowledgeScope scope, String docId, KnowledgeScope.Target target);
 
   /**
    * A retriever restricted to what {@code scope} may read, for attaching to a run's advisor chain.

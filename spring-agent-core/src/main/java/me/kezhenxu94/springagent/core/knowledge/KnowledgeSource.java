@@ -76,11 +76,7 @@ public record KnowledgeSource(
 
   /** The scope values a chunk of this source is stamped with: only the owning one is set. */
   public KnowledgeScope owningScope() {
-    return switch (target) {
-      case OWN -> new KnowledgeScope(scope.owner(), "", "");
-      case GROUP -> new KnowledgeScope("", scope.group(), "");
-      case TENANT -> new KnowledgeScope("", "", scope.tenant());
-    };
+    return scope.owning(target);
   }
 
   private static String blankToNull(final String value) {
