@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.core.config;
 
+import static me.kezhenxu94.springagent.core.tools.AgentToolsProvider.KNOWLEDGE_RETRIEVAL_PROMPT;
 import static me.kezhenxu94.springagent.core.tools.AgentToolsProvider.MEMORY_PROMPT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -10,6 +11,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springaicommunity.agent.advisors.AutoMemoryToolsAdvisor;
+import org.springframework.ai.chat.prompt.PromptTemplate;
+import org.springframework.ai.rag.generation.augmentation.ContextualQueryAugmenter;
 
 class LocalizedPromptTest {
 
@@ -49,6 +52,28 @@ class LocalizedPromptTest {
                     .memorySystemPrompt(
                         LocalizedPrompt.resource(
                             MEMORY_PROMPT, Locale.forLanguageTag(tag.replace('_', '-'))))
+                    .build())
+        .doesNotThrowAnyException();
+  }
+
+  /**
+   * {@link ContextualQueryAugmenter} requires its template to carry {@code query} and {@code
+   * context} placeholders; a translation missing either fails at advisor-build time rather than on
+   * the first retrieval.
+   */
+  @ParameterizedTest
+  @ValueSource(strings = {"en", "zh_CN"})
+  @DisplayName("every translation of the knowledge-retrieval prompt builds a valid query augmenter")
+  void knowledgeRetrievalPromptRenders(final String tag) {
+    assertThatCode(
+            () ->
+                ContextualQueryAugmenter.builder()
+                    .allowEmptyContext(true)
+                    .promptTemplate(
+                        new PromptTemplate(
+                            LocalizedPrompt.resource(
+                                KNOWLEDGE_RETRIEVAL_PROMPT,
+                                Locale.forLanguageTag(tag.replace('_', '-')))))
                     .build())
         .doesNotThrowAnyException();
   }
