@@ -457,7 +457,7 @@ app:
     rag:
       # The knowledge base: what a user, a group or the whole company has told the agent to write
       # down, searched before every answer and managed with the ListKnowledgeBase, IndexKnowledge,
-      # SearchKnowledge and DeleteKnowledge tools.
+      # SearchKnowledge, UpdateKnowledgeScope and DeleteKnowledge tools.
       #
       # This is not the same thing as the vector store above, and the separation is deliberate. That
       # one holds the tool search index — a rebuildable cache of tool descriptions, chosen with

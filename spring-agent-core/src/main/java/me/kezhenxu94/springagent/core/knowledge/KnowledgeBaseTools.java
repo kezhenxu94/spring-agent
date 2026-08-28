@@ -275,6 +275,61 @@ tenant-wide one, all at once.
   }
 
   @Tool(
+      name = "UpdateKnowledgeScope",
+      description =
+"""
+Move a document into a different knowledge base: keep it to yourself, share it with this group, or
+share it with the whole company.
+
+Usage:
+- docId comes from ListKnowledgeBase, whose rows also say which knowledge base each document is in
+  now.
+- scope is where it should end up: "own", "group" or "tenant".
+- The document keeps its id, title, origin and content; only who can read it changes. To change
+  what a document *says*, index it again under the same id with IndexKnowledge.
+- Sharing something with a group or the whole company is a decision for the person who stored it,
+  not for you. Ask before widening a document's scope unless they have just asked you to.
+""")
+  public String updateKnowledgeScope(
+      @ToolParam(description = "The document id, as shown by ListKnowledgeBase") String docId,
+      @ToolParam(
+              description =
+                  "Which knowledge base to move it into: \"own\", \"group\" or \"tenant\"")
+          String scope,
+      final ToolContext context) {
+
+    if (docId == null || docId.isBlank()) {
+      return messages.get("knowledge-doc-id-required");
+    }
+    final var requested = KnowledgeScope.Target.named(scope);
+    if (requested.isEmpty()) {
+      // Not defaulted to "own" the way indexing does. Indexing without a scope means the caller had
+      // no opinion; a misspelt scope here means they did, and reading it as "own" would take a
+      // document out of the company knowledge base because of a typo.
+      return messages.get("knowledge-scope-unknown", scope);
+    }
+    final var target = requested.get();
+
+    final var readable = KnowledgeScope.forRequest(context);
+    final var refusal = refuseUnreachableTarget(readable, target);
+    if (refusal != null) {
+      return refusal;
+    }
+
+    final java.util.Optional<KnowledgeEntry> moved;
+    try {
+      moved = knowledgeBase.move(readable, docId, target);
+    } catch (RuntimeException e) {
+      return messages.get("knowledge-move-failed", e.getMessage());
+    }
+    return moved
+        .map(
+            entry ->
+                messages.get("knowledge-moved", entry.title(), messages.get(scopeLabel(target))))
+        .orElseGet(() -> messages.get("knowledge-move-not-found", docId));
+  }
+
+  @Tool(
       name = "DeleteKnowledge",
       description =
 """

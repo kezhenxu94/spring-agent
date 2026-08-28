@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
+import java.util.Optional;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
 import me.kezhenxu94.springagent.core.scheduling.ScheduledTaskService;
@@ -119,6 +120,93 @@ class ScheduledTaskToolTest {
             "say nothing unless X", "0 0 9 * * MON", null, null, true, context);
 
     assertThat(result).contains("runs in the background");
+  }
+
+  @Test
+  @DisplayName("only what an update names is changed; the rest of the task is left alone")
+  void updateKeepsWhatItWasNotGiven() {
+    final var existing = active().cronExpression("0 0 9 * * MON").taskText("old text").build();
+    when(repo.findById("t1")).thenReturn(Optional.of(existing));
+
+    tool.updateScheduledTask("t1", "new text", null, null, context);
+
+    assertThat(saved().taskText()).isEqualTo("new text");
+    assertThat(saved().cronExpression()).isEqualTo("0 0 9 * * MON");
+    // Rescheduled even though the time did not move: the timer holds the task as it was, so
+    // otherwise the new text would first be used after a restart.
+    verify(service).reschedule(any());
+  }
+
+  @Test
+  @DisplayName("giving a one-off time to a recurring task drops the cron, rather than keeping both")
+  void updateSwitchesBetweenSchedules() {
+    final var existing = active().cronExpression("0 0 9 * * MON").build();
+    when(repo.findById("t1")).thenReturn(Optional.of(existing));
+    final var fireAt = Instant.now().plus(1, ChronoUnit.HOURS);
+
+    tool.updateScheduledTask("t1", null, null, fireAt.toString(), context);
+
+    assertThat(saved().cronExpression()).isNull();
+    assertThat(saved().scheduledAt()).isEqualTo(fireAt);
+    verify(service).reschedule(any());
+  }
+
+  @Test
+  @DisplayName("an update is refused whole when its new schedule is invalid")
+  void updateRefusesAnInvalidCron() {
+    when(repo.findById("t1")).thenReturn(Optional.of(active().taskText("keep").build()));
+
+    final var result = tool.updateScheduledTask("t1", "new text", "not a cron", null, context);
+
+    assertThat(result).startsWith("Error:");
+    // Not even the text, which was valid: half an update leaves the task saying something new on a
+    // schedule the caller thinks it no longer has.
+    verify(repo, never()).save(any());
+    verify(service, never()).reschedule(any());
+  }
+
+  @Test
+  @DisplayName("a task belonging to someone else is not changed")
+  void updateRefusesAnotherUsersTask() {
+    when(repo.findById("t1")).thenReturn(Optional.of(active().userId("ou_someone_else").build()));
+
+    final var result = tool.updateScheduledTask("t1", "new text", null, null, context);
+
+    assertThat(result).startsWith("Error:");
+    verify(repo, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("a cancelled task is not brought back to life by an update")
+  void updateRefusesATaskThatIsNoLongerActive() {
+    when(repo.findById("t1"))
+        .thenReturn(Optional.of(active().status(ScheduledTask.Status.CANCELLED).build()));
+
+    final var result = tool.updateScheduledTask("t1", "new text", null, null, context);
+
+    assertThat(result).startsWith("Error:");
+    verify(repo, never()).save(any());
+    verify(service, never()).reschedule(any());
+  }
+
+  @Test
+  @DisplayName("an update naming nothing to change says so instead of rescheduling for nothing")
+  void updateWithNothingToChange() {
+    when(repo.findById("t1")).thenReturn(Optional.of(active().build()));
+
+    final var result = tool.updateScheduledTask("t1", null, null, null, context);
+
+    assertThat(result).startsWith("Error:");
+    verify(repo, never()).save(any());
+    verify(service, never()).reschedule(any());
+  }
+
+  private static ScheduledTask.ScheduledTaskBuilder active() {
+    return ScheduledTask.builder()
+        .id("t1")
+        .userId("ou_1")
+        .taskText("the task")
+        .status(ScheduledTask.Status.ACTIVE);
   }
 
   private ScheduledTask saved() {

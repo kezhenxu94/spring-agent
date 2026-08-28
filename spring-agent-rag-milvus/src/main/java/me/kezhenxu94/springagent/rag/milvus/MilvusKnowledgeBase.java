@@ -15,9 +15,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
@@ -65,6 +67,16 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
    * keeps its own copy private.
    */
   private static final String METADATA_FIELD = "metadata";
+
+  /** The chunk's own text, likewise Spring AI's default name for the column it writes it to. */
+  private static final String CONTENT_FIELD = "content";
+
+  /**
+   * How many chunks of one document a move will rewrite. A document is fetched whole to be moved,
+   * so this is the point at which that stops being reasonable; well past anything the splitter
+   * produces from a page, a ticket or a file, and far below the limit Milvus puts on a query.
+   */
+  private static final int MAX_CHUNKS_PER_DOCUMENT = 4096;
 
   private final MilvusKnowledgeProperties properties;
   private final SpringAgentProperties agentProperties;
@@ -235,6 +247,66 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
   }
 
   @Override
+  public Optional<KnowledgeEntry> move(
+      final KnowledgeScope scope, final String docId, final KnowledgeScope.Target target) {
+    final var chunks = chunksOf(scope, docId);
+    if (chunks.isEmpty()) {
+      return Optional.empty();
+    }
+    // Sorted so the document is rebuilt in its own order: a query returns rows in whatever order
+    // the segments hand them over, and a chunk's ordinal is the only record of where it belongs.
+    chunks.sort(
+        Comparator.comparingInt(chunk -> integer(chunk.metadata(), KnowledgeMetadata.CHUNK)));
+    final var head = chunks.getFirst().metadata();
+    final var title = string(head, KnowledgeMetadata.TITLE);
+    final var source = string(head, KnowledgeMetadata.SOURCE);
+    final var createdAt = string(head, KnowledgeMetadata.CREATED_AT);
+
+    // The chunks came back through the read filter, so a document found as OWN is this requester's
+    // own and one found as GROUP is this group's — matching the target enum is therefore the whole
+    // of "it is already there", and there is nothing to rewrite.
+    if (targetOf(head) == target) {
+      return Optional.of(entryOf(head));
+    }
+
+    final var owning = scope.owning(target);
+    // Delete first, as index() does, and for the same reason: the rewritten chunks are readable by
+    // the same requester, so a delete afterwards would take the move's own output with it. What
+    // this costs is that a failure between the two loses the document rather than duplicating it,
+    // which is the direction to fail in — a document silently existing twice in two scopes
+    // contradicts itself in every later answer, and nobody finds out.
+    store.delete(KnowledgeScopeFilter.document(scope, docId));
+
+    final var moved = new ArrayList<Document>(chunks.size());
+    for (var i = 0; i < chunks.size(); i++) {
+      final var metadata = new LinkedHashMap<String, Object>();
+      metadata.put(KnowledgeMetadata.OWNER, owning.owner());
+      metadata.put(KnowledgeMetadata.GROUP, owning.group());
+      metadata.put(KnowledgeMetadata.TENANT, owning.tenant());
+      metadata.put(KnowledgeMetadata.DOC_ID, docId);
+      metadata.put(KnowledgeMetadata.TITLE, title);
+      metadata.put(KnowledgeMetadata.SOURCE, source);
+      // The date the knowledge was written down, not the date it was moved: a move is not a new
+      // document, and a listing ordered or read by this should not be reshuffled by one.
+      metadata.put(KnowledgeMetadata.CREATED_AT, createdAt);
+      // Numbers, not the strings they were read back as. The listing filter asks for chunk == 0 as
+      // an integer, and a chunk that stored "0" would match nothing — the document would be in the
+      // right scope and invisible to every listing.
+      metadata.put(KnowledgeMetadata.CHUNK, i);
+      metadata.put(KnowledgeMetadata.CHUNK_COUNT, chunks.size());
+      moved.add(new Document(chunks.get(i).text(), metadata));
+    }
+    // Re-embedded rather than carried over. Milvus can hand back the vectors, but writing them
+    // again means bypassing the store for the insert too, which is a second copy of its schema
+    // here — a high price for saving an embedding call on an operation nobody runs in a loop.
+    store.add(moved);
+    log.debug("Moved {} ({} chunks) into the {} knowledge base", docId, moved.size(), target);
+
+    return Optional.of(
+        new KnowledgeEntry(docId, title, source, moved.size(), instant(createdAt), target));
+  }
+
+  @Override
   public List<Document> search(final KnowledgeScope scope, final String query, final int topK) {
     // The same scope filter as retrieval, and deliberately not the same similarity threshold: an
     // explicit search exists to show what is in there and what it scored, including when the
@@ -278,8 +350,65 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
     }
   }
 
+  /**
+   * Every chunk of one document that {@code scope} may read, text and all.
+   *
+   * <p>Another raw query for the same reason {@link #list} is one: what is wanted is the rows of a
+   * document, and a vector store's only way of returning content is a similarity search over a
+   * query nobody has here.
+   */
+  private List<StoredChunk> chunksOf(final KnowledgeScope scope, final String docId) {
+    final var response =
+        client.query(
+            QueryParam.newBuilder()
+                .withCollectionName(properties.collectionName())
+                .withExpr(toMilvus.convertExpression(KnowledgeScopeFilter.document(scope, docId)))
+                .withOutFields(List.of(METADATA_FIELD, CONTENT_FIELD))
+                .withLimit((long) MAX_CHUNKS_PER_DOCUMENT)
+                // As in list(), and for the same reason: a document is commonly moved in the same
+                // turn it was stored, and the default consistency level may not see it yet.
+                .withConsistencyLevel(ConsistencyLevelEnum.STRONG)
+                .build());
+    if (response.getData() == null) {
+      throw new IllegalStateException(
+          "Milvus refused the document query: " + response.getMessage());
+    }
+
+    final List<?> metadata;
+    final List<?> contents;
+    try {
+      final var wrapper = new QueryResultsWrapper(response.getData());
+      metadata = wrapper.getFieldWrapper(METADATA_FIELD).getFieldData();
+      contents = wrapper.getFieldWrapper(CONTENT_FIELD).getFieldData();
+    } catch (Exception e) {
+      throw new IllegalStateException("Could not read document " + docId + " from Milvus", e);
+    }
+    if (metadata.size() >= MAX_CHUNKS_PER_DOCUMENT) {
+      // Refused rather than moved in part. Taking the first page would leave the tail behind in the
+      // scope being moved out of, and report success for it.
+      throw new IllegalStateException(
+          "Document "
+              + docId
+              + " has more than "
+              + MAX_CHUNKS_PER_DOCUMENT
+              + " chunks, which is more than a move can rewrite at once.");
+    }
+
+    final var chunks = new ArrayList<StoredChunk>(metadata.size());
+    for (var i = 0; i < metadata.size(); i++) {
+      chunks.add(new StoredChunk(String.valueOf(contents.get(i)), asMap(metadata.get(i))));
+    }
+    return chunks;
+  }
+
+  /** One stored chunk as the raw query returns it: its text, and its metadata flattened. */
+  private record StoredChunk(String text, Map<String, String> metadata) {}
+
   private KnowledgeEntry toEntry(final Object row) {
-    final var metadata = asMap(row);
+    return entryOf(asMap(row));
+  }
+
+  private KnowledgeEntry entryOf(final Map<String, String> metadata) {
     return new KnowledgeEntry(
         string(metadata, KnowledgeMetadata.DOC_ID),
         string(metadata, KnowledgeMetadata.TITLE),

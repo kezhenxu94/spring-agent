@@ -59,6 +59,10 @@ class SubagentToolsTest {
     // is not offered the ask.
     assertThat(started.userId()).isEqualTo("ou_1");
     assertThat(started.chatId()).isEqualTo("oc_1");
+    // The scopes the shell sandbox mounts by, so a Bash call made from inside the subagent still
+    // reaches the group's and the tenant's files, not only the user's own.
+    assertThat(started.groupId()).isEqualTo("oc_group_1");
+    assertThat(started.tenantId()).isEqualTo("tenant_1");
     assertThat(started.rootMessageId()).isNull();
     assertThat(started.replyMessageId()).isNull();
     assertThat(started.background()).isTrue();
@@ -271,7 +275,11 @@ class SubagentToolsTest {
             ToolContexts.KEY_CHAT_ID,
             "oc_1",
             ToolContexts.KEY_CHAT_TYPE,
-            "p2p"));
+            "p2p",
+            ToolContexts.KEY_GROUP_ID,
+            "oc_group_1",
+            ToolContexts.KEY_TENANT_ID,
+            "tenant_1"));
   }
 
   private static SpringAgentProperties properties(final int maxConcurrent) {

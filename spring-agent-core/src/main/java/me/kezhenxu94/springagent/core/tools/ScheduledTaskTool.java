@@ -3,6 +3,7 @@ package me.kezhenxu94.springagent.core.tools;
 import com.google.common.base.Strings;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -156,7 +157,8 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
           + expiryNote
           + overrideNote
           + backgroundNote
-          + " Cancel it early with CancelScheduledTask and that id.";
+          + " Change it later with UpdateScheduledTask and that id, or cancel it with"
+          + " CancelScheduledTask.";
     } else {
       final Instant fireAt;
       try {
@@ -192,7 +194,8 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
           + ". "
           + expiryNote
           + backgroundNote
-          + " Cancel it early with CancelScheduledTask and that id.";
+          + " Change it later with UpdateScheduledTask and that id, or cancel it with"
+          + " CancelScheduledTask.";
     }
   }
 
@@ -217,6 +220,123 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
                     + (t.cronExpression() != null ? t.cronExpression() : t.scheduledAt())
                     + (Boolean.TRUE.equals(t.background()) ? " | background" : ""))
         .collect(Collectors.joining("\n"));
+  }
+
+  @Tool(
+      name = "UpdateScheduledTask",
+      description =
+"""
+Change a scheduled task that already exists: what it does, when it fires, or both.
+
+Usage:
+- taskId comes from ListScheduledTasks.
+- Pass only what changes. Anything left out is kept as it is, so changing the time does not restate
+  the task, and rewriting the task does not restate the time.
+- The schedule is either cronExpression or scheduledAt, never both, and giving one replaces the
+  other: a recurring task given a scheduledAt becomes a one-off, and a one-off given a
+  cronExpression becomes recurring.
+- Resolve anything relative ("move it to tomorrow morning") with CurrentDateTime first, since the
+  times here are absolute.
+- Only an active task the current user created can be changed. Use CreateScheduledTask for a new
+  one, and CancelScheduledTask to stop one altogether.
+""")
+  public String updateScheduledTask(
+      @ToolParam(description = "The task ID to change, as shown by ListScheduledTasks")
+          final String taskId,
+      @ToolParam(
+              description = "The new prompt to send when the task fires; null to keep the current",
+              required = false)
+          final String taskText,
+      @ToolParam(
+              description =
+                  "The new 6-field Spring cron expression, making the task recurring; null to keep"
+                      + " the current schedule",
+              required = false)
+          final String cronExpression,
+      @ToolParam(
+              description =
+                  "The new time for a one-off firing, ISO-8601 with an offset (for example"
+                      + " \"2025-01-15T10:00:00+08:00\"); null to keep the current schedule",
+              required = false)
+          final String scheduledAt,
+      final ToolContext context) {
+
+    final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
+    final var taskOpt = scheduledTaskRepo.findById(taskId);
+    if (taskOpt.isEmpty()) {
+      return "Error: no task with id " + taskId + ".";
+    }
+    final var task = taskOpt.get();
+    if (!task.userId().equals(userId)) {
+      return "Error: you can only change tasks you created yourself.";
+    }
+    if (task.status() != ScheduledTask.Status.ACTIVE) {
+      return "Error: task "
+          + taskId
+          + " is "
+          + task.status()
+          + " and can no longer be changed. Create a new one instead.";
+    }
+
+    final var hasText = !Strings.isNullOrEmpty(taskText);
+    final var hasCron = !Strings.isNullOrEmpty(cronExpression);
+    final var hasScheduledAt = !Strings.isNullOrEmpty(scheduledAt);
+
+    if (hasCron && hasScheduledAt) {
+      return "Error: give either cronExpression or scheduledAt, not both.";
+    }
+    if (!hasText && !hasCron && !hasScheduledAt) {
+      return "Error: nothing to change. Give taskText, cronExpression or scheduledAt.";
+    }
+
+    final var updated = task.toBuilder();
+    final var changes = new ArrayList<String>();
+
+    if (hasText) {
+      updated.taskText(taskText);
+      changes.add("it now says \"" + taskText + "\"");
+    }
+
+    var overrideNote = "";
+    if (hasCron) {
+      try {
+        CronExpression.parse(cronExpression);
+      } catch (Exception e) {
+        return "Error: cron expression '" + cronExpression + "' is invalid: " + e.getMessage();
+      }
+      final var validated = enforceMinimumInterval(cronExpression);
+      // Both fields written, not only the one given: a task carries one schedule, and leaving the
+      // old scheduledAt on a task that has just been made recurring is a second one that
+      // ScheduledTaskService would have to choose between.
+      updated.cronExpression(validated).scheduledAt(null);
+      changes.add("it now runs on " + validated);
+      overrideNote =
+          validated.equals(cronExpression)
+              ? ""
+              : " The interval was raised to the smallest one allowed, " + validated + ".";
+    } else if (hasScheduledAt) {
+      final Instant fireAt;
+      try {
+        fireAt = Instant.parse(scheduledAt);
+      } catch (Exception e) {
+        return "Error: scheduledAt must be ISO-8601 with an offset (for example"
+            + " 2025-01-15T10:00:00+08:00).";
+      }
+      if (fireAt.isBefore(Instant.now())) {
+        return "Error: scheduledAt must be in the future.";
+      }
+      updated.cronExpression(null).scheduledAt(fireAt);
+      changes.add("it now fires once, at " + fireAt);
+    }
+
+    final var saved = scheduledTaskRepo.save(updated.build());
+    // Rescheduled even when only the text changed. The timer holds a runnable closed over the task
+    // as it was when it was scheduled, so a firing reads that copy and not the stored one — without
+    // this the new text would first be used after a restart. Re-arming an unchanged schedule costs
+    // nothing: a cron trigger computes its next firing from the expression, and a one-off is
+    // re-armed for the same absolute instant.
+    scheduledTaskService.reschedule(saved);
+    return "Updated task " + taskId + ": " + String.join(", ", changes) + "." + overrideNote;
   }
 
   @Tool(name = "CancelScheduledTask", description = "Cancel a scheduled task by ID")

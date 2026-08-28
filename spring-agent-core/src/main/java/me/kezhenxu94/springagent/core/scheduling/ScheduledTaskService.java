@@ -53,11 +53,31 @@ public class ScheduledTaskService {
 
   /** Drops the task's schedule and aborts its run if it is currently firing. */
   public void unschedule(final String taskId) {
+    dropSchedule(taskId);
+    springAgent.cancel(taskId);
+  }
+
+  /**
+   * Puts a changed task on its new schedule, in place of whatever it was on before.
+   *
+   * <p>Deliberately not {@link #unschedule} followed by {@link #schedule}: a firing already under
+   * way was started by the definition as it stood, and aborting it half-done is not what editing
+   * the task asks for. What changes is the next firing.
+   */
+  public void reschedule(final ScheduledTask task) {
+    dropSchedule(task.id());
+    schedule(task);
+  }
+
+  /**
+   * Forgets the task's timer without touching a run. Cancelled without interrupting, since the
+   * future's own thread is the one a firing runs on.
+   */
+  private void dropSchedule(final String taskId) {
     final var future = scheduledFutures.remove(taskId);
     if (future != null) {
       future.cancel(false);
     }
-    springAgent.cancel(taskId);
   }
 
   public void schedule(final ScheduledTask task) {

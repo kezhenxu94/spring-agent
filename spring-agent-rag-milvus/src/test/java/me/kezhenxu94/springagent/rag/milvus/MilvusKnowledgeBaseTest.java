@@ -8,6 +8,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeEntry;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeSource;
 import org.junit.jupiter.api.AfterAll;
@@ -285,6 +286,88 @@ class MilvusKnowledgeBaseTest {
       final var titles =
           knowledgeBase.list(alice, 0, 50).entries().stream().map(e -> e.title()).toList();
       assertThat(titles).contains("cross-policy", "cross-policy-mine");
+    }
+  }
+
+  @Nested
+  class Moving {
+
+    @Test
+    @DisplayName("a moved document is readable in its new scope and gone from the old one")
+    void movesBetweenScopes() {
+      final var alice = scope("move-alice", "move-eng", "");
+      final var bob = scope("move-bob", "move-eng", "");
+      final var docId =
+          store(alice, KnowledgeScope.Target.OWN, "move-runbook", "how the release goes");
+
+      // Bob is in the same group but cannot see Alice's own document.
+      assertThat(searchTitles(bob, "release")).doesNotContain("move-runbook");
+
+      final var moved = knowledgeBase.move(alice, docId, KnowledgeScope.Target.GROUP);
+
+      assertThat(moved).isPresent();
+      assertThat(moved.get().scope()).isEqualTo(KnowledgeScope.Target.GROUP);
+      assertThat(searchTitles(bob, "release")).contains("move-runbook");
+      // One document, not the original plus a copy — a listing counts what is really stored.
+      assertThat(
+              knowledgeBase.list(alice, 0, 50).entries().stream()
+                  .filter(e -> "move-runbook".equals(e.title()))
+                  .toList())
+          .hasSize(1);
+    }
+
+    @Test
+    @DisplayName("a move keeps the content, so the document is still what it said")
+    void keepsTheContent() {
+      final var owner = scope("move-keep", "", "move-acme");
+      final var docId =
+          store(owner, KnowledgeScope.Target.OWN, "move-policy", "the badge code is 4321");
+
+      knowledgeBase.move(owner, docId, KnowledgeScope.Target.TENANT);
+
+      final var found = knowledgeBase.search(owner, "badge", 50);
+      assertThat(found).isNotEmpty();
+      assertThat(found.getFirst().getText()).contains("the badge code is 4321");
+      // And the listing still shows it as one document, in the base it was moved into.
+      final var entry =
+          knowledgeBase.list(owner, 0, 50).entries().stream()
+              .filter(e -> "move-policy".equals(e.title()))
+              .findFirst()
+              .orElseThrow();
+      assertThat(entry.scope()).isEqualTo(KnowledgeScope.Target.TENANT);
+    }
+
+    @Test
+    @DisplayName("a document of somebody else's is not found rather than dragged into your own")
+    void cannotMoveWhatYouCannotRead() {
+      final var alice = scope("move-owner-alice", "", "");
+      final var mallory = scope("move-owner-mallory", "", "");
+      final var docId = store(alice, KnowledgeScope.Target.OWN, "move-private", "alice only");
+
+      assertThat(knowledgeBase.move(mallory, docId, KnowledgeScope.Target.OWN)).isEmpty();
+      assertThat(searchTitles(alice, "alice only")).contains("move-private");
+      assertThat(searchTitles(mallory, "alice only")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("a document split into several chunks is moved whole, not only its first chunk")
+    void movesEveryChunk() {
+      final var alice = scope("move-chunky", "move-chunky-eng", "");
+      final var bob = scope("move-chunky-bob", "move-chunky-eng", "");
+      final var docId =
+          store(alice, KnowledgeScope.Target.OWN, "move-long", "paragraph of text. ".repeat(400));
+
+      final var moved = knowledgeBase.move(alice, docId, KnowledgeScope.Target.GROUP);
+
+      assertThat(moved).isPresent();
+      assertThat(moved.get().chunkCount()).isGreaterThan(1);
+      // Every chunk is in the group now, and none is left behind in Alice's own base: the two
+      // counts agree only if the whole document moved.
+      assertThat(knowledgeBase.search(bob, "paragraph", 500)).hasSize(moved.get().chunkCount());
+      // And the listing still finds it, which only holds if chunk ordinals survived as numbers.
+      assertThat(
+              knowledgeBase.list(bob, 0, 50).entries().stream().map(KnowledgeEntry::title).toList())
+          .contains("move-long");
     }
   }
 
