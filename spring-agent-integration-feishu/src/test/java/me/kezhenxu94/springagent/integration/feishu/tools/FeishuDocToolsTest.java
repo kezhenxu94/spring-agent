@@ -15,6 +15,7 @@ import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberResp;
 import com.lark.oapi.service.drive.v1.resource.PermissionMember;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuGuides;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import me.kezhenxu94.springagent.integration.feishu.docx.FeishuDocxService;
 import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
@@ -64,7 +65,8 @@ class FeishuDocToolsTest {
             new JsonMapper(),
             new FeishuProperties(
                 null, null, "lv3wgjcyixc.feishu.cn", null, null, null, null, null, null, null),
-            new FeishuPermissionTools(feishu));
+            new FeishuPermissionTools(feishu),
+            new FeishuGuides(null));
   }
 
   @Test

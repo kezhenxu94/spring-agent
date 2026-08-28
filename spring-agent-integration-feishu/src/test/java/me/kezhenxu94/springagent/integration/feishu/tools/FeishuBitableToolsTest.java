@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.stream.IntStream;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.integration.feishu.bitable.FeishuBitableService;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuGuides;
 import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -76,7 +77,8 @@ class FeishuBitableToolsTest {
             feishuBitableService,
             feishuDriveService,
             new FeishuPermissionTools(feishu),
-            new JsonMapper());
+            new JsonMapper(),
+            new FeishuGuides(null));
   }
 
   @Test

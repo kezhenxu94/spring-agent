@@ -24,6 +24,7 @@ import com.lark.oapi.service.sheets.v3.model.QuerySpreadsheetSheetRespBody;
 import java.util.List;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuGuides;
 import me.kezhenxu94.springagent.integration.feishu.model.spreadsheet.GetValueRangeBatchDTOV2;
 import me.kezhenxu94.springagent.integration.feishu.model.spreadsheet.GetValueRangeDTOV2;
 import me.kezhenxu94.springagent.integration.feishu.model.spreadsheet.ProtectedRange;
@@ -82,7 +83,11 @@ class FeishuSheetToolsTest {
 
     tools =
         new FeishuSheetTools(
-            feishu, feishuSheetsService, new FeishuPermissionTools(feishu), new JsonMapper());
+            feishu,
+            feishuSheetsService,
+            new FeishuPermissionTools(feishu),
+            new JsonMapper(),
+            new FeishuGuides(null));
   }
 
   @Test

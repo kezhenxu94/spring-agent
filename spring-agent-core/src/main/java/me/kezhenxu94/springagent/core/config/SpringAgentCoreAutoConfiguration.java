@@ -10,6 +10,9 @@ import me.kezhenxu94.springagent.core.aot.StoragePropertiesRuntimeHints;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageService;
 import me.kezhenxu94.springagent.core.storage.StorageProperties;
+import me.kezhenxu94.springagent.core.tools.i18n.LocalizingToolCallingManager;
+import me.kezhenxu94.springagent.core.tools.i18n.ModuleToolTexts;
+import me.kezhenxu94.springagent.core.tools.i18n.ToolTexts;
 import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallbackResolver;
 import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallingManager;
 import me.kezhenxu94.springagent.core.tools.interceptors.ToolCallInterceptor;
@@ -123,18 +126,38 @@ public class SpringAgentCoreAutoConfiguration {
     }
   }
 
+  /**
+   * Core's own tool translations. A bean rather than a field of the manager so that a module adds
+   * its own by contributing another, which is how the two thirds of the tools that belong to
+   * spring-agent-integration-feishu are translated without core seeing its resources.
+   */
+  @Bean
+  ToolTexts coreToolTexts(final SpringAgentProperties properties) {
+    return new ModuleToolTexts("core/tools", LocalizedPrompt.TOOLS_LOCATION, properties.locale());
+  }
+
+  /**
+   * The manager a run's tool calls go through, in the order the three layers have to sit in.
+   *
+   * <p>Localization outermost of the two decorators, because what it rewrites is the definition
+   * list on its way out to the model and it must be the last word on it. Interception outermost
+   * overall, because it is what the run's own behaviour hangs off — the mid-turn user message and
+   * the wrapping of each callback — and none of that concerns the definitions.
+   */
   @Bean
   @ConditionalOnMissingBean
   ToolCallingManager toolCallingManager(
       final ToolCallbackResolver toolCallbackResolver,
       final List<ToolCallInterceptor> interceptors,
+      final List<ToolTexts> toolTexts,
       final CoreMessages messages) {
     final var defaultManager =
         DefaultToolCallingManager.builder()
             .toolCallbackResolver(
                 new InterceptingToolCallbackResolver(toolCallbackResolver, interceptors))
             .build();
-    return new InterceptingToolCallingManager(defaultManager, interceptors, messages);
+    final var localizing = new LocalizingToolCallingManager(defaultManager, toolTexts);
+    return new InterceptingToolCallingManager(localizing, interceptors, messages);
   }
 
   /**

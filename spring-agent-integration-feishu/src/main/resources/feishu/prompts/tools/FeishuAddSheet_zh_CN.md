@@ -1,0 +1,3 @@
+往一个电子表格里新增一个工作表，返回它的 sheetId、标题和序号。这个 sheetId 可以直接用于
+FeishuSheetUpdateRange、FeishuSheetBatchUpdateRanges 或 FeishuSheetReadRange，中间不必再调用
+FeishuListSheets。这属于改结构而不是改内容，所以不需要先调用 FeishuLockSheet。

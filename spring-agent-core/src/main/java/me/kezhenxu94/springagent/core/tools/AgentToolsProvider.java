@@ -61,6 +61,15 @@ public class AgentToolsProvider {
   /** The knowledge-retrieval augmentation prompt's file, without its locale suffix or extension. */
   public static final String KNOWLEDGE_RETRIEVAL_PROMPT = "knowledge-retrieval";
 
+  /**
+   * The skill tool's description template, without its locale suffix or extension.
+   *
+   * <p>Not under {@code core/prompts/tools/}, where every other tool's description lives, and that
+   * is deliberate: a file there would be applied to the finished definition and would discard the
+   * list of skills the library formats into it.
+   */
+  public static final String SKILL_TOOL_PROMPT = "skill-tool";
+
   private final UserWorkspaceFactory userWorkspaceFactory;
   private final McpServerConfigRepo mcpServerConfigRepo;
   private final McpClientFactory mcpClientFactory;
@@ -406,6 +415,17 @@ public class AgentToolsProvider {
     final var skillsDirs = home.dirs(HomeDir.Folder.SKILLS).stream().map(Path::toString).toList();
     final var skillsToolBuilder = SkillsTool.builder();
     skillsToolBuilder.addSkillsDirectories(skillsDirs);
+    // This one tool cannot be translated the way every other one is. Its description is composed
+    // rather than declared — the library formats the list of installed skills into it — so
+    // replacing
+    // the finished description would silently drop that list and leave the model told to use only
+    // skills it can no longer see. The template is the seam, and the %s in it is load-bearing.
+    //
+    // Nothing ships an English copy: absent a translation the library's own template stands, which
+    // is
+    // why this reads the optional form rather than the one that throws.
+    LocalizedPrompt.findText(SKILL_TOOL_PROMPT, appConfiguration.locale())
+        .ifPresent(skillsToolBuilder::toolDescriptionTemplate);
     Optional<ToolCallback> skillsTool;
     try {
       skillsTool = Optional.of(skillsToolBuilder.build());

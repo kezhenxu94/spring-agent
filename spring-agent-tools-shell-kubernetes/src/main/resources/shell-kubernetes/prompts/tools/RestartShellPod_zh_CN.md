@@ -1,0 +1,4 @@
+- 重启该用户的 shell 沙箱 pod
+- 在 SetCredential / DeleteCredential 之后使用，好让更新后的值以环境变量的形式生效
+- 下一次 Bash 调用会用最新的凭据创建一个全新的 pod
+- 凭据挂载路径下的文件会自动刷新，不需要重启

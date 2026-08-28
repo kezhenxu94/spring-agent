@@ -160,6 +160,14 @@ app:
   # user has already been asked something is the one so far. Defaults to the host's language; en
   # and zh_CN ship with it, and any other is a core/messages_xx.properties on the classpath away.
   locale: ${SPRING_AGENT_LOCALE:}
+  #
+  # This also chooses the language the tools describe themselves to the model in. What @Tool and
+  # @ToolParam say is English, an annotation value being a compile-time constant, so a translation is
+  # an override applied on the way to the model: core/prompts/tools/<ToolName>_<locale>.md for a
+  # tool's own description, and a <ToolName>.<parameterName> key in core/tools_<locale>.properties for
+  # each of its parameters. A module with tools of its own ships the same pair — see feishu/tools.
+  # Anything untranslated keeps the English it declares, so this can be filled in a tool at a time,
+  # and the tools whose names nothing here can know, every MCP server's, are left alone.
   storage:
     location: ${user.home}/.spring-agent/
     # Validated as non-blank though nothing here reads them: they are for a deployment serving files
@@ -182,9 +190,11 @@ app:
     # visible next to the datasource it uses.
     type: jpa
   ai:
-    # Blank takes core's DEFAULT_SYSTEM_PROMPT, which is written to suit any surface. Set this to
-    # give the agent a persona, house rules or domain knowledge of its own.
-    system-prompt: ""
+    # Not set, which takes core/prompts/system-prompt.md in the app.locale language, supplied by
+    # PromptDefaults. Stating it blank here would be worse than saying nothing: blank is config data
+    # and so beats that default, and core then falls back to DEFAULT_SYSTEM_PROMPT — English, whatever
+    # the workspace speaks. Set this to a prompt of your own to give the agent a persona, house rules
+    # or domain knowledge; what you write wins in every locale.
     vectorstore:
       simple:
         # Written on a graceful shutdown and reloaded on startup; if it is missing or unreadable the

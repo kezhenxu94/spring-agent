@@ -8,6 +8,7 @@ import lombok.SneakyThrows;
 import lombok.extern.jackson.Jacksonized;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuGuides;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import me.kezhenxu94.springagent.integration.feishu.docx.FeishuDocxService;
 import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
@@ -29,6 +30,9 @@ public class FeishuDocTools {
   final FeishuProperties feishuProperties;
   final FeishuPermissionTools feishuPermissionTools;
 
+  /** The reference pages this class hands back, in the workspace's language. */
+  final FeishuGuides guides;
+
   @Builder
   @Jacksonized
   public static record CreatedDocument(
@@ -37,120 +41,6 @@ public class FeishuDocTools {
   @Builder
   @Jacksonized
   public static record DocumentInfo(String documentId, Integer revisionId, String title) {}
-
-  private static final String DOC_BLOCK_GUIDE =
-"""
-Working with the blocks of a Feishu document (docx).
-
-1. Common block_type values. Every block's JSON carries the shared fields block_id, block_type,
-parent_id and children, plus one field named after its own type — text, heading1, table and so on.
-
-1  Page (the document's root block, which is documentId itself)   2  Text   3-11  Heading1-Heading9
-12 Bullet (unordered list)   13 Ordered (ordered list)   14 Code   15 Quote
-17 Todo   18 Bitable   19 Callout
-21 Diagram (flowchart or UML)   22 Divider (its content is the empty object {})
-23 File (only ever alongside 33 View)   24 Grid (columns)   25 GridColumn
-27 Image   30 Sheet   31 Table
-32 TableCell   33 View (the presentation wrapper a File or Sheet sits in)
-34 QuoteContainer (its content is the empty object {})
-The rest — ChatCard, MindNote, Board, OKR, Task, SourceSynced, ReferenceSynced — are mostly \
-read-only or cannot yet be created through these tools; FeishuDocBlockContentReference has the \
-detail.
-
-2. Shared parameters.
-- documentRevisionId: the document version, used for optimistic concurrency. Pass -1 to work from \
-whatever is latest, which is what writes normally want; FeishuGetDocumentInfo returns the current \
-revisionId if you need it.
-- clientToken: an idempotency key. Generate a fresh UUID per call so a network retry cannot write \
-twice.
-- A GridColumn, TableCell or Callout has to be created with at least one child, even an empty Text \
-block; none of them can be empty.
-- For the JSON fields of each block's content — Image, Table, Grid, Callout, File, Sheet — see \
-FeishuDocBlockContentReference.
-
-3. The workflow that matters. To write the body of a new document, do **not** assemble it block by \
-block with FeishuCreateDocBlockChildren. Instead:
-1. FeishuCreateDocument for an empty document, which gives you a documentId (it already has a Page \
-root block, so there is nothing to create).
-2. FeishuConvertMarkdownOrHtmlToBlocks to turn the Markdown or HTML body into blocks, which gives \
-you firstLevelBlockIds and blocks — a tree whose parent/child links are temporary ids.
-3. FeishuCreateDocBlockDescendant with those blocks as descendantsJson and firstLevelBlockIds as \
-childrenId, which inserts the whole tree under the document's root block in one call (pass \
-documentId itself as blockId).
-4. If the content has tables, drop the mergeInfo field from each table block's property before \
-inserting: it is read-only and inserting it fails.
-5. If the content has images or attachments, follow section 4 below.
-6. One FeishuCreateDocBlockDescendant inserts at most 1000 blocks; past that, split the call.
-
-FeishuCreateDocBlockChildren is for appending a little flat content to a document that already has \
-some — a few lines at the end, say. It takes at most 50 blocks and no nesting.
-
-4. Inserting images and attachments.
-1. Get the real block_id of the target Image or File block: either from the blockIdRelations that \
-FeishuConvertMarkdownOrHtmlToBlocks plus FeishuCreateDocBlockDescendant return, or by creating an \
-empty Image or File block with FeishuCreateDocBlockChildren and taking its block_id. A File block \
-gets a parent View block of its own automatically, which is expected.
-2. FeishuUploadDocBlockMedia with that block_id as parent_node to upload the local file \
-(parentType=docx_image for an image, parentType=docx_file for a file), which returns a fileToken.
-3. FeishuUpdateDocBlock on that block_id with replaceImage for an image or replaceFile for a file, \
-putting the fileToken in the token field.
-
-5. Odds and ends.
-- To change the document title, pass the document token — the Page root block id — as both \
-documentId and blockId, and call FeishuUpdateDocBlock with updateTextElements.
-- Writes are rate-limited, updating a single block to roughly three times a second. To change \
-several blocks, reach for FeishuBatchUpdateDocBlocks rather than a loop over FeishuUpdateDocBlock.
-- Creating a Sheet block gets you an empty spreadsheet. Putting data in its cells is the sheet \
-tools' job (FeishuSheetTools); these tools do not read or write sheet cells.
-""";
-
-  private static final String DOC_BLOCK_CONTENT_REFERENCE =
-"""
-The JSON shape of each Feishu document (docx) block's content entity (BlockData), for hand-assembling
-the type field that goes with a block_type inside childrenJson, descendantsJson,
-updateOperationJson or requestsJson. Only needed where FeishuConvertMarkdownOrHtmlToBlocks cannot
-reach — exact image dimensions, merged cells, column ratios. Ordinary body content should go through
-the Markdown or HTML conversion instead.
-
-1. Image (block_type=27):
-{"token": "(read-only; written by replaceImage after FeishuUploadDocBlockMedia)", "width": int, \
-"height": int, "align": 1|2|3 (left, centre, right), "caption": {"content": "the caption text"}}
-
-2. Table (block_type=31) and TableCell (block_type=32):
-A Table's content is {"property": {"row_size": int, "column_size": int, "column_width": [int...], \
-"header_row": boolean, "header_column": boolean}} and its children are TableCell block_ids. A \
-TableCell's content is the empty object {}, and its children can be any other blocks — text, \
-lists, whatever.
-**Note**: merge_info inside property is read-only and has to be left out when creating or \
-inserting. To merge cells, create first and then call FeishuUpdateDocBlock with mergeTableCells.
-
-3. Grid (block_type=24) and GridColumn (block_type=25):
-A Grid's content is {"column_size": int}, between 2 and 5, and its children are that many \
-GridColumn block_ids. A GridColumn's content is {"width_ratio": int}, between 1 and 99 and best \
-summing to 100 across the columns, and it needs at least one child.
-
-4. Callout (block_type=19):
-{"background_color": enum, "border_color": enum, "text_color": enum, "emoji_id": "an emoji name, \
-such as gift"}, with at least one child — a Text block will do.
-
-5. File (block_type=23) with View (block_type=33):
-A File block cannot stand alone: it needs a View block ({"view_type": 1}, the card view) as its \
-parent. Its content is {"token": "(read-only; left empty at creation, written by replaceFile)", \
-"name": "the filename", "view_type": 1|2}.
-
-6. Sheet (block_type=30):
-Created with only {"row_size": int (9 at most), "column_size": int (9 at most)}; token is \
-read-only. Writing cells is the sheet tools' job, not these tools'.
-
-7. Special elements inside a Text block's elements array:
-- Mention a user: {"mention_user": {"user_id": "the user's OpenID"}} — this raises no notification.
-- Formula: {"equation": {"content": "KaTeX"}}.
-
-8. Read-only, or not creatable through these tools (worth knowing, but there is nothing to call):
-Bitable, Diagram, MindNote, Board, Task, OKR and its child blocks, and the SourceSynced and \
-ReferenceSynced blocks. These can be read with FeishuGetDocBlock or FeishuListDocBlocks and \
-nothing more.
-""";
 
   @Tool(
       name = "FeishuCreateDocument",
@@ -519,7 +409,7 @@ nothing more.
               + " updating blocks in bulk. For the JSON fields of one particular block_type, read"
               + " FeishuDocBlockContentReference instead.")
   public String getDocBlockGuide() {
-    return DOC_BLOCK_GUIDE;
+    return guides.docBlockGuide();
   }
 
   @Tool(
@@ -533,7 +423,7 @@ nothing more.
               + " dimensions, merged cells, column ratios. For the workflow rather than the fields,"
               + " read FeishuDocBlockGuide.")
   public String getDocBlockContentReference() {
-    return DOC_BLOCK_CONTENT_REFERENCE;
+    return guides.docBlockContentReference();
   }
 
   @Tool(

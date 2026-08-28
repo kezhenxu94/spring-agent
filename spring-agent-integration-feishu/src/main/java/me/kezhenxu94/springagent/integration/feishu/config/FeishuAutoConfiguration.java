@@ -2,6 +2,8 @@ package me.kezhenxu94.springagent.integration.feishu.config;
 
 import com.lark.oapi.Client;
 import java.util.concurrent.TimeUnit;
+import me.kezhenxu94.springagent.core.tools.i18n.ModuleToolTexts;
+import me.kezhenxu94.springagent.core.tools.i18n.ToolTexts;
 import me.kezhenxu94.springagent.integration.feishu.aot.FeishuRuntimeHints;
 import me.kezhenxu94.springagent.integration.feishu.aot.LarkSdkRuntimeHints;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -39,6 +41,30 @@ import org.springframework.context.annotation.ImportRuntimeHints;
     havingValue = "true",
     matchIfMissing = true)
 public class FeishuAutoConfiguration {
+
+  /**
+   * This module's tool translations, which core applies along with its own.
+   *
+   * <p>Its own rather than a few hundred more keys in core's, because two thirds of the tools this
+   * deployment offers are declared here — the bitable, document and sheet tools alone come to
+   * nearly three hundred strings — and their translations belong beside them, on a classpath core
+   * does not read and in a module core must not know about. The same reasoning that gave {@link
+   * FeishuMessages} a message source of its own.
+   *
+   * <p>Keyed to {@code app.feishu.locale} rather than {@code app.locale}, as everything else this
+   * module writes is; the application defaults the one to the other.
+   */
+  /** The reference pages three of the tools return, read once in the configured language. */
+  @Bean
+  FeishuGuides feishuGuides(final FeishuProperties feishuProperties) {
+    return new FeishuGuides(feishuProperties.locale());
+  }
+
+  @Bean
+  ToolTexts feishuToolTexts(final FeishuProperties feishuProperties) {
+    return new ModuleToolTexts(
+        "feishu/tools", FeishuGuides.TOOLS_LOCATION, feishuProperties.locale());
+  }
 
   @Bean
   @ConditionalOnMissingBean
