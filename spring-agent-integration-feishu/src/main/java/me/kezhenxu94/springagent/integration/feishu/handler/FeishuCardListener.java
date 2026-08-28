@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.FeishuMessageCard;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
@@ -71,6 +73,18 @@ public class FeishuCardListener implements AgentResponseListener {
   final FeishuMessageReactions reactions;
   final FeishuMessageCard messageCard;
   final ScheduledExecutorService cardFlushes;
+
+  /**
+   * Where the card's writes are made, which is not the thread the run streams on — see {@link
+   * FeishuCard}.
+   *
+   * <p>Named, because a {@code ScheduledExecutorService} is an {@code ExecutorService} too: by type
+   * alone this and {@code cardFlushes} are both candidates for it, and the qualifier is what keeps
+   * the calls off the clock's two threads. Copied onto the constructor parameter by Lombok — see
+   * {@code lombok.config}.
+   */
+  @Qualifier("feishuCardWrites")
+  final ExecutorService cardWrites;
 
   // Not final, matching FeishuTools#feishuReplyCard: @Value on a field is an injection point in its
   // own right, and AOT generates a plain field assignment for it, which cannot target a final field
@@ -164,7 +178,8 @@ public class FeishuCardListener implements AgentResponseListener {
               messages,
               cardStreamInterval,
               cardStreamCharacters,
-              cardFlushes);
+              cardFlushes,
+              cardWrites);
       final var cardUpdater =
           FeishuCardUpdater.forRun(
               card, om, appConfiguration.ai().modelPricing(), messages, cardElements, reactions);

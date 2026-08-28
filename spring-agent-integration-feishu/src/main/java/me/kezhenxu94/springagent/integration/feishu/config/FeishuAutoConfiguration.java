@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.integration.feishu.config;
 
 import com.lark.oapi.Client;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -69,15 +70,12 @@ public class FeishuAutoConfiguration {
   }
 
   /**
-   * Where a card sends an update it held back when nothing followed it — the last chunk before a
-   * tool call, the end of an answer. See {@code FeishuCard#stream}.
+   * The clock a card puts itself back on when it is holding an update that nothing followed — the
+   * last chunk before a tool call, the end of an answer. See {@code FeishuCard#stream}.
    *
-   * <p>A pool rather than one thread because the write it makes is an HTTP call taken under the
-   * card's lock, so a card whose writer is mid-call holds this thread until it returns; a single
-   * thread would make one slow card the reason every other card's trailing update was late. Small
-   * all the same: this is the only case a card cannot cover itself — its next chunk flushes
-   * whatever is waiting, and so does the end of the run — and the cost of being late here is a card
-   * that lags for one interval, not a lost update.
+   * <p>Two threads is generous: all this does is hand a card's queue to {@link
+   * #feishuCardWrites()}, which is where the call is actually made, so a slow card cannot hold a
+   * thread of this pool at all.
    *
    * <p>Daemon threads, and {@code shutdownNow} to close: what is queued here is a card update, and
    * a JVM must not stay up for one.
@@ -86,12 +84,31 @@ public class FeishuAutoConfiguration {
   @ConditionalOnMissingBean(name = "feishuCardFlushes")
   ScheduledExecutorService feishuCardFlushes() {
     return Executors.newScheduledThreadPool(
-        4,
+        2,
         runnable -> {
-          final var thread = new Thread(runnable, "feishu-card-flush");
+          final var thread = new Thread(runnable, "feishu-card-clock");
           thread.setDaemon(true);
           return thread;
         });
+  }
+
+  /**
+   * Where every call a card makes to Feishu is made, so that none of them is made on the thread
+   * consuming the model's stream. See {@code FeishuCard}.
+   *
+   * <p>A thread per write rather than a pool, because the thread is held for a whole round trip and
+   * the number of cards being written to at once is the number of turns in flight — not something
+   * this can be sized for. A pool of any fixed size would make one slow card the reason every other
+   * card's answer stopped appearing, which is the problem being solved here rather than a cost
+   * worth trading for. Virtual, so that being blocked on Feishu costs a stack and not a thread; a
+   * card serializes its own writes itself — the sequence a card refuses out of order is drawn by
+   * whichever worker is draining that card's queue, and only ever one is.
+   */
+  @Bean(destroyMethod = "shutdownNow")
+  @ConditionalOnMissingBean(name = "feishuCardWrites")
+  ExecutorService feishuCardWrites() {
+    return Executors.newThreadPerTaskExecutor(
+        Thread.ofVirtual().name("feishu-card-write-", 1).factory());
   }
 
   @Bean
