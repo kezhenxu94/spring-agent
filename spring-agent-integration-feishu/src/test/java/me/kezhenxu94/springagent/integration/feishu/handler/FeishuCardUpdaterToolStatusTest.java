@@ -135,7 +135,7 @@ class FeishuCardUpdaterToolStatusTest {
     // the run is still waiting on a call that is over.
     assertThat(title(pane)).isEqualTo("Tool calls (2)");
     // And the last call is in the list with the rest, which is the only place its result shows.
-    assertThat(bodyOf(call(pane, 1))).isEqualTo("> path: a.txt\n\n```\nhello\n```");
+    assertThat(bodyOf(call(pane, 1))).isEqualTo("> path: a.txt\n\n> output: hello");
   }
 
   @Test
@@ -145,9 +145,32 @@ class FeishuCardUpdaterToolStatusTest {
     updater.clearToolStatus("Bash", "{\"command\":\"ls\"}", "a.txt\nb.txt");
     updater.setToolStatus("Bash", "{\"description\":\"Reading the log\"}", null);
 
-    // Set as code: tool output is a log or a listing, and its shape is most of what makes it read.
+    // Quoted like the input above it, labelled so the two halves are told apart, and every line
+    // of it prefixed so a listing stays one quote rather than breaking into several.
     assertThat(bodyOf(call(lastPane(), 0)))
-        .isEqualTo("> command: ls\n> description: Listing files\n\n```\na.txt\nb.txt\n```");
+        .isEqualTo("> command: ls\n> description: Listing files\n\n> output: a.txt\n> b.txt");
+  }
+
+  @Test
+  @DisplayName("a result that arrives JSON-encoded is shown decoded, with its lines back")
+  void anEncodedResultIsDecoded() throws Exception {
+    updater.setToolStatus("Bash", "{\"command\":\"dig ns\"}", null);
+    updater.clearToolStatus("Bash", "{}", "\"=== NS ===\\njade.ns.example.com.\"");
+
+    // A tool result reaches the card JSON-encoded, so the newlines in it arrive written as two
+    // characters. Shown as they came, a whole log was one unreadable line.
+    assertThat(bodyOf(call(lastPane(), 0)))
+        .isEqualTo("> command: dig ns\n\n> output: === NS ===\n> jade.ns.example.com.");
+  }
+
+  @Test
+  @DisplayName("a result that is a JSON object is laid out field by field, as an input is")
+  void anObjectResultIsLaidOut() throws Exception {
+    updater.setToolStatus("Bash", "{\"command\":\"ls\"}", null);
+    updater.clearToolStatus("Bash", "{}", "{\"exitCode\":0,\"stdout\":\"a.txt\"}");
+
+    assertThat(bodyOf(call(lastPane(), 0)))
+        .isEqualTo("> command: ls\n\n> output: exitCode: 0\n> stdout: a.txt");
   }
 
   @Test
