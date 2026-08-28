@@ -35,19 +35,24 @@ import org.springframework.ai.vectorstore.filter.Filter;
  * thing this decorates, the tool index, because {@link StatelessVectorToolIndex} clears an index by
  * the key its documents carry and so removes the half-written set before the next attempt refills
  * it. Do not put a corpus behind this without thinking that through.
- *
- * @param delegate the store the chunks are written to
- * @param chunkSize how many documents one chunk holds. Worth keeping equal to the embedding batch
- *     size: a larger chunk only puts back the sequential loop this exists to break up.
- * @param concurrency how many chunks may be in flight at once, which is also how many calls the
- *     embedding endpoint sees at once.
  */
 @Slf4j
 @RequiredArgsConstructor
 public class ParallelAddVectorStore implements VectorStore {
 
+  /** The store the chunks are written to. */
   private final VectorStore delegate;
+
+  /**
+   * How many documents one chunk holds. Worth keeping equal to the embedding batch size: a larger
+   * chunk only puts back the sequential loop this exists to break up.
+   */
   private final int chunkSize;
+
+  /**
+   * How many chunks may be in flight at once, which is also how many calls the embedding endpoint
+   * sees at once.
+   */
   private final int concurrency;
 
   @Override
