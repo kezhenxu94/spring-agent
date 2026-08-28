@@ -84,7 +84,11 @@ class FeishuCardStreamThrottleTest {
         messages(),
         interval,
         characters,
-        flushes);
+        flushes,
+        // On the calling thread: what is under test is the policy — when a write goes out — and
+        // asserting on that is simplest where the write has been made by the time stream() returns.
+        // That the calls are made off that thread is FeishuCardAsyncWriteTest's.
+        null);
   }
 
   @Test

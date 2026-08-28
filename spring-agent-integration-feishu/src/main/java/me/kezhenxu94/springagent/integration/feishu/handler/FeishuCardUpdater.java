@@ -162,6 +162,10 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    */
   private final Spend spend = new Spend();
 
+  /**
+   * What the run has said, as the model wrote it: a local image path is still a local path here,
+   * since the card resolves those where it sends content rather than where it is given it.
+   */
   private String lastBaseContent = "";
 
   /**
@@ -874,7 +878,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       // A subagent's panel came with its own spend line in it.
       return true;
     }
-    if (card.replace(
+    if (card.replaceNow(
         FeishuCardElements.USAGE, elements.usageRow(line), card.cardId() + ":" + spendElementId)) {
       added.add(spendElementId);
     }
@@ -888,7 +892,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
 
   @Override
   public void onContent(String contentSoFar) {
-    updateContent(card.reuploadImages(contentSoFar));
+    updateContent(contentSoFar);
   }
 
   @Override
@@ -1096,7 +1100,9 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
             description,
             brief,
             outcome,
-            withFailure(lastBaseContent),
+            // The card rewrites the images in what it is streamed, but a panel is an element it is
+            // given whole, so the one place a run's own words go into one resolves them itself.
+            withFailure(card.reuploadImages(lastBaseContent)),
             spend.render(startedAt)),
         subagentId + ":end");
   }

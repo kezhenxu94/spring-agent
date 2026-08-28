@@ -25,16 +25,21 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import lombok.Getter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.HomeDir;
@@ -42,8 +47,8 @@ import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springframework.web.client.RestTemplate;
 
 /**
- * One card, as the thing that writes to it: the Feishu client, the card's id, and the counter every
- * write draws its sequence from.
+ * One card, as the thing that writes to it: the Feishu client, the card's id, the queue every
+ * change waits in, and the counter every write draws its sequence from.
  *
  * <p>Apart from {@link FeishuCardUpdater} because a card has more than one writer. The run streams
  * its answer into the card's own elements, and every subagent it starts streams into a panel of its
@@ -52,10 +57,26 @@ import org.springframework.web.client.RestTemplate;
  * <p>What those writers cannot each have is a counter. The sequence is the card's, not the
  * element's: a write to one element has to carry a higher number than the write to any other
  * element before it, or the card refuses it. So every operation on this card draws from the one
- * counter here, and draws it inside the same lock as the call that carries it — a number taken
- * outside the lock could be overtaken on the way out, and everything after it would be refused.
- * That is why the writers were split from the card and not the other way round, and why anything
- * new that writes to a card belongs in this class rather than beside its caller.
+ * counter here, and only ever from the thread draining the queue — a number taken anywhere else
+ * could be overtaken on the way out, and everything after it would be refused. That is why the
+ * writers were split from the card and not the other way round, and why anything new that writes to
+ * a card belongs in this class rather than beside its caller.
+ *
+ * <p><b>Nothing a run says costs it a round trip.</b> A write is put in the queue and the run
+ * carries on; one worker at a time drains the queue, drawing the sequence and making the call with
+ * no lock held. That is two problems at once. Every chunk the model produces arrives here as the
+ * whole answer so far, and each used to be an HTTP call made on the thread consuming the model's
+ * stream — a Reactor worker — so a turn's cost was the number of chunks times a round trip.
+ * Coalescing is free precisely because what arrives is cumulative: a queued write is not delayed by
+ * the next one, it is replaced by it, and only the newest state was ever going to be visible. And
+ * because the call is made outside the lock, a subagent writing into its panel no longer waits out
+ * the parent's call to write into the card they share.
+ *
+ * <p>What a caller cannot then have is the answer: a queued write has not been made yet, so it
+ * cannot say whether it landed. The few writes whose caller has to know — putting an element on the
+ * card before anything can be streamed into it, and finishing the card — say so by waiting, and pay
+ * a round trip for it. They are the ones that happen once per run rather than once per chunk, which
+ * is what makes that affordable. See {@link #await}.
  *
  * <p>The image keys are here for the same reason they are shared: the same picture may be in a
  * subagent's report and in the answer the run writes from it, and the tenant only needs it once.
@@ -70,59 +91,77 @@ public class FeishuCard {
   private static final String FILE_SCHEME = "file:";
 
   private final Client feishu;
-  private final String cardId;
+
+  @Getter private final String cardId;
+
   private final RestTemplate restTemplate;
   private final HomeDir home;
   private final FeishuMessages messages;
 
   /**
-   * How long the card may go between streaming writes, and how many characters may pile up before
-   * one goes out early — whichever comes first. Zero on either turns that trigger off, and a zero
-   * interval writes every update through as it arrives.
+   * How long the card may go between writes, and how many characters may pile up before one goes
+   * out early — whichever comes first. Zero on either turns that trigger off, and a zero interval
+   * writes every update through as it arrives.
    */
   private final Duration streamInterval;
 
   private final int streamCharacters;
 
   /**
-   * Where a write that was held back is sent from when nothing follows it to carry it out. Null
-   * along with a zero interval, on a card that holds nothing back.
+   * What puts a queue that is waiting out its interval back on the clock. Null along with a zero
+   * interval, on a card that holds nothing back.
    */
-  private final ScheduledExecutorService flushes;
+  private final ScheduledExecutorService clock;
+
+  /**
+   * Where the queue is drained, and so where every call to Feishu is made. Null on a card that
+   * writes on whichever thread asked it to — which is every card but the one a run streams into,
+   * and is what the clock and this being absent together mean.
+   */
+  private final Executor writes;
 
   private final AtomicInteger sequence = new AtomicInteger(2);
   private final ConcurrentMap<String, String> imageKeysBySource = new ConcurrentHashMap<>();
 
   /**
-   * The latest content each element has been given but not yet been sent, in the order the elements
-   * first fell behind. Guarded by this card's lock, like everything else that writes.
+   * What the card has been told to do and has not done yet, in the order it will be done. Guarded
+   * by this card's lock, like everything else here that is not the calls themselves.
    */
-  private final Map<String, String> unsent = new LinkedHashMap<>();
+  private final List<Op> queued = new ArrayList<>();
 
   /** What each element was last sent, so an update that changes nothing costs no call. */
   private final Map<String, String> sent = new HashMap<>();
 
-  /** When the last streaming write returned, or 0 before there has been one. */
+  /** When the last batch of writes returned, or 0 before there has been one. */
   private long streamedAt;
 
-  /** The write waiting on the clock, so that only one is ever outstanding. */
-  private ScheduledFuture<?> scheduledFlush;
+  /** Whether a worker is draining the queue, so that only one ever is. */
+  private boolean pumping;
+
+  /** The drain waiting on the clock, so that only one is ever outstanding. */
+  private ScheduledFuture<?> scheduledPump;
+
+  /**
+   * Set while something in the queue has a caller waiting on it, which is what suspends the
+   * interval: a caller that is blocked is not helped by the queue pacing itself.
+   */
+  private boolean urgent;
 
   /**
    * Set once the run is over. Nothing may be held back after that: streaming mode is closed as the
    * card finishes, and a write arriving afterwards has to go straight out to be retried against a
-   * reopened card rather than sit in a buffer nothing will drain.
+   * reopened card rather than sit in a queue nothing will drain.
    */
   private boolean finished;
 
-  /** A card that writes every update through as it arrives. */
+  /** A card that writes every update through as it arrives, on the calling thread. */
   public FeishuCard(
       final Client feishu,
       final String cardId,
       final RestTemplate restTemplate,
       final HomeDir home,
       final FeishuMessages messages) {
-    this(feishu, cardId, restTemplate, home, messages, Duration.ZERO, 0, null);
+    this(feishu, cardId, restTemplate, home, messages, Duration.ZERO, 0, null, null);
   }
 
   public FeishuCard(
@@ -133,7 +172,8 @@ public class FeishuCard {
       final FeishuMessages messages,
       final Duration streamInterval,
       final int streamCharacters,
-      final ScheduledExecutorService flushes) {
+      final ScheduledExecutorService clock,
+      final Executor writes) {
     this.feishu = feishu;
     this.cardId = cardId;
     this.restTemplate = restTemplate;
@@ -141,11 +181,8 @@ public class FeishuCard {
     this.messages = messages;
     this.streamInterval = streamInterval == null ? Duration.ZERO : streamInterval;
     this.streamCharacters = streamCharacters;
-    this.flushes = flushes;
-  }
-
-  public String cardId() {
-    return cardId;
+    this.clock = clock;
+    this.writes = writes;
   }
 
   /**
@@ -169,7 +206,7 @@ public class FeishuCard {
    *
    * @param uuid an idempotency key, so a retry cannot leave the card holding two copies
    */
-  public synchronized boolean insertBeforeFooter(final String elementsJson, final String uuid) {
+  public boolean insertBeforeFooter(final String elementsJson, final String uuid) {
     return insertBefore(footerElementId, elementsJson, uuid);
   }
 
@@ -178,76 +215,247 @@ public class FeishuCard {
    * landed. The element has to be one the card already has, which is why the anchors are the
    * elements every run carries — see {@code FeishuCardElements}.
    *
+   * <p>Waited on, unlike a streaming write, because nothing can be written into an element the card
+   * does not have: the caller's next act depends on the answer. Affordable because it is asked once
+   * per element per run rather than once per chunk.
+   *
    * @param uuid an idempotency key, so a retry cannot leave the card holding two copies
    */
-  @SneakyThrows
-  public synchronized boolean insertBefore(
+  public boolean insertBefore(
       final String targetElementId, final String elementsJson, final String uuid) {
-    flushUnsent();
-    final var seq = sequence.getAndIncrement();
-    final var response =
-        feishu
-            .cardkit()
-            .v1()
-            .cardElement()
-            .create(
-                CreateCardElementReq.newBuilder()
-                    .cardId(cardId)
-                    .createCardElementReqBody(
-                        CreateCardElementReqBody.newBuilder()
-                            .type(CreateCardElementTypeEnum.INSERT_BEFORE)
-                            .targetElementId(targetElementId)
-                            .uuid(uuid)
-                            .sequence(seq)
-                            .elements(elementsJson)
-                            .build())
-                    .build());
-    if (response.getCode() != 0) {
-      log.warn(
-          "Failed to insert elements before {}: cardId={}, seq={}, code={}, msg={}",
-          targetElementId,
-          cardId,
-          seq,
-          response.getCode(),
-          response.getMsg());
+    return await(new Insert(targetElementId, elementsJson, uuid, new CompletableFuture<>()));
+  }
+
+  /**
+   * Streams {@code content} into one element, replacing whatever it held — as soon as the card's
+   * update rate allows, which is not necessarily now and is never on this thread.
+   *
+   * <p>A write that nothing follows — the last chunk before a tool call, the end of the answer — is
+   * what the clock is for: the queue puts itself back on it rather than waiting for a chunk that
+   * may not come.
+   */
+  public void stream(final String elementId, final String content) {
+    enqueue(new Stream(elementId, Strings.nullToEmpty(content), null));
+  }
+
+  /**
+   * Replaces one element of the card outright, for a change no streamed content can express — a
+   * different title, say, or a pane rebuilt around one more tool call. Queued like a streaming
+   * write, and superseded by the next replacement of the same element, since a replacement carries
+   * the element whole and the newest is the only one worth sending.
+   *
+   * <p>Failures are logged and left: a panel that keeps its old title is worth more than a run that
+   * ends here.
+   */
+  public void replace(final String elementId, final String elementJson, final String uuid) {
+    enqueue(new Replace(elementId, elementJson, uuid, null));
+  }
+
+  /**
+   * The same, for the one caller that goes on to write into what the replacement brought with it
+   * and so has to know that it is there — see {@code FeishuCardUpdater#spendOnCard}.
+   */
+  public boolean replaceNow(final String elementId, final String elementJson, final String uuid) {
+    return await(new Replace(elementId, elementJson, uuid, new CompletableFuture<>()));
+  }
+
+  /** Takes the stop button off the card and closes streaming mode, once the run is over. */
+  public void finish() {
+    log.info("Finalizing card: cardId={}", cardId);
+    synchronized (this) {
+      // Before the queue is drained, so that what is in it goes out while the card still accepts
+      // it: streaming mode is closed by the very operation being queued here.
+      finished = true;
+    }
+    await(new Finish(new CompletableFuture<>()));
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // The queue
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * One change to the card, waiting its turn.
+   *
+   * <p>{@link #elementId()} is what decides whether a newer change supersedes this one, so an
+   * insert answers with its own idempotency key: it creates elements rather than changing one, and
+   * two inserts are never the same change.
+   */
+  private sealed interface Op {
+    String elementId();
+
+    /** The caller waiting to hear whether this landed, or null when nobody is. */
+    CompletableFuture<Boolean> landed();
+  }
+
+  private record Stream(String elementId, String content, CompletableFuture<Boolean> landed)
+      implements Op {}
+
+  private record Replace(
+      String elementId, String elementJson, String uuid, CompletableFuture<Boolean> landed)
+      implements Op {}
+
+  private record Insert(
+      String targetElementId, String elementsJson, String uuid, CompletableFuture<Boolean> landed)
+      implements Op {
+    @Override
+    public String elementId() {
+      return uuid;
+    }
+  }
+
+  private record Finish(CompletableFuture<Boolean> landed) implements Op {
+    @Override
+    public String elementId() {
+      return FeishuCardElements.STOP;
+    }
+  }
+
+  /** Queues {@code op} and gets the queue moving, without waiting for it to be sent. */
+  private void enqueue(final Op op) {
+    synchronized (this) {
+      add(op);
+    }
+    pump();
+  }
+
+  /**
+   * Queues {@code op} and waits for it, which is also what drains everything queued ahead of it:
+   * the queue is drained in order, so the run's own words reach the card before the element that is
+   * being put on it or the settings that close it.
+   */
+  private boolean await(final Op op) {
+    enqueue(op);
+    try {
+      return op.landed().get();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      log.warn("Interrupted while waiting for a write to card {}", cardId);
       return false;
+    } catch (ExecutionException e) {
+      log.warn("A write to card {} could not be made", cardId, e.getCause());
+      return false;
+    }
+  }
+
+  /**
+   * Adds {@code op} to the queue, superseding the last change queued to the same element where that
+   * is a change of the same kind: a streaming write replaces a streaming write, a replacement
+   * replaces a replacement. Anything queued in between is about some other element and cannot be
+   * reordered against this one, which is why the scan stops at the first change to this element
+   * rather than at the end of the queue.
+   *
+   * <p>A change someone is waiting on is never superseded and never superseded into — the caller is
+   * owed an answer about the change it asked for, not about a later one.
+   */
+  private void add(final Op op) {
+    if (op.landed() != null) {
+      urgent = true;
+      queued.add(op);
+      return;
+    }
+    for (var i = queued.size() - 1; i >= 0; i--) {
+      final var earlier = queued.get(i);
+      if (!earlier.elementId().equals(op.elementId())) {
+        continue;
+      }
+      if (earlier.landed() == null && earlier.getClass() == op.getClass()) {
+        queued.set(i, op);
+        return;
+      }
+      break;
+    }
+    queued.add(op);
+  }
+
+  /**
+   * Puts a worker on the queue, unless one is already draining it: whoever is draining rechecks the
+   * queue under the lock before it stops, so what was just queued cannot be left behind.
+   */
+  private void pump() {
+    synchronized (this) {
+      if (queued.isEmpty() || pumping) {
+        return;
+      }
+      pumping = true;
+    }
+    if (writes == null) {
+      drain();
+      return;
+    }
+    try {
+      writes.execute(this::drain);
+    } catch (RejectedExecutionException e) {
+      // Shutting down. The card is still owed what is queued, and the calling thread is what is
+      // left to write it — a caller waiting on this one would otherwise wait for ever.
+      log.warn("Card {} is being written from the calling thread: {}", cardId, e.getMessage());
+      drain();
+    }
+  }
+
+  private void drain() {
+    try {
+      while (drainOnce()) {
+        // Again, for whatever was queued while the batch before it was being sent.
+      }
+    } catch (Throwable t) {
+      log.error("Card {} stopped draining what it had queued", cardId, t);
+      abandonQueued();
+    }
+  }
+
+  /**
+   * Sends what is queued, and returns whether to look again. Nothing is held while the calls are
+   * made: the lock covers the queue, not the round trips, which is what lets the run and every
+   * subagent of it write to one card without queueing behind each other's calls.
+   *
+   * <p>The interval starts again from when the last call returned rather than from when it was
+   * sent: it is there to keep the card's writers off the run's thread, and a slow card would
+   * otherwise be the one that got written to most often.
+   */
+  private boolean drainOnce() {
+    final List<Op> batch;
+    synchronized (this) {
+      if (scheduledPump != null) {
+        scheduledPump.cancel(false);
+        scheduledPump = null;
+      }
+      if (queued.isEmpty()) {
+        pumping = false;
+        return false;
+      }
+      if (!dueNow()) {
+        schedulePump();
+        pumping = false;
+        return false;
+      }
+      urgent = false;
+      batch = takeBatch();
+    }
+    try {
+      for (final var op : batch) {
+        send(op);
+      }
+    } finally {
+      synchronized (this) {
+        streamedAt = System.nanoTime();
+      }
     }
     return true;
   }
 
   /**
-   * Streams {@code content} into one element, replacing whatever it held — as soon as the card's
-   * update rate allows, which is not necessarily now.
-   *
-   * <p>Held back rather than sent because the run streams faster than the card can be written.
-   * Every chunk the model produces arrives here as the whole answer so far, and each one used to be
-   * an HTTP call made on the thread consuming the model's stream, under this card's lock: the run
-   * went no faster than Feishu answered, and a turn's cost became the number of chunks times a
-   * round trip — with a card's subagents queued behind the same lock. Coalescing is free precisely
-   * because what arrives is cumulative: a write that has not gone out yet is not delayed by the
-   * next one, it is replaced by it, and only the newest state was ever going to be visible anyway.
-   *
-   * <p>What is not free is a write that nothing follows — the last chunk before a tool call, the
-   * end of the answer — so a held-back write is also put on the clock, and the operations that are
-   * not streaming ({@link #replace}, {@link #insertBefore}, {@link #finish}) drain what is waiting
-   * before they change the card underneath it.
-   */
-  public synchronized void stream(final String elementId, final String content) {
-    unsent.put(elementId, Strings.nullToEmpty(content));
-    if (dueNow()) {
-      flushUnsent();
-    } else {
-      scheduleFlush();
-    }
-  }
-
-  /**
-   * Whether what is waiting goes out now: because this card holds nothing back, because the
-   * interval has passed since the last write returned, or because enough characters have piled up
-   * that waiting out the rest of it would show the reader an answer well behind the run.
+   * Whether what is queued goes out now: because a caller is waiting on it, because the run is
+   * over, because this card holds nothing back, because the interval has passed since the last
+   * write returned, or because enough characters have piled up that waiting out the rest of it
+   * would show the reader an answer well behind the run.
    */
   private boolean dueNow() {
-    if (finished || flushes == null || streamInterval.isZero() || streamInterval.isNegative()) {
+    if (urgent
+        || finished
+        || clock == null
+        || streamInterval.isZero()
+        || streamInterval.isNegative()) {
       return true;
     }
     if (streamedAt == 0) {
@@ -258,76 +466,97 @@ public class FeishuCard {
     if (System.nanoTime() - streamedAt >= streamInterval.toNanos()) {
       return true;
     }
-    return streamCharacters > 0 && unsentCharacters() >= streamCharacters;
+    return streamCharacters > 0 && queuedCharacters() >= streamCharacters;
   }
 
   /** How far behind the card is, in characters, across every element waiting to be written. */
-  private int unsentCharacters() {
+  private int queuedCharacters() {
     var characters = 0;
-    for (final var waiting : unsent.entrySet()) {
-      characters +=
-          Math.abs(waiting.getValue().length() - sent.getOrDefault(waiting.getKey(), "").length());
+    for (final var op : queued) {
+      if (op instanceof Stream waiting) {
+        characters +=
+            Math.abs(
+                waiting.content().length() - sent.getOrDefault(waiting.elementId(), "").length());
+      }
     }
     return characters;
   }
 
   /**
-   * Sends everything waiting, and starts the interval again from when the last of them returned
-   * rather than from when it was sent: the interval is there to leave the run's own thread free,
-   * and a slow card would otherwise be the one that got written to most often.
+   * Empties the queue, dropping the streaming writes whose content the card already has, and
+   * records what the rest of them will put there.
    */
-  private synchronized void flushUnsent() {
-    if (scheduledFlush != null) {
-      scheduledFlush.cancel(false);
-      scheduledFlush = null;
-    }
-    if (unsent.isEmpty()) {
-      return;
-    }
-    final var writes = new ArrayList<>(unsent.entrySet());
-    unsent.clear();
-    try {
-      for (final var write : writes) {
-        if (write.getValue().equals(sent.get(write.getKey()))) {
+  private List<Op> takeBatch() {
+    final var batch = new ArrayList<Op>(queued.size());
+    for (final var op : queued) {
+      if (op instanceof Stream write) {
+        if (write.content().equals(sent.get(write.elementId()))) {
+          if (write.landed() != null) {
+            write.landed().complete(true);
+          }
           continue;
         }
-        sent.put(write.getKey(), write.getValue());
-        stream(write.getKey(), write.getValue(), true);
+        sent.put(write.elementId(), write.content());
       }
-    } finally {
-      streamedAt = System.nanoTime();
+      batch.add(op);
     }
+    queued.clear();
+    return batch;
+  }
+
+  private void schedulePump() {
+    final var waited = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - streamedAt);
+    final var delay = Math.max(streamInterval.toMillis() - waited, 1);
+    scheduledPump = clock.schedule(this::pump, delay, TimeUnit.MILLISECONDS);
   }
 
   /**
-   * Puts the writes that are waiting on the clock, so that a run which goes quiet — a tool call
-   * that takes a minute, an answer that has ended — still leaves the card showing what it last
-   * said. One at a time: whichever write drains the buffer drains all of it.
+   * What is left when the worker itself fell over rather than a call failing: whoever is waiting is
+   * told it did not land, since nothing is going to drain the queue on their behalf.
    */
-  private void scheduleFlush() {
-    if (scheduledFlush != null) {
-      return;
+  private synchronized void abandonQueued() {
+    pumping = false;
+    for (final var op : queued) {
+      if (op.landed() != null) {
+        op.landed().complete(false);
+      }
     }
-    final var waited = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - streamedAt);
-    final var delay = Math.max(streamInterval.toMillis() - waited, 1);
-    scheduledFlush = flushes.schedule(this::flushOnTime, delay, TimeUnit.MILLISECONDS);
+    queued.clear();
   }
 
-  private void flushOnTime() {
-    synchronized (this) {
-      scheduledFlush = null;
-      try {
-        flushUnsent();
-      } catch (Exception e) {
-        // The next chunk writes the same content again, and the run must not end on a card update.
-        log.warn("Failed to flush what card {} had waiting", cardId, e);
+  /**
+   * Makes one queued change, on the worker's thread. A failure is the change's own — logged, and
+   * reported to whoever was waiting — and never the batch's: the writes after it are about other
+   * elements and have a card to land on.
+   */
+  private void send(final Op op) {
+    var landed = false;
+    try {
+      landed =
+          switch (op) {
+            // The images last, and here rather than where the content was written: a run renders
+            // its whole answer on every chunk, so uploading as it was written meant uploading on
+            // the run's thread, and once per chunk instead of once per call that carries it.
+            case Stream write -> stream(write.elementId(), reuploadImages(write.content()), true);
+            case Replace change -> update(change);
+            case Insert insert -> insert(insert);
+            case Finish ignored -> close();
+          };
+    } catch (Exception e) {
+      log.warn("Failed to write {} to card {}", op.elementId(), cardId, e);
+    } finally {
+      if (op.landed() != null) {
+        op.landed().complete(landed);
       }
     }
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // The calls, all of them made from the worker draining the queue and nowhere else
+  // ---------------------------------------------------------------------------------------------
+
   @SneakyThrows
-  private synchronized void stream(
-      final String elementId, final String content, final boolean allowRetry) {
+  private boolean stream(final String elementId, final String content, final boolean allowRetry) {
     final var seq = sequence.getAndIncrement();
     final var response =
         feishu
@@ -355,44 +584,37 @@ public class FeishuCard {
       if (allowRetry && response.getCode() == CODE_STREAMING_MODE_CLOSED) {
         log.info("Streaming mode closed for cardId={}, re-enabling and retrying", cardId);
         reenableStreaming();
-        stream(elementId, content, false);
+        return stream(elementId, content, false);
       }
+      return false;
     }
+    return true;
   }
 
-  /**
-   * Replaces one element of the card outright, for a change no streamed content can express — a
-   * different title, say, or a row growing a column. Failures are logged and left: a panel that
-   * keeps its old title is worth more than a run that ends here. Returns whether it landed, for the
-   * callers that go on to write into what the replacement brought with it.
-   */
   @SneakyThrows
-  public synchronized boolean replace(
-      final String elementId, final String elementJson, final String uuid) {
-    // Before the replacement, or a write still waiting for this element would land on top of it
-    // afterwards — the old content, carrying the newer sequence, over the element that replaced it.
-    flushUnsent();
+  private boolean insert(final Insert insert) {
     final var seq = sequence.getAndIncrement();
     final var response =
         feishu
             .cardkit()
             .v1()
             .cardElement()
-            .update(
-                UpdateCardElementReq.newBuilder()
+            .create(
+                CreateCardElementReq.newBuilder()
                     .cardId(cardId)
-                    .elementId(elementId)
-                    .updateCardElementReqBody(
-                        UpdateCardElementReqBody.newBuilder()
-                            .uuid(uuid)
+                    .createCardElementReqBody(
+                        CreateCardElementReqBody.newBuilder()
+                            .type(CreateCardElementTypeEnum.INSERT_BEFORE)
+                            .targetElementId(insert.targetElementId())
+                            .uuid(insert.uuid())
                             .sequence(seq)
-                            .element(elementJson)
+                            .elements(insert.elementsJson())
                             .build())
                     .build());
     if (response.getCode() != 0) {
       log.warn(
-          "Failed to update element {}: cardId={}, seq={}, code={}, msg={}",
-          elementId,
+          "Failed to insert elements before {}: cardId={}, seq={}, code={}, msg={}",
+          insert.targetElementId(),
           cardId,
           seq,
           response.getCode(),
@@ -403,7 +625,39 @@ public class FeishuCard {
   }
 
   @SneakyThrows
-  private synchronized void reenableStreaming() {
+  private boolean update(final Replace change) {
+    final var seq = sequence.getAndIncrement();
+    final var response =
+        feishu
+            .cardkit()
+            .v1()
+            .cardElement()
+            .update(
+                UpdateCardElementReq.newBuilder()
+                    .cardId(cardId)
+                    .elementId(change.elementId())
+                    .updateCardElementReqBody(
+                        UpdateCardElementReqBody.newBuilder()
+                            .uuid(change.uuid())
+                            .sequence(seq)
+                            .element(change.elementJson())
+                            .build())
+                    .build());
+    if (response.getCode() != 0) {
+      log.warn(
+          "Failed to update element {}: cardId={}, seq={}, code={}, msg={}",
+          change.elementId(),
+          cardId,
+          seq,
+          response.getCode(),
+          response.getMsg());
+      return false;
+    }
+    return true;
+  }
+
+  @SneakyThrows
+  private void reenableStreaming() {
     final var response =
         feishu
             .cardkit()
@@ -443,15 +697,9 @@ public class FeishuCard {
     }
   }
 
-  /** Takes the stop button off the card and closes streaming mode, once the run is over. */
+  /** The stop button off the card and streaming mode closed, the run being over. */
   @SneakyThrows
-  public synchronized void finish() {
-    log.info("Finalizing card: cardId={}", cardId);
-    // The last thing the run said is usually still waiting here, and streaming mode is closed
-    // below: after that a held-back write has no card left to stream into.
-    flushUnsent();
-    finished = true;
-
+  private boolean close() {
     final var removeActionsResponse =
         feishu
             .cardkit()
@@ -504,9 +752,10 @@ public class FeishuCard {
           cardId,
           stopResponse.getCode(),
           stopResponse.getMsg());
-    } else {
-      log.info("Card finalized: cardId={}", cardId);
+      return false;
     }
+    log.info("Card finalized: cardId={}", cardId);
+    return true;
   }
 
   /**
@@ -514,6 +763,10 @@ public class FeishuCard {
    * back for it, since a card can only show images the tenant has uploaded. Tools produce local
    * paths — {@code GenerateImage} saves into the user's artifacts directory — so this is where they
    * become something a card can render.
+   *
+   * <p>Idempotent, which is what lets it be applied where the content is sent rather than where it
+   * was written: a key is neither a path nor a URL, so content that has been through this once is
+   * left alone the next time.
    */
   String reuploadImages(final String content) {
     if (Strings.isNullOrEmpty(content)) {
@@ -528,8 +781,8 @@ public class FeishuCard {
         matcher.appendReplacement(out, Matcher.quoteReplacement(matcher.group()));
         continue;
       }
-      // Every streaming tick re-renders the whole answer, so without this the same image would be
-      // downloaded and uploaded again on each of them. An empty value caches a failure.
+      // The same picture may be in a subagent's report and in the answer the run writes from it,
+      // and a run re-renders its whole answer on every chunk. An empty value caches a failure.
       final var imageKey =
           imageKeysBySource.computeIfAbsent(source, it -> Strings.nullToEmpty(uploadImage(it)));
       final var replacement =
