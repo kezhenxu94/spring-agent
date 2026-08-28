@@ -130,6 +130,11 @@ class FeishuCardListenerSubagentTest {
         .contains("Reading the timeline")
         .as("the brief the subagent was given is on its panel from the start")
         .contains("Read the incident timeline and say when it starts");
+    // Where the run's tool calls go, which on a card that has made none yet is the spend row: the
+    // pane is anchored there too when the first call comes, and so lands under the panel.
+    assertThat(captor.getValue().getCreateCardElementReqBody().getTargetElementId())
+        .as("a subagent's panel goes above the calls the run makes itself")
+        .isEqualTo(FeishuCardElements.USAGE);
 
     // Under the same key as the run's own updater, so the tool interceptor announces a subagent's
     // calls in its panel exactly as it announces the run's on the card.

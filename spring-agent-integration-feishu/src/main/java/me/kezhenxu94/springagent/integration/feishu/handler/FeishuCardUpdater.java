@@ -130,6 +130,16 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   private final Set<String> added = new LinkedHashSet<>();
 
   /**
+   * The topmost of the subagent panels this run has on the card, or null while it has none.
+   *
+   * <p>What an anchor search landing on {@link FeishuCardElements#SUBAGENTS} resolves to: that
+   * entry is a place in the card's order and not an element, so the element the card's own inserts
+   * name has to be one of the panels, and it has to be the first — anything else would put the
+   * answer, or the thinking above it, in among the subagents rather than above them all.
+   */
+  private String firstSubagentPanelId;
+
+  /**
    * Set only for a subagent: the panel to rewrite when it ends, and what to call it there. Null on
    * the run the card belongs to, which finishes the card instead.
    */
@@ -573,9 +583,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     final var array = om.createArrayNode();
     array.add(om.readTree(pane));
     if (card.insertBefore(
-        elements.anchorOf(FeishuCardElements.TOOLS, added),
-        array.toString(),
-        card.cardId() + ":tools")) {
+        anchorOf(FeishuCardElements.TOOLS), array.toString(), card.cardId() + ":tools")) {
       added.add(FeishuCardElements.TOOLS);
     }
   }
@@ -756,9 +764,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     }
     final var inserted =
         card.insertBefore(
-            elements.anchorOf(elementId, added),
-            elements.forInsert(elementId),
-            card.cardId() + ":" + elementId);
+            anchorOf(elementId), elements.forInsert(elementId), card.cardId() + ":" + elementId);
     if (inserted) {
       added.add(elementId);
       // The sources go in above the spend row, so from here on they are the top of the footer, and
@@ -771,6 +777,43 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
           "No {} element on card {}, so there is nowhere to write it", elementId, card.cardId());
     }
     return inserted;
+  }
+
+  /** The card this run is written to, which is the card a subagent of it gets a panel on. */
+  FeishuCard card() {
+    return card;
+  }
+
+  /**
+   * The element {@code elementId} is inserted above, with a place in the card's order turned into
+   * something on the card: {@link FeishuCardElements} knows where the subagents go and this knows
+   * which panels are there.
+   */
+  private synchronized String anchorOf(final String elementId) {
+    final var anchor = elements.anchorOf(elementId, added);
+    return FeishuCardElements.SUBAGENTS.equals(anchor) ? firstSubagentPanelId : anchor;
+  }
+
+  /**
+   * Where a subagent's panel goes on this card: above the tool calls, wherever those have got to,
+   * and above whatever of the footer is there if the run has made no call yet.
+   *
+   * <p>Every panel is anchored on the same element, so the one starting now lands under the ones
+   * already there and the subagents read in the order they were started.
+   */
+  synchronized String subagentPanelAnchor() {
+    return anchorOf(FeishuCardElements.SUBAGENTS);
+  }
+
+  /**
+   * Says that a subagent's panel has landed on the card, so that the card's own elements go in
+   * above the subagents rather than among them from here on.
+   */
+  synchronized void subagentPanelAdded(final String panelElementId) {
+    if (firstSubagentPanelId == null) {
+      firstSubagentPanelId = panelElementId;
+    }
+    added.add(FeishuCardElements.SUBAGENTS);
   }
 
   private String formatTodoItem(TodoWriteTool.Todos.TodoItem item) {

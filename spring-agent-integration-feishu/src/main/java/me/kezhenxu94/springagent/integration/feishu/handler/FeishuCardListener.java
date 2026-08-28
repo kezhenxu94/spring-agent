@@ -104,10 +104,12 @@ public class FeishuCardListener implements AgentResponseListener {
   private final ConcurrentMap<String, StoppableRun> runsByCardMessage = new ConcurrentHashMap<>();
 
   /**
-   * The card each run is streaming into, which is what a subagent of it is attached to. Keyed by
-   * the run rather than by the card, since a subagent knows only which run started it.
+   * What each run is streaming into, which is what a subagent of it is attached to. Keyed by the
+   * run rather than by the card, since a subagent knows only which run started it. The updater
+   * rather than the card alone, because a subagent's panel has a place among the run's own elements
+   * — above its tool calls — and the updater is what knows which of those the card has so far.
    */
-  private final ConcurrentMap<String, FeishuCard> cardsByRun = new ConcurrentHashMap<>();
+  private final ConcurrentMap<String, FeishuCardUpdater> updatersByRun = new ConcurrentHashMap<>();
 
   /** The run the card sent as {@code cardMessageId} belongs to, or {@code null} if it has ended. */
   public StoppableRun runFor(final String cardMessageId) {
@@ -120,12 +122,12 @@ public class FeishuCardListener implements AgentResponseListener {
     // A subagent is work some other run asked for, and it has no message of its own to reply onto.
     // It gets a panel on that run's card instead of a card of its own — before the reply check
     // below, which a run with nothing to reply onto would otherwise fall out of.
-    final var parentCard =
+    final var parent =
         Strings.isNullOrEmpty(request.parentRequestId())
             ? null
-            : cardsByRun.get(request.parentRequestId());
-    if (parentCard != null) {
-      attachSubagentPanel(registry, request, parentCard);
+            : updatersByRun.get(request.parentRequestId());
+    if (parent != null) {
+      attachSubagentPanel(registry, request, parent);
       return;
     }
     final var replyTo =
@@ -188,7 +190,7 @@ public class FeishuCardListener implements AgentResponseListener {
       // Which is also how a subagent of this run finds the card to put its panel on. Dropped with
       // the run, and the run does not end until the subagents it started have — so a panel can
       // never be looking for a card that has already been finalized.
-      cardsByRun.put(runId, card);
+      updatersByRun.put(runId, cardUpdater);
       registry.addResponseListener(new CardRun(runId, cardMessageId));
     } catch (Exception e) {
       log.error("Failed to attach a Feishu card to run {}", runId, e);
@@ -205,13 +207,21 @@ public class FeishuCardListener implements AgentResponseListener {
    * <p>The panel has to be inserted here, before the run is assembled: nothing can be streamed into
    * an element the card does not have yet. The subagent's own id is the insert's idempotency key —
    * unique to it and unchanged across a retry, so a retried insert cannot leave two panels behind.
+   *
+   * <p>Where it lands is the parent's to say rather than the card's: the panels have a place among
+   * the run's own elements, above its tool calls, and only the parent's updater knows which of
+   * those the card has reached. Which is also why the parent is told the panel landed — from then
+   * on the elements it adds go in above the subagents rather than among them.
    */
   private void attachSubagentPanel(
-      final AgentRunRegistry registry, final AgentRequest request, final FeishuCard card) {
+      final AgentRunRegistry registry, final AgentRequest request, final FeishuCardUpdater parent) {
     final var runId = request.requestId();
+    final var card = parent.card();
     final var inserted =
-        card.insertBeforeFooter(
-            subagentPanel.forInsert(runId, request.description(), request.brief(), null), runId);
+        card.insertBefore(
+            parent.subagentPanelAnchor(),
+            subagentPanel.forInsert(runId, request.description(), request.brief(), null),
+            runId);
     if (!inserted) {
       // Worth doing anyway: the answer the subagent produces still reaches the run that waits for
       // it, and the reader loses the account of how it got there rather than the work itself.
@@ -219,6 +229,9 @@ public class FeishuCardListener implements AgentResponseListener {
           "No panel on card {} for subagent {}, which will run unreported", card.cardId(), runId);
       return;
     }
+    // Only now: what the run puts on the card next goes in above the subagents, and there is one to
+    // be above.
+    parent.subagentPanelAdded(FeishuSubagentPanel.panelElementId(runId));
     final var updater =
         FeishuCardUpdater.forSubagent(
             card,
@@ -256,7 +269,7 @@ public class FeishuCardListener implements AgentResponseListener {
       // what a subagent reads to find the card of the run that started it, so a finished run has
       // to leave both or the entries outlive the run they name.
       runsByCardMessage.remove(cardMessageId);
-      cardsByRun.remove(runId);
+      updatersByRun.remove(runId);
     }
   }
 
