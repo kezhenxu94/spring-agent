@@ -54,6 +54,13 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
 
   private static final String DESCRIPTION_FIELD = "description";
 
+  /**
+   * What labels the result half of a call's pane. Not localized, and lowercase, because it reads as
+   * one more of the {@code name: value} lines the input above it is made of rather than as the card
+   * talking — the names in those come from the tool's own schema and are not translated either.
+   */
+  private static final String OUTPUT_PREFIX = "output: ";
+
   /** As much of a message as the card shows on the one line it gives it. */
   private static final int MAX_QUEUED_MESSAGE_LENGTH = 200;
 
@@ -517,7 +524,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     // out at once and they come back in whatever order they finish in.
     for (final var call : toolCalls) {
       if (call.toolName.equals(toolName) && call.result == null) {
-        call.result = Strings.nullToEmpty(toolResult);
+        call.result = readable(toolResult);
         break;
       }
     }
@@ -596,6 +603,29 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   /** Folds the pane away as the run ends, for the reason the reasoning pane is folded away. */
   private void closeToolsPane() {
     showToolCalls(false);
+  }
+
+  /**
+   * What a tool returned, as text rather than as the wire carried it. A result reaches us
+   * JSON-encoded, so one that is a plain string arrives quoted and escaped — its newlines written
+   * as two characters, which is exactly what the card then showed: a whole log on one line. Reading
+   * it back gives the lines to the reader. An object is laid out field by field, the way a call's
+   * input is, so the two halves of a call read alike; anything else is already the text to show.
+   */
+  private String readable(final String toolResult) {
+    final var text = Strings.nullToEmpty(toolResult);
+    try {
+      final var node = om.readTree(text);
+      if (node.isString()) {
+        return node.stringValue();
+      }
+      if (node.isObject()) {
+        return formatFields(node, false);
+      }
+    } catch (JacksonException e) {
+      // Not JSON at all, so it is whatever the tool wrote, which is what to show.
+    }
+    return text;
   }
 
   /** The input parsed as a JSON object, or {@code null} if it is neither JSON nor an object. */
@@ -681,16 +711,21 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     }
 
     /**
-     * What opening this call shows: what it was given, quoted, and under it what came back, set as
-     * code — tool output is a log, a listing or a JSON document, and the shapes in it are most of
-     * what makes it readable. A call still out has the input alone, which is what says it is out.
+     * What opening this call shows: what it was given, quoted, and under it what came back, quoted
+     * the same way and labelled so the two are told apart. A call still out has the input alone,
+     * which is what says it is out.
+     *
+     * <p>Both halves are set the same because they are the same kind of thing — the run asking and
+     * the run being answered — and a quote is what that reads as. A code block instead gave the
+     * output a monospace box of its own, wider and darker than everything around it, which made a
+     * one-line result look like the point of the card.
      */
     private String rendered() {
       final var asked = blockquote(clipped(input, CALL_INPUT_CHARACTERS));
       if (Strings.isNullOrEmpty(result)) {
         return asked;
       }
-      final var returned = "```\n" + clipped(result, CALL_RESULT_CHARACTERS) + "\n```";
+      final var returned = blockquote(OUTPUT_PREFIX + clipped(result, CALL_RESULT_CHARACTERS));
       return asked.isEmpty() ? returned : asked + "\n\n" + returned;
     }
   }
