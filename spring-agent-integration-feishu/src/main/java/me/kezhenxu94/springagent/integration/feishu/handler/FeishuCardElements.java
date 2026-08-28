@@ -62,6 +62,19 @@ public class FeishuCardElements {
   static final String REASONING_BODY = "reasoning_body";
 
   /**
+   * Where the panels of the subagents this run started sit, above the tool calls: a subagent is
+   * work in its own right, with a brief and a report of its own, and the calls pane below it is the
+   * run's own hands. A reader following the card downwards then goes from the answer, through the
+   * work that was handed out, to the work this run did itself.
+   *
+   * <p>Not an element of the card and not in {@code card-elements.json} — the panels are built by
+   * {@link FeishuSubagentPanel}, one per subagent, and there may be any number of them or none. It
+   * is a place in {@link #ORDER} and nothing else, which is what lets an anchor be worked out for
+   * them and, just as much, what stops the card's own elements from landing among them.
+   */
+  static final String SUBAGENTS = "subagents";
+
+  /**
    * The pane holding every tool call the turn has made: the one it is on now in the title, and the
    * ones before it nested inside, a pane each.
    */
@@ -100,14 +113,18 @@ public class FeishuCardElements {
    *
    * <p>The spend row is last because it is the one element every card has from the moment it is
    * sent, which is what makes every other anchor answerable. The reading, top to bottom: what the
-   * user added mid-run, what the model thought, what it answered, what it did, what it means to do
-   * next, what it read, what it cost.
+   * user added mid-run, what the model thought, what it answered, what it handed to a subagent,
+   * what it did itself, what it means to do next, what it read, what it cost.
+   *
+   * <p>{@link #SUBAGENTS} is the one entry that is not an element of the card, so an anchor search
+   * that lands on it gives back a place rather than something to insert against: the caller holding
+   * the panels — {@code FeishuCardUpdater} — is what turns it into the topmost of them.
    *
    * <p>Stated here rather than in the template, because these are ids this file gives out, and an
    * anchor a deployment could rename is an insert that fails at runtime.
    */
   private static final List<String> ORDER =
-      List.of(QUEUED, REASONING, MESSAGE, TOOLS, TODO, REFERENCES, USAGE);
+      List.of(QUEUED, REASONING, MESSAGE, SUBAGENTS, TOOLS, TODO, REFERENCES, USAGE);
 
   /** The elements whose first nested element the run writes into, and the id it writes to. */
   private static final Map<String, String> BODY_IDS =

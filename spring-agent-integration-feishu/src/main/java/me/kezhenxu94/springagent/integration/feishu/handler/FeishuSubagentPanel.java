@@ -137,7 +137,13 @@ public class FeishuSubagentPanel {
       final String footer) {
     final var panel = template();
     panel.put("element_id", panelElementId(subagentId));
-    panel.withObject("header").withObject("title").put("content", title(description, outcome));
+    // Substituted into the template's title rather than put in its place, so that whatever the
+    // template wrapped the placeholder in — the grey the other panes' titles are set in — stays in
+    // the file a deployment can edit. The same as FeishuCardElements does for its panes.
+    final var header = panel.withObject("header").withObject("title");
+    header.put(
+        "content",
+        header.path("content").asString().replace("{title}", title(description, outcome)));
     final var elements = panel.withArray("elements");
     // No id of its own: the brief is written when the panel is built and never rewritten alone.
     final var task = (ObjectNode) elements.get(0);

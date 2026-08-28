@@ -9,45 +9,42 @@
     "what it has spent saying it. A deployment replacing this file has to keep all six, keep the",
     "brief first among the elements, and keep the body and footer elements text ones: the run streams",
     "into both of them by id. The brief has no id of its own because nothing ever rewrites it alone.",
-    "The header fills the panel's width and carries its own horizontal padding, so the title reads",
-    "as a row of its own rather than as text floating beside the chevron; the chevron therefore sits",
-    "at the right edge rather than following the text. The title is notation-sized, the card's",
-    "smallest, the same size the reasoning and references panes give theirs: a closed panel is a",
-    "line offering something rather than saying it, and at body size the chevron line competes with",
-    "the answer it sits beside. The size lives on the title's markdown rather than on the panel,",
-    "because it is the header text being sized and not what the panel holds — the contents carry",
-    "their own. The chevron itself is the one the thinking",
-    "pane uses, and turns the same way: pointing right while the panel is closed and a quarter turn",
-    "down as it opens, so the two panels on a card open the same way. This key is ignored when the",
-    "panel is built."
+    "The panel is styled exactly as the thinking, tool and knowledge-sources panes in",
+    "card-elements.json are, and for the reason a card wants one kind of pane rather than four: they",
+    "sit one under another on the same card, all four are a line a reader opens for something that",
+    "is not the answer, and a panel drawn differently from its neighbours reads as a different sort",
+    "of thing rather than as the same offer made about different work. So there is no border and no",
+    "padding around it — a box would be the card's only one — the title is notation-sized and grey",
+    "like theirs, 'auto_when_fold' keeps the closed line as narrow as that title while the report,",
+    "once opened, still gets the whole width to wrap in, and 'follow_text' puts the chevron beside",
+    "the title rather than off at the right edge of a row nothing else fills. The chevron is theirs",
+    "too and turns the same way: pointing right while the panel is closed and a quarter turn down as",
+    "it opens — the angle is what the icon is rotated by when expanded, not the angle it ends at.",
+    "The grey lives on the title's markdown rather than on the panel, because it is the header text",
+    "being coloured and not what the panel holds, and it wraps the placeholder rather than being",
+    "written into the message so that restyling stays in this file: FeishuSubagentPanel substitutes",
+    "{title} inside whatever this content wraps it in. This key is ignored when the panel is built."
   ],
   "panel": {
     "tag": "collapsible_panel",
     "element_id": "{panelId}",
     "expanded": false,
-    "vertical_spacing": "8px",
-    "padding": "4px 8px 8px 8px",
-    "margin": "4px 0px 0px 0px",
+    "vertical_spacing": "4px",
     "header": {
       "title": {
         "tag": "markdown",
-        "content": "{title}",
+        "content": "<font color='grey'>{title}</font>",
         "text_size": "notation"
       },
-      "width": "fill",
+      "width": "auto_when_fold",
       "vertical_align": "center",
-      "padding": "4px 8px 4px 8px",
       "icon": {
         "tag": "standard_icon",
         "token": "right-small-ccm_outlined",
         "size": "16px 16px"
       },
-      "icon_position": "right",
+      "icon_position": "follow_text",
       "icon_expanded_angle": 90
-    },
-    "border": {
-      "color": "grey",
-      "corner_radius": "5px"
     },
     "elements": [
       {
