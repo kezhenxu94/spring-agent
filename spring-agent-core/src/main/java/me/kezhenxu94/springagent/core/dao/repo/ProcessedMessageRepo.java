@@ -3,6 +3,13 @@ package me.kezhenxu94.springagent.core.dao.repo;
 /**
  * The contract the application uses, independent of which backend {@code app.persistence.type}
  * selected. Only the operations actually called are declared — see {@link ScheduledTaskRepo}.
+ *
+ * <p>Named after the first thing that needed it, and used for two now. A surface claims the id of a
+ * message it is about to answer, so a redelivery is passed over rather than answered twice; and a
+ * replica claims a unit of work it is about to start — the evaluation of one situation, keyed by
+ * that situation and the number of the attempt — so that two of them sweeping the same database do
+ * not both wake the agent for it. Both want the same thing from the same operation: an atomic
+ * first-caller-wins across replicas, which is why there is one method rather than two.
  */
 public interface ProcessedMessageRepo {
 

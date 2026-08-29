@@ -42,6 +42,14 @@ public abstract class AbstractIntegrationTest {
   // vector store — but the default one is in-heap, so no container is needed for it here.
   // VectorStoreMilvusTest brings its own Milvus, being the only test that selects it.
 
+  /**
+   * Where the simple vector store's index goes in a test, named here so every test agrees on it.
+   *
+   * <p>Nested one directory down on purpose: the directory does not exist, so whichever test
+   * persists the index also covers the store creating its parent.
+   */
+  static final Path VECTOR_STORE_FILE = tempVectorStoreFile();
+
   @MockitoBean Client feishuClient;
   @MockitoBean KubernetesClient kubernetesClient;
 
@@ -51,6 +59,15 @@ public abstract class AbstractIntegrationTest {
     // parallel forks against the same working directory, and SQLite serialises writers across
     // processes, so a shared file makes them contend for locks.
     registry.add("spring.datasource.url", () -> "jdbc:sqlite:" + databaseFile());
+    // And the simple vector store's file, for a sharper version of the same reason. Left at the
+    // yaml's data/vectorstore.json, every application context in the suite parses whatever index
+    // the
+    // developer's own runs have left in the working directory — a file that grows without bound,
+    // reaches hundreds of megabytes in ordinary use, and is held in the heap once per context. The
+    // failure is an OutOfMemoryError somewhere unrelated, and it arrives as a function of how much
+    // the machine has been used rather than of anything in the code. A path that does not exist is
+    // also the cheap case: a missing file means an empty index, and these tests embed nothing.
+    registry.add("app.ai.vectorstore.simple.file", VECTOR_STORE_FILE::toString);
     // Both prefixes, from the one container: spring.data.redis serves the repositories and
     // spring.ai.chat.memory.repository.redis the conversation history, and Spring AI's client
     // ignores Boot's connection details.
@@ -77,6 +94,14 @@ public abstract class AbstractIntegrationTest {
     registry.add("spring.ai.openai.audio.transcription.base-url", () -> "http://127.0.0.1:8080");
     registry.add(
         "spring.ai.openai.audio.transcription.api-key", () -> "test-transcription-openai-key");
+  }
+
+  private static Path tempVectorStoreFile() {
+    try {
+      return Files.createTempDirectory("spring-agent-vectorstore").resolve("nested/index.json");
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
   }
 
   private static Path databaseFile() {

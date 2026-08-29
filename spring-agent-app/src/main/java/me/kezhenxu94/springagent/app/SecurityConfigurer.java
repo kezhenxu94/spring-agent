@@ -29,7 +29,11 @@ public class SecurityConfigurer {
         .formLogin(it -> it.disable())
         .authorizeHttpRequests(
             it ->
-                it.requestMatchers("/actuator/**", "/share/public/**")
+                // Webhooks carry no session and cannot log in, so they have to be permitted here or
+                // the chain below refuses every delivery with a 403. They are not unauthenticated:
+                // each source verifies a signature or a shared token over the body it was sent, and
+                // a source with no secret configured refuses everything. See WebhookController.
+                it.requestMatchers("/actuator/**", "/share/public/**", "/events/webhooks/**")
                     .permitAll()
                     .anyRequest()
                     .hasRole("SEAMAN"))

@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.Locale;
+import java.util.Set;
 import lombok.SneakyThrows;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -25,6 +26,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     finished to its parent's card before the run that started it is released. One unanswered HTTP
  *     call was therefore enough to hang a whole turn with nothing logged. Defaults to {@link
  *     #DEFAULT_REQUEST_TIMEOUT}.
+ * @param observedChatIds the group chats whose messages are reported to {@code EventIntake} even
+ *     though nobody addressed the bot in them, so that the agent can watch a conversation and later
+ *     decide whether it has anything worth saying. Empty by default, and that default is the
+ *     feature being off: every message in every group the bot sits in becoming a stored row, and in
+ *     time something a model is shown, is a volume and a privacy decision only whoever runs the
+ *     deployment can make — naming a chat here is that decision, one chat at a time. Nothing is
+ *     observed regardless where no {@code EventIntake} implementation is on the classpath. See
+ *     {@link me.kezhenxu94.springagent.integration.feishu.handler.FeishuChatObservations}.
  */
 @ConfigurationProperties(prefix = "app.feishu")
 public record FeishuProperties(
@@ -37,7 +46,8 @@ public record FeishuProperties(
     String verificationToken,
     Locale locale,
     BaseUrlEnum baseUrl,
-    Duration requestTimeout) {
+    Duration requestTimeout,
+    Set<String> observedChatIds) {
 
   /** Generous for a card update, which is a small write to a nearby service. */
   public static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(30);
@@ -48,6 +58,9 @@ public record FeishuProperties(
     }
     if (baseUrl == null) {
       baseUrl = BaseUrlEnum.FeiShu;
+    }
+    if (observedChatIds == null) {
+      observedChatIds = Set.of();
     }
   }
 

@@ -51,6 +51,7 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
   final PendingQuestionRepo pendingQuestionRepo;
   final ProcessedMessageRepo processedMessageRepo;
   final FeishuQuestionFormCloser questionFormCloser;
+  final FeishuChatObservations chatObservations;
 
   /**
    * Marks anything the agent was still waiting to hear back on in this conversation as overtaken by
@@ -112,6 +113,12 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
           "Ignoring group message {} in chat {}: bot not mentioned",
           messageId,
           message.getChatId());
+      // Nobody addressed the bot, so nothing answers this — and yet it is the case the agent is
+      // watching a chat for: a question somebody asked the room that it may turn out to have a
+      // solid answer to. So it is reported on the way past and the return stands. Whether any of
+      // it is worth a word back is decided later and elsewhere, out of this thread and out of this
+      // message's life, by whatever the observations accumulate into.
+      chatObservations.observed(message, userOpenId, tenantId);
       return;
     }
 

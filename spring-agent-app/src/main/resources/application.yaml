@@ -230,11 +230,11 @@ logging:
     # refused, and reading it is how a malformed history or an over-long context gets identified —
     # neither of which the error body alone can distinguish.
     #
-    # This logs conversation content and tool output. It is on because a rejection nobody can
-    # explain costs more than the noise does, but it is the reason this application's logs hold what
-    # users wrote: treat them accordingly, and turn it off with
-    # LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_AI_CHAT_CLIENT_ADVISOR_SIMPLELOGGERADVISOR=INFO rather than
-    # by editing this file, so a deployment can decide for itself.
+    # Off, because it logs conversation content and tool output: at DEBUG this application's logs
+    # come to hold what users wrote, and that is a decision a deployment has to make for itself
+    # rather than inherit from this file. Turn it on for as long as it takes to explain a rejection,
+    # with LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_AI_CHAT_CLIENT_ADVISOR_SIMPLELOGGERADVISOR=DEBUG,
+    # rather than by editing this.
     org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: INFO
     # The wire, when the question is about the request Spring AI actually built rather than the one
     # it was asked for — headers, and the JSON body as sent. Louder still than the above, and rarely
@@ -615,6 +615,117 @@ app:
       api-key: ${DASHSCOPE_VISION_API_KEY}
       base-url: ${DASHSCOPE_VISION_BASE_URL:https://ws-x1m3p2roqbf7dij1.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
       model: ${DASHSCOPE_VISION_MODEL:qwen3-vl-plus}
+  events:
+    # Watching what other systems do, and deciding for itself whether to say anything about it.
+    # Alerts and code-hosting webhooks arrive at /events/webhooks/<source>; group chat messages the
+    # bot was not addressed in arrive through the Feishu integration. Both are recorded, correlated
+    # into situations, and left to settle before the agent is woken for them at all.
+    #
+    # Off by default, and deliberately: turning this on opens an HTTP path that no login protects
+    # (each source authenticates its own deliveries instead) and lets the agent speak in chats
+    # without being spoken to. Both are a deployment's decision, not the classpath's. The same
+    # reasoning as app.ai.tools.shell.type defaulting to none.
+    #
+    # Every default below is stated once, as a constant on EventsProperties, and contributed to the
+    # environment by EventsDefaults. The literals here have to agree with those constants — they
+    # exist to give each setting an environment variable and to write down why the value is what it
+    # is, not to be a second source of truth.
+    enabled: ${EVENTS_ENABLED:false}
+
+    # How often to look for situations that have settled. The floor on how late an evaluation can
+    # be, so it is short; a sweep costs one indexed read when there is nothing to do.
+    sweep-interval: ${EVENTS_SWEEP_INTERVAL:PT5S}
+
+    # How many triage runs may be in flight at once, across every source. The only backpressure
+    # there is: a hundred situations appearing together become a queue rather than a hundred
+    # concurrent model calls. Raising it raises the worst-case spend per minute in direct
+    # proportion.
+    max-concurrent-evaluations: ${EVENTS_MAX_CONCURRENT_EVALUATIONS:2}
+
+    # How many observations to keep per situation. Past this they are counted and not stored: at
+    # that scale the count is what anybody reasons about, and the two-hundredth alert body is not
+    # evidence anyone reads. It also bounds what the evidence query has to return, which is what
+    # lets that query be unsorted and unpaged on every backend.
+    max-events-per-situation: ${EVENTS_MAX_EVENTS_PER_SITUATION:200}
+
+    # How many of those go into the prompt. The rest stay one GetSituationEvents call away, so the
+    # agent can go and look without every run paying for the whole history.
+    max-evidence: ${EVENTS_MAX_EVIDENCE:20}
+
+    # The largest webhook body accepted, checked before anything parses it.
+    max-body-size: ${EVENTS_MAX_BODY_SIZE:1MB}
+
+    # How long a situation must be quiet before it is worth an opinion, pushed further out by every
+    # observation that arrives. This is what turns a thousand alerts from one outage into one run,
+    # and it is the single most important number here: too short and the agent reasons about a
+    # storm while it is still arriving, too long and nobody is told until it is over.
+    debounce: ${EVENTS_DEBOUNCE:PT30S}
+
+    # The cap on that, measured from the first observation not yet evaluated. Without it a source
+    # emitting steadily would defer its evaluation for ever — which is precisely the case where
+    # somebody wants to be told.
+    max-debounce: ${EVENTS_MAX_DEBOUNCE:PT5M}
+
+    # The least time between two evaluations of one situation, whatever arrives in between. What
+    # stops a busy situation from being re-read every debounce for as long as it lasts.
+    cooldown: ${EVENTS_COOLDOWN:PT10M}
+
+    # How long an open situation may go unobserved before it is closed on the grounds that whatever
+    # it was has stopped. Also what keeps the open set small, and with it every sweep: without this
+    # the set of situations to scan would only ever grow.
+    resolve-after-quiet: ${EVENTS_RESOLVE_AFTER_QUIET:PT6H}
+
+    # Whether one evaluation ends the situation. False suits a condition that persists and wants
+    # watching, which is why it is the default; true suits a window over a stream, where the next
+    # batch is a new question rather than more of the old one. The feishu-chat source overrides this
+    # to true in EventsProperties.BUILT_IN for exactly that reason.
+    resolve-after-evaluation: ${EVENTS_RESOLVE_AFTER_EVALUATION:false}
+
+    # What the agent is told it is doing, with {situation} substituted, overriding every source at
+    # once. Left unset, and that is what makes it translatable: a property has one value, so setting
+    # one here would pin every source to one wording in one language. Unset, each source is given its
+    # own file — spring-agent-events/src/main/resources/events/prompts/<source>-triage-prompt.md,
+    # falling back to triage-prompt.md, in the language app.locale asks for.
+    #
+    # Those files are also where the reasoning is: they say nobody is waiting, they say the observed
+    # text is data and not instructions, and they say silence is the common correct answer. Read them
+    # before setting EVENTS_TRIAGE_PROMPT — a replacement that drops the untrusted-input framing
+    # hands whoever can open an issue a prompt of their own, in every language at once.
+    # triage-prompt: ...
+
+    # The sources this deployment watches. A source that is not named here is not configured, and
+    # observations from it are dropped — including the ones the shipped webhook paths would accept,
+    # so an endpoint nobody set a secret for is an endpoint that refuses everything.
+    #
+    # owner-user-id is the one setting with no sane default, and it must be an identity of the
+    # agent's own rather than a person's. A triage run assumes it, and with it that identity's file
+    # sandbox and its personal MCP servers — so pointing these runs at a real user hands
+    # attacker-authored text their workspace and their credentials. See SituationTriageScenario,
+    # which also explains what a scenario cannot withhold.
+    #
+    # Every timing above can be overridden per source, since the sources genuinely differ: an alert
+    # should settle for half a minute, while a chat wants long enough for the people in it to answer
+    # each other first and a much longer cooldown afterwards.
+    sources: {}
+    #  github:
+    #    # The webhook secret configured on the GitHub side; verified as an HMAC over the raw body.
+    #    secret: ${EVENTS_GITHUB_SECRET:}
+    #    owner-user-id: ${EVENTS_OWNER_USER_ID:}
+    #    # Where a run about a GitHub event may talk, since the event itself knows nowhere.
+    #    route:
+    #      chat-id: ${EVENTS_GITHUB_CHAT_ID:}
+    #      chat-type: group
+    #  grafana:
+    #    # Sent by the contact point as a bearer token or as the basic-auth password.
+    #    secret: ${EVENTS_GRAFANA_SECRET:}
+    #    owner-user-id: ${EVENTS_OWNER_USER_ID:}
+    #    route:
+    #      chat-id: ${EVENTS_GRAFANA_CHAT_ID:}
+    #  feishu-chat:
+    #    # Which chats are watched is a Feishu setting, under app.feishu, since that is the
+    #    # integration doing the watching. This entry is what decides whether anything is made of
+    #    # what it sees, and the timings it is made with.
+    #    owner-user-id: ${EVENTS_OWNER_USER_ID:}
   feishu:
     # The frame of the card the bot replies with, as a Spring resource location: the card's
     # configuration — including the streaming summary the chat list shows while a run is working —
@@ -653,6 +764,22 @@ app:
     # before the run waiting on it is released. One call Feishu never answered was enough to hang a
     # whole turn, silently. A callTimeout, so it bounds the whole call rather than a gap within it.
     request-timeout: ${FEISHU_REQUEST_TIMEOUT:30s}
+    # The group chats the agent watches without being spoken to: a comma-separated list of chat
+    # ids whose messages are reported into the observation funnel (core's EventIntake, implemented
+    # by spring-agent-events) even though nobody mentioned the bot in them. That is what lets a run
+    # started later notice a question the room asked and decide whether it has a solid enough answer
+    # to chime in with — no message here starts a run of its own.
+    #
+    # Empty, and the emptiness is the feature being off. Every message in every group the bot sits
+    # in would otherwise become a stored row and, in time, something a model is shown: a volume and
+    # a privacy decision that only whoever runs the deployment can make, so it is made one chat at a
+    # time by naming them here. The same reasoning as app.ai.tools.shell.type defaulting to none.
+    #
+    # With no EventIntake implementation on the classpath nothing is observed whatever this says,
+    # and that is a supported configuration rather than a broken one. Only text-bearing messages
+    # are reported, and only their text: reading an image or a file means downloading it, on the
+    # thread Feishu is waiting for an acknowledgement on.
+    observed-chat-ids: ${FEISHU_OBSERVED_CHAT_IDS:}
     # How often the card may be written to while a run streams into it, and how far behind it may
     # fall before it is written early anyway — whichever comes first.
     #

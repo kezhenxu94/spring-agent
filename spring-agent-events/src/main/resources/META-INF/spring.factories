@@ -1,0 +1,2 @@
+org.springframework.boot.EnvironmentPostProcessor=\
+me.kezhenxu94.springagent.events.config.EventsDefaults

@@ -64,6 +64,17 @@ dependencies {
   implementation project(':spring-agent-tools-shell-kubernetes')
   implementation project(':spring-agent-tools-shell-docker')
   implementation project(':spring-agent-integration-feishu')
+  // Watching what other systems do. Optional for an SDK consumer, and taking it decides nothing:
+  // app.events.enabled does, and it defaults to false. Turning it on opens an unauthenticated
+  // webhook path — permitted in SecurityConfigurer — and lets the agent speak without being spoken
+  // to, so it is a deployment's decision rather than the classpath's.
+  implementation project(':spring-agent-events')
+  // The sources it can watch. One module per system, like the Feishu integration, so a deployment
+  // takes only what it has: each contributes a reader for that system's deliveries and nothing else.
+  // Taking them decides nothing either — app.events.enabled gates them along with the receiver.
+  implementation project(':spring-agent-integration-github')
+  implementation project(':spring-agent-integration-gitlab')
+  implementation project(':spring-agent-integration-grafana')
   // The knowledge base. Optional for an SDK consumer, and the only implementation of core's
   // KnowledgeBase contract, so taking it is what decides a deployment has one at all — there is no
   // property that turns a knowledge base on without it. app.ai.rag.enabled turns it back off.

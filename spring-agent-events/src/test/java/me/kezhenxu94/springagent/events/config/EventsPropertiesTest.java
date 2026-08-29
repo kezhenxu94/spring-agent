@@ -1,0 +1,173 @@
+package me.kezhenxu94.springagent.events.config;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.time.Duration;
+import java.util.Map;
+import me.kezhenxu94.springagent.core.observing.Route;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+/**
+ * The three layers a source's settings come from, and the order they win in: what the deployment
+ * said, then what the shipped source needs, then what applies to everything.
+ *
+ * <p>Worth pinning because the layering is invisible at the call site — the rest of the module
+ * reads a resolved {@code Policy} and cannot tell where any of it came from — and because the top
+ * of that order is a security property: a source nobody configured must resolve to nothing at all
+ * rather than to the general policy, or a webhook path with no secret would accept whatever
+ * arrived.
+ */
+class EventsPropertiesTest {
+
+  @Test
+  @DisplayName("a source nobody configured has no policy, so its observations are dropped")
+  void shouldHaveNoPolicyForAnUnconfiguredSource() {
+    assertThat(properties(Map.of()).policyFor("github")).isEmpty();
+  }
+
+  @Test
+  @DisplayName("nothing has a policy while the feature is off, however well configured")
+  void shouldHaveNoPolicyWhileDisabled() {
+    final var off =
+        EventsProperties.builder()
+            .sources(
+                Map.of("github", EventsProperties.Source.builder().ownerUserId("ou_bot").build()))
+            .build();
+
+    assertThat(off.policyFor("github")).isEmpty();
+  }
+
+  @Test
+  @DisplayName("a configured source can be turned off without losing its settings")
+  void shouldHaveNoPolicyForADisabledSource() {
+    final var properties =
+        properties(
+            Map.of("github", EventsProperties.Source.builder().enabled(false).secret("s").build()));
+
+    assertThat(properties.policyFor("github")).isEmpty();
+  }
+
+  @Test
+  @DisplayName("a source that overrides nothing takes the top-level settings")
+  void shouldFallBackToTheTopLevel() {
+    final var properties =
+        properties(Map.of("github", EventsProperties.Source.builder().secret("s").build()));
+
+    final var policy = properties.policyFor("github").orElseThrow();
+
+    assertThat(policy.source()).isEqualTo("github");
+    assertThat(policy.secret()).isEqualTo("s");
+    assertThat(policy.debounce()).isEqualTo(EventsProperties.DEFAULT_DEBOUNCE);
+    assertThat(policy.maxDebounce()).isEqualTo(EventsProperties.DEFAULT_MAX_DEBOUNCE);
+    assertThat(policy.cooldown()).isEqualTo(EventsProperties.DEFAULT_COOLDOWN);
+    assertThat(policy.resolveAfterQuiet()).isEqualTo(EventsProperties.DEFAULT_RESOLVE_AFTER_QUIET);
+    assertThat(policy.resolveAfterEvaluation())
+        .isEqualTo(EventsProperties.DEFAULT_RESOLVE_AFTER_EVALUATION);
+    // Nothing said about the prompt, so nothing is resolved here: the sweeper asks TriagePrompts
+    // for the source's own file, which is the only answer that can be in the workspace's language.
+    assertThat(policy.triagePrompt()).isNull();
+    // Nothing said, so nowhere to talk: a webhook source is told where by configuration or not at
+    // all, and NONE is what an unset route resolves to rather than a null to be checked for.
+    assertThat(policy.route()).isEqualTo(Route.NONE);
+  }
+
+  @Test
+  @DisplayName("what the deployment says beats everything else")
+  void shouldLetTheDeploymentWin() {
+    final var properties =
+        properties(
+            Map.of(
+                "github",
+                EventsProperties.Source.builder()
+                    .secret("s")
+                    .ownerUserId("ou_bot")
+                    .debounce(Duration.ofSeconds(1))
+                    .cooldown(Duration.ofSeconds(2))
+                    .triagePrompt("look at {situation}")
+                    .route(Route.builder().chatId("oc_alerts").chatType("group").build())
+                    .build()));
+
+    final var policy = properties.policyFor("github").orElseThrow();
+
+    assertThat(policy.debounce()).isEqualTo(Duration.ofSeconds(1));
+    assertThat(policy.cooldown()).isEqualTo(Duration.ofSeconds(2));
+    assertThat(policy.triagePrompt()).isEqualTo("look at {situation}");
+    assertThat(policy.ownerUserId()).isEqualTo("ou_bot");
+    assertThat(policy.route().chatId()).isEqualTo("oc_alerts");
+    // Untouched settings still come from the top level rather than being lost with the ones set.
+    assertThat(policy.maxDebounce()).isEqualTo(EventsProperties.DEFAULT_MAX_DEBOUNCE);
+  }
+
+  @Test
+  @DisplayName("a chat is watched on its own terms, not on an alert's")
+  void shouldApplyTheBuiltInChatPolicy() {
+    // The reason the layering exists at all. A chat wants long enough for the people in it to
+    // answer
+    // each other, a much longer cooldown so the agent does not become a presence in the
+    // conversation, a window that closes after one look, and a completely different prompt: nothing
+    // is wrong, the question is whether there is an unanswered question.
+    final var properties =
+        properties(
+            Map.of(
+                EventsProperties.FEISHU_CHAT,
+                EventsProperties.Source.builder().ownerUserId("ou_bot").build()));
+
+    final var policy = properties.policyFor(EventsProperties.FEISHU_CHAT).orElseThrow();
+
+    assertThat(policy.debounce()).isEqualTo(Duration.ofSeconds(45));
+    assertThat(policy.cooldown()).isEqualTo(Duration.ofMinutes(30));
+    assertThat(policy.resolveAfterEvaluation()).isTrue();
+    // Timings only. What this source says to the model is a file rather than a value, so that it
+    // can
+    // be translated; TriagePromptsTest is where that half is pinned.
+    assertThat(policy.triagePrompt()).isNull();
+  }
+
+  @Test
+  @DisplayName("and a deployment can still overrule what a shipped source asks for")
+  void shouldLetTheDeploymentOverruleTheBuiltIn() {
+    final var properties =
+        properties(
+            Map.of(
+                EventsProperties.FEISHU_CHAT,
+                EventsProperties.Source.builder()
+                    .ownerUserId("ou_bot")
+                    .cooldown(Duration.ofMinutes(5))
+                    .build()));
+
+    final var policy = properties.policyFor(EventsProperties.FEISHU_CHAT).orElseThrow();
+
+    assertThat(policy.cooldown()).isEqualTo(Duration.ofMinutes(5));
+    // The rest of the built-in policy survives being partly overridden.
+    assertThat(policy.debounce()).isEqualTo(Duration.ofSeconds(45));
+    assertThat(policy.resolveAfterEvaluation()).isTrue();
+  }
+
+  @Test
+  @DisplayName("a blank prompt is no prompt, not an empty one")
+  void shouldTreatABlankPromptAsUnset() {
+    // Easy to arrive at from a yaml naming an environment variable nobody set.
+    final var properties =
+        properties(
+            Map.of(
+                "github", EventsProperties.Source.builder().secret("s").triagePrompt(" ").build()));
+
+    assertThat(properties.policyFor("github").orElseThrow().triagePrompt()).isNull();
+  }
+
+  @Test
+  @DisplayName("the compact constructor fills in what the binder left, for a directly built one")
+  void shouldDefaultEverythingWhenBuiltDirectly() {
+    final var properties = EventsProperties.builder().enabled(true).build();
+
+    assertThat(properties.sweepInterval()).isEqualTo(EventsProperties.DEFAULT_SWEEP_INTERVAL);
+    assertThat(properties.maxEvidence()).isEqualTo(EventsProperties.DEFAULT_MAX_EVIDENCE);
+    assertThat(properties.triagePrompt()).isNull();
+    assertThat(properties.sources()).isEmpty();
+  }
+
+  static EventsProperties properties(final Map<String, EventsProperties.Source> sources) {
+    return EventsProperties.builder().enabled(true).sources(sources).build();
+  }
+}
