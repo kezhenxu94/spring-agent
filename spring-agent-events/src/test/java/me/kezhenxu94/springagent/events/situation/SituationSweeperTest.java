@@ -86,6 +86,7 @@ class SituationSweeperTest {
         scheduler,
         new SituationBrief(repos.events, properties, TestI18n.english(), clock),
         TestI18n.prompts(Locale.ENGLISH),
+        TestI18n.english(),
         clock);
   }
 
@@ -134,6 +135,9 @@ class SituationSweeperTest {
     assertThat(request.toolContext())
         .containsEntry(SituationTools.KEY_SITUATION_ID, situation.id());
     assertThat(request.listeners()).isNotEmpty();
+    // Named in the workspace's language: a surface shows this where it lists a run it is not
+    // streaming, so a person reads it.
+    assertThat(request.description()).isEqualTo("Triage grafana situation " + situation.id());
   }
 
   @Test
@@ -468,5 +472,29 @@ class SituationSweeperTest {
 
   private static void finish(final AgentRequest request, final AgentOutcome outcome) {
     request.listeners().forEach(listener -> listener.onFinished(outcome));
+  }
+
+  @Test
+  @DisplayName("and named in Chinese on a Chinese workspace")
+  void shouldNameTheRunInTheWorkspaceLanguage() {
+    final var properties = properties(false, 2);
+    final var situation = observed(properties, "d1");
+    clock.advance(Duration.ofSeconds(31));
+    final var chinese = Locale.of("zh", "CN");
+    final var sweeper =
+        new SituationSweeper(
+            springAgent,
+            repos.situations,
+            repos.claims,
+            properties,
+            scheduler,
+            new SituationBrief(repos.events, properties, TestI18n.messages(chinese), clock),
+            TestI18n.prompts(chinese),
+            TestI18n.messages(chinese),
+            clock);
+
+    sweeper.sweep();
+
+    assertThat(fired().description()).isEqualTo("grafana 情况 " + situation.id() + " 的分析");
   }
 }

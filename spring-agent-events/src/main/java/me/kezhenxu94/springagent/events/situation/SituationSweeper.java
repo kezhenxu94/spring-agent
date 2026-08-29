@@ -18,6 +18,7 @@ import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.models.Situation;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
 import me.kezhenxu94.springagent.core.dao.repo.SituationRepo;
+import me.kezhenxu94.springagent.events.config.EventsMessages;
 import me.kezhenxu94.springagent.events.config.EventsProperties;
 import me.kezhenxu94.springagent.events.tools.SituationTools;
 import org.springframework.ai.chat.prompt.PromptTemplate;
@@ -55,6 +56,13 @@ public class SituationSweeper {
   private final ThreadPoolTaskScheduler taskScheduler;
   private final SituationBrief brief;
   private final TriagePrompts triagePrompts;
+
+  /**
+   * For the one line of this class a person reads. Everything else it writes goes to a log, which
+   * stays in English here as it does everywhere else in this codebase.
+   */
+  private final EventsMessages messages;
+
   private final Clock clock;
 
   /**
@@ -218,7 +226,7 @@ public class SituationSweeper {
               // Unattended: no card, no progress, nothing to stop it with, and no way to ask
               // anybody anything. It reaches a person only through what it chooses to send.
               .background(true)
-              .description("Triage " + claimed.source() + " situation " + claimed.id())
+              .description(messages.get("run-description", claimed.source(), claimed.id()))
               .userMessage(spec -> spec.text(triagePrompt(policy, claimed)))
               .toolContext(Map.of(SituationTools.KEY_SITUATION_ID, claimed.id()))
               .listener(new Evaluation(claimed.id(), generation, policy))
