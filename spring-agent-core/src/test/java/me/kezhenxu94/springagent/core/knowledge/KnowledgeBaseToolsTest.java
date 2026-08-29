@@ -88,8 +88,7 @@ class KnowledgeBaseToolsTest {
     final var properties =
         new SpringAgentProperties(
             null,
-            new SpringAgentProperties.Ai(
-                null, Set.of(), Map.of(), null, null, null, null, null, null),
+            new SpringAgentProperties.Ai(Set.of(), Map.of(), null, null, null, null, null, null),
             Locale.ENGLISH);
     tools =
         new KnowledgeBaseTools(

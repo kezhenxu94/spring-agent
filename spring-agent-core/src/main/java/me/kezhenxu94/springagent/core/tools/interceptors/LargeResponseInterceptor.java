@@ -26,16 +26,16 @@ public class LargeResponseInterceptor implements ToolCallInterceptor {
   public String afterCall(
       String toolName, String toolInput, String toolResult, ToolContext toolContext) {
     if (toolResult == null
-        || toolResult.length() <= appConfiguration.ai().botInterceptor().guideThreshold()) {
+        || toolResult.length() <= appConfiguration.ai().tools().maxResultChars()) {
       return toolResult;
     }
 
     final var size = toolResult.length();
     log.info(
-        "Tool '{}' returned {} chars, guide-threshold={}",
+        "Tool '{}' returned {} chars, max-result-chars={}",
         toolName,
         size,
-        appConfiguration.ai().botInterceptor().guideThreshold());
+        appConfiguration.ai().tools().maxResultChars());
 
     final var userId = ToolContexts.get(toolContext, ToolContexts.USER_ID);
     if (Strings.isNullOrEmpty(userId)) {

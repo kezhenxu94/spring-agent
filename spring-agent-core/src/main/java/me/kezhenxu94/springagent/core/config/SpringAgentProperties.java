@@ -38,7 +38,6 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
    *     #DEFAULT_SUBAGENT_PROMPT}, on the same reasoning.
    */
   public record Ai(
-      BotInterceptor botInterceptor,
       Set<String> admins,
       Map<String, ModelPricing> modelPricing,
       VectorStore vectorstore,
@@ -219,13 +218,7 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
         rag = new Rag(false, 0, 0d, 0, 0);
       }
       if (tools == null) {
-        tools = new Tools(null, null);
-      }
-      // The one field this block used to leave null, which cost every application that did not
-      // configure it a NullPointerException from LargeResponseInterceptor — not at startup, but on
-      // the first tool call of the first turn.
-      if (botInterceptor == null) {
-        botInterceptor = new BotInterceptor(BotInterceptor.DEFAULT_GUIDE_THRESHOLD);
+        tools = new Tools(null, null, null);
       }
     }
 
@@ -243,13 +236,33 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
      * fallbacks in the compact constructors below remain for a record built directly, and for a
      * property explicitly set to nothing meaningful.
      */
-    public record Tools(AskUserQuestion askUserQuestion, Subagent subagent) {
+    public record Tools(
+        AskUserQuestion askUserQuestion, Subagent subagent, Integer maxResultChars) {
+
+      /**
+       * How long any tool's result may be before {@code LargeResponseInterceptor} writes it to the
+       * user's workspace and hands the model a pointer to the file instead.
+       *
+       * <p>Counted in {@code String.length()} — UTF-16 chars, which is what a result costs a
+       * context window rather than what it costs a disk. The number is therefore not the same
+       * quantity of text in every language: this many characters of English is roughly a quarter as
+       * many tokens, while this many characters of Chinese is close to that many tokens. Set it for
+       * the language the deployment's tools actually return.
+       *
+       * <p>Zero and below are read as "not configured" and replaced by this, since a threshold of
+       * zero would divert every result a tool ever returned.
+       */
+      public static final int DEFAULT_MAX_RESULT_CHARS = 30_000;
+
       public Tools {
         if (askUserQuestion == null) {
           askUserQuestion = new AskUserQuestion(AskUserQuestion.DEFAULT_ENABLED, null);
         }
         if (subagent == null) {
           subagent = new Subagent(0, null, null);
+        }
+        if (maxResultChars == null || maxResultChars <= 0) {
+          maxResultChars = DEFAULT_MAX_RESULT_CHARS;
         }
       }
 
@@ -334,23 +347,6 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
           if (ttl == null || ttl.isNegative() || ttl.isZero()) {
             ttl = DEFAULT_TTL;
           }
-        }
-      }
-    }
-
-    /**
-     * @param guideThreshold how long a tool result may be before {@code LargeResponseInterceptor}
-     *     writes it to the user's workspace and hands the model a pointer instead. Zero and below
-     *     are read as "not configured" and replaced by {@link #DEFAULT_GUIDE_THRESHOLD}, since a
-     *     threshold of zero would divert every result a tool ever returned.
-     */
-    public record BotInterceptor(int guideThreshold) {
-
-      public static final int DEFAULT_GUIDE_THRESHOLD = 30000;
-
-      public BotInterceptor {
-        if (guideThreshold <= 0) {
-          guideThreshold = DEFAULT_GUIDE_THRESHOLD;
         }
       }
     }

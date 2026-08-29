@@ -20,7 +20,6 @@ public record KubernetesShellProperties(
     Duration idleTimeout,
     Duration hardDeadline,
     Duration startupTimeout,
-    Integer maxOutputBytes,
     Long defaultTimeoutMs,
     Long maxTimeoutMs,
     Long fsGroup,
@@ -51,7 +50,6 @@ public record KubernetesShellProperties(
     if (idleTimeout == null) idleTimeout = Duration.ofMinutes(30);
     if (hardDeadline == null) hardDeadline = Duration.ofHours(4);
     if (startupTimeout == null) startupTimeout = Duration.ofSeconds(60);
-    if (maxOutputBytes == null) maxOutputBytes = 30_000;
     if (defaultTimeoutMs == null) defaultTimeoutMs = 120_000L;
     if (maxTimeoutMs == null) maxTimeoutMs = 600_000L;
     if (storage == null) storage = new Storage(null);

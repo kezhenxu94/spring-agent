@@ -476,6 +476,29 @@ app:
         # for it. Matched to spring.ai.openai.chat.timeout above, since a subagent is a chat turn
         # and cannot sensibly outlast one.
         wait-timeout: ${SUBAGENT_WAIT_TIMEOUT:30m}
+      # How long any tool's result may be before it is written to the user's workspace and the
+      # model handed the path instead of the text — see LargeResponseInterceptor, which applies
+      # this to every tool alike, the shell included. Nothing is lost: the model reads the file
+      # with Read, greps it, or sends it to the user, which is usually what it wanted from a
+      # 200 000-line log anyway.
+      #
+      # One number for every tool on purpose. The shell backends used to cap their own output at
+      # the same 30000 first, which meant this threshold could never see a shell result whole:
+      # what reached it had already been cut, and the file it saved was the cut version. A tool
+      # now returns everything it has and this decides, in one place, what the model reads
+      # directly.
+      #
+      # Counted in characters, which is what a result costs a context window rather than what it
+      # costs a disk — so it is not the same amount of text in every language. 30000 characters
+      # of English is roughly 7500 tokens; 30000 characters of Chinese is closer to 25000, most
+      # of a small model's window.
+      #
+      # 30000 is the English-sized number, and it is what the shell backends used to cut their
+      # own output at. They cut it in bytes, though, so a Chinese shell result was in practice
+      # held to about 10000 characters — removing their cap raised what a single such result
+      # costs by roughly two and a half times. A deployment whose tools answer in Chinese wants
+      # about 12000 here to be where it was.
+      max-result-chars: ${TOOLS_MAX_RESULT_CHARS:30000}
       publish-file:
         # Where the links PublishFile hands out point: the address a colleague, or anyone holding a
         # public link, reaches this application on. ShareController serves them under /share/, so
@@ -520,7 +543,6 @@ app:
           idle-timeout: 30m
           hard-deadline: 4h
           startup-timeout: 60s
-          max-output-bytes: 30000
           default-timeout-ms: 120000
           max-timeout-ms: 600000
           # Applied as the Pod's securityContext.fsGroup; needed so a non-root sandbox image user
@@ -556,7 +578,6 @@ app:
           idle-timeout: 30m
           hard-deadline: 4h
           startup-timeout: 60s
-          max-output-bytes: 30000
           default-timeout-ms: 120000
           max-timeout-ms: 600000
           resources:
@@ -579,8 +600,6 @@ app:
         # Keep this narrow — every entry is reachable by any user who registers an MCP server.
         trusted-hosts:
           - monitoring-mcp.monitoring
-    bot-interceptor:
-      guide-threshold: 30000
     model-pricing:
       '[qwen3.7-plus]':
         non-thinking-input-per-million: 2.0

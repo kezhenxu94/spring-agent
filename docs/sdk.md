@@ -294,7 +294,9 @@ set is small: it retrieves the few tools a turn needs instead of sending the mod
 For anything that has to wrap every tool call — auditing, rate limiting, rewriting or truncating a
 result, updating a progress card — implement `ToolCallInterceptor` (`core/tools/interceptors/`)
 rather than touching the tools. The custom `ToolCallingManager` wires every such bean in.
-`LargeResponseInterceptor` is the shipped example.
+`LargeResponseInterceptor` is the shipped example: over `app.ai.tools.max-result-chars` it writes
+the result to the user's workspace and hands the model the path, for every tool alike, so a tool of
+your own should return what it has rather than cap it first.
 
 ### The tools that ship
 

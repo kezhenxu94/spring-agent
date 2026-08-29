@@ -118,12 +118,11 @@ class AgentToolsProviderAskTest {
     return new SpringAgentProperties(
         null,
         new Ai(
-            null,
             Set.of(),
             Map.of(),
             null,
             null,
-            new Tools(new AskUserQuestion(true, null), null),
+            new Tools(new AskUserQuestion(true, null), null, null),
             "You are an agent.",
             null,
             null),

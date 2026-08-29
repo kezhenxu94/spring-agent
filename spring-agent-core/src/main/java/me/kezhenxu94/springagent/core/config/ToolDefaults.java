@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.core.config;
 
 import java.util.Map;
+import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.Tools;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.Tools.AskUserQuestion;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.Tools.Subagent;
 import org.springframework.boot.EnvironmentPostProcessor;
@@ -46,6 +47,8 @@ public class ToolDefaults implements EnvironmentPostProcessor, Ordered {
 
   static final String SUBAGENT_WAIT_TIMEOUT = "app.ai.tools.subagent.wait-timeout";
 
+  static final String MAX_RESULT_CHARS = "app.ai.tools.max-result-chars";
+
   @Override
   public void postProcessEnvironment(
       final ConfigurableEnvironment environment, final SpringApplication application) {
@@ -67,7 +70,9 @@ public class ToolDefaults implements EnvironmentPostProcessor, Ordered {
                     SUBAGENT_WAIT_POLL,
                     Subagent.DEFAULT_WAIT_POLL.toString(),
                     SUBAGENT_WAIT_TIMEOUT,
-                    Subagent.DEFAULT_WAIT_TIMEOUT.toString())));
+                    Subagent.DEFAULT_WAIT_TIMEOUT.toString(),
+                    MAX_RESULT_CHARS,
+                    String.valueOf(Tools.DEFAULT_MAX_RESULT_CHARS))));
   }
 
   /**

@@ -286,7 +286,6 @@ class SubagentToolsTest {
     return new SpringAgentProperties(
         null,
         new SpringAgentProperties.Ai(
-            null,
             Set.of(),
             Map.of(),
             null,
@@ -299,7 +298,8 @@ class SubagentToolsTest {
                     // finished and the rest on one that never will: the poll is what decides
                     // how long the latter sit there.
                     Duration.ofMillis(100),
-                    Duration.ofMillis(300))),
+                    Duration.ofMillis(300)),
+                null),
             null,
             null,
             null),

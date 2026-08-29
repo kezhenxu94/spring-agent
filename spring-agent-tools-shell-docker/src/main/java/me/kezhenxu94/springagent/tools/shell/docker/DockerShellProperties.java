@@ -20,7 +20,6 @@ public record DockerShellProperties(
     Duration idleTimeout,
     Duration hardDeadline,
     Duration startupTimeout,
-    Integer maxOutputBytes,
     Long defaultTimeoutMs,
     Long maxTimeoutMs,
     Resources resources,
@@ -34,7 +33,6 @@ public record DockerShellProperties(
     if (idleTimeout == null) idleTimeout = Duration.ofMinutes(30);
     if (hardDeadline == null) hardDeadline = Duration.ofHours(4);
     if (startupTimeout == null) startupTimeout = Duration.ofSeconds(60);
-    if (maxOutputBytes == null) maxOutputBytes = 30_000;
     if (defaultTimeoutMs == null) defaultTimeoutMs = 120_000L;
     if (maxTimeoutMs == null) maxTimeoutMs = 600_000L;
     if (resources == null) resources = new Resources(null, null);

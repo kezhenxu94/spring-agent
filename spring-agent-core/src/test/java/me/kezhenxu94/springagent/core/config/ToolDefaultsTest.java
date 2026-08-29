@@ -48,6 +48,7 @@ class ToolDefaultsTest {
     assertThat(tools.subagent().maxConcurrent()).isEqualTo(Subagent.DEFAULT_MAX_CONCURRENT);
     assertThat(tools.subagent().waitPoll()).isEqualTo(Subagent.DEFAULT_WAIT_POLL);
     assertThat(tools.subagent().waitTimeout()).isEqualTo(Subagent.DEFAULT_WAIT_TIMEOUT);
+    assertThat(tools.maxResultChars()).isEqualTo(Tools.DEFAULT_MAX_RESULT_CHARS);
   }
 
   @Test

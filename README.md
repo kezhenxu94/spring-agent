@@ -113,6 +113,14 @@ The shell defaults to `none` because it runs commands the model wrote; turn it o
 prefer `kubernetes` or `docker`, which give each user a disposable sandbox, over `local`, which does
 not.
 
+One more knob is worth knowing about before a tool surprises you with a wall of text.
+`app.ai.tools.max-result-chars` (`TOOLS_MAX_RESULT_CHARS`, default `30000`) is how long *any*
+tool's result may be — the shell, an MCP server, a webhook reader alike — before it is written to
+your workspace and the agent handed the path instead of the text. Nothing is lost: the agent reads
+the file, greps it, or sends it to you. It is counted in characters rather than tokens, so the same
+number is far more text in English than in Chinese; lower it if your tools answer in Chinese and
+runs feel like they run out of room.
+
 The default pair needs nothing running alongside it. For the others, `docker-compose.yaml` has a
 profile per value so the containers cannot drift from the application's own choice:
 
