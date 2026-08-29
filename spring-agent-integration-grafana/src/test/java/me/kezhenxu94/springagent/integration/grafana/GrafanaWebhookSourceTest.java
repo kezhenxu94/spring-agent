@@ -9,9 +9,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Base64;
-import java.util.List;
 import java.util.Map;
-import me.kezhenxu94.springagent.core.observing.Observation;
 import me.kezhenxu94.springagent.events.source.WebhookDelivery;
 import org.junit.jupiter.api.Test;
 
@@ -23,6 +21,9 @@ class GrafanaWebhookSourceTest {
       """
       {
         "status": "firing",
+        "groupKey": "{}/{alertname=\\"DiskFull\\"}:{}",
+        "groupLabels": {"alertname": "DiskFull"},
+        "commonLabels": {"env": "prod"},
         "alerts": [
           {
             "status": "firing",
@@ -125,96 +126,180 @@ class GrafanaWebhookSourceTest {
   }
 
   @Test
-  void readsOneObservationPerAlertInTheBatch() {
-    final var observations = source.observations(delivery(TWO_ALERTS));
+  void readsTheWholeBatchAsOneObservation() {
+    // Grafana decided what belongs together from the contact point's group_by and posted the group.
+    // Taking it apart would ask the agent for a separate opinion on each of thirty things it was
+    // told are one.
+    final var observation = source.observation(delivery(TWO_ALERTS)).orElseThrow();
 
-    assertThat(observations).hasSize(2);
-    assertThat(observations).allSatisfy(it -> assertThat(it.source()).isEqualTo("grafana"));
-    assertThat(observations.stream().map(it -> it.correlationKey()).toList())
-        .containsExactly("grafana:aaaa1111", "grafana:bbbb2222");
-    assertThat(observations.getFirst().kind()).isEqualTo("alert.firing");
-    assertThat(observations.getFirst().title()).isEqualTo("DiskFull on db-1");
-    assertThat(observations.getFirst().summary())
-        .contains("DiskFull")
-        .contains("critical")
-        .contains("Disk is 97% full")
-        .contains("2026-08-29T10:00:00Z");
-    assertThat(observations.get(1).summary()).contains("40k messages waiting");
-    assertThat(observations.getFirst().route().isEmpty()).isTrue();
+    assertThat(observation.source()).isEqualTo("grafana");
+    assertThat(observation.kind()).isEqualTo("alert.firing");
+    // Correlated on the group Grafana named, not on one alert's fingerprint.
+    assertThat(observation.correlationKey()).startsWith("grafana:group:");
+    assertThat(observation.title()).contains("DiskFull").contains("2 alerts");
+    // A webhook knows nowhere to talk; the route comes from configuration.
+    assertThat(observation.route().isEmpty()).isTrue();
   }
 
   @Test
-  void keepsOnlyItsOwnAlertAsEvidence() {
-    final var observations = source.observations(delivery(TWO_ALERTS));
+  void summarisesEveryAlertInTheBatch() {
+    // The summary is what goes into the brief a triage run is given, so both alerts have to be in
+    // it — with the batch split into observations this was one alert each and the agent saw one.
+    final var summary = source.observation(delivery(TWO_ALERTS)).orElseThrow().summary();
 
-    assertThat(observations.getFirst().payloadJson())
-        .contains("aaaa1111")
-        .doesNotContain("bbbb2222");
+    assertThat(summary).contains("2 alerts firing");
+    assertThat(summary).contains("DiskFull").contains("db-1").contains("critical");
+    assertThat(summary).contains("Disk is 97% full").contains("2026-08-29T10:00:00Z");
+    assertThat(summary).contains("QueueBacklog").contains("40k messages waiting");
+  }
+
+  @Test
+  void keepsTheWholeDeliveryAsEvidence() {
+    // Once, rather than once per alert. Storing the batch against each of thirty observations was
+    // thirty copies of the same evidence.
+    final var observation = source.observation(delivery(TWO_ALERTS)).orElseThrow();
+
+    assertThat(observation.payloadJson()).contains("aaaa1111").contains("bbbb2222");
+  }
+
+  @Test
+  void saysHowManyMoreThereAreRatherThanNamingHundreds() {
+    final var alerts = new StringBuilder();
+    for (var i = 0; i < 12; i++) {
+      alerts
+          .append(i == 0 ? "" : ",")
+          .append("{\"labels\":{\"alertname\":\"Alert")
+          .append(i)
+          .append("\"}}");
+    }
+    final var summary =
+        source
+            .observation(delivery("{\"status\":\"firing\",\"alerts\":[" + alerts + "]}"))
+            .orElseThrow()
+            .summary();
+
+    assertThat(summary).contains("12 alerts firing");
+    assertThat(summary).contains("Alert0").contains("Alert4");
+    // What was left out is said rather than implied; the rest are in the payload.
+    assertThat(summary).contains("and 7 more");
+    assertThat(summary).doesNotContain("Alert11");
+  }
+
+  @Test
+  void saysWhenGrafanaItselfTruncatedTheBatch() {
+    final var summary =
+        source
+            .observation(
+                delivery(
+                    "{\"status\":\"firing\",\"truncatedAlerts\":40,"
+                        + "\"alerts\":[{\"labels\":{\"alertname\":\"DiskFull\"}}]}"))
+            .orElseThrow()
+            .summary();
+
+    assertThat(summary).contains("40 more truncated by Grafana");
   }
 
   @Test
   void correlatesFiringAndResolvedOntoOneSituation() {
+    // The same group coming back, whatever it now says: that is what makes "this has been going on
+    // for twenty minutes" and "it cleared" answers about one thing rather than two situations.
     final var firing =
-        source.observations(
+        source.observation(
             delivery(
                 """
-                {"alerts":[{"status":"firing","fingerprint":"aaaa1111",
-                 "labels":{"alertname":"DiskFull"}}]}
+                {"status":"firing","groupKey":"disk-full-group",
+                 "alerts":[{"status":"firing","fingerprint":"aaaa1111"}]}
                 """));
     final var resolved =
-        source.observations(
+        source.observation(
             delivery(
                 """
-                {"alerts":[{"status":"resolved","fingerprint":"aaaa1111",
-                 "labels":{"alertname":"DiskFull"}}]}
+                {"status":"resolved","groupKey":"disk-full-group",
+                 "alerts":[{"status":"resolved","fingerprint":"aaaa1111"}]}
                 """));
 
-    assertThat(firing.getFirst().correlationKey()).isEqualTo(resolved.getFirst().correlationKey());
-    assertThat(firing.getFirst().kind()).isEqualTo("alert.firing");
-    assertThat(resolved.getFirst().kind()).isEqualTo("alert.resolved");
+    assertThat(firing.orElseThrow().correlationKey())
+        .isEqualTo(resolved.orElseThrow().correlationKey());
+    assertThat(firing.orElseThrow().kind()).isEqualTo("alert.firing");
+    assertThat(resolved.orElseThrow().kind()).isEqualTo("alert.resolved");
   }
 
   @Test
-  void fallsBackToTheLabelsWhenThereIsNoFingerprint() {
+  void separatesOneGroupFromAnother() {
+    final var disk =
+        source.observation(delivery("{\"groupKey\":\"a\",\"alerts\":[{}]}")).orElseThrow();
+    final var queue =
+        source.observation(delivery("{\"groupKey\":\"b\",\"alerts\":[{}]}")).orElseThrow();
+
+    assertThat(disk.correlationKey()).isNotEqualTo(queue.correlationKey());
+  }
+
+  @Test
+  void hashesAGroupKeyTooLongForTheColumnItLandsIn() {
+    // A group key spells out every label it grouped on and has no bound; correlationKey does.
+    final var key = "x".repeat(500);
+    final var observation =
+        source
+            .observation(delivery("{\"groupKey\":\"" + key + "\",\"alerts\":[{}]}"))
+            .orElseThrow();
+
+    assertThat(observation.correlationKey()).hasSizeLessThan(120).doesNotContain(key);
+  }
+
+  @Test
+  void fallsBackToTheGroupLabelsWhenThereIsNoGroupKey() {
+    // An older Grafana sends the labels it grouped on but no key made from them.
     final var one =
-        source.observations(
+        source.observation(
             delivery(
                 """
-                {"alerts":[{"status":"firing",
-                 "labels":{"alertname":"DiskFull","instance":"db-1"}}]}
+                {"status":"firing","groupLabels":{"alertname":"DiskFull","instance":"db-1"},
+                 "alerts":[{}]}
                 """));
-    // The same labels in another order are the same alert: a JSON object has no order to rely on.
+    // The same labels in another order are the same group: a JSON object has no order to rely on.
     final var reordered =
-        source.observations(
+        source.observation(
             delivery(
                 """
-                {"alerts":[{"status":"firing",
-                 "labels":{"instance":"db-1","alertname":"DiskFull"}}]}
+                {"status":"firing","groupLabels":{"instance":"db-1","alertname":"DiskFull"},
+                 "alerts":[{}]}
                 """));
     final var other =
-        source.observations(
+        source.observation(
             delivery(
                 """
-                {"alerts":[{"status":"firing",
-                 "labels":{"alertname":"DiskFull","instance":"db-2"}}]}
+                {"status":"firing","groupLabels":{"alertname":"DiskFull","instance":"db-2"},
+                 "alerts":[{}]}
                 """));
 
-    assertThat(one.getFirst().correlationKey())
-        .startsWith("grafana:labels:")
-        .isEqualTo(reordered.getFirst().correlationKey())
-        .isNotEqualTo(other.getFirst().correlationKey());
+    assertThat(one.orElseThrow().correlationKey())
+        .startsWith("grafana:group:")
+        .isEqualTo(reordered.orElseThrow().correlationKey())
+        .isNotEqualTo(other.orElseThrow().correlationKey());
   }
 
   @Test
-  void takesTheStatusFromTheBatchWhenTheAlertDoesNotSayIt() {
-    final var observations =
-        source.observations(
-            delivery(
-                """
-                {"status":"resolved","alerts":[{"fingerprint":"aaaa1111"}]}
-                """));
+  void collapsesDeliveriesWithNothingToGroupOnRatherThanInventingAKeyEach() {
+    // Saying so is better than a situation per delivery: they become one situation about a source
+    // sending alerts nobody can identify.
+    final var one = source.observation(delivery("{\"alerts\":[{}]}")).orElseThrow();
+    final var two = source.observation(delivery("{\"alerts\":[{},{}]}")).orElseThrow();
 
-    assertThat(observations.getFirst().kind()).isEqualTo("alert.resolved");
+    assertThat(one.correlationKey()).isEqualTo("grafana:ungrouped").isEqualTo(two.correlationKey());
+  }
+
+  @Test
+  void takesTheStatusOfTheGroup() {
+    // The group's status is the delivery's, since the delivery is now the subject.
+    assertThat(
+            source
+                .observation(delivery("{\"status\":\"resolved\",\"alerts\":[{}]}"))
+                .orElseThrow()
+                .kind())
+        .isEqualTo("alert.resolved");
+    // And firing where it says nothing, which is what Grafana means by omitting it.
+    assertThat(source.observation(delivery("{\"alerts\":[{}]}")).orElseThrow().kind())
+        .isEqualTo("alert.firing");
   }
 
   @Test
@@ -223,13 +308,10 @@ class GrafanaWebhookSourceTest {
     // to be recognised as the same delivery rather than counted as a second alert.
     final var delivery = delivery(TWO_ALERTS);
 
-    final var first = deliveryIds(source, delivery);
-    final var second = deliveryIds(sourceAt(START.plus(Duration.ofSeconds(5))), delivery);
+    final var first = deliveryId(source, delivery);
+    final var second = deliveryId(sourceAt(START.plus(Duration.ofSeconds(5))), delivery);
 
     assertThat(first).isEqualTo(second);
-    // And the alerts of one batch keep identities of their own, or a delivery of thirty would
-    // collapse into one observation.
-    assertThat(first).doesNotHaveDuplicates().hasSize(2);
   }
 
   @Test
@@ -240,53 +322,58 @@ class GrafanaWebhookSourceTest {
     // firing an hour later" is information, so it must not be folded away as a duplicate.
     final var delivery = delivery(TWO_ALERTS);
 
-    final var first = deliveryIds(source, delivery);
-    final var later = deliveryIds(sourceAt(START.plus(Duration.ofHours(1))), delivery);
+    final var first = deliveryId(source, delivery);
+    final var later = deliveryId(sourceAt(START.plus(Duration.ofHours(1))), delivery);
 
-    assertThat(later).doesNotContainAnyElementsOf(first);
+    assertThat(later).isNotEqualTo(first);
   }
 
-  private static List<String> deliveryIds(
+  private static String deliveryId(
       final GrafanaWebhookSource source, final WebhookDelivery delivery) {
-    return source.observations(delivery).stream().map(Observation::deliveryId).toList();
+    return source.observation(delivery).orElseThrow().deliveryId();
   }
 
   @Test
   void givesADifferentDeliveryIdToADifferentBody() {
-    final var first = source.observations(delivery(TWO_ALERTS)).getFirst().deliveryId();
+    final var first = source.observation(delivery(TWO_ALERTS)).orElseThrow().deliveryId();
     final var second =
-        source.observations(delivery(TWO_ALERTS.replace("97%", "98%"))).getFirst().deliveryId();
+        source.observation(delivery(TWO_ALERTS.replace("97%", "98%"))).orElseThrow().deliveryId();
 
     assertThat(first).isNotEqualTo(second);
   }
 
   @Test
   void yieldsNothingForADeliveryWithNoAlerts() {
-    assertThat(source.observations(delivery("{\"status\":\"firing\",\"alerts\":[]}"))).isEmpty();
-    assertThat(source.observations(delivery("{\"status\":\"firing\"}"))).isEmpty();
-    assertThat(source.observations(delivery("{\"alerts\":\"not an array\"}"))).isEmpty();
-    assertThat(source.observations(delivery("[]"))).isEmpty();
+    assertThat(source.observation(delivery("{\"status\":\"firing\",\"alerts\":[]}"))).isEmpty();
+    assertThat(source.observation(delivery("{\"status\":\"firing\"}"))).isEmpty();
+    assertThat(source.observation(delivery("{\"alerts\":\"not an array\"}"))).isEmpty();
+    assertThat(source.observation(delivery("[]"))).isEmpty();
   }
 
   @Test
   void skipsBatchElementsThatAreNotAlerts() {
-    final var observations =
-        source.observations(
-            delivery(
-                """
-                {"alerts":["a string",7,null,{"fingerprint":"aaaa1111"}]}
-                """));
+    // Still one observation, and the summary simply says nothing about the elements it could not
+    // read rather than failing over them.
+    final var observation =
+        source
+            .observation(
+                delivery(
+                    """
+                    {"groupKey":"g","alerts":["a string",7,null,
+                     {"labels":{"alertname":"DiskFull"}}]}
+                    """))
+            .orElseThrow();
 
-    assertThat(observations).hasSize(1);
-    assertThat(observations.getFirst().correlationKey()).isEqualTo("grafana:aaaa1111");
+    assertThat(observation.correlationKey()).isEqualTo("grafana:group:g");
+    assertThat(observation.summary()).contains("DiskFull");
   }
 
   @Test
   void yieldsNothingForMalformedJsonWithoutThrowing() {
     for (final var body : new String[] {"", "   ", "{", "{\"alerts\":[", "not json"}) {
       final var delivery = delivery(body);
-      assertThatCode(() -> source.observations(delivery)).doesNotThrowAnyException();
-      assertThat(source.observations(delivery)).as(body).isEmpty();
+      assertThatCode(() -> source.observation(delivery)).doesNotThrowAnyException();
+      assertThat(source.observation(delivery)).as(body).isEmpty();
     }
   }
 
@@ -294,14 +381,14 @@ class GrafanaWebhookSourceTest {
   void survivesAPayloadNestedFarDeeperThanAnythingGrafanaSends() {
     final var delivery = delivery("[".repeat(5000) + "]".repeat(5000));
 
-    assertThatCode(() -> source.observations(delivery)).doesNotThrowAnyException();
-    assertThat(source.observations(delivery)).isEmpty();
+    assertThatCode(() -> source.observation(delivery)).doesNotThrowAnyException();
+    assertThat(source.observation(delivery)).isEmpty();
   }
 
   @Test
   void survivesFieldsOfTheWrongType() {
     final var observations =
-        source.observations(
+        source.observation(
             delivery(
                 """
                 {"alerts":[{"status":{"nested":true},
@@ -310,13 +397,13 @@ class GrafanaWebhookSourceTest {
                  "fingerprint":{"not":"a string"}}]}
                 """));
 
-    assertThat(observations).hasSize(1);
-    final var observation = observations.getFirst();
+    assertThat(observations).isPresent();
+    final var observation = observations.orElseThrow();
     // No label read as text, no fingerprint read as text: it correlates as an alert nothing
     // identifies rather than on structure the payload put where a name was due.
-    assertThat(observation.correlationKey()).isEqualTo("grafana:unidentified");
+    assertThat(observation.correlationKey()).isEqualTo("grafana:ungrouped");
     assertThat(observation.kind()).isEqualTo("alert.firing");
-    assertThat(observation.title()).isEqualTo("alert");
+    assertThat(observation.title()).isEqualTo("1 Grafana alerts");
   }
 
   private WebhookDelivery delivery(final String body) {

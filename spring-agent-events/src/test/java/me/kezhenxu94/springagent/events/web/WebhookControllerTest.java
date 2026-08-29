@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import me.kezhenxu94.springagent.core.observing.EventIntake;
 import me.kezhenxu94.springagent.core.observing.EventIntakes;
 import me.kezhenxu94.springagent.core.observing.Observation;
@@ -40,7 +41,7 @@ class WebhookControllerTest {
     private boolean threwOnVerify;
     private RuntimeException verifyFailure;
     private RuntimeException readFailure;
-    private int observationsPerDelivery = 1;
+    private boolean saysNothing;
 
     StubSource(final String name) {
       this.name = name;
@@ -61,22 +62,21 @@ class WebhookControllerTest {
     }
 
     @Override
-    public List<Observation> observations(final WebhookDelivery delivery) {
+    public Optional<Observation> observation(final WebhookDelivery delivery) {
       if (readFailure != null) {
         throw readFailure;
       }
-      final var observations = new ArrayList<Observation>();
-      for (var i = 0; i < observationsPerDelivery; i++) {
-        observations.add(
-            Observation.builder()
-                .source(name)
-                .deliveryId("d" + i)
-                .kind("thing.happened")
-                .correlationKey(name + ":" + i)
-                .payloadJson(delivery.bodyAsText())
-                .build());
+      if (saysNothing) {
+        return Optional.empty();
       }
-      return observations;
+      return Optional.of(
+          Observation.builder()
+              .source(name)
+              .deliveryId("d1")
+              .kind("thing.happened")
+              .correlationKey(name + ":1")
+              .payloadJson(delivery.bodyAsText())
+              .build());
     }
   }
 
@@ -228,11 +228,12 @@ class WebhookControllerTest {
   }
 
   @Test
-  @DisplayName("one delivery can be several observations, and each is recorded")
-  void shouldRecordEveryObservationInABatch() throws Exception {
-    // Grafana posts a batch of alerts, and they belong to different situations.
+  @DisplayName("a delivery is one observation, however much the sender put in it")
+  void shouldRecordOneObservationPerDelivery() throws Exception {
+    // The sender already decided what belongs together — Grafana groups by the contact point's
+    // group_by and posts the group. Taking it apart would ask the agent for an opinion on each of
+    // thirty things it was told are one, and would store the delivery once per alert.
     final var source = new StubSource("grafana");
-    source.observationsPerDelivery = 3;
     final var mockMvc = mockMvc(source, configured("grafana", "shh"));
 
     mockMvc
@@ -240,17 +241,38 @@ class WebhookControllerTest {
             post("/events/webhooks/grafana")
                 .header("X-Secret", "shh")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"alerts\":[]}"))
+                .content("{\"alerts\":[{},{},{}]}"))
         .andExpect(status().isNoContent());
 
-    assertThat(intake.observed).hasSize(3);
+    assertThat(intake.observed).hasSize(1);
   }
 
   @Test
-  @DisplayName("one unrecordable observation does not lose the rest of the batch")
-  void shouldKeepGoingWhenOneObservationCannotBeRecorded() throws Exception {
+  @DisplayName("a delivery that says nothing worth recording is still answered")
+  void shouldAcceptADeliveryThatSaysNothing() throws Exception {
+    // A ping, a test button, an empty batch. Not an error, and not something to make a sender
+    // retry.
+    final var source = new StubSource("github");
+    source.saysNothing = true;
+    final var mockMvc = mockMvc(source, configured("github", "shh"));
+
+    mockMvc
+        .perform(
+            post("/events/webhooks/github")
+                .header("X-Secret", "shh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
+        .andExpect(status().isNoContent());
+
+    assertThat(intake.observed).isEmpty();
+  }
+
+  @Test
+  @DisplayName("an observation nothing could record still leaves the sender answered")
+  void shouldAnswerWhenTheObservationCannotBeRecorded() throws Exception {
+    // Isolating a failing consumer is EventIntakes' job, and this asserts the controller leans on
+    // it: a 500 here would have the sender redeliver something that was read perfectly well.
     final var source = new StubSource("grafana");
-    source.observationsPerDelivery = 3;
     intake.failure = new IllegalStateException("the database is away");
     final var mockMvc = mockMvc(source, configured("grafana", "shh"));
 
@@ -259,10 +281,10 @@ class WebhookControllerTest {
             post("/events/webhooks/grafana")
                 .header("X-Secret", "shh")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"alerts\":[]}"))
+                .content("{\"alerts\":[{}]}"))
         .andExpect(status().isNoContent());
 
-    assertThat(intake.observed).hasSize(3);
+    assertThat(intake.observed).hasSize(1);
   }
 
   @Test

@@ -112,7 +112,7 @@ class GitHubWebhookSourceTest {
   @Test
   void readsAnIssueEventAsOneObservation() {
     final var observations =
-        source.observations(
+        source.observation(
             delivery(
                 "issues",
                 "d290f1ee-6c54-4b01-90e6-d701748f0851",
@@ -125,8 +125,8 @@ class GitHubWebhookSourceTest {
                 }
                 """));
 
-    assertThat(observations).hasSize(1);
-    final var observation = observations.getFirst();
+    assertThat(observations).isPresent();
+    final var observation = observations.orElseThrow();
     assertThat(observation.source()).isEqualTo("github");
     assertThat(observation.deliveryId()).isEqualTo("d290f1ee-6c54-4b01-90e6-d701748f0851");
     assertThat(observation.kind()).isEqualTo("issues.opened");
@@ -142,7 +142,7 @@ class GitHubWebhookSourceTest {
   @Test
   void groupsEventsAboutOneIssueAndSeparatesDifferentIssues() {
     final var opened =
-        source.observations(
+        source.observation(
             delivery(
                 "issues",
                 "a",
@@ -150,7 +150,7 @@ class GitHubWebhookSourceTest {
                 {"action":"opened","repository":{"full_name":"acme/widgets"},"issue":{"number":7}}
                 """));
     final var commented =
-        source.observations(
+        source.observation(
             delivery(
                 "issue_comment",
                 "b",
@@ -158,7 +158,7 @@ class GitHubWebhookSourceTest {
                 {"action":"created","repository":{"full_name":"acme/widgets"},"issue":{"number":7}}
                 """));
     final var another =
-        source.observations(
+        source.observation(
             delivery(
                 "issues",
                 "c",
@@ -166,18 +166,18 @@ class GitHubWebhookSourceTest {
                 {"action":"opened","repository":{"full_name":"acme/widgets"},"issue":{"number":8}}
                 """));
 
-    assertThat(opened.getFirst().correlationKey())
-        .isEqualTo(commented.getFirst().correlationKey())
-        .isNotEqualTo(another.getFirst().correlationKey());
+    assertThat(opened.orElseThrow().correlationKey())
+        .isEqualTo(commented.orElseThrow().correlationKey())
+        .isNotEqualTo(another.orElseThrow().correlationKey());
     // Same situation, different events: a policy distinguishes them by kind, not by key.
-    assertThat(opened.getFirst().kind()).isEqualTo("issues.opened");
-    assertThat(commented.getFirst().kind()).isEqualTo("issue_comment.created");
+    assertThat(opened.orElseThrow().kind()).isEqualTo("issues.opened");
+    assertThat(commented.orElseThrow().kind()).isEqualTo("issue_comment.created");
   }
 
   @Test
   void correlatesAReviewCommentWithItsPullRequest() {
     final var review =
-        source.observations(
+        source.observation(
             delivery(
                 "pull_request_review",
                 "a",
@@ -186,13 +186,13 @@ class GitHubWebhookSourceTest {
                  "pull_request":{"number":42,"title":"Cache the thing"}}
                 """));
 
-    assertThat(review.getFirst().correlationKey()).isEqualTo("github:acme/widgets#42");
+    assertThat(review.orElseThrow().correlationKey()).isEqualTo("github:acme/widgets#42");
   }
 
   @Test
   void correlatesAWorkflowRunByWorkflowRatherThanByRun() {
     final var first =
-        source.observations(
+        source.observation(
             delivery(
                 "workflow_run",
                 "a",
@@ -201,7 +201,7 @@ class GitHubWebhookSourceTest {
                  "workflow_run":{"name":"CI","conclusion":"failure","id":1}}
                 """));
     final var second =
-        source.observations(
+        source.observation(
             delivery(
                 "workflow_run",
                 "b",
@@ -210,15 +210,16 @@ class GitHubWebhookSourceTest {
                  "workflow_run":{"name":"CI","conclusion":"failure","id":2}}
                 """));
 
-    assertThat(first.getFirst().correlationKey()).isEqualTo("github:acme/widgets:workflow:CI");
-    assertThat(second.getFirst().correlationKey()).isEqualTo(first.getFirst().correlationKey());
-    assertThat(first.getFirst().summary()).contains("failure");
+    assertThat(first.orElseThrow().correlationKey()).isEqualTo("github:acme/widgets:workflow:CI");
+    assertThat(second.orElseThrow().correlationKey())
+        .isEqualTo(first.orElseThrow().correlationKey());
+    assertThat(first.orElseThrow().summary()).contains("failure");
   }
 
   @Test
   void fallsBackToRepositoryAndKindWhenNothingNarrowerIsThere() {
     final var push =
-        source.observations(
+        source.observation(
             delivery(
                 "push",
                 "a",
@@ -226,14 +227,14 @@ class GitHubWebhookSourceTest {
                 {"repository":{"full_name":"acme/widgets"},"ref":"refs/heads/main"}
                 """));
 
-    assertThat(push.getFirst().correlationKey()).isEqualTo("github:acme/widgets:push");
-    assertThat(push.getFirst().kind()).isEqualTo("push");
+    assertThat(push.orElseThrow().correlationKey()).isEqualTo("github:acme/widgets:push");
+    assertThat(push.orElseThrow().kind()).isEqualTo("push");
   }
 
   @Test
   void fallsBackToTheKindAloneWhenThereIsNoRepository() {
     final var membership =
-        source.observations(
+        source.observation(
             delivery(
                 "organization",
                 "a",
@@ -241,12 +242,12 @@ class GitHubWebhookSourceTest {
                 {"action":"member_added","organization":{"login":"acme"}}
                 """));
 
-    assertThat(membership.getFirst().correlationKey()).isEqualTo("github:organization");
+    assertThat(membership.orElseThrow().correlationKey()).isEqualTo("github:organization");
   }
 
   @Test
   void skipsThePingThatOnlyProvesTheEndpointAnswers() {
-    assertThat(source.observations(delivery("ping", "a", "{\"zen\":\"Keep it simple.\"}")))
+    assertThat(source.observation(delivery("ping", "a", "{\"zen\":\"Keep it simple.\"}")))
         .isEmpty();
   }
 
@@ -256,15 +257,15 @@ class GitHubWebhookSourceTest {
         new WebhookDelivery(
             Map.of("X-GitHub-Delivery", "a"), "{}".getBytes(StandardCharsets.UTF_8));
 
-    assertThat(source.observations(delivery)).isEmpty();
+    assertThat(source.observation(delivery)).isEmpty();
   }
 
   @Test
   void yieldsNothingForMalformedJsonWithoutThrowing() {
     for (final var body : new String[] {"", "   ", "{", "not json at all", "[1,2", " "}) {
       final var delivery = delivery("issues", "a", body);
-      assertThatCode(() -> source.observations(delivery)).doesNotThrowAnyException();
-      assertThat(source.observations(delivery)).as(body).isEmpty();
+      assertThatCode(() -> source.observation(delivery)).doesNotThrowAnyException();
+      assertThat(source.observation(delivery)).as(body).isEmpty();
     }
   }
 
@@ -276,14 +277,14 @@ class GitHubWebhookSourceTest {
     final var body = "[".repeat(5000) + "]".repeat(5000);
     final var delivery = delivery("issues", "a", body);
 
-    assertThatCode(() -> source.observations(delivery)).doesNotThrowAnyException();
-    assertThat(source.observations(delivery)).isEmpty();
+    assertThatCode(() -> source.observation(delivery)).doesNotThrowAnyException();
+    assertThat(source.observation(delivery)).isEmpty();
   }
 
   @Test
   void survivesFieldsOfTheWrongType() {
     final var observations =
-        source.observations(
+        source.observation(
             delivery(
                 "issues",
                 "a",
@@ -296,9 +297,9 @@ class GitHubWebhookSourceTest {
 
     // Nothing readable as a name is read as one, so this correlates by kind alone rather than on
     // whatever structure the payload put where a repository was due.
-    assertThat(observations).hasSize(1);
-    assertThat(observations.getFirst().kind()).isEqualTo("issues");
-    assertThat(observations.getFirst().correlationKey()).isEqualTo("github:issues");
+    assertThat(observations).isPresent();
+    assertThat(observations.orElseThrow().kind()).isEqualTo("issues");
+    assertThat(observations.orElseThrow().correlationKey()).isEqualTo("github:issues");
   }
 
   @Test
@@ -308,8 +309,8 @@ class GitHubWebhookSourceTest {
         new WebhookDelivery(
             Map.of("X-GitHub-Event", "push"), body.getBytes(StandardCharsets.UTF_8));
 
-    final var first = source.observations(delivery).getFirst().deliveryId();
-    final var second = source.observations(delivery).getFirst().deliveryId();
+    final var first = source.observation(delivery).orElseThrow().deliveryId();
+    final var second = source.observation(delivery).orElseThrow().deliveryId();
 
     assertThat(first).isNotBlank().isEqualTo(second);
   }

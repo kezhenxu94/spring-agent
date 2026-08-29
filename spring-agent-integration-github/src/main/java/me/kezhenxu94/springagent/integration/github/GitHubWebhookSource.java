@@ -5,6 +5,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Optional;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import lombok.extern.slf4j.Slf4j;
@@ -108,16 +109,16 @@ public class GitHubWebhookSource implements WebhookSource {
   }
 
   @Override
-  public List<Observation> observations(final WebhookDelivery delivery) {
+  public Optional<Observation> observation(final WebhookDelivery delivery) {
     final var event = delivery.header(EVENT_HEADER);
     if (event == null || event.isBlank()) {
       log.debug("Ignoring a {} delivery with no {} header", NAME, EVENT_HEADER);
-      return List.of();
+      return Optional.empty();
     }
     if ("ping".equalsIgnoreCase(event)) {
       // What GitHub sends when the hook is saved, to prove the endpoint answers. It says nothing
       // happened, so recording it would open a situation about the act of configuring the hook.
-      return List.of();
+      return Optional.empty();
     }
     final var body = delivery.bodyAsText();
     final JsonNode root;
@@ -127,7 +128,7 @@ public class GitHubWebhookSource implements WebhookSource {
       // Authentic but unreadable. The signature checked out, so this is GitHub sending something we
       // cannot parse rather than an attack; either way there is nothing to correlate on.
       log.warn("Could not parse an authentic {} payload for event '{}'", NAME, event, e);
-      return List.of();
+      return Optional.empty();
     }
 
     if (!root.isObject()) {
@@ -136,7 +137,7 @@ public class GitHubWebhookSource implements WebhookSource {
       // than left to fall through, which would mint a situation keyed on the event kind alone for
       // a body that said nothing.
       log.debug("Ignoring a {} delivery whose body is not a JSON object", NAME);
-      return List.of();
+      return Optional.empty();
     }
 
     final var action = text(root, "action");
@@ -149,7 +150,7 @@ public class GitHubWebhookSource implements WebhookSource {
     final var number = number(root);
     final var workflow = workflowName(root);
 
-    return List.of(
+    return Optional.of(
         Observation.builder()
             .source(NAME)
             .deliveryId(deliveryId(delivery))

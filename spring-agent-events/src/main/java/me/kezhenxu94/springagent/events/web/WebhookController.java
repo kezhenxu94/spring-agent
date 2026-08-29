@@ -3,10 +3,12 @@ package me.kezhenxu94.springagent.events.web;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.observing.EventIntakes;
+import me.kezhenxu94.springagent.core.observing.Observation;
 import me.kezhenxu94.springagent.events.config.EventsProperties;
 import me.kezhenxu94.springagent.events.source.WebhookDelivery;
 import me.kezhenxu94.springagent.events.source.WebhookSource;
@@ -104,10 +106,8 @@ public class WebhookController {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
     }
 
-    // Failure of any one consumer is EventIntakes' business, not this method's: what matters here
-    // is that a Grafana delivery carrying several alerts reports all of them, since they are about
-    // different situations.
-    observations(known, delivery).forEach(intakes::observe);
+    // Failure of any one consumer is EventIntakes' business, not this method's.
+    observation(known, delivery).ifPresent(intakes::observe);
     // No content, and nothing about what we made of it. A sender is being told the delivery
     // arrived,
     // which is all it can act on; what the agent decides happens minutes later and is not a reply.
@@ -134,16 +134,16 @@ public class WebhookController {
     }
   }
 
-  private List<me.kezhenxu94.springagent.core.observing.Observation> observations(
+  private Optional<Observation> observation(
       final WebhookSource source, final WebhookDelivery delivery) {
     try {
-      return source.observations(delivery);
+      return source.observation(delivery);
     } catch (RuntimeException e) {
       // Authentic but unreadable. Worth a loud log, since it means either a payload shape the
-      // source
-      // does not know or a bug in reading one, and both are ours to fix rather than the sender's.
+      // source does not know or a bug in reading one, and both are ours to fix rather than the
+      // sender's.
       log.error("Could not read a {} delivery that had authenticated", source.name(), e);
-      return List.of();
+      return Optional.empty();
     }
   }
 }

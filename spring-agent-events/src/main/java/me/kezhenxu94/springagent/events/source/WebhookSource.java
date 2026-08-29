@@ -1,6 +1,6 @@
 package me.kezhenxu94.springagent.events.source;
 
-import java.util.List;
+import java.util.Optional;
 import me.kezhenxu94.springagent.core.observing.Observation;
 
 /**
@@ -46,15 +46,21 @@ public interface WebhookSource {
   boolean verify(WebhookDelivery delivery, String secret);
 
   /**
-   * What this delivery says, as observations.
+   * What this delivery says, as one observation.
    *
-   * <p>A list because one delivery is not one event: Grafana posts a batch of alerts that belong to
-   * different situations, and each of them has to correlate on its own. Empty is a normal answer
-   * for a delivery that says nothing worth recording, such as a ping.
+   * <p>One delivery is one observation, and the type says so rather than the documentation. A
+   * source that took a batch apart would be second-guessing the sender's own grouping — Grafana
+   * decides what belongs together from the contact point's {@code group_by} and posts the group,
+   * and splitting it asks the agent for an opinion about each alert in a batch it was told is one
+   * thing. It also multiplies the evidence: thirty alerts recorded separately store the delivery
+   * thirty times.
+   *
+   * <p>Empty is a normal answer for a delivery that says nothing worth recording — a ping, a test
+   * button, a body with no events in it — and is not an error.
    *
    * <p>Called only after {@link #verify} has passed, so this may assume the payload is authentic —
    * but never that it is well-formed or truthful, since its text was written by whoever caused the
    * event.
    */
-  List<Observation> observations(WebhookDelivery delivery);
+  Optional<Observation> observation(WebhookDelivery delivery);
 }
