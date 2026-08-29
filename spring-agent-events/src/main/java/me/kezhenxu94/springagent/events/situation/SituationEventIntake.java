@@ -4,7 +4,6 @@ import com.google.common.util.concurrent.Striped;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Comparator;
-import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.ObservedEvent;
@@ -71,34 +70,33 @@ public class SituationEventIntake implements EventIntake {
   }
 
   @Override
-  public Optional<String> observe(final Observation observation) {
+  public void observe(final Observation observation) {
     final var policy = properties.policyFor(observation.source()).orElse(null);
     if (policy == null) {
       // Not an error. A deployment configures the sources it wants, and a surface reports what it
       // saw without being asked to know which those are.
       log.debug("Ignoring observation from {}: the source is not configured", observation.source());
-      return Optional.empty();
+      return;
     }
 
     final var claimKey = claimKey(observation);
     if (!processedMessages.claim(claimKey)) {
       log.debug("Ignoring observation {}: it has already been recorded", claimKey);
-      return Optional.empty();
+      return;
     }
 
     try {
       final var lock = locks.get(observation.correlationKey());
       lock.lock();
       try {
-        final var situation = record(observation, policy);
-        return Optional.of(situation.id());
+        record(observation, policy);
       } finally {
         lock.unlock();
       }
     } catch (RuntimeException e) {
       // The claim goes back, so that a redelivery is recorded rather than passed over for good —
-      // the
-      // same reasoning as the release in the Feishu message handler. Re-recording an observation is
+      // the same reasoning as the release in the Feishu message handler. Re-recording an
+      // observation is
       // harmless: the event row is keyed by delivery id and so overwrites itself.
       processedMessages.release(claimKey);
       throw e;
@@ -235,11 +233,16 @@ public class SituationEventIntake implements EventIntake {
   }
 
   /**
-   * Namespaced by source, so that two systems whose delivery ids happen to collide — a bare numeric
-   * id from one, the same number from another — cannot silence each other.
+   * Namespaced twice over.
+   *
+   * <p>By source, so that two systems whose delivery ids happen to collide — a bare numeric id from
+   * one, the same number from another — cannot silence each other. And by this intake, because
+   * every intake in the application is given every observation and "already seen" means something
+   * different to each of them: a claim key shared with somebody else's intake would let whichever
+   * ran first silence the rest.
    */
   private static String claimKey(final Observation observation) {
-    return "observed:" + observation.source() + ":" + observation.deliveryId();
+    return "situations:observed:" + observation.source() + ":" + observation.deliveryId();
   }
 
   private static String truncate(final String value, final int limit) {

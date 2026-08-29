@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import me.kezhenxu94.springagent.core.observing.EventIntake;
+import me.kezhenxu94.springagent.core.observing.EventIntakes;
 import me.kezhenxu94.springagent.events.config.EventsProperties;
 import me.kezhenxu94.springagent.events.source.WebhookDelivery;
 import me.kezhenxu94.springagent.events.source.WebhookSource;
@@ -51,12 +51,12 @@ public class WebhookController {
 
   private final Map<String, WebhookSource> sources;
   private final EventsProperties properties;
-  private final EventIntake intake;
+  private final EventIntakes intakes;
 
   public WebhookController(
       final List<WebhookSource> sources,
       final EventsProperties properties,
-      final EventIntake intake) {
+      final EventIntakes intakes) {
     this.sources =
         sources.stream()
             .collect(
@@ -68,7 +68,7 @@ public class WebhookController {
                           "Two webhook sources both call themselves " + first.name());
                     }));
     this.properties = properties;
-    this.intake = intake;
+    this.intakes = intakes;
     log.info(
         "Receiving webhooks at /events/webhooks/{{}}", String.join("|", this.sources.keySet()));
   }
@@ -104,15 +104,10 @@ public class WebhookController {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
     }
 
-    for (final var observation : observations(known, delivery)) {
-      try {
-        intake.observe(observation);
-      } catch (RuntimeException e) {
-        // One unrecordable observation must not lose the rest of the batch: a Grafana delivery
-        // carries several alerts, and they are about different situations.
-        log.error("Could not record an observation from {}", source, e);
-      }
-    }
+    // Failure of any one consumer is EventIntakes' business, not this method's: what matters here
+    // is that a Grafana delivery carrying several alerts reports all of them, since they are about
+    // different situations.
+    observations(known, delivery).forEach(intakes::observe);
     // No content, and nothing about what we made of it. A sender is being told the delivery
     // arrived,
     // which is all it can act on; what the agent decides happens minutes later and is not a reply.

@@ -77,11 +77,12 @@ class SituationEventIntakeTest {
   @Test
   @DisplayName("the first observation opens a situation, due one debounce later")
   void shouldOpenASituation() {
-    final var situationId = intake.observe(alert("d1").build());
+    intake.observe(alert("d1").build());
 
-    assertThat(situationId).isPresent();
+    // Read back rather than returned. observe says nothing now: every intake in the application is
+    // given every observation, so "which situation it joined" is one implementation's answer and
+    // unanswerable once there is more than one of them.
     final var situation = repos.situations.only();
-    assertThat(situation.id()).isEqualTo(situationId.get());
     assertThat(situation.source()).isEqualTo("grafana");
     assertThat(situation.correlationKey()).isEqualTo("grafana:abc");
     assertThat(situation.title()).isEqualTo("api latency");
@@ -206,9 +207,9 @@ class SituationEventIntakeTest {
     intake.observe(alert("d1").build());
 
     clock.advance(Duration.ofSeconds(1));
-    final var second = intake.observe(alert("d1").build());
+    intake.observe(alert("d1").build());
 
-    assertThat(second).isEmpty();
+    // Dropped, and the proof is that nothing moved: not the count, not the deadline, not the rows.
     final var situation = repos.situations.only();
     assertThat(situation.eventCount()).isEqualTo(1);
     assertThat(situation.evaluateAfter()).isEqualTo(START.plus(DEBOUNCE));
@@ -234,16 +235,14 @@ class SituationEventIntakeTest {
             .build();
     final var intake = intake(properties);
 
-    assertThat(intake.observe(alert("1").build())).isPresent();
-    assertThat(
-            intake.observe(
-                Observation.builder()
-                    .source("github")
-                    .deliveryId("1")
-                    .correlationKey("github:x#1")
-                    .kind("issues.opened")
-                    .build()))
-        .isPresent();
+    intake.observe(alert("1").build());
+    intake.observe(
+        Observation.builder()
+            .source("github")
+            .deliveryId("1")
+            .correlationKey("github:x#1")
+            .kind("issues.opened")
+            .build());
 
     assertThat(repos.situations.all()).hasSize(2);
   }
@@ -277,15 +276,9 @@ class SituationEventIntakeTest {
   @Test
   @DisplayName("an unconfigured source is dropped without a claim, so configuring it later works")
   void shouldDropAnUnconfiguredSourceWithoutClaiming() {
-    final var recorded =
-        intake.observe(
-            Observation.builder()
-                .source("gitlab")
-                .deliveryId("d1")
-                .correlationKey("gitlab:x")
-                .build());
+    intake.observe(
+        Observation.builder().source("gitlab").deliveryId("d1").correlationKey("gitlab:x").build());
 
-    assertThat(recorded).isEmpty();
     assertThat(repos.situations.all()).isEmpty();
     // The claim matters: taking one here would mean that turning the source on later silently
     // ignored every delivery seen while it was off, and claims never expire.
@@ -335,8 +328,11 @@ class SituationEventIntakeTest {
 
     // Holding the claim would leave the observation unrecorded and every redelivery of it ignored,
     // which is worse than the duplicate the claim exists to prevent.
-    assertThat(repos.claims.isClaimed("observed:grafana:d1")).isFalse();
-    assertThat(intake.observe(alert("d1").build())).isPresent();
+    // Namespaced to this intake, so that an application's own intake claiming the same delivery
+    // cannot silence this one.
+    assertThat(repos.claims.isClaimed("situations:observed:grafana:d1")).isFalse();
+    intake.observe(alert("d1").build());
+    assertThat(repos.situations.all()).hasSize(1);
   }
 
   @Test

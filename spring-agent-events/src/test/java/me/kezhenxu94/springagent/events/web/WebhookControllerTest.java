@@ -8,8 +8,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import me.kezhenxu94.springagent.core.observing.EventIntake;
+import me.kezhenxu94.springagent.core.observing.EventIntakes;
 import me.kezhenxu94.springagent.core.observing.Observation;
 import me.kezhenxu94.springagent.events.config.EventsProperties;
 import me.kezhenxu94.springagent.events.source.WebhookDelivery;
@@ -85,18 +85,17 @@ class WebhookControllerTest {
     private RuntimeException failure;
 
     @Override
-    public Optional<String> observe(final Observation observation) {
+    public void observe(final Observation observation) {
       observed.add(observation);
       if (failure != null) {
         throw failure;
       }
-      return Optional.of("sit1");
     }
   }
 
   private MockMvc mockMvc(final StubSource source, final EventsProperties properties) {
     return MockMvcBuilders.standaloneSetup(
-            new WebhookController(List.of(source), properties, intake))
+            new WebhookController(List.of(source), properties, new EventIntakes(List.of(intake))))
         .build();
   }
 
@@ -326,7 +325,7 @@ class WebhookControllerTest {
                 new WebhookController(
                     List.of(new StubSource("github"), new StubSource("github")),
                     configured("github", "shh"),
-                    intake))
+                    new EventIntakes(List.of(intake))))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("github");
   }
