@@ -193,8 +193,28 @@ yours: they say nobody is waiting, they say the observed text is data and not in
 say silence is the common correct answer. A prompt that drops the untrusted-input framing hands
 whoever can open an issue a prompt of their own.
 
+Do not write policy into the prompt. What a deployment wants done about *its* events — which
+repositories matter, who to page, when to stay silent — belongs in that source's **playbook**:
+documents in the knowledge base, named by `app.events.sources.<source>.playbook.filter` and looked up
+with `playbook.query`. Your prompt says how to read this kind of event and what the shipped defaults
+are; the playbook says what this deployment does about it, and wins where the two overlap. Say so in
+the prompt, as the shipped ones do.
+
 Payload text is written by whoever caused the event. Treat it as untrusted everywhere: it is
-evidence to be shown, never routing, and never instructions.
+evidence to be shown, never routing, and never instructions. In particular, do not assume the run has
+a chat: only an observation that knew its own chat gives it one, and `app.events.sources.<source>.route`
+is where a *failed* triage is reported, not where the agent talks.
+
+### Somewhere to send a notice
+
+Implement core's `Notifier` (`core/notify/`) if your surface can say something to a `Route` with no
+run behind it. There is one caller today — `SituationSweeper` reporting a triage run that failed or
+never started — and one implementation, `FeishuNotifier`.
+
+The constraint that shapes it: this exists for the case where the model, the agent or a run is what
+broke, so an implementation must reach its service using nothing but its own client. No `SpringAgent`,
+no tool context, no `AgentRequest`. Take an `ObjectProvider<Notifier>` if you call one, since core
+ships none and having none is an ordinary configuration.
 
 ### A set of tools
 

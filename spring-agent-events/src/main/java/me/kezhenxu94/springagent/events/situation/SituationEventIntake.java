@@ -193,9 +193,13 @@ public class SituationEventIntake implements EventIntake {
           .orElseThrow();
     }
 
-    // Where a run may talk: what the observation knows, or what the source was configured with.
-    // A chat message knows its own chat; an alert knows nothing and has to be told.
-    final var route = observation.route().orElse(policy.route());
+    // Where a run may talk: what the observation knows, and only that. A chat message knows the
+    // chat it came from and a run about it answers there; an alert knows nowhere, and a run about
+    // it reaches people through what its playbook says rather than through a configured address.
+    //
+    // The source's own `route` is deliberately not consulted here. It is where a triage *failure*
+    // is reported, which is this module talking about itself, not the agent talking about an event.
+    final var route = observation.route();
     final var created =
         situations.save(
             Situation.builder()

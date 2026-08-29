@@ -167,6 +167,72 @@ class EventsPropertiesTest {
     assertThat(properties.sources()).isEmpty();
   }
 
+  @Test
+  @DisplayName("a source with no playbook of its own takes the top-level one")
+  void shouldInheritThePlaybook() {
+    final var properties =
+        EventsProperties.builder()
+            .enabled(true)
+            .playbook(EventsProperties.Playbook.builder().query("how to deal with events").build())
+            .sources(Map.of("github", EventsProperties.Source.builder().secret("s").build()))
+            .build();
+
+    final var playbook = properties.policyFor("github").orElseThrow().playbook();
+    assertThat(playbook.query()).isEqualTo("how to deal with events");
+    assertThat(playbook.hasQuery()).isTrue();
+  }
+
+  @Test
+  @DisplayName("and a source that states one replaces it whole, filter and query together")
+  void shouldOverrideThePlaybookWhole() {
+    // Whole rather than field by field, so a top-level filter pinned to one source's documents can
+    // never be applied to another source's query — which retrieves nothing and looks, from the
+    // outside, exactly like an empty knowledge base.
+    final var properties =
+        EventsProperties.builder()
+            .enabled(true)
+            .playbook(
+                EventsProperties.Playbook.builder()
+                    .query("the general one")
+                    .filter("docId == 'general'")
+                    .build())
+            .sources(
+                Map.of(
+                    "github",
+                    EventsProperties.Source.builder()
+                        .playbook(
+                            EventsProperties.Playbook.builder()
+                                .query("how to handle GitHub")
+                                .build())
+                        .build()))
+            .build();
+
+    final var playbook = properties.policyFor("github").orElseThrow().playbook();
+    assertThat(playbook.query()).isEqualTo("how to handle GitHub");
+    assertThat(playbook.filter()).isNull();
+  }
+
+  @Test
+  @DisplayName("no playbook anywhere is no playbook, not an empty lookup")
+  void shouldHaveNoPlaybookByDefault() {
+    final var properties =
+        properties(Map.of("github", EventsProperties.Source.builder().secret("s").build()));
+
+    final var playbook = properties.policyFor("github").orElseThrow().playbook();
+    assertThat(playbook.hasQuery()).isFalse();
+    assertThat(playbook.filter()).isNull();
+  }
+
+  @Test
+  @DisplayName("a blank query or filter is the same as saying nothing")
+  void shouldTreatBlankPlaybookFieldsAsAbsent() {
+    final var playbook = EventsProperties.Playbook.builder().query("  ").filter("").build();
+
+    assertThat(playbook.query()).isNull();
+    assertThat(playbook.filter()).isNull();
+    assertThat(playbook.hasQuery()).isFalse();
+  }
+
   static EventsProperties properties(final Map<String, EventsProperties.Source> sources) {
     return EventsProperties.builder().enabled(true).sources(sources).build();
   }
