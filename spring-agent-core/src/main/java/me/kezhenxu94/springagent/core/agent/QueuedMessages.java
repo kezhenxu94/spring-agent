@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
 
 /**
  * What arrived for a run while it was already working, waiting for a point at which the run can
@@ -43,9 +44,22 @@ public final class QueuedMessages {
    */
   private final Consumer<List<String>> onRead;
 
+  /**
+   * Whose run this is, so that a message from anybody else can be marked as such when it is read.
+   * Only an administrator's message ever reaches a run that is not their own; see {@code
+   * SpringAgent#liveRunFor}.
+   */
+  private final String ownerUserId;
+
+  /** What the agent writes into a conversation itself, for the line that marks such a message. */
+  private final CoreMessages messages;
+
   private boolean open = true;
 
-  QueuedMessages(final Consumer<List<String>> onRead) {
+  QueuedMessages(
+      final String ownerUserId, final CoreMessages messages, final Consumer<List<String>> onRead) {
+    this.ownerUserId = ownerUserId;
+    this.messages = messages;
     this.onRead = onRead;
   }
 
@@ -59,8 +73,9 @@ public final class QueuedMessages {
   }
 
   /**
-   * Everything queued so far, as the text of the messages to add to the turn, leaving the queue
-   * empty.
+   * Everything queued so far, framed as the user messages to add to the turn, leaving the queue
+   * empty. Framed here rather than by the caller because only this class knows whose run it is, and
+   * so which of the two frames in {@link #frame} a message needs.
    *
    * <p>A message whose text cannot be produced is dropped with a warning rather than failing the
    * tool call it was read from: the call has already done its work, and the run is worth more than
@@ -76,7 +91,7 @@ public final class QueuedMessages {
       try {
         final var text = queued.message().get();
         if (!Strings.isNullOrEmpty(text)) {
-          texts.add(text);
+          texts.add(frame(queued, text));
           read.add(queued.request().requestId());
         }
       } catch (Exception e) {
@@ -87,6 +102,29 @@ public final class QueuedMessages {
       onRead.accept(List.copyOf(read));
     }
     return texts;
+  }
+
+  /**
+   * {@code text} as the turn should read it, which is a whole framing and not merely the words: a
+   * queued message is added to the history as a plain user message, so the frame is the only place
+   * left to say what it is and who wrote it.
+   *
+   * <p>Two frames, because the usual one speaks in the first person — "I sent this while you were
+   * working" — and that sentence is false about a message an administrator sent into somebody
+   * else's run. Read as it stands, a third party's correction would look like the person being
+   * helped changing their mind, and the model would answer the wrong author back.
+   *
+   * <p>The second frame names the sender an administrator, because that is the only party who can
+   * reach a run that is not their own, and because the model needs more than the authorship: it has
+   * to know whose instruction wins when the two disagree, and to go on answering the person whose
+   * conversation it is rather than turning to address the administrator. A rule about whose
+   * messages may join a run that ever widens past administrators needs a third frame, not this one.
+   */
+  private String frame(final Queued queued, final String text) {
+    final var sender = queued.request().userId();
+    return Strings.isNullOrEmpty(sender) || sender.equals(ownerUserId)
+        ? messages.get("queued-message", text)
+        : messages.get("queued-message-from-another", sender, text);
   }
 
   /**

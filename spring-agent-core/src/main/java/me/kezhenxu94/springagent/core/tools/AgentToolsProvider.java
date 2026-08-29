@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.LocalizedPrompt;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
@@ -77,6 +78,9 @@ public class AgentToolsProvider {
   private final McpClientFactory mcpClientFactory;
   private final ApplicationContext applicationContext;
   private final SpringAgentProperties appConfiguration;
+
+  /** Asked only about the tools declared {@link AgentTool#admin()}. */
+  private final Admins admins;
 
   /**
    * The knowledge base, where a {@code spring-agent-rag-*} module supplies one. An {@link
@@ -170,7 +174,7 @@ public class AgentToolsProvider {
             .toString();
 
     final var tools = new ArrayList<Object>();
-    tools.addAll(resolveScenarioTools(request.scenario()));
+    tools.addAll(resolveScenarioTools(request.scenario(), request.userId()));
     tools.add(agentTools.fileSystemTools());
     tools.add(TodoWriteTool.builder().todoEventHandler(todoEventHandler).build());
     // Two independent gates, and both have to open. No handler means the run has no way to reach
@@ -407,14 +411,51 @@ public class AgentToolsProvider {
     return callbacks;
   }
 
-  /** The {@code @AgentTool} beans a run in {@code scenario} is offered, in registration order. */
+  /**
+   * The {@code @AgentTool} beans a run in {@code scenario} for {@code userId} is offered, in
+   * registration order.
+   *
+   * <p>Two rulings. {@link AgentScenario#offers} decides each tool for this kind of run; {@code
+   * app.ai.admins} decides the ones declared {@link AgentTool#admin()}, on the run's user id alone.
+   * See that attribute for why the user id is the whole of the test, and why the identity a run
+   * assumes is therefore the boundary worth guarding.
+   *
+   * <p>Resolved by bean name rather than through {@code getBeansWithAnnotation}, because the
+   * annotation is honoured on a {@code @Bean} factory method as well as on a class — {@code
+   * PlaybookTools} is registered that way — and reading the attribute off {@code bean.getClass()}
+   * would silently see the default on every one of those, which for {@code admin} means offering an
+   * admin tool to everybody. {@code findAnnotationOnBean} looks at whichever of the two carries it.
+   *
+   * <p>That it is the same lookup discovery uses is what makes the failure mode safe rather than
+   * dangerous. {@code getBeansWithAnnotation} is itself {@code getBeanNamesForAnnotation} followed
+   * by {@code getBean}, and the names come from this very call returning non-null — so anywhere the
+   * annotation cannot be resolved, native image included, the bean is not found to be a tool at all
+   * and is offered to nobody. There is no state in which a tool is discovered but its {@code admin}
+   * attribute reads as the default.
+   */
+  public List<Object> resolveScenarioTools(final AgentScenario scenario, final String userId) {
+    final var admin = admins.isAdmin(userId);
+    final var tools = new ArrayList<>();
+    for (final var name : applicationContext.getBeanNamesForAnnotation(AgentTool.class)) {
+      final var annotation = applicationContext.findAnnotationOnBean(name, AgentTool.class);
+      if (annotation != null && annotation.admin() && !admin) {
+        continue;
+      }
+      final var tool = applicationContext.getBean(name);
+      if (scenario.offers(tool)) {
+        tools.add(tool);
+      }
+    }
+    return List.copyOf(tools);
+  }
+
+  /**
+   * What {@code scenario} allows, for a caller with no particular person in mind — listing the
+   * tools a deployment has, rather than composing a run. Never includes an admin tool, since nobody
+   * has been named who could hold one.
+   */
   public List<Object> resolveScenarioTools(final AgentScenario scenario) {
-    // getBeansWithAnnotation, so that @AgentTool is honoured on a @Bean factory method as well as
-    // on
-    // the bean's own class.
-    return applicationContext.getBeansWithAnnotation(AgentTool.class).values().stream()
-        .filter(scenario::offers)
-        .toList();
+    return resolveScenarioTools(scenario, null);
   }
 
   public AgentTools build(String userId, String chatId, Map<String, Object> toolContext)

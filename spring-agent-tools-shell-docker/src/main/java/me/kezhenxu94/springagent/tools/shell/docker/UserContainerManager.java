@@ -11,7 +11,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.storage.StorageProperties;
 import me.kezhenxu94.springagent.core.tools.credentials.ShellCredentialStore;
 import org.testcontainers.containers.BindMode;
@@ -56,7 +56,7 @@ public class UserContainerManager implements AutoCloseable {
 
   private final DockerShellProperties properties;
   private final StorageProperties storageProperties;
-  private final SpringAgentProperties appConfiguration;
+  private final Admins admins;
   private final ShellCredentialStore credentialStore;
 
   private final ConcurrentMap<String, GenericContainer<?>> containers = new ConcurrentHashMap<>();
@@ -240,7 +240,7 @@ public class UserContainerManager implements AutoCloseable {
     labels.put(LABEL_APP, LABEL_APP_VALUE);
     labels.put(LABEL_SHELL_CONTAINER, "true");
     labels.put(LABEL_OWNER_USER_ID, userId);
-    if (appConfiguration.ai().admins().contains(userId)) {
+    if (admins.isAdmin(userId)) {
       labels.put(LABEL_SHELL_CONTAINER_ROLE, SHELL_CONTAINER_ROLE_ADMIN);
     }
     return labels;

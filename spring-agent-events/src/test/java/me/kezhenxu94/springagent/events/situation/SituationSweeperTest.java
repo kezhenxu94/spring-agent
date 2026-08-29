@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.events.situation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -15,9 +16,12 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
+import me.kezhenxu94.springagent.core.config.Admins;
+import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.Situation;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
 import me.kezhenxu94.springagent.core.notify.Notifier;
@@ -88,6 +92,23 @@ class SituationSweeperTest {
   }
 
   private SituationSweeper sweeper(final EventsProperties properties) {
+    return sweeper(properties, noAdmins());
+  }
+
+  /** Nobody is an administrator, which is what every test here but the startup one wants. */
+  private static Admins noAdmins() {
+    return admins(Set.of());
+  }
+
+  private static Admins admins(final Set<String> ids) {
+    return new Admins(
+        new SpringAgentProperties(
+            null,
+            new SpringAgentProperties.Ai(ids, Map.of(), null, null, null, null, null, null),
+            Locale.ENGLISH));
+  }
+
+  private SituationSweeper sweeper(final EventsProperties properties, final Admins admins) {
     final var filters = new PlaybookFilters(properties);
     filters.parseAll();
     return new SituationSweeper(
@@ -95,6 +116,7 @@ class SituationSweeperTest {
         repos.situations,
         repos.claims,
         properties,
+        admins,
         scheduler,
         new SituationBrief(repos.events, properties, TestI18n.english(), clock),
         TestI18n.prompts(Locale.ENGLISH),
@@ -621,6 +643,7 @@ class SituationSweeperTest {
             repos.situations,
             repos.claims,
             properties,
+            noAdmins(),
             scheduler,
             new SituationBrief(repos.events, properties, TestI18n.messages(chinese), clock),
             TestI18n.prompts(chinese),
@@ -632,5 +655,33 @@ class SituationSweeperTest {
     sweeper.sweep();
 
     assertThat(fired().description()).isEqualTo("grafana 情况 " + situation.id() + " 的分析");
+  }
+
+  @Test
+  @DisplayName("a source whose owner is an administrator refuses to start, naming the source")
+  void shouldRefuseAnAdministratorAsASourceOwner() {
+    // The whole of the protection for the case that matters: a triage run assumes this identity
+    // and then reads text whoever caused the event wrote. An admin owner would put WritePlaybook
+    // in their reach, and let an issue body author the playbook every later triage of that source
+    // is steered by. Nothing inside a run can tell it apart from an ordinary run by the same
+    // owner, so the pairing is refused where it is written down instead.
+    final var properties = properties(false, 2);
+
+    assertThatThrownBy(() -> sweeper(properties, admins(Set.of("ou_agent"))).start())
+        .isInstanceOf(IllegalStateException.class)
+        // Both halves matter to whoever has to fix it: which source, and what to do about it.
+        .hasMessageContaining("grafana")
+        .hasMessageContaining("app.ai.admins");
+  }
+
+  @Test
+  @DisplayName("an owner who is not an administrator starts normally")
+  void shouldStartWhereTheOwnerIsNobodySpecial() {
+    // The control. Without it a start() that threw on everything would pass the test above.
+    final var properties = properties(false, 2);
+
+    sweeper(properties, admins(Set.of("ou_someone_else"))).start();
+
+    verify(scheduler).scheduleWithFixedDelay(any(Runnable.class), eq(properties.sweepInterval()));
   }
 }

@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.config.Admins;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -40,7 +40,7 @@ public class UserPodManager {
 
   private final KubernetesClient kubernetesClient;
   private final KubernetesShellProperties properties;
-  private final SpringAgentProperties appConfiguration;
+  private final Admins admins;
 
   /**
    * @param groupId the group (e.g. Feishu group chat id) this call came from, or null/blank for
@@ -264,7 +264,7 @@ public class UserPodManager {
     labels.put(LABEL_SHELL_POD, "true");
     labels.put(LABEL_OWNER_USER_ID, userId);
     labels.put(LABEL_SCOPE_KEY, scopeKey);
-    if (appConfiguration.ai().admins().contains(userId)) {
+    if (admins.isAdmin(userId)) {
       labels.put(LABEL_SHELL_POD_ROLE, SHELL_POD_ROLE_ADMIN);
     }
 

@@ -6,7 +6,6 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.QueuedMessages;
-import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -24,9 +23,6 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 public class InterceptingToolCallingManager implements ToolCallingManager {
   private final ToolCallingManager delegate;
   private final List<ToolCallInterceptor> interceptors;
-
-  /** How the message a run reads mid-turn is introduced to the model. */
-  private final CoreMessages messages;
 
   @Override
   public List<ToolDefinition> resolveToolDefinitions(ToolCallingChatOptions chatOptions) {
@@ -80,8 +76,9 @@ public class InterceptingToolCallingManager implements ToolCallingManager {
     }
     log.info("Adding {} message(s) that arrived mid-run to the turn", arrived.size());
     final var history = new ArrayList<>(result.conversationHistory());
-    arrived.forEach(
-        message -> history.add(new UserMessage(messages.get("queued-message", message))));
+    // Already framed by QueuedMessages, which is the only party that knows whether a message came
+    // from the person whose run this is or from an administrator speaking into it.
+    arrived.forEach(message -> history.add(new UserMessage(message)));
     return ToolExecutionResult.builder()
         .conversationHistory(history)
         .returnDirect(result.returnDirect())

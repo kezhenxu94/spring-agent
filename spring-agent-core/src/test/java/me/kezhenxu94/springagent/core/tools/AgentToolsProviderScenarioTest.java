@@ -3,8 +3,12 @@ package me.kezhenxu94.springagent.core.tools;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
@@ -27,6 +31,9 @@ class AgentToolsProviderScenarioTest {
 
   static class OwnedTool {}
 
+  /** Stands in for a real one — {@code PlaybookTools} — which core cannot see from here. */
+  static class AnAdminTool {}
+
   @AgentTool
   static class AnnotatedOwnedTool extends OwnedTool {}
 
@@ -47,6 +54,17 @@ class AgentToolsProviderScenarioTest {
     @Bean
     OwnedTool plainBean() {
       return new OwnedTool();
+    }
+
+    /**
+     * Declared on the factory method rather than the class, which is the case worth covering: it is
+     * how {@code PlaybookTools} is registered, and reading the attribute off the bean's own class
+     * would see the default here and offer it to everybody.
+     */
+    @Bean
+    @AgentTool(admin = true)
+    AnAdminTool anAdminTool() {
+      return new AnAdminTool();
     }
   }
 
@@ -86,6 +104,79 @@ class AgentToolsProviderScenarioTest {
   }
 
   @Test
+  @DisplayName("an admin tool goes to an administrator, and to nobody else")
+  void anAdminToolGoesToAnAdministrator() {
+    try (var context = new AnnotationConfigApplicationContext(Tools.class)) {
+      final var provider = provider(context, "ou_admin");
+
+      assertThat(provider.resolveScenarioTools(BuiltInScenarios.CHAT, "ou_admin"))
+          .hasAtLeastOneElementOfType(AnAdminTool.class);
+      assertThat(provider.resolveScenarioTools(BuiltInScenarios.CHAT, "ou_somebody"))
+          .doesNotHaveAnyElementsOfTypes(AnAdminTool.class);
+      // A run with nobody behind it is nobody's administrator.
+      assertThat(provider.resolveScenarioTools(BuiltInScenarios.CHAT, null))
+          .doesNotHaveAnyElementsOfTypes(AnAdminTool.class);
+    }
+  }
+
+  @Test
+  @DisplayName("an administrator keeps them in their own unattended runs, which is the point")
+  void anAdministratorKeepsThemWhenDelegating() {
+    // Deliberate rather than overlooked. A scheduled task and a subagent both act on a brief this
+    // same administrator wrote, so withholding here would only stop them deferring or delegating
+    // work they could do in the chat they are sitting in.
+    //
+    // What must never happen is an identity that reads strangers' text being an administrator, and
+    // that is refused by SituationSweeper at startup — no code on this path can tell such a run
+    // from an administrator's own.
+    try (var context = new AnnotationConfigApplicationContext(Tools.class)) {
+      final var provider = provider(context, "ou_admin");
+
+      assertThat(provider.resolveScenarioTools(BuiltInScenarios.SCHEDULED_TASK, "ou_admin"))
+          .hasAtLeastOneElementOfType(AnAdminTool.class);
+      assertThat(provider.resolveScenarioTools(BuiltInScenarios.SUBAGENT, "ou_admin"))
+          .hasAtLeastOneElementOfType(AnAdminTool.class);
+    }
+  }
+
+  @Test
+  @DisplayName("a scenario written elsewhere rules on an admin tool like any other")
+  void aConsumerScenarioRulesOnThemLikeAnyOther() {
+    // A consumer's scenario decides these the way it decides everything else: say nothing and an
+    // administrator gets them, say no and nobody does. There is no separate admin question on the
+    // interface to forget about, because the identity is the boundary.
+    //
+    // What a scenario cannot do any more is rule on the category — @AgentTool(admin) is on the
+    // bean definition, not the type, so offers() sees only the object. Refusing one means naming
+    // its class, as here.
+    final var saysNothing = new AgentScenario() {};
+    final var refuses =
+        new AgentScenario() {
+          @Override
+          public boolean offers(final Object tool) {
+            return !(tool instanceof AnAdminTool);
+          }
+        };
+
+    try (var context = new AnnotationConfigApplicationContext(Tools.class)) {
+      assertThat(provider(context, "ou_admin").resolveScenarioTools(saysNothing, "ou_admin"))
+          .hasAtLeastOneElementOfType(AnAdminTool.class);
+      assertThat(provider(context, "ou_admin").resolveScenarioTools(refuses, "ou_admin"))
+          .doesNotHaveAnyElementsOfTypes(AnAdminTool.class)
+          .hasAtLeastOneElementOfType(LibraryTool.class);
+    }
+  }
+
+  @Test
+  @DisplayName("listing a deployment's tools names no admin tool, since it names no person")
+  void theListingOverloadHoldsNoAdminTool() {
+    try (var context = new AnnotationConfigApplicationContext(Tools.class)) {
+      assertThat(provider(context, "ou_admin").resolveScenarioTools(BuiltInScenarios.CHAT))
+          .doesNotHaveAnyElementsOfTypes(AnAdminTool.class);
+    }
+  }
+
+  @Test
   @DisplayName("a scheduled run is not offered the tool that schedules runs")
   void aScheduledRunCannotScheduleMore() {
     final var scheduledTaskTool =
@@ -96,12 +187,30 @@ class AgentToolsProviderScenarioTest {
   }
 
   private static AgentToolsProvider provider(final AnnotationConfigApplicationContext context) {
+    return provider(context, null);
+  }
+
+  private static AgentToolsProvider provider(
+      final AnnotationConfigApplicationContext context, final String admin) {
     return new AgentToolsProvider(
         mock(UserWorkspaceFactory.class),
         mock(McpServerConfigRepo.class),
         mock(McpClientFactory.class),
         context,
         mock(SpringAgentProperties.class),
+        new Admins(
+            new SpringAgentProperties(
+                null,
+                new SpringAgentProperties.Ai(
+                    admin == null ? Set.of() : Set.of(admin),
+                    Map.of(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null),
+                Locale.ENGLISH)),
         mock(org.springframework.beans.factory.ObjectProvider.class));
   }
 }

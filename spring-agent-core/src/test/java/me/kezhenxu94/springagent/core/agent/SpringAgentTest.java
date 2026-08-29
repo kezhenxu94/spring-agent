@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
@@ -119,6 +120,7 @@ class SpringAgentTest {
             ChatClient.builder(chatModel).defaultOptions(ToolCallingChatOptions.builder()).build(),
             chatMemory,
             properties(),
+            new Admins(properties()),
             agentToolsProvider,
             pendingQuestions,
             messagesIn(Locale.ENGLISH),
@@ -887,8 +889,7 @@ class SpringAgentTest {
         DefaultToolCallingManager.builder()
             .toolCallbackResolver(new InterceptingToolCallbackResolver(toolName -> null, List.of()))
             .build(),
-        List.of(),
-        messagesIn(Locale.ENGLISH));
+        List.of());
   }
 
   /** The tool responses one AskUserQuestionTool call produces, as the model would read them. */
@@ -1262,9 +1263,7 @@ class SpringAgentTest {
         };
     final var manager =
         new InterceptingToolCallingManager(
-            DefaultToolCallingManager.builder().build(),
-            List.of(whatArrivesMidCall),
-            messagesIn(Locale.ENGLISH));
+            DefaultToolCallingManager.builder().build(), List.of(whatArrivesMidCall));
     final var chatMemory =
         MessageWindowChatMemory.builder().chatMemoryRepository(chatMemoryRepository).build();
     try {
@@ -1282,6 +1281,7 @@ class SpringAgentTest {
             ChatClient.builder(chatModel).defaultOptions(ToolCallingChatOptions.builder()).build(),
             chatMemory,
             properties(),
+            new Admins(properties()),
             agentToolsProvider,
             pendingQuestions,
             messagesIn(Locale.ENGLISH),
@@ -1312,6 +1312,7 @@ class SpringAgentTest {
             ChatClient.builder(chatModel).defaultOptions(ToolCallingChatOptions.builder()).build(),
             chatMemory,
             properties(),
+            new Admins(properties()),
             agentToolsProvider,
             pendingQuestions,
             messagesIn(Locale.ENGLISH),

@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.tools.shell.kubernetes;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.ConditionalOnShellBackend;
 import me.kezhenxu94.springagent.core.config.ShellToolsProperties.Type;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
@@ -53,8 +54,8 @@ public class KubernetesShellAutoConfiguration {
   UserPodManager userPodManager(
       final KubernetesClient kubernetesClient,
       final KubernetesShellProperties properties,
-      final SpringAgentProperties appConfiguration) {
-    return new UserPodManager(kubernetesClient, properties, appConfiguration);
+      final Admins admins) {
+    return new UserPodManager(kubernetesClient, properties, admins);
   }
 
   @Bean

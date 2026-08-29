@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.storage.StorageProperties;
 import me.kezhenxu94.springagent.core.tools.credentials.ShellCredentialStore;
@@ -169,7 +170,7 @@ class DockerShellToolsIntegrationTest {
             new DockerShellProperties.Credentials(null, "unused-but-required"));
     manager =
         new UserContainerManager(
-            properties, storageProperties(), appProperties(), fixedStore(credentials));
+            properties, storageProperties(), new Admins(appProperties()), fixedStore(credentials));
     return new DockerShellTools(manager, properties);
   }
 

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.LocalShellToolsConfiguration;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.repo.ShellCredentialRepo;
@@ -43,7 +44,9 @@ class ShellBackendSelectionTest {
           .withBean(KubernetesClient.class, () -> mock(KubernetesClient.class))
           .withBean(StorageProperties.class, () -> mock(StorageProperties.class))
           .withBean(ShellCredentialRepo.class, () -> mock(ShellCredentialRepo.class))
-          .withBean(SpringAgentProperties.class, () -> mock(SpringAgentProperties.class));
+          .withBean(SpringAgentProperties.class, () -> mock(SpringAgentProperties.class))
+          // The sandbox managers label an admin's container or pod, so both shells need this.
+          .withBean(Admins.class, () -> mock(Admins.class));
 
   @Test
   @DisplayName("no property means no shell at all, even with every module on the classpath")

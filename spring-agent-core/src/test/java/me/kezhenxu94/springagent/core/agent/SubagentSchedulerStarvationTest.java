@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
@@ -110,6 +111,7 @@ class SubagentSchedulerStarvationTest {
             ChatClient.builder(chatModel).defaultOptions(ToolCallingChatOptions.builder()).build(),
             chatMemory,
             properties,
+            new Admins(properties),
             agentToolsProvider,
             pendingQuestions,
             messages,

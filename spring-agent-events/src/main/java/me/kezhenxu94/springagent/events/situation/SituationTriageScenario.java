@@ -24,6 +24,12 @@ import me.kezhenxu94.springagent.core.tools.ScheduledTaskTool;
  *       instructions to follow, and the fence {@code SituationBrief} puts around it.
  *   <li>whatever the deployment chose to give the agent at all. A shell exists only where {@code
  *       app.ai.tools.shell.type} says so, and it defaults to {@code none}.
+ *   <li>that {@code owner-user-id} is not an administrator, which {@code SituationSweeper} refuses
+ *       to start without. It follows from the first item rather than adding to it: this run holds
+ *       whatever that identity holds, so an admin owner would put {@code WritePlaybook} in reach of
+ *       whoever wrote the event, and let them author the playbook the next triage reads — undoing
+ *       what {@code PlaybookFilters} names document ids to prevent. Nothing in this class can see
+ *       that, which is why the check is on the configuration and not on the run.
  * </ul>
  *
  * <p>An allow-list here would add little to that and cost something real. {@link #offers} is

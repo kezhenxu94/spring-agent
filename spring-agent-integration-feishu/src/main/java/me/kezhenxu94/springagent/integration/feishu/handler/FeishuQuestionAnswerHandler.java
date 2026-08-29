@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
@@ -54,6 +55,9 @@ public class FeishuQuestionAnswerHandler {
   private final FeishuQuestionFormCloser formCloser;
   private final SpringAgent springAgent;
   private final FeishuMessages messages;
+
+  /** Asked whether somebody who was not the person asked may answer anyway. */
+  private final Admins admins;
 
   /**
    * Boot's general-purpose executor by name, since {@code taskScheduler} is a {@code TaskExecutor}
@@ -103,9 +107,11 @@ public class FeishuQuestionAnswerHandler {
       };
     }
     // Cards are shared, so in a group chat everyone can see and press this form. Only the person
-    // the agent was talking to gets to answer for them.
+    // the agent was talking to gets to answer for them — or an administrator, who is trusted to
+    // answer for anybody, and whose reason for existing is the group chat where the agent is stuck
+    // on a question the person it asked cannot answer and somebody else can.
     final var operator = event.getEvent().getOperator().getOpenId();
-    if (!Objects.equals(operator, pending.userId())) {
+    if (!Objects.equals(operator, pending.userId()) && !admins.isAdmin(operator)) {
       log.info("Answer for {} from {}, who is not {}", id, operator, pending.userId());
       return toast("warning", messages.get("question-not-yours"));
     }
@@ -145,7 +151,8 @@ public class FeishuQuestionAnswerHandler {
           "Failed to close the question form on card {}: token={}", pending.cardId(), token, e);
     }
     final var replyTo = event.getEvent().getContext().getOpenMessageId();
-    taskExecutor.execute(() -> deliver(pending, questions, answers, replyTo, token));
+    final var answeredBy = Objects.equals(operator, pending.userId()) ? null : operator;
+    taskExecutor.execute(() -> deliver(pending, questions, answers, answeredBy, replyTo, token));
     return toast("success", messages.get("question-submitted"));
   }
 
@@ -154,6 +161,7 @@ public class FeishuQuestionAnswerHandler {
       final PendingQuestion pending,
       final List<Question> questions,
       final Map<String, String> answers,
+      final String answeredBy,
       final String replyTo,
       final String token) {
     final var startedAt = Instant.now();
@@ -174,7 +182,11 @@ public class FeishuQuestionAnswerHandler {
               .conversationId(pending.conversationId())
               .rootMessageId(pending.rootMessageId())
               .replyMessageId(replyTo)
-              .userMessage(user -> user.text(message(questions, answers)))
+              // The run stays the asked person's, whoever pressed the button: it is their
+              // conversation, their card, their chat memory and their identity — so their files,
+              // their credentials, their MCP servers. An administrator answering gets a say in that
+              // run, not ownership of it, and who answered is said in the message instead.
+              .userMessage(user -> user.text(message(questions, answers, answeredBy)))
               .build());
       log.info(
           "Resumed conversation {} with answers for {}: token={}, totalElapsedMs={}",
@@ -194,9 +206,20 @@ public class FeishuQuestionAnswerHandler {
    * to the model is bounded, so a busy conversation may have dropped the asking, and the JDBC chat
    * memory repository discards tool-call messages entirely — under either, "Postgres" on its own
    * would be an answer to nothing.
+   *
+   * <p>Says who answered when it was not the person asked. Without it the turn, and the chat memory
+   * it is written into, would record an administrator's answer as that person's own — and the model
+   * would go on to thank the wrong party for it.
+   *
+   * @param answeredBy the administrator who answered, or null where the person asked answered
    */
-  private String message(final List<Question> questions, final Map<String, String> answers) {
-    final var message = new StringBuilder(messages.get("question-answer-heading"));
+  private String message(
+      final List<Question> questions, final Map<String, String> answers, final String answeredBy) {
+    final var message =
+        new StringBuilder(
+            Strings.isNullOrEmpty(answeredBy)
+                ? messages.get("question-answer-heading")
+                : messages.get("question-answer-heading-by-admin", answeredBy));
     for (final var question : questions) {
       final var answer = answers.get(question.question());
       if (Strings.isNullOrEmpty(answer)) {
