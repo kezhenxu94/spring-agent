@@ -29,6 +29,11 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
   }
 
   /**
+   * @param admins the user ids this deployment trusts with everybody else's work, by whatever id
+   *     the surface puts on a request — a Feishu open id, a CLI user name. Empty by default, and an
+   *     empty set is the feature being off. See {@link Admins} for what membership grants and why
+   *     it is not a UI role: an admin causes things to happen as somebody else, in runs that keep
+   *     the identity they started with.
    * @param scheduledTaskPrompt what a firing scheduled task says to the model, as a template over
    *     {@code {taskText}} — the prompt the task was created with. Defaults to {@link
    *     #DEFAULT_SCHEDULED_TASK_PROMPT}, since a deployment that never schedules anything has no

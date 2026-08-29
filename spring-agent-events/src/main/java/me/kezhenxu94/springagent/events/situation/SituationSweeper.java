@@ -15,6 +15,7 @@ import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.dao.models.Situation;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
 import me.kezhenxu94.springagent.core.dao.repo.SituationRepo;
@@ -57,6 +58,13 @@ public class SituationSweeper {
   private final SituationRepo situations;
   private final ProcessedMessageRepo processedMessages;
   private final EventsProperties properties;
+
+  /**
+   * Asked once, at startup: a source whose owner is an administrator is a configuration this
+   * refuses to run with. See {@link #start()}.
+   */
+  private final Admins admins;
+
   private final ThreadPoolTaskScheduler taskScheduler;
   private final SituationBrief brief;
   private final TriagePrompts triagePrompts;
@@ -109,6 +117,32 @@ public class SituationSweeper {
                                     + " agent's own, never a person's.",
                                 source,
                                 source)));
+
+    // And that identity must not be an administrator. A triage run assumes it and then reads text
+    // whoever caused the event wrote, so an admin owner hands that author the admin tools —
+    // WritePlaybook among them, which would let an issue body rewrite the playbook every later
+    // triage of that source is steered by. Self-perpetuating, unattended, and invisible.
+    //
+    // Refused rather than logged, and refused here rather than checked per run. Nothing inside a
+    // run can tell this one apart from any other run by the same owner — that is what assuming an
+    // identity means — so the only honest place to catch it is the configuration that pairs the
+    // two, before anything has happened. An operator who wants an admin identity to report into
+    // chats it is not in should give this source an identity of its own instead.
+    final var adminOwners =
+        properties.sources().keySet().stream()
+            .flatMap(source -> properties.policyFor(source).stream())
+            .filter(policy -> admins.isAdmin(policy.ownerUserId()))
+            .map(EventsProperties.Policy::source)
+            .sorted()
+            .toList();
+    if (!adminOwners.isEmpty()) {
+      throw new IllegalStateException(
+          "The owner-user-id of these event sources is listed in app.ai.admins: "
+              + String.join(", ", adminOwners)
+              + ". A triage run assumes that identity and reads text whoever caused the event"
+              + " wrote, so it would hand them the admin tools. Give the source an identity of its"
+              + " own, or take it out of app.ai.admins.");
+    }
 
     sweep = taskScheduler.scheduleWithFixedDelay(this::sweepQuietly, properties.sweepInterval());
     log.info(

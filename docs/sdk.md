@@ -239,6 +239,16 @@ public enum MyScenarios implements AgentScenario {
 }
 ```
 
+A tool declared `@AgentTool(admin = true)` is additionally withheld unless the run's user is named
+in `app.ai.admins`. That is on the user id alone, so an administrator holds them in their own scheduled
+tasks and subagents too — both act on a brief that same administrator wrote.
+
+Which makes the **identity** the boundary, and the thing to be careful with. A run assumes a user id
+and holds whatever that id holds; no scenario can narrow it afterwards. So an identity that reads
+text written by strangers must never be an administrator — `spring-agent-events` refuses to start
+when a source's `owner-user-id` is listed in `app.ai.admins`, because at that point nothing could
+tell a triage run from an ordinary run by the same owner.
+
 Two things follow from `offers` taking the tool object rather than a name. Your scenario can rule on
 tools this runtime ships, and a scenario shipped here can rule on yours — the annotation deliberately
 carries no scenario attribute, because an annotation attribute cannot have an interface type and
@@ -276,7 +286,8 @@ Per-request identity reaches a tool through the tool context, under typed keys i
 
 `AgentToolsProvider.compose(...)` assembles the set once per request out of:
 
-- the `@AgentTool` beans in the context, minus whatever the scenario keeps out;
+- the `@AgentTool` beans in the context, minus whatever the scenario keeps out and minus the
+  admin-only ones unless the run's user is named in `app.ai.admins`;
 - filesystem and todo tools bound to that user's home;
 - the ask tool, when a handler exists and the property allows it;
 - that user's skills;

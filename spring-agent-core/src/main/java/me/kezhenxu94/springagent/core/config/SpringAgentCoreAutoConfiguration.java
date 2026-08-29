@@ -157,15 +157,14 @@ public class SpringAgentCoreAutoConfiguration {
   ToolCallingManager toolCallingManager(
       final ToolCallbackResolver toolCallbackResolver,
       final List<ToolCallInterceptor> interceptors,
-      final List<ToolTexts> toolTexts,
-      final CoreMessages messages) {
+      final List<ToolTexts> toolTexts) {
     final var defaultManager =
         DefaultToolCallingManager.builder()
             .toolCallbackResolver(
                 new InterceptingToolCallbackResolver(toolCallbackResolver, interceptors))
             .build();
     final var localizing = new LocalizingToolCallingManager(defaultManager, toolTexts);
-    return new InterceptingToolCallingManager(localizing, interceptors, messages);
+    return new InterceptingToolCallingManager(localizing, interceptors);
   }
 
   /**

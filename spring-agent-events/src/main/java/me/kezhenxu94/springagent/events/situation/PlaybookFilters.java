@@ -2,8 +2,12 @@ package me.kezhenxu94.springagent.events.situation;
 
 import jakarta.annotation.PostConstruct;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeMetadata;
 import me.kezhenxu94.springagent.events.config.EventsProperties;
 import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.filter.FilterExpressionTextParser;
@@ -74,6 +78,69 @@ public class PlaybookFilters {
   /** The expression narrowing this source's playbook, or null where it named none. */
   public Filter.Expression forSource(final String source) {
     return source == null ? null : parsed.get(source);
+  }
+
+  /**
+   * The document ids this source's filter accepts, or empty where it accepts something other than a
+   * named set of them — a filter over another field, one that excludes rather than includes, or no
+   * filter at all.
+   *
+   * <p>What this is for: an administrator writing a playbook needs to know which ids will actually
+   * be read as one, because a document stored under any other id is stored perfectly well and then
+   * never retrieved. Nothing complains, the triage run simply goes on triaging without a playbook.
+   *
+   * <p><b>Not a security check.</b> What keeps a run from authoring its own playbook is that {@code
+   * PlaybookTools} is an {@code AdminTool} and every unattended scenario withholds those — see the
+   * class comment above and {@code SituationTriageScenario}. This is the guard against a silent
+   * mistake by somebody who is allowed to be here.
+   *
+   * <p>Empty is deliberately ambiguous between "no filter" and "a filter this cannot read", and the
+   * caller keeps them apart by asking {@link #forSource} as well. An unreadable filter must not be
+   * reported as an accepted id, and a write under it cannot be promised to be read.
+   */
+  public Set<String> docIdsFor(final String source) {
+    final var expression = forSource(source);
+    if (expression == null) {
+      return Set.of();
+    }
+    final var ids = new LinkedHashSet<String>();
+    return collectDocIds(expression, ids) ? ids : Set.of();
+  }
+
+  /**
+   * Adds to {@code ids} the document ids {@code operand} accepts, answering whether the whole of it
+   * was understood.
+   *
+   * <p>False the moment anything is met that could widen or invert the set — a comparison on
+   * another field, a negation, an operator other than equality or membership. Answering false is
+   * what makes an unreadable filter report no ids rather than some of them: half an answer here
+   * would tell an administrator that an id is accepted when the surrounding expression rejects it.
+   */
+  private static boolean collectDocIds(final Filter.Operand operand, final Set<String> ids) {
+    if (operand instanceof Filter.Group group) {
+      return collectDocIds(group.content(), ids);
+    }
+    if (!(operand instanceof Filter.Expression expression)) {
+      return false;
+    }
+    return switch (expression.type()) {
+      case AND, OR ->
+          collectDocIds(expression.left(), ids) && collectDocIds(expression.right(), ids);
+      case EQ, IN -> {
+        if (!(expression.left() instanceof Filter.Key key)
+            || !KnowledgeMetadata.DOC_ID.equals(key.key())
+            || !(expression.right() instanceof Filter.Value value)) {
+          yield false;
+        }
+        if (value.value() instanceof List<?> values) {
+          values.forEach(v -> ids.add(String.valueOf(v)));
+        } else {
+          ids.add(String.valueOf(value.value()));
+        }
+        yield true;
+      }
+      default -> false;
+    };
   }
 
   private static Filter.Expression parse(final String source, final String expression) {

@@ -327,6 +327,36 @@ app:
     # tools that would let it see the conversation, ask the user or start subagents of its own are
     # simply absent from the run, and a model that is not told reaches for them anyway and then
     # reports that it could not.
+
+    # Who this deployment trusts with everybody else's work: a comma-separated list of user ids, as
+    # the surface writes them — a Feishu open id, not a name or an email. Empty, and the emptiness
+    # is the feature being off.
+    #
+    # What being one grants, in full:
+    #   - Reading and posting in Feishu chats they are not a member of, so their agent can act on a
+    #     group it was never added to (FeishuChatAccess).
+    #   - Answering a question the agent put to somebody else, on the card everyone in the group
+    #     can already see. The run stays the asked person's; the answer says who gave it.
+    #   - Speaking into a run that is already going for somebody else, instead of starting a second
+    #     one beside it. Their message is read at the next gap between tool calls, marked as theirs
+    #     (SpringAgent#liveRunFor).
+    #   - The tools declared @AgentTool(admin = true), which nobody else is offered at all — today ListPlaybooks and
+    #     WritePlaybook, below.
+    #   - A role=admin label on their shell sandbox, for a cluster that wants to tell them apart.
+    #
+    # This is not a UI role, and the difference is worth being plain about. An admin's word steers
+    # another person's run, and a run keeps the identity it started with: that person's files,
+    # their credentials, their MCP servers. So an admin can cause things to happen as somebody
+    # else. List the people who would be trusted with those things directly, and nobody else.
+    #
+    # An admin tool is decided on the user id alone, so an administrator holds one in their own
+    # scheduled tasks and subagents as well — both act on a brief they wrote themselves.
+    #
+    # Which makes the identity the boundary, and there is one pairing to avoid: never list an
+    # app.events.sources.<name>.owner-user-id here. A triage run assumes that identity and reads
+    # whatever the event's author wrote, so it would put WritePlaybook in a stranger's reach. The
+    # application refuses to start on that pairing rather than leaving it to be noticed. If such an
+    # identity needs to reach chats it is not in, give that source an identity of its own.
     admins: ${ADMINS:}
     embedding:
       # How the tool-search index is built, which is a few hundred tool descriptions embedded at
@@ -724,6 +754,16 @@ app:
     # or a tenant the incoming event named. That is not configurable, and it is the point: these
     # documents decide what the agent does about text an attacker can write, so what they are must
     # not itself be decided by whoever sent the event.
+    #
+    # That owner is meant to be an identity of the agent's own rather than a person's, so nobody is
+    # logged in as it to write the documents. Somebody listed in app.ai.admins writes them from an
+    # ordinary chat instead, with ListPlaybooks and WritePlaybook: the first says, per source, which
+    # base is read, with what question, and which document ids the filter below accepts; the second
+    # writes one of them. Both need a knowledge base (app.ai.rag.enabled).
+    #
+    # The owner itself must not be in app.ai.admins, and the application refuses to start if it is:
+    # a triage run assuming an admin identity would hand these very tools to whoever wrote the
+    # event it is triaging, and the playbook it wrote would steer every triage after it.
     # playbook:
     #   query: ...
     #   filter: ...

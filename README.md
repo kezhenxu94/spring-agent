@@ -154,8 +154,15 @@ RAG_ENABLED=true COMPOSE_PROFILES=rag docker compose up
 
 Other things worth knowing before a real deployment:
 
-- `ADMINS` lists the user ids exempted from the Feishu chat-membership check, so their agent can
-  read and post in chats they are not a member of. Grant it sparingly.
+- `ADMINS` lists the people this deployment trusts with everybody else's work, by user id (a Feishu
+  open id). An admin's agent reads and posts in chats they are not a member of; they can answer a
+  question the agent put to somebody else and speak into a run already going for somebody else; and
+  they get the admin-only tools, which today are the ones that write the triage playbooks
+  (`ListPlaybooks`, `WritePlaybook`). A run keeps the identity it started with, so an admin causes
+  things to happen *as* the person being helped — grant it only to people you would trust with
+  those files and credentials directly. Never list an events source's `owner-user-id` among them —
+  the application refuses to start on that pairing, since a triage run assuming an admin identity
+  would hand the admin-only tools to whoever wrote the event it is triaging.
 - `SPRING_AGENT_LOCALE` chooses the language the agent's own text — and the tool descriptions the
   model reads — are written in. `en` and `zh_CN` ship.
 - `app.ai.system-prompt` is where a persona and house rules go. It replaces a five-thousand-character
