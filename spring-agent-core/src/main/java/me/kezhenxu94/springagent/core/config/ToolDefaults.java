@@ -49,6 +49,8 @@ public class ToolDefaults implements EnvironmentPostProcessor, Ordered {
 
   static final String MAX_RESULT_CHARS = "app.ai.tools.max-result-chars";
 
+  static final String MAX_INLINED_INPUT_CHARS = "app.ai.tools.max-inlined-input-chars";
+
   @Override
   public void postProcessEnvironment(
       final ConfigurableEnvironment environment, final SpringApplication application) {
@@ -72,7 +74,9 @@ public class ToolDefaults implements EnvironmentPostProcessor, Ordered {
                     SUBAGENT_WAIT_TIMEOUT,
                     Subagent.DEFAULT_WAIT_TIMEOUT.toString(),
                     MAX_RESULT_CHARS,
-                    String.valueOf(Tools.DEFAULT_MAX_RESULT_CHARS))));
+                    String.valueOf(Tools.DEFAULT_MAX_RESULT_CHARS),
+                    MAX_INLINED_INPUT_CHARS,
+                    String.valueOf(Tools.DEFAULT_MAX_INLINED_INPUT_CHARS))));
   }
 
   /**

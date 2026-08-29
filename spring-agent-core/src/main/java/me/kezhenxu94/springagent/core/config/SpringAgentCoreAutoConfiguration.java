@@ -16,6 +16,7 @@ import me.kezhenxu94.springagent.core.tools.i18n.ToolTexts;
 import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallbackResolver;
 import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallingManager;
 import me.kezhenxu94.springagent.core.tools.interceptors.ToolCallInterceptor;
+import me.kezhenxu94.springagent.core.tools.interceptors.ToolInputFileRefs;
 import me.kezhenxu94.springagent.core.tools.mcp.McpProperties;
 import me.kezhenxu94.springagent.core.tools.mcp.McpStreamableHttpHeadersProperties;
 import org.springframework.ai.chat.client.ChatClient;
@@ -170,16 +171,17 @@ public class SpringAgentCoreAutoConfiguration {
   ToolCallingManager toolCallingManager(
       final ToolCallbackResolver toolCallbackResolver,
       final List<ToolCallInterceptor> interceptors,
+      final ToolInputFileRefs fileRefs,
       final List<ToolTexts> toolTexts,
       final ToolCallingProperties toolCallingProperties) {
     final var builder =
         DefaultToolCallingManager.builder()
             .toolCallbackResolver(
-                new InterceptingToolCallbackResolver(toolCallbackResolver, interceptors));
+                new InterceptingToolCallbackResolver(toolCallbackResolver, interceptors, fileRefs));
     applyLimits(builder, toolCallingProperties.getLimits());
     final var defaultManager = builder.build();
     final var localizing = new LocalizingToolCallingManager(defaultManager, toolTexts);
-    return new InterceptingToolCallingManager(localizing, interceptors);
+    return new InterceptingToolCallingManager(localizing, interceptors, fileRefs);
   }
 
   /**

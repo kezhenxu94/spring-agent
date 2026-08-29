@@ -19,13 +19,13 @@ The rest — ChatCard, MindNote, Board, OKR, Task, SourceSynced, ReferenceSynced
 - A GridColumn, TableCell or Callout has to be created with at least one child, even an empty Text block; none of them can be empty.
 - For the JSON fields of each block's content — Image, Table, Grid, Callout, File, Sheet — see FeishuDocBlockContentReference.
 
-3. The workflow that matters. To write the body of a new document, do **not** assemble it block by block with FeishuCreateDocBlockChildren. Instead:
+3. The workflow that matters. To write the body of a new document:
 1. FeishuCreateDocument for an empty document, which gives you a documentId (it already has a Page root block, so there is nothing to create).
-2. FeishuConvertMarkdownOrHtmlToBlocks to turn the Markdown or HTML body into blocks, which gives you firstLevelBlockIds and blocks — a tree whose parent/child links are temporary ids.
-3. FeishuCreateDocBlockDescendant with those blocks as descendantsJson and firstLevelBlockIds as childrenId, which inserts the whole tree under the document's root block in one call (pass documentId itself as blockId).
-4. If the content has tables, drop the mergeInfo field from each table block's property before inserting: it is read-only and inserting it fails.
-5. If the content has images or attachments, follow section 4 below.
-6. One FeishuCreateDocBlockDescendant inserts at most 1000 blocks; past that, split the call.
+2. FeishuWriteDocumentBody with the body written as Markdown. That is the whole of it: it converts, inserts, splits the insert when the content is long enough to need it, and uploads and binds every image the content names — by URL, or by the absolute path of a file in your workspace. It hands back counts and the real block_id of each top-level block, not the block tree.
+
+Do **not** assemble a body block by block with FeishuCreateDocBlockChildren, and do not run the conversion and the insert yourself. Doing it by hand means getting three things right that FeishuWriteDocumentBody gets right for you — dropping the read-only mergeInfo from every table block's property, splitting past the 1000 blocks one insert may carry, and the three-step image dance in section 4 — and Feishu answers a mistake in any of them with an error that does not say which.
+
+FeishuConvertMarkdownOrHtmlToBlocks with FeishuCreateDocBlockDescendant remains the way to build blocks that Markdown and HTML cannot express: exact image dimensions, merged cells, column ratios. Reach for it for those, and for nothing else.
 
 FeishuCreateDocBlockChildren is for appending a little flat content to a document that already has some — a few lines at the end, say. It takes at most 50 blocks and no nesting.
 

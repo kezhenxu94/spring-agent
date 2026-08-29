@@ -1,7 +1,10 @@
 package me.kezhenxu94.springagent.events.config;
 
+import java.util.Map;
+import java.util.Set;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
+import me.kezhenxu94.springagent.core.tools.interceptors.ToolInputFileRefs;
 import me.kezhenxu94.springagent.events.situation.PlaybookFilters;
 import me.kezhenxu94.springagent.events.tools.PlaybookTools;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -42,5 +45,16 @@ public class PlaybookToolsConfiguration {
       final PlaybookFilters playbookFilters,
       final EventsMessages messages) {
     return new PlaybookTools(knowledgeBase, properties, playbookFilters, messages);
+  }
+
+  /**
+   * A playbook rewritten wholesale is often a document that was read out of somewhere else, so
+   * {@code text} takes a reference to the tool result it came from instead of the whole playbook
+   * passing through the model twice.
+   */
+  @Bean
+  @ConditionalOnBean(KnowledgeBase.class)
+  ToolInputFileRefs.Params playbookToolFileRefParams() {
+    return () -> Map.of("WritePlaybook", Set.of("text"));
   }
 }

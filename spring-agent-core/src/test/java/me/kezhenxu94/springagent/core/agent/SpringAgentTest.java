@@ -43,6 +43,7 @@ import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallbac
 import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallbackResolver;
 import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallingManager;
 import me.kezhenxu94.springagent.core.tools.interceptors.ToolCallInterceptor;
+import me.kezhenxu94.springagent.core.tools.interceptors.ToolInputFileRefs;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -842,7 +843,8 @@ class SpringAgentTest {
             .questionHandler(questions -> Map.of())
             .build();
     final var endsTurn =
-        new InterceptingToolCallback(new EndsTurnCallback(ToolCallbacks.from(tool)[0]), List.of());
+        new InterceptingToolCallback(
+            new EndsTurnCallback(ToolCallbacks.from(tool)[0]), List.of(), noFileRefs());
 
     assertThat(endsTurn.getToolMetadata().returnDirect()).isTrue();
   }
@@ -887,9 +889,11 @@ class SpringAgentTest {
   private static ToolCallingManager managerResolvingNothingByName() {
     return new InterceptingToolCallingManager(
         DefaultToolCallingManager.builder()
-            .toolCallbackResolver(new InterceptingToolCallbackResolver(toolName -> null, List.of()))
+            .toolCallbackResolver(
+                new InterceptingToolCallbackResolver(toolName -> null, List.of(), noFileRefs()))
             .build(),
-        List.of());
+        List.of(),
+        noFileRefs());
   }
 
   /** The tool responses one AskUserQuestionTool call produces, as the model would read them. */
@@ -1263,7 +1267,7 @@ class SpringAgentTest {
         };
     final var manager =
         new InterceptingToolCallingManager(
-            DefaultToolCallingManager.builder().build(), List.of(whatArrivesMidCall));
+            DefaultToolCallingManager.builder().build(), List.of(whatArrivesMidCall), noFileRefs());
     final var chatMemory =
         MessageWindowChatMemory.builder().chatMemoryRepository(chatMemoryRepository).build();
     try {
@@ -1540,5 +1544,10 @@ class SpringAgentTest {
               ChatResponseMetadata.builder().model(model).usage(new DefaultUsage(1, 2, 3)).build())
           .build();
     }
+  }
+
+  /** No parameter takes a file reference here, so nothing an argument holds is ever expanded. */
+  private static ToolInputFileRefs noFileRefs() {
+    return new ToolInputFileRefs(null, null, null, List.of());
   }
 }

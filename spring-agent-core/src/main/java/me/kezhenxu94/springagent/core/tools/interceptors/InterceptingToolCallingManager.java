@@ -23,6 +23,7 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 public class InterceptingToolCallingManager implements ToolCallingManager {
   private final ToolCallingManager delegate;
   private final List<ToolCallInterceptor> interceptors;
+  private final ToolInputFileRefs fileRefs;
 
   @Override
   public List<ToolDefinition> resolveToolDefinitions(ToolCallingChatOptions chatOptions) {
@@ -39,7 +40,7 @@ public class InterceptingToolCallingManager implements ToolCallingManager {
                   cb ->
                       cb instanceof InterceptingToolCallback
                           ? cb
-                          : new InterceptingToolCallback(cb, interceptors))
+                          : new InterceptingToolCallback(cb, interceptors, fileRefs))
               .toList();
       prompt = prompt.mutate().chatOptions(options.mutate().toolCallbacks(wrapped).build()).build();
     }

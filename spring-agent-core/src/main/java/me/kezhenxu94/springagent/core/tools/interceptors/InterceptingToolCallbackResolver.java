@@ -17,6 +17,7 @@ public class InterceptingToolCallbackResolver implements ToolCallbackResolver {
 
   private final ToolCallbackResolver delegate;
   private final List<ToolCallInterceptor> interceptors;
+  private final ToolInputFileRefs fileRefs;
 
   @Override
   public ToolCallback resolve(String toolName) {
@@ -33,7 +34,7 @@ public class InterceptingToolCallbackResolver implements ToolCallbackResolver {
           delegate.getClass().getSimpleName());
       return unavailableToolCallback(toolName);
     }
-    return new InterceptingToolCallback(callback, interceptors);
+    return new InterceptingToolCallback(callback, interceptors, fileRefs);
   }
 
   private static ToolCallback unavailableToolCallback(String toolName) {

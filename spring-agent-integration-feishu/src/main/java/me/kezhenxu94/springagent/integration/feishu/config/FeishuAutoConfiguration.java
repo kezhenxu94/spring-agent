@@ -1,12 +1,15 @@
 package me.kezhenxu94.springagent.integration.feishu.config;
 
 import com.lark.oapi.Client;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import me.kezhenxu94.springagent.core.tools.i18n.ModuleToolTexts;
 import me.kezhenxu94.springagent.core.tools.i18n.ToolTexts;
+import me.kezhenxu94.springagent.core.tools.interceptors.ToolInputFileRefs;
 import me.kezhenxu94.springagent.integration.feishu.aot.FeishuRuntimeHints;
 import me.kezhenxu94.springagent.integration.feishu.aot.LarkSdkRuntimeHints;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -124,5 +127,24 @@ public class FeishuAutoConfiguration {
         // This is a callTimeout, so it bounds the whole call and not a gap within it.
         .requestTimeout(feishuProperties.requestTimeout().toMillis(), TimeUnit.MILLISECONDS)
         .build();
+  }
+
+  /**
+   * The document parameters that take an {@code @file:} reference to a saved tool result instead of
+   * the payload itself.
+   *
+   * <p>These are the ones a previous call's result is handed to unchanged: a converted block tree
+   * on its way to being inserted, or a set of block updates. Nothing else here is on the list —
+   * everywhere else the model is composing the argument rather than passing one along, and a
+   * parameter that accepts a reference is a parameter every tool call can be steered into reading a
+   * file with.
+   */
+  @Bean
+  ToolInputFileRefs.Params feishuDocToolFileRefParams() {
+    return () ->
+        Map.of(
+            "FeishuCreateDocBlockDescendant", Set.of("descendantsJson"),
+            "FeishuCreateDocBlockChildren", Set.of("childrenJson"),
+            "FeishuBatchUpdateDocBlocks", Set.of("requestsJson"));
   }
 }

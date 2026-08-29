@@ -223,7 +223,7 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
         rag = new Rag(false, 0, 0d, 0, 0);
       }
       if (tools == null) {
-        tools = new Tools(null, null, null);
+        tools = new Tools(null, null, null, null);
       }
     }
 
@@ -242,7 +242,10 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
      * property explicitly set to nothing meaningful.
      */
     public record Tools(
-        AskUserQuestion askUserQuestion, Subagent subagent, Integer maxResultChars) {
+        AskUserQuestion askUserQuestion,
+        Subagent subagent,
+        Integer maxResultChars,
+        Integer maxInlinedInputChars) {
 
       /**
        * How long any tool's result may be before {@code LargeResponseInterceptor} writes it to the
@@ -259,6 +262,19 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
        */
       public static final int DEFAULT_MAX_RESULT_CHARS = 30_000;
 
+      /**
+       * How much of a file {@code ToolInputFileRefs} will read into a tool argument that was given
+       * as an {@code @file:} reference.
+       *
+       * <p>Larger than {@link #DEFAULT_MAX_RESULT_CHARS} on purpose, and by a wide margin: the
+       * whole point of a reference is that the content never has to fit in a context window, so the
+       * only thing this has to bound is the memory one call may take and the size of the request
+       * the tool then makes. Going over is an error rather than a truncation — a tool argument cut
+       * in half is malformed JSON that a lenient parser may accept part of, which is a corrupted
+       * document rather than a failed call.
+       */
+      public static final int DEFAULT_MAX_INLINED_INPUT_CHARS = 300_000;
+
       public Tools {
         if (askUserQuestion == null) {
           askUserQuestion = new AskUserQuestion(AskUserQuestion.DEFAULT_ENABLED, null);
@@ -268,6 +284,9 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
         }
         if (maxResultChars == null || maxResultChars <= 0) {
           maxResultChars = DEFAULT_MAX_RESULT_CHARS;
+        }
+        if (maxInlinedInputChars == null || maxInlinedInputChars <= 0) {
+          maxInlinedInputChars = DEFAULT_MAX_INLINED_INPUT_CHARS;
         }
       }
 

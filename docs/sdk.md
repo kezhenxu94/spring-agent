@@ -308,7 +308,25 @@ result, updating a progress card — implement `ToolCallInterceptor` (`core/tool
 rather than touching the tools. The custom `ToolCallingManager` wires every such bean in.
 `LargeResponseInterceptor` is the shipped example: over `app.ai.tools.max-result-chars` it writes
 the result to the user's workspace and hands the model the path, for every tool alike, so a tool of
-your own should return what it has rather than cap it first.
+your own should return what it has rather than cap it first. It writes JSON indented, because the
+`Read` tool truncates a line past 2000 characters and a serialized tree is one line.
+
+The other half of that is `ToolInputFileRefs`, which lets an argument be given as `@file:<path>` or
+`@file:<path>#<JSON Pointer>` naming such a saved result, so a payload whose only destination is the
+next call never passes through the model at all. It is not a `ToolCallInterceptor`: expansion
+happens in `InterceptingToolCallback` between the interceptor chain and the delegate, so every
+interceptor — and so every surface showing what a call was given — sees the reference the model
+wrote rather than the payload it stood for.
+
+**Which parameters accept a reference is an allow-list, and it is a security boundary.** Contribute
+one from your own module as a `ToolInputFileRefs.Params` bean, mapping tool name to parameter names,
+and say so in the parameter's own `@ToolParam` description — that is how the model finds out. Add a
+parameter to it only where the argument is something a previous call produced and this call passes
+along unchanged. Expanding one the model composes gains nothing and turns that tool into a
+file-reading primitive: a run triaging an observation acts on text written by whoever caused the
+event, and one injected sentence is enough to aim a message-sending tool at a file of memories. A
+reference on any other parameter is refused rather than written through as text; `@@file:` escapes
+for a value that really is that text.
 
 That manager is also where `spring.ai.tools.limits.*` is read: it is built here rather than taken
 from Spring AI's auto-configuration, which backs off, so the limits are applied by hand in

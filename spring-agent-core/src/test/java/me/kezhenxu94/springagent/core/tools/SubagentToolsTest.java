@@ -299,6 +299,7 @@ class SubagentToolsTest {
                     // how long the latter sit there.
                     Duration.ofMillis(100),
                     Duration.ofMillis(300)),
+                null,
                 null),
             null,
             null,

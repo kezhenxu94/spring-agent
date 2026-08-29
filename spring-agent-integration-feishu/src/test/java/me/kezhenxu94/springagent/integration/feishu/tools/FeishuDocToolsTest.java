@@ -14,9 +14,12 @@ import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberReq;
 import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberResp;
 import com.lark.oapi.service.drive.v1.resource.PermissionMember;
 import java.util.Map;
+import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuGuides;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
+import me.kezhenxu94.springagent.integration.feishu.docx.FeishuDocumentBodyWriter;
 import me.kezhenxu94.springagent.integration.feishu.docx.FeishuDocxService;
 import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
 import org.junit.jupiter.api.BeforeEach;
@@ -61,6 +64,9 @@ class FeishuDocToolsTest {
     tools =
         new FeishuDocTools(
             feishuDocxService,
+            new FeishuDocumentBodyWriter(feishuDocxService, new FeishuDriveService(feishu)),
+            new UserWorkspaceFactory(
+                FileSystemStorageProperties.builder().location("build/tmp/doc-tools-test").build()),
             new FeishuDriveService(feishu),
             new JsonMapper(),
             new FeishuProperties(

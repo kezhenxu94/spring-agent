@@ -236,6 +236,13 @@ Beans annotated `@AgentTool`, whose `@Tool` methods `AgentToolsProvider.compose(
   every tool. A second cap inside a tool is worse than none: the interceptor then saves the
   already-cut text to the workspace and tells the model it has the full result, which is how the
   shell backends behaved until their own `max-output-bytes` was removed.
+- Where one tool exists only to feed another — its output copied verbatim into the next call's
+  argument — the answer is usually to fuse the two rather than to make the copy cheaper. That is
+  what `FeishuWriteDocumentBody` is: the conversion, the insert, the chunking and the image
+  workflow that used to be four tool calls and three rules the model had to remember. Where the
+  copy is genuine, an argument may instead be declared to accept an `@file:` reference to a saved
+  tool result, by contributing a `ToolInputFileRefs.Params` bean — see `docs/sdk.md` for why that
+  list stays short.
 
 ### A persistence backend
 

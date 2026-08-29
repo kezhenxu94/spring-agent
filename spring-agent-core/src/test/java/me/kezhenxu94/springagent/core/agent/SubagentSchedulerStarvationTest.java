@@ -406,7 +406,7 @@ class SubagentSchedulerStarvationTest {
             null,
             null,
             new SpringAgentProperties.Ai.Tools(
-                null, new SpringAgentProperties.Ai.Tools.Subagent(3, WAIT_POLL, null), null),
+                null, new SpringAgentProperties.Ai.Tools.Subagent(3, WAIT_POLL, null), null, null),
             "You are {userId}. Format: {replyFormat}",
             null,
             null),
