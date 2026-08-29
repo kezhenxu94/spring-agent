@@ -36,7 +36,11 @@ class ScheduledTaskToolTest {
               ToolContexts.KEY_CHAT_ID,
               "oc_1",
               ToolContexts.KEY_CHAT_TYPE,
-              "p2p"));
+              "p2p",
+              ToolContexts.KEY_GROUP_ID,
+              "oc_group",
+              ToolContexts.KEY_TENANT_ID,
+              "tenant_1"));
 
   @BeforeEach
   void setUp() {
@@ -207,6 +211,15 @@ class ScheduledTaskToolTest {
         .userId("ou_1")
         .taskText("the task")
         .status(ScheduledTask.Status.ACTIVE);
+  }
+
+  @Test
+  @DisplayName("a task remembers the group and tenant it was created in, not only its creator")
+  void scopesAreStored() {
+    tool.createScheduledTask("summarise", "0 0 9 * * MON", null, null, null, context);
+
+    assertThat(saved().groupId()).isEqualTo("oc_group");
+    assertThat(saved().tenantId()).isEqualTo("tenant_1");
   }
 
   private ScheduledTask saved() {

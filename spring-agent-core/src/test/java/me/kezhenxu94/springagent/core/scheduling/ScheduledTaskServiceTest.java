@@ -68,6 +68,16 @@ class ScheduledTaskServiceTest {
         .isTrue();
   }
 
+  @Test
+  @DisplayName("a firing carries the group and tenant the task was created in")
+  void scopesAreCarriedOntoTheRequest() {
+    final var request =
+        fireAndCaptureRequest(task.toBuilder().groupId("oc_group").tenantId("tenant_1").build());
+
+    assertThat(request.groupId()).isEqualTo("oc_group");
+    assertThat(request.tenantId()).isEqualTo("tenant_1");
+  }
+
   /** A mock of its own per firing, so a test may fire twice and still verify a single call. */
   private AgentRequest fireAndCaptureRequest(final ScheduledTask task) {
     final var agent = mock(SpringAgent.class);

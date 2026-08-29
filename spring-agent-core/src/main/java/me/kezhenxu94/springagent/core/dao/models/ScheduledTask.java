@@ -50,6 +50,13 @@ public class ScheduledTask {
   private String chatType;
   private String rootMessageId;
 
+  // The scopes the task was created in, stored so a firing runs with the same reach as the
+  // conversation that asked for it: without them a firing sees only the creator's own home and
+  // knowledge, and a task created in a group chat or under a tenant loses the very files and notes
+  // it was written to work on. Blank where the integration has no such concept.
+  private String groupId;
+  private String tenantId;
+
   // The prompt to run; longer than the default varchar a JPA schema would otherwise generate.
   @Column(length = 8192)
   private String taskText;
