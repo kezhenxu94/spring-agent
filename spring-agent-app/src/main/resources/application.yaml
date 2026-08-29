@@ -230,12 +230,12 @@ logging:
     # refused, and reading it is how a malformed history or an over-long context gets identified —
     # neither of which the error body alone can distinguish.
     #
-    # This logs conversation content and tool output. It is on because a rejection nobody can
-    # explain costs more than the noise does, but it is the reason this application's logs hold what
-    # users wrote: treat them accordingly, and turn it off with
-    # LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_AI_CHAT_CLIENT_ADVISOR_SIMPLELOGGERADVISOR=INFO rather than
-    # by editing this file, so a deployment can decide for itself.
-    org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: DEBUG
+    # Off, because it logs conversation content and tool output: at DEBUG this application's logs
+    # come to hold what users wrote, and that is a decision a deployment has to make for itself
+    # rather than inherit from this file. Turn it on for as long as it takes to explain a rejection,
+    # with LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_AI_CHAT_CLIENT_ADVISOR_SIMPLELOGGERADVISOR=DEBUG,
+    # rather than by editing this.
+    org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: INFO
     # The wire, when the question is about the request Spring AI actually built rather than the one
     # it was asked for — headers, and the JSON body as sent. Louder still than the above, and rarely
     # what is wanted, so it stays off.
