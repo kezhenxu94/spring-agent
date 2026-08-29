@@ -1,9 +1,10 @@
 spring:
   messages:
-    # Both bundles this application reads: its own words to the user, and core/messages, which is
-    # what the agent writes into a conversation itself. CoreMessages reads through this same
-    # message source rather than building one, so naming it here is what makes those notes resolve.
-    basename: messages,core/messages
+    # This application's own words to the user. core/messages — what the agent writes into a
+    # conversation itself — is appended to whatever is named here by MessagesDefaults, so it is
+    # deliberately not repeated. `messages` is also Boot's default, stated because leaving it out
+    # would read as this application having no bundle rather than as it taking the default.
+    basename: messages
     # The operating system's language when the user's locale has no bundle of its own, rather than
     # English: the desktop this runs on belongs to the user being spoken to, so its language is a
     # better guess at theirs. Boot's own default, stated because spring-agent-app states the

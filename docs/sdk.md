@@ -61,10 +61,6 @@ application that depends on exactly one backend module can leave the property al
 
 ```yaml
 spring:
-  messages:
-    # What the agent writes into a conversation itself, as opposed to what the model wrote.
-    # Naming this bundle is what makes those notes resolve; append your own basenames to it.
-    basename: core/messages
   ai:
     openai:
       base-url: ${OPENAI_BASE_URL}
@@ -78,6 +74,11 @@ spring:
 
 An embedding model is not optional even if you never index a document: the tool-search advisor
 builds its index by embedding tool descriptions, and the knowledge base embeds what it stores.
+
+Nothing else is required. In particular you do not have to name core's message bundle: the text the
+agent writes into a conversation itself resolves through your application's own `MessageSource`, and
+`MessagesDefaults` appends `core/messages` to `spring.messages.basename` for you — after whatever
+you named there, so your own bundles keep winning.
 
 That is the minimum, not the whole of it. Everything you can turn on from here — the shell sandbox,
 the tool-search advisor, per-user storage and published-file links, the MCP allow-list, the question
@@ -406,8 +407,11 @@ carry every one of them. `PromptVariablesContributor` is how a bean of yours add
 written. Implement it for your own surface rather than putting formatting rules in the system prompt.
 
 Text the agent writes itself — as opposed to what the model produced — is localized through a
-`MessageSource` (`CoreMessages` over `core/messages*.properties`). Do not hardcode such strings in a
-module of your own; ship a bundle and append its basename to `spring.messages.basename`. `app.locale`
+`MessageSource` (`CoreMessages` over `core/messages*.properties`, contributed to
+`spring.messages.basename` by `MessagesDefaults`). Do not hardcode such strings in a module of your
+own; ship a bundle, and either name it in `spring.messages.basename` — core's is appended after
+whatever you name — or build a `MessageSource` of your own for it, as `FeishuMessages` does, so that
+two modules are not fighting over one basename. `app.locale`
 also chooses the language tool descriptions are rewritten into on the way to the model, from
 `core/prompts/tools/<ToolName>_<locale>.md` and `core/tools_<locale>.properties`.
 
