@@ -56,17 +56,31 @@ class GitHubTriagePromptTest {
   }
 
   @Test
-  @DisplayName("it notifies where it can, and stops quietly where it cannot")
+  @DisplayName("it notifies where the playbook says to, and stops quietly where it says nowhere")
   void shouldNotifyOnlyWhereThereIsSomewhereToNotify() {
-    // A run only has a chat if the deployment configured a route for this source, and only has a
-    // way to send if some integration contributed one. Neither is this module's business, so the
+    // Where to send is the deployment's playbook to say, and it may say nowhere; a way to send
+    // exists only if some integration contributed one. Neither is this module's business, so the
     // prompt has to make "nowhere to send" an ordinary outcome rather than an obstacle — otherwise
-    // the model spends the run looking for a way around it.
+    // the model spends the run looking for a way around it, which for a run with no chat of its own
+    // is now the common case rather than the exception.
     final var prompt = promptIn(Locale.ENGLISH);
 
     assertThat(prompt).contains("send exactly one message");
-    assertThat(prompt).contains("no chat to send to, or no tool to send with");
+    assertThat(prompt).contains("playbook names nowhere to send it");
     assertThat(prompt).contains("nothing to work around");
+    assertThat(prompt).contains("Do not go looking for somewhere plausible");
+  }
+
+  @Test
+  @DisplayName("it says the playbook is policy to follow, unlike the event text")
+  void shouldSeparateThePlaybookFromTheEvidence() {
+    // The one distinction this prompt cannot blur. Both arrive as text in the same window, and only
+    // one of them was written by the people the agent works for.
+    final var prompt = promptIn(Locale.ENGLISH);
+
+    assertThat(prompt).contains("retrieved from the knowledge base");
+    assertThat(prompt).contains("Follow it");
+    assertThat(promptIn(CHINESE)).contains("处置手册");
   }
 
   @Test

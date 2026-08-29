@@ -59,8 +59,22 @@ public final class SituationTriageScenario implements AgentScenario {
   }
 
   /**
-   * Retrieval stays on. "Have we seen this before" is most of what makes a triage useful, and a
-   * tenant's runbooks are exactly the kind of thing the knowledge base holds.
+   * Retrieval stays on, and for these runs it is the playbook: what this deployment has written
+   * down about dealing with a source's events, which is the only thing that tells an unattended run
+   * what its operators would want done.
+   *
+   * <p>That is a narrower thing than the retrieval a chat run gets, and narrowed on purpose. {@code
+   * SituationSweeper} states the scope and the query on the request rather than letting them be
+   * derived — the base is the source's {@code owner-user-id} alone, and the query is a fixed
+   * question about the source rather than the event's own text, so that whoever wrote the event
+   * cannot choose which of the deployment's documents the model is shown. See {@code
+   * EventsProperties.Playbook}.
+   *
+   * <p>What that costs is the automatic "have we seen this before" this used to give, since the
+   * group's and tenant's knowledge is no longer retrieved on the turn. It is one {@code
+   * SearchKnowledge} call away and the run still has that tool, which is the right trade: a lookup
+   * the agent chooses to make is worth more than one it cannot steer, and the playbook is worth
+   * more than either.
    */
   @Override
   public boolean knowledgeRetrieval() {

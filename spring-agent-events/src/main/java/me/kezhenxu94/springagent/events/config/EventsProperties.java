@@ -54,6 +54,9 @@ import org.springframework.util.unit.DataSize;
  * @param resolveAfterEvaluation whether one evaluation ends the situation. False suits a condition
  *     that persists and wants watching; true suits a window over a stream, where the next batch of
  *     messages is a new question rather than more of the old one.
+ * @param playbook how a triage run finds the deployment's own instructions for dealing with an
+ *     event, overriding every source at once. Usually left unset here and stated per source, since
+ *     the whole point is that a GitHub event and an alert are dealt with differently.
  * @param triagePrompt what the agent is told it is doing, overriding every source at once. Null
  *     unless a deployment says so, and then each source is given its own file by {@code
  *     TriagePrompts} — which is where the shipped wording lives, and where the framing of observed
@@ -76,6 +79,7 @@ public record EventsProperties(
     Duration cooldown,
     Duration resolveAfterQuiet,
     boolean resolveAfterEvaluation,
+    Playbook playbook,
     String triagePrompt,
     Map<String, Source> sources) {
 
@@ -148,6 +152,7 @@ public record EventsProperties(
     maxDebounce = maxDebounce == null ? DEFAULT_MAX_DEBOUNCE : maxDebounce;
     cooldown = cooldown == null ? DEFAULT_COOLDOWN : cooldown;
     resolveAfterQuiet = resolveAfterQuiet == null ? DEFAULT_RESOLVE_AFTER_QUIET : resolveAfterQuiet;
+    playbook = playbook == null ? Playbook.NONE : playbook;
     triagePrompt = blankToNull(triagePrompt);
     sources = sources == null ? Map.of() : Map.copyOf(sources);
   }
@@ -177,6 +182,7 @@ public record EventsProperties(
             pick(configured.secret(), builtIn.secret(), null),
             configured.ownerUserId(),
             pick(configured.route(), builtIn.route(), Route.NONE),
+            pick(configured.playbook(), builtIn.playbook(), playbook),
             pick(configured.debounce(), builtIn.debounce(), debounce),
             pick(configured.maxDebounce(), builtIn.maxDebounce(), maxDebounce),
             pick(configured.cooldown(), builtIn.cooldown(), cooldown),
@@ -206,11 +212,14 @@ public record EventsProperties(
    * @param enabled set false to keep a configured source's settings while turning it off
    * @param secret the shared secret or token the source authenticates with. What it means is the
    *     source's business: an HMAC key for GitHub, a token compared whole for GitLab and Grafana.
-   * @param ownerUserId the identity a triage run for this source assumes. Must be an identity of
-   *     its own and not a person's — see {@code SituationTriageScenario} for what a run inherits
-   *     from it.
-   * @param route where a run for this source may talk, for sources that do not know a chat of their
-   *     own. An observation that names its own route wins over this — see {@link Route#orElse}.
+   * @param ownerUserId the identity a triage run for this source assumes, and the knowledge base
+   *     its playbook is read from. Must be an identity of its own and not a person's — see {@code
+   *     SituationTriageScenario} for what a run inherits from it.
+   * @param route where to report that a triage run for this source *failed*, and nothing else. Not
+   *     where the agent talks: a run that works reaches people the way its playbook says to, and an
+   *     observation's own route — the chat a message came from — is never filled in from here.
+   * @param playbook which of {@code ownerUserId}'s documents say how to deal with this source's
+   *     events, and what to look them up with
    */
   @lombok.Builder
   public record Source(
@@ -218,12 +227,60 @@ public record EventsProperties(
       String secret,
       String ownerUserId,
       Route route,
+      Playbook playbook,
       Duration debounce,
       Duration maxDebounce,
       Duration cooldown,
       Duration resolveAfterQuiet,
       Boolean resolveAfterEvaluation,
       String triagePrompt) {}
+
+  /**
+   * How a triage run finds what this deployment has written down about dealing with a source's
+   * events.
+   *
+   * <p>Prose in the knowledge base rather than settings here, because what it has to say — what
+   * matters, what to check first, who to tell, when to stay silent — is prose, and because it is
+   * then editable by the people who know it without a deployment. This record is only the lookup.
+   *
+   * <p>The base looked in is always the one owned by the source's {@code ownerUserId} alone, never
+   * the group or tenant an incoming event happens to name. That is not configurable, and the reason
+   * is that these documents decide what the agent does about text an attacker can write.
+   *
+   * <p>Both fields are stated by a deployment and neither is guessed, so a source with no {@code
+   * query} simply has no playbook and triages on the prompt alone.
+   *
+   * <p>Overridden whole, like {@code route} and unlike the timings: a source that states a playbook
+   * states both halves of it. Merging field by field would let a global filter pinned to one
+   * source's documents be applied to another source's query, which is a way of retrieving nothing
+   * that reads, from the outside, exactly like a knowledge base with nothing in it.
+   *
+   * @param query what to retrieve the playbook with — a fixed question about the source, not the
+   *     event. Retrieving against the event's own text would let whoever wrote it choose which of
+   *     the deployment's documents the model is shown, and would match a runbook against a stack
+   *     trace besides. Blank turns the playbook off for this source.
+   * @param filter which documents count as this source's playbook, as a Spring AI filter expression
+   *     over {@code KnowledgeMetadata} — e.g. {@code docId in ['runbook-github']}. Narrows what the
+   *     owner may read and can never widen it. Parsed at startup by {@code PlaybookFilters}, which
+   *     refuses to start on a malformed one. Blank means the whole of the owner's knowledge base,
+   *     which is worth thinking twice about: see that class for why naming exact document ids is
+   *     what keeps a run from writing its own playbook.
+   */
+  @lombok.Builder
+  public record Playbook(String query, String filter) {
+
+    public Playbook {
+      query = blankToNull(query);
+      filter = blankToNull(filter);
+    }
+
+    /** What a source that was configured with nothing has: no playbook. */
+    public static final Playbook NONE = new Playbook(null, null);
+
+    public boolean hasQuery() {
+      return query != null;
+    }
+  }
 
   /**
    * One source's settings with every layer already applied — what the module reads, so that nothing
@@ -234,6 +291,7 @@ public record EventsProperties(
       String secret,
       String ownerUserId,
       Route route,
+      Playbook playbook,
       Duration debounce,
       Duration maxDebounce,
       Duration cooldown,

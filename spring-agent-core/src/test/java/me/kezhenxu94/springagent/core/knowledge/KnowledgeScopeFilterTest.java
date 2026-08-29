@@ -15,6 +15,7 @@ import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.SimpleVectorStore;
 import org.springframework.ai.vectorstore.filter.Filter;
+import org.springframework.ai.vectorstore.filter.FilterExpressionTextParser;
 import org.springframework.ai.vectorstore.filter.converter.PrintFilterExpressionConverter;
 
 /**
@@ -363,6 +364,115 @@ class KnowledgeScopeFilterTest {
       final var metadata = new java.util.HashMap<>(document.getMetadata());
       metadata.put(KnowledgeMetadata.CHUNK, chunk);
       return new Document(document.getId(), document.getText(), metadata);
+    }
+  }
+
+  /**
+   * Narrowing a read with a caller's own expression — what event triage does to read only the
+   * playbook documents its source names.
+   */
+  @Nested
+  class Narrowing {
+
+    private static final FilterExpressionTextParser PARSER = new FilterExpressionTextParser();
+
+    private static String printNarrowed(final KnowledgeScope scope, final String expression) {
+      return print(KnowledgeScopeFilter.readableBy(scope, PARSER.parse(expression)));
+    }
+
+    @Test
+    @DisplayName("the extra clause is ANDed onto the scope, both sides parenthesised")
+    void bothSidesAreGrouped() {
+      // Both groups are the assertion. A converter renders AND as `left && right` and parenthesises
+      // nothing but a Filter.Group, so an ungrouped disjunction on either side would lose its last
+      // branch to the AND — see readableBy's javadoc for what each of those two failures costs.
+      assertThat(printNarrowed(new KnowledgeScope("u1", "g1", "t1"), "docId in ['a','b']"))
+          .isEqualTo(
+              "(owner EQ \"u1\" OR group EQ \"g1\" OR tenant EQ \"t1\") AND (docId IN"
+                  + " [\"a\",\"b\"])");
+    }
+
+    @Test
+    @DisplayName("a scope with nothing to disjoin still parenthesises the extra clause")
+    void ownerOnlyIsStillGrouped() {
+      assertThat(printNarrowed(new KnowledgeScope("u1", "", ""), "docId == 'runbook'"))
+          .isEqualTo("owner EQ \"u1\" AND (docId EQ \"runbook\")");
+    }
+
+    @Test
+    @DisplayName("no extra clause leaves the filter exactly as it was")
+    void nullExtraChangesNothing() {
+      final var scope = new KnowledgeScope("u1", "g1", "t1");
+      assertThat(print(KnowledgeScopeFilter.readableBy(scope, null)))
+          .isEqualTo(printReadable(scope));
+    }
+
+    @Test
+    @DisplayName("it narrows what the owner may read")
+    void narrows() {
+      final var store =
+          storeOf(
+              docChunk("playbook", "agent", "runbook-github"),
+              docChunk("notes", "agent", "something-else"));
+
+      assertThat(
+              matching(
+                  store,
+                  KnowledgeScopeFilter.readableBy(
+                      new KnowledgeScope("agent", "", ""),
+                      PARSER.parse("docId == 'runbook-github'"))))
+          .containsExactly("playbook");
+    }
+
+    @Test
+    @DisplayName("and can never widen it, however inviting the expression")
+    void cannotWiden() {
+      // The property the whole design rests on: an expression is composed under the scope filter,
+      // not beside it, so a document the scope cannot reach stays unreachable whatever the extra
+      // clause says about it.
+      final var store =
+          storeOf(
+              docChunk("mine", "agent", "runbook-github"),
+              docChunk("somebody-elses", "another-agent", "runbook-github"));
+
+      assertThat(
+              matching(
+                  store,
+                  KnowledgeScopeFilter.readableBy(
+                      new KnowledgeScope("agent", "", ""),
+                      PARSER.parse("docId == 'runbook-github'"))))
+          .containsExactly("mine");
+    }
+
+    private static Document docChunk(final String id, final String owner, final String docId) {
+      return new Document(
+          id,
+          "content of " + id,
+          Map.of(
+              KnowledgeMetadata.OWNER,
+              owner,
+              KnowledgeMetadata.GROUP,
+              "",
+              KnowledgeMetadata.TENANT,
+              "",
+              KnowledgeMetadata.DOC_ID,
+              docId));
+    }
+
+    private static List<String> matching(
+        final SimpleVectorStore store, final Filter.Expression expression) {
+      return store
+          .similaritySearch(
+              SearchRequest.builder()
+                  .query("anything")
+                  .topK(100)
+                  .similarityThresholdAll()
+                  .filterExpression(expression)
+                  .build())
+          .stream()
+          .map(Document::getId)
+          .sorted()
+          .toList();
     }
   }
 }

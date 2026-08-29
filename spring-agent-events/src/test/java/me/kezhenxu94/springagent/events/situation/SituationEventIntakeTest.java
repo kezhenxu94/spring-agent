@@ -96,21 +96,25 @@ class SituationEventIntakeTest {
   }
 
   @Test
-  @DisplayName("a webhook knows nowhere to talk, so the source's route is what it gets")
-  void shouldTakeTheRouteFromTheSourceWhenTheObservationHasNone() {
+  @DisplayName("a webhook knows nowhere to talk, and the source's route does not fill that in")
+  void shouldNotTakeTheRouteFromTheSourceWhenTheObservationHasNone() {
+    // The source in this test is configured with oc_alerts, and that is where a *failed* triage is
+    // reported — not where a run talks. Filling it in here is what this asserts does not happen:
+    // where a run about an alert talks comes from the source's playbook, and a run that was handed
+    // a chat by configuration would talk there whatever the playbook said.
     intake.observe(alert("d1").build());
 
     final var situation = repos.situations.only();
     assertThat(situation.ownerUserId()).isEqualTo("ou_bot");
-    assertThat(situation.chatId()).isEqualTo("oc_alerts");
-    assertThat(situation.chatType()).isEqualTo("group");
+    assertThat(situation.chatId()).isNull();
+    assertThat(situation.chatType()).isNull();
   }
 
   @Test
   @DisplayName("an observation that knows its own chat keeps it")
-  void shouldPreferTheObservationsOwnRoute() {
-    // A chat message knows where it came from, and must talk back there rather than into whatever
-    // chat the source was configured with.
+  void shouldKeepTheObservationsOwnRoute() {
+    // A chat message knows where it came from, and a run about it answers there. This is the only
+    // way a situation gets a chat at all.
     intake.observe(
         alert("d1")
             .route(Route.builder().chatId("oc_from_the_message").chatType("group").build())
