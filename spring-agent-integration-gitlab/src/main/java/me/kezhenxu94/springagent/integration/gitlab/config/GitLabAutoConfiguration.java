@@ -31,7 +31,7 @@ import org.springframework.context.annotation.Bean;
 public class GitLabAutoConfiguration {
 
   @Bean
-  @ConditionalOnMissingBean
+  @ConditionalOnMissingBean(name = "gitlabWebhookSource")
   WebhookSource gitlabWebhookSource() {
     return new GitLabWebhookSource();
   }

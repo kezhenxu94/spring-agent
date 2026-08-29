@@ -37,7 +37,7 @@ public class GrafanaAutoConfiguration {
    *     it is, and so the one thing a test has to be able to move.
    */
   @Bean
-  @ConditionalOnMissingBean
+  @ConditionalOnMissingBean(name = "grafanaWebhookSource")
   WebhookSource grafanaWebhookSource(final Clock clock) {
     return new GrafanaWebhookSource(clock);
   }

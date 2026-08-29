@@ -31,7 +31,7 @@ import org.springframework.context.annotation.Bean;
 public class GitHubAutoConfiguration {
 
   @Bean
-  @ConditionalOnMissingBean
+  @ConditionalOnMissingBean(name = "githubWebhookSource")
   WebhookSource githubWebhookSource() {
     return new GitHubWebhookSource();
   }
