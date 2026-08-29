@@ -1,6 +1,9 @@
 package me.kezhenxu94.springagent.integration.feishu.tools;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.util.List;
 import lombok.Builder;
 import lombok.RequiredArgsConstructor;
@@ -8,8 +11,11 @@ import lombok.SneakyThrows;
 import lombok.extern.jackson.Jacksonized;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
+import me.kezhenxu94.springagent.core.tools.HomeDir;
+import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuGuides;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
+import me.kezhenxu94.springagent.integration.feishu.docx.FeishuDocumentBodyWriter;
 import me.kezhenxu94.springagent.integration.feishu.docx.FeishuDocxService;
 import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
 import org.springframework.ai.chat.model.ToolContext;
@@ -25,6 +31,8 @@ import tools.jackson.databind.json.JsonMapper;
 @RequiredArgsConstructor
 public class FeishuDocTools {
   final FeishuDocxService feishuDocxService;
+  final FeishuDocumentBodyWriter feishuDocumentBodyWriter;
+  final UserWorkspaceFactory userWorkspaceFactory;
   final FeishuDriveService feishuDriveService;
   final JsonMapper objectMapper;
   final FeishuProperties feishuProperties;
@@ -48,10 +56,9 @@ public class FeishuDocTools {
           "Create a new Feishu document (docx), empty, with no body. The documentId it returns is"
               + " what the other doc tools take, and the url is the link to reply to the user with"
               + " once the document is finished — after the body is written, if a body is coming.\n"
-              + "**To write that body, do not assemble it block by block with"
-              + " FeishuCreateDocBlockChildren: convert the Markdown or HTML with"
-              + " FeishuConvertMarkdownOrHtmlToBlocks and insert it in one call with"
-              + " FeishuCreateDocBlockDescendant**, as FeishuDocBlockGuide describes. Creating a"
+              + "**To write that body, write it as Markdown and hand it to"
+              + " FeishuWriteDocumentBody**, which converts and inserts it, images and all, in one"
+              + " call. Do not assemble it block by block. Creating a"
               + " document from an existing one, a template say, needs the drive copy endpoint,"
               + " which these tools do not cover yet.")
   @SneakyThrows
@@ -182,14 +189,90 @@ public class FeishuDocTools {
   }
 
   @Tool(
+      name = "FeishuWriteDocumentBody",
+      description =
+          "**The way to put content into a Feishu document.** Give it Markdown or HTML and it"
+              + " writes the whole body: it converts the content, inserts every block, splits the"
+              + " insert up when the content is long enough to need it, and uploads and puts in"
+              + " place every image the content names — whether by URL or by the absolute path of"
+              + " a file in your workspace.\n"
+              + "What comes back is a summary, not the blocks: how many blocks were written, how"
+              + " many images went in, anything that went wrong with one, and the real block_id of"
+              + " each top-level block in case you want to change one afterwards.\n"
+              + "Use this instead of FeishuConvertMarkdownOrHtmlToBlocks followed by"
+              + " FeishuCreateDocBlockDescendant, which is the same thing done by hand and costs"
+              + " you the whole block tree twice. Reach for those two only when you need to build"
+              + " blocks that Markdown and HTML cannot express. This appends by default, so it also"
+              + " adds a section to a document that already has content.")
+  public FeishuDocumentBodyWriter.WrittenBody writeDocumentBody(
+      @ToolParam(description = "The document_id identifying the Feishu document") String documentId,
+      @ToolParam(description = "Either markdown or html") String contentType,
+      @ToolParam(description = "The Markdown or HTML to write") String content,
+      @ToolParam(
+              description =
+                  "block_id to write under; the document itself, its root block, by default",
+              required = false)
+          String blockId,
+      @ToolParam(
+              description = "Where to insert; -1, the default, appends and 0 puts it first",
+              required = false)
+          Integer index,
+      @ToolParam(
+              description = "Document version; -1, the default, means the latest",
+              required = false)
+          Integer documentRevisionId,
+      @ToolParam(
+              description = "Idempotency key: pass a UUID so a retry cannot write twice",
+              required = false)
+          String clientToken,
+      ToolContext toolContext) {
+    final var home = userWorkspaceFactory.forRequest(toolContext);
+    return feishuDocumentBodyWriter.write(
+        documentId,
+        blockId == null || blockId.isBlank() ? documentId : blockId,
+        contentType,
+        content,
+        index,
+        documentRevisionId,
+        clientToken,
+        source -> localImage(home, source));
+  }
+
+  /**
+   * The file an image source names, when it names one this run is allowed to read.
+   *
+   * <p>Anything else — a URL, a relative path, a file outside the workspaces of this request — is
+   * not resolved rather than refused, because the content came from the model and a path in it is
+   * as likely to be a mistake as an attempt. The image is then reported as one that was left out,
+   * which says the same thing without failing a document that is otherwise written.
+   */
+  private static File localImage(final HomeDir home, final String source) {
+    if (source == null
+        || source.isBlank()
+        || source.contains("://")
+        || source.startsWith("data:")) {
+      return null;
+    }
+    try {
+      final var path = Path.of(source);
+      if (!path.isAbsolute() || !Files.isRegularFile(path)) {
+        return null;
+      }
+      return home.contains(path.toRealPath()) ? path.toFile() : null;
+    } catch (InvalidPathException | java.io.IOException e) {
+      return null;
+    }
+  }
+
+  @Tool(
       name = "FeishuCreateDocBlockChildren",
       description =
           "Create a batch of flat sibling blocks under a parent. No nesting in the same call, at"
               + " most 50 blocks, and at most 5 of those a Sheet.\n"
               + "**This is for appending a little flat content to a document that already has some,"
-              + " a few lines at the end say. To build a whole document body, do not assemble it"
-              + " here block by block: use FeishuConvertMarkdownOrHtmlToBlocks with"
-              + " FeishuCreateDocBlockDescendant instead**, as FeishuDocBlockGuide describes."
+              + " a few lines at the end say. To write a whole document body, or anything you could"
+              + " express as Markdown, use FeishuWriteDocumentBody instead** rather than assembling"
+              + " it here block by block."
               + " FeishuDocBlockContentReference has the shape of the blocks in childrenJson.")
   @SneakyThrows
   public JsonNode createDocBlockChildren(
@@ -202,7 +285,9 @@ public class FeishuDocTools {
       @ToolParam(
               description =
                   "JSON array of the blocks to create, each one a block object of the shape"
-                      + " FeishuDocBlockContentReference describes")
+                      + " FeishuDocBlockContentReference describes. Takes a file reference:"
+                      + " @file:<path> for a saved tool result, or @file:<path>#/json/pointer for"
+                      + " one part of it")
           String childrenJson,
       @ToolParam(
               description = "Where to insert; -1, the default, appends and 0 puts them first",
@@ -225,9 +310,13 @@ public class FeishuDocTools {
   @Tool(
       name = "FeishuCreateDocBlockDescendant",
       description =
-          "**The way to write a document body**: insert a whole nested tree of blocks in one call,"
-              + " at most 1000 of them. It suits whatever FeishuConvertMarkdownOrHtmlToBlocks"
-              + " produced, and anything with nesting of its own such as tables or columns.\n"
+          "Insert a whole nested tree of blocks in one call, at most 1000 of them. It takes"
+              + " whatever FeishuConvertMarkdownOrHtmlToBlocks produced, and anything with nesting"
+              + " of its own such as tables or columns.\n"
+              + "**Only reach for this to build blocks that Markdown and HTML cannot express.**"
+              + " For a document body, FeishuWriteDocumentBody does the conversion, the splitting"
+              + " and the images in one call, and without the block tree passing through you"
+              + " twice.\n"
               + "In descendantsJson each block carries a temporary block_id of your choosing and"
               + " links to others by them (the children field is an array of those temporary ids);"
               + " childrenId lists the temporary ids that are immediate children of blockId, which"
@@ -255,7 +344,9 @@ public class FeishuDocTools {
       @ToolParam(
               description =
                   "JSON array of the nested block tree, normally the blocks the conversion"
-                      + " returned")
+                      + " returned. Takes a file reference: where the conversion was too large to"
+                      + " show you and was saved to a file, pass @file:<path>#/blocks rather than"
+                      + " copying the tree through")
           String descendantsJson,
       @ToolParam(
               description = "Where to insert; -1, the default, appends and 0 puts them first",
@@ -328,7 +419,9 @@ public class FeishuDocTools {
       @ToolParam(description = "The document_id identifying the Feishu document") String documentId,
       @ToolParam(
               description =
-                  "JSON array of the updates, each element a blockId and one operation field")
+                  "JSON array of the updates, each element a blockId and one operation field."
+                      + " Takes a file reference: @file:<path> for a saved tool result, or"
+                      + " @file:<path>#/json/pointer for one part of it")
           String requestsJson,
       @ToolParam(
               description = "Document version; -1, the default, means the latest",
@@ -377,17 +470,17 @@ public class FeishuDocTools {
           "Turn Markdown or HTML into Feishu document blocks. Nothing is written anywhere: this is"
               + " conversion and nothing else. It handles text, H1 to H9 headings, unordered and"
               + " ordered lists, code blocks, quotes, todos, images, tables and table cells.\n"
-              + "**This is where building a new document body starts.** Take the firstLevelBlockIds"
-              + " and blocks it returns, pass blocks as descendantsJson and firstLevelBlockIds as"
-              + " childrenId, and insert the lot with FeishuCreateDocBlockDescendant (blockId being"
-              + " the target documentId itself).\n"
-              + "Two things to watch. If the result has tables, drop the read-only mergeInfo field"
-              + " from each table block's property before inserting. If it has images, the"
-              + " blockIdToImageUrls that come back give the temporary image address behind each"
-              + " temporary image block: once inserted, follow the image and attachment workflow in"
-              + " FeishuDocBlockGuide with FeishuUploadDocBlockMedia and FeishuUpdateDocBlock. And"
-              + " past 1000 blocks, split the insert across several"
-              + " FeishuCreateDocBlockDescendant calls.")
+              + "**To write a document body, use FeishuWriteDocumentBody instead**: it does this"
+              + " conversion and the insert together, and it handles by itself the three things"
+              + " doing it by hand means getting right. This tool is for looking at what content"
+              + " becomes, or for altering the blocks before they go in.\n"
+              + "Doing it by hand: pass blocks as descendantsJson and firstLevelBlockIds as"
+              + " childrenId to FeishuCreateDocBlockDescendant (blockId being the target documentId"
+              + " itself). Drop the read-only mergeInfo field from each table block\u0027s property"
+              + " first, split the insert past 1000 blocks, and for each entry of"
+              + " blockIdToImageUrls follow the image workflow in FeishuDocBlockGuide with"
+              + " FeishuUploadDocBlockMedia and FeishuUpdateDocBlock. Getting any of the three"
+              + " wrong is an error from Feishu that does not say which.")
   @SneakyThrows
   public JsonNode convertMarkdownOrHtmlToBlocks(
       @ToolParam(description = "Either markdown or html") String contentType,
@@ -400,11 +493,10 @@ public class FeishuDocTools {
       name = "FeishuDocBlockGuide",
       description =
           "How to work with the blocks of a Feishu document: the common block_type values, what"
-              + " documentRevisionId and clientToken are for, the way to write a new document's"
-              + " body (FeishuConvertMarkdownOrHtmlToBlocks with FeishuCreateDocBlockDescendant"
-              + " rather than assembling it by hand with FeishuCreateDocBlockChildren), the"
-              + " upload-then-replace workflow for images and attachments, and odds and ends such"
-              + " as changing the title and the write rate limits.\n"
+              + " documentRevisionId and clientToken are for, the upload-then-replace workflow for"
+              + " images and attachments, and odds and ends such as changing the title and the"
+              + " write rate limits. Writing a body is not among them, because"
+              + " FeishuWriteDocumentBody does that in one call and needs none of this.\n"
               + "Read it before inserting an image or attachment, changing a document title or"
               + " updating blocks in bulk. For the JSON fields of one particular block_type, read"
               + " FeishuDocBlockContentReference instead.")

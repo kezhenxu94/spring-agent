@@ -61,7 +61,7 @@ class FeishuToolsLocalizedEndToEndTest {
         new FeishuChatTools(null, null),
         new FeishuWikiTools(null),
         new FeishuSheetTools(null, null, null, null, null),
-        new FeishuDocTools(null, null, null, null, null, null),
+        new FeishuDocTools(null, null, null, null, null, null, null, null),
         new FeishuBitableTools(null, null, null, null, null));
   }
 

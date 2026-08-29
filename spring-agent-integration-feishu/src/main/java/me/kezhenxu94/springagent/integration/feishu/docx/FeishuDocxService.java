@@ -9,10 +9,12 @@ import com.lark.oapi.service.docx.v1.model.BatchUpdateDocumentBlockReqBody;
 import com.lark.oapi.service.docx.v1.model.Block;
 import com.lark.oapi.service.docx.v1.model.ConvertDocumentReq;
 import com.lark.oapi.service.docx.v1.model.ConvertDocumentReqBody;
+import com.lark.oapi.service.docx.v1.model.ConvertDocumentRespBody;
 import com.lark.oapi.service.docx.v1.model.CreateDocumentBlockChildrenReq;
 import com.lark.oapi.service.docx.v1.model.CreateDocumentBlockChildrenReqBody;
 import com.lark.oapi.service.docx.v1.model.CreateDocumentBlockDescendantReq;
 import com.lark.oapi.service.docx.v1.model.CreateDocumentBlockDescendantReqBody;
+import com.lark.oapi.service.docx.v1.model.CreateDocumentBlockDescendantRespBody;
 import com.lark.oapi.service.docx.v1.model.CreateDocumentReq;
 import com.lark.oapi.service.docx.v1.model.CreateDocumentReqBody;
 import com.lark.oapi.service.docx.v1.model.Document;
@@ -245,6 +247,21 @@ public class FeishuDocxService {
     if (descendants == null) {
       throw new IllegalArgumentException("descendantsJson must be a valid non-null JSON array");
     }
+    return Jsons.DEFAULT.toJson(
+        createDescendants(
+            documentId, blockId, childrenId, descendants, index, documentRevisionId, clientToken));
+  }
+
+  /** The same insert, taking and returning what the SDK models rather than JSON on both sides. */
+  @SneakyThrows
+  public CreateDocumentBlockDescendantRespBody createDescendants(
+      final String documentId,
+      final String blockId,
+      final String[] childrenId,
+      final Block[] descendants,
+      final Integer index,
+      final Integer documentRevisionId,
+      final String clientToken) {
     final var resp =
         feishu
             .docx()
@@ -278,7 +295,7 @@ public class FeishuDocxService {
         descendants.length,
         blockId,
         documentId);
-    return Jsons.DEFAULT.toJson(resp.getData());
+    return resp.getData();
   }
 
   @SneakyThrows
@@ -402,6 +419,20 @@ public class FeishuDocxService {
 
   @SneakyThrows
   public String convertToBlocks(final String contentType, final String content) {
+    return Jsons.DEFAULT.toJson(convertToBlockData(contentType, content));
+  }
+
+  /**
+   * The conversion as the SDK models it, for a caller that goes on to insert the blocks rather than
+   * show them to anybody.
+   *
+   * <p>Separate from {@link #convertToBlocks} so that the blocks, the first-level ids and the image
+   * urls stay objects on the way from conversion to insertion. Serializing them only to parse them
+   * again is what the model used to be asked to do by hand.
+   */
+  @SneakyThrows
+  public ConvertDocumentRespBody convertToBlockData(
+      final String contentType, final String content) {
     final var resp =
         feishu
             .docx()
@@ -424,6 +455,6 @@ public class FeishuDocxService {
       throw new IllegalStateException("Failed to convert content to blocks: " + resp.getMsg());
     }
     log.info("Converted {} content to {} block(s)", contentType, resp.getData().getBlocks().length);
-    return Jsons.DEFAULT.toJson(resp.getData());
+    return resp.getData();
   }
 }

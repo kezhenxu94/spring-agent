@@ -155,7 +155,10 @@ Usage:
           String source,
       @ToolParam(
               required = false,
-              description = "The content itself; leave out to read the source as a file")
+              description =
+                  "The content itself; leave out to read the source as a file. Takes a file"
+                      + " reference: @file:<path> to file away a saved tool result unchanged, or"
+                      + " @file:<path>#/json/pointer for one part of it")
           String text,
       @ToolParam(
               description =

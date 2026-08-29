@@ -544,6 +544,24 @@ app:
       # costs by roughly two and a half times. A deployment whose tools answer in Chinese wants
       # about 12000 here to be where it was.
       max-result-chars: ${TOOLS_MAX_RESULT_CHARS:30000}
+
+      # How much of such a saved file may be read back into a tool argument given as an @file:
+      # reference — the other half of the same idea. Where a tool result exists only to become the
+      # next tool call's argument, the model would otherwise write out every byte of a payload it
+      # had just been handed a pointer to, paying for it a second time in the same turn and again
+      # in every later turn that replays the conversation. Naming the file instead costs a line.
+      #
+      # Which parameters accept one is an allow-list each module declares (ToolInputFileRefs), not
+      # a setting, and that is deliberate: a parameter that takes a reference is a parameter a tool
+      # call can be steered into reading a file with, and a triage run reads text written by
+      # whoever caused the event it is looking at.
+      #
+      # Far above max-result-chars because the two bound different things. That one is a context
+      # window; this one is only the memory a single call may take and the size of the request the
+      # tool then makes with it — the content never goes near the model. Going over is an error
+      # rather than a truncation: half a JSON argument is malformed JSON that a lenient parser may
+      # accept part of, which is a corrupted document rather than a failed call.
+      max-inlined-input-chars: ${TOOLS_MAX_INLINED_INPUT_CHARS:300000}
       publish-file:
         # Where the links PublishFile hands out point: the address a colleague, or anyone holding a
         # public link, reaches this application on. ShareController serves them under /share/, so

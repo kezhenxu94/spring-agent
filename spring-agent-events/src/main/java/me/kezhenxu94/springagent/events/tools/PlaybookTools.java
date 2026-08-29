@@ -112,7 +112,12 @@ public class PlaybookTools {
       @ToolParam(description = "The event source, as ListPlaybooks names it") String source,
       @ToolParam(description = "The document id the source's filter accepts") String docId,
       @ToolParam(description = "A short descriptive title for the playbook") String title,
-      @ToolParam(description = "The playbook itself, as instructions to the agent") String text,
+      @ToolParam(
+              description =
+                  "The playbook itself, as instructions to the agent. Takes a file reference:"
+                      + " @file:<path> for a saved tool result, or @file:<path>#/json/pointer for"
+                      + " one part of it")
+          String text,
       final ToolContext context) {
 
     if (Strings.isNullOrEmpty(source)) {

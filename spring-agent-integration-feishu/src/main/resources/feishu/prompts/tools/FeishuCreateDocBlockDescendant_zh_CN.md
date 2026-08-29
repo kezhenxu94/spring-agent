@@ -1,5 +1,8 @@
-**这就是写文档正文的正确做法**：一次调用插入一整棵嵌套的块树，最多 1000 个块。它正好吃得下
-FeishuConvertMarkdownOrHtmlToBlocks 的产出，也适用于任何自身带嵌套的内容，比如表格或分栏。
+一次调用插入一整棵嵌套的块树，最多 1000 个块。它吃得下 FeishuConvertMarkdownOrHtmlToBlocks 的
+产出，也适用于任何自身带嵌套的内容，比如表格或分栏。
+
+**只有当你要拼出 Markdown 和 HTML 表达不了的块时，才用这个工具。** 要写文档正文，
+FeishuWriteDocumentBody 一次调用就把转换、分批和图片都做完了，而且整棵块树不必在你这里进出两遍。
 
 在 descendantsJson 里，每个块都带一个由你自己指定的临时 block_id，并用这些临时 id 相互引用
 （children 字段就是一个由这些临时 id 组成的数组）；childrenId 列出的是 blockId 的直接子块的那些临时

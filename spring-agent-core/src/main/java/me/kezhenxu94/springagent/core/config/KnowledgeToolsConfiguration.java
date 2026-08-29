@@ -1,9 +1,12 @@
 package me.kezhenxu94.springagent.core.config;
 
+import java.util.Map;
+import java.util.Set;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBaseTools;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
+import me.kezhenxu94.springagent.core.tools.interceptors.ToolInputFileRefs;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -45,5 +48,19 @@ public class KnowledgeToolsConfiguration {
       final SpringAgentProperties properties,
       final CoreMessages messages) {
     return new KnowledgeBaseTools(knowledgeBase, userWorkspaceFactory, properties, messages);
+  }
+
+  /**
+   * Filing something away verbatim is the one thing done to a large tool result that does not
+   * involve reading it, so {@code text} takes a reference to one rather than the model retyping a
+   * document to store it unchanged.
+   *
+   * <p>Registered beside the tools and under the same condition: a parameter that accepts a
+   * reference on a tool this deployment does not have is a rule about nothing.
+   */
+  @Bean
+  @ConditionalOnBean(KnowledgeBase.class)
+  ToolInputFileRefs.Params knowledgeToolFileRefParams() {
+    return () -> Map.of("IndexKnowledge", Set.of("text"));
   }
 }

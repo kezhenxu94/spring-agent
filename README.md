@@ -136,6 +136,19 @@ the file, greps it, or sends it to you. It is counted in characters rather than 
 number is far more text in English than in Chinese; lower it if your tools answer in Chinese and
 runs feel like they run out of room.
 
+The agent does not have to read such a file back to use it, either. Where a tool parameter says it
+takes a file reference, the agent can give it `@file:<path>` — or `@file:<path>#/pointer/into/the/json`
+for one part — and the saved result goes into the call without passing through the model a second
+time. `app.ai.tools.max-inlined-input-chars` (`TOOLS_MAX_INLINED_INPUT_CHARS`, default `300000`)
+bounds how much one such reference may carry. Which parameters accept one is fixed in the code
+rather than configurable, deliberately: a parameter that reads a file is a parameter a tool call
+can be steered into reading a file with, and some runs act on text written by strangers.
+
+Two notes for a deployment running more than one replica. These files live under
+`app.storage.location`, so unless that is shared storage a follow-up turn served by another replica
+cannot see them; and a path the agent noted in an earlier conversation may since have been cleaned
+up, in which case it is told so and re-runs the tool.
+
 The default pair needs nothing running alongside it. For the others, `docker-compose.yaml` has a
 profile per value so the containers cannot drift from the application's own choice:
 
