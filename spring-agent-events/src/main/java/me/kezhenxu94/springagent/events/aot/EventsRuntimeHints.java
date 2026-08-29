@@ -23,6 +23,12 @@ public class EventsRuntimeHints implements RuntimeHintsRegistrar {
   @Override
   public void registerHints(final RuntimeHints hints, final ClassLoader classLoader) {
     // What a triage run is told it is doing, per source and per language.
+    //
+    // One pattern for every module's, not just this one's. A source ships its prompt at this
+    // location from its own jar — spring-agent-integration-github does, and so does the Feishu
+    // integration for the chat it watches — and a resource pattern is matched against the whole
+    // classpath rather than against the module that registered it. So this covers them, and a new
+    // integration adds a prompt without adding a hint.
     hints.resources().registerPattern(TriagePrompts.LOCATION + "*.md");
 
     // Each tool's description in the workspace's language, one file per tool. A pattern of its own
