@@ -23,6 +23,7 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.BatchingStrategy;
 import org.springframework.ai.model.tool.DefaultToolCallingManager;
 import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.model.tool.autoconfigure.ToolCallingProperties;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.http.okhttp.OpenAiHttpClientBuilderCustomizer;
@@ -68,7 +69,11 @@ import org.springframework.web.client.RestTemplate;
   // and neither is guaranteed to be.
   PersistenceProperties.class,
   // Same reasoning: the settings of a particular shell are bound by the module implementing it.
-  ShellToolsProperties.class
+  ShellToolsProperties.class,
+  // Spring AI's own, bound again here so that the tool-call limits below do not depend on which
+  // auto-configuration was sorted first. Registering it twice is a no-op — a configuration
+  // properties bean is registered under a conventional name and skipped if that name is taken.
+  ToolCallingProperties.class
 })
 @ImportRuntimeHints({
   AgentToolsRuntimeHints.class,
@@ -151,20 +156,76 @@ public class SpringAgentCoreAutoConfiguration {
    * list on its way out to the model and it must be the last word on it. Interception outermost
    * overall, because it is what the run's own behaviour hangs off — the mid-turn user message and
    * the wrapping of each callback — and none of that concerns the definitions.
+   *
+   * <p>The innermost manager is built here rather than taken from Spring AI's own
+   * auto-configuration, which is why {@code spring.ai.tools.limits.*} has to be applied by hand
+   * below: this bean is the one that wins — both declarations are {@code @ConditionalOnMissingBean}
+   * and this class sorts first — so anything upstream reads out of those properties and into its
+   * builder is read nowhere unless it is read here. Leaving them unread would have made every one
+   * of them a setting that binds, documents itself and does nothing, {@link ToolCallingDefaults}
+   * included.
    */
   @Bean
   @ConditionalOnMissingBean
   ToolCallingManager toolCallingManager(
       final ToolCallbackResolver toolCallbackResolver,
       final List<ToolCallInterceptor> interceptors,
-      final List<ToolTexts> toolTexts) {
-    final var defaultManager =
+      final List<ToolTexts> toolTexts,
+      final ToolCallingProperties toolCallingProperties) {
+    final var builder =
         DefaultToolCallingManager.builder()
             .toolCallbackResolver(
-                new InterceptingToolCallbackResolver(toolCallbackResolver, interceptors))
-            .build();
+                new InterceptingToolCallbackResolver(toolCallbackResolver, interceptors));
+    applyLimits(builder, toolCallingProperties.getLimits());
+    final var defaultManager = builder.build();
     final var localizing = new LocalizingToolCallingManager(defaultManager, toolTexts);
     return new InterceptingToolCallingManager(localizing, interceptors);
+  }
+
+  /**
+   * Translates {@code spring.ai.tools.limits.*} onto the builder exactly as Spring AI's own
+   * auto-configuration does, {@code -1} included: it means no limit rather than a limit of minus
+   * one, and there is no builder setter to hand it to — a separate call turns the limit off.
+   *
+   * <p>A null is a limit the deployment blanked out, which asks for the builder's own default, so
+   * it is left alone rather than turned into a number here.
+   */
+  private static void applyLimits(
+      final DefaultToolCallingManager.Builder builder, final ToolCallingProperties.Limits limits) {
+    final var unlimited = -1;
+
+    final var maxCallsPerToolDefault = limits.getMaxCallsPerToolDefault();
+    if (maxCallsPerToolDefault != null) {
+      if (maxCallsPerToolDefault == unlimited) {
+        builder.unlimitedCallsPerTool();
+      } else {
+        builder.maxCallsPerTool(maxCallsPerToolDefault);
+      }
+    }
+
+    limits
+        .getMaxCallsPerTool()
+        .forEach(
+            (tool, maxCalls) -> {
+              if (maxCalls == unlimited) {
+                builder.excludeToolFromLimit(tool);
+              } else {
+                builder.maxCallsPerTool(tool, maxCalls);
+              }
+            });
+
+    limits.getExcludedTools().forEach(builder::excludeToolFromLimit);
+
+    final var maxTotalToolCalls = limits.getMaxTotalToolCalls();
+    if (maxTotalToolCalls != null) {
+      if (maxTotalToolCalls == unlimited) {
+        builder.unlimitedTotalToolCalls();
+      } else {
+        builder.maxTotalToolCalls(maxTotalToolCalls);
+      }
+    }
+
+    builder.onLimitExceeded(limits.getOnLimitExceeded());
   }
 
   /**
