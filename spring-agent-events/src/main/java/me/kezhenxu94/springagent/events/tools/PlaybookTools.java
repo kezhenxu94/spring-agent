@@ -64,7 +64,10 @@ public class PlaybookTools {
           identity's knowledge base it is read from, the fixed question it is retrieved with, the \
           filter that decides which documents count, and the document ids that filter accepts. \
           Administrators only. Call this before WritePlaybook, because a playbook written under \
-          any other document id is stored successfully and then never read.
+          any other document id is stored successfully and then never read. To read back what a \
+          source's playbook currently says, pass the owner it names to ListOwnerKnowledgeBase or \
+          SearchOwnerKnowledge — nobody logs in as that identity, so those are the only way to see \
+          its knowledge base.
           """)
   public String listPlaybooks() {
     final var sources = new TreeSet<>(properties.sources().keySet());

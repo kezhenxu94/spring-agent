@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.core.config;
 
 import java.util.Map;
 import java.util.Set;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeAdminTools;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBaseTools;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
@@ -48,6 +49,23 @@ public class KnowledgeToolsConfiguration {
       final SpringAgentProperties properties,
       final CoreMessages messages) {
     return new KnowledgeBaseTools(knowledgeBase, userWorkspaceFactory, properties, messages);
+  }
+
+  /**
+   * Reading a knowledge base that is not the run's own, which is a separate bean because the admin
+   * gate is per bean: {@code AgentToolsProvider} reads {@link AgentTool#admin()} off the bean, so a
+   * method on {@link KnowledgeBaseTools} would either open that class to nobody or open these to
+   * everybody.
+   */
+  @Bean
+  @AgentTool(admin = true)
+  @ConditionalOnBean(KnowledgeBase.class)
+  @ConditionalOnMissingBean
+  KnowledgeAdminTools knowledgeAdminTools(
+      final KnowledgeBase knowledgeBase,
+      final SpringAgentProperties properties,
+      final CoreMessages messages) {
+    return new KnowledgeAdminTools(knowledgeBase, properties, messages);
   }
 
   /**
