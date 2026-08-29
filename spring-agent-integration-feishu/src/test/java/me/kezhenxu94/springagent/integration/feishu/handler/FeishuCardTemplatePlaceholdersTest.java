@@ -41,7 +41,7 @@ class FeishuCardTemplatePlaceholdersTest {
 
   private static FeishuMessages messages(final Locale locale) {
     return new FeishuMessages(
-        new FeishuProperties(null, null, null, null, null, null, null, locale, null, null));
+        new FeishuProperties(null, null, null, null, null, null, null, locale, null, null, null));
   }
 
   private static String render(final String template, final Locale locale) throws Exception {

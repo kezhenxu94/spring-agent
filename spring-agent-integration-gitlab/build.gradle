@@ -1,0 +1,17 @@
+plugins {
+  id 'springagent.java-library-conventions'
+}
+
+description = 'GitLab integration for spring-agent-events: reads GitLab webhook deliveries as observations.'
+
+dependencies {
+  implementation project(':spring-agent-core')
+  // The webhook SPI and the receiver that dispatches to it live there, along with everything that
+  // decides what becomes of an observation. This module only knows how to read GitLab.
+  implementation project(':spring-agent-events')
+
+  implementation 'org.springframework.boot:spring-boot-starter'
+  // Jackson 3, read directly rather than through a web starter: nothing here serves or calls HTTP,
+  // it is handed a byte array that somebody else received.
+  implementation 'tools.jackson.core:jackson-databind'
+}

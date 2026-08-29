@@ -66,7 +66,7 @@ class FeishuCardImageTest {
             new UserHome(userHomeRoot),
             new FeishuMessages(
                 new FeishuProperties(
-                    null, null, null, null, null, null, null, Locale.ENGLISH, null, null)));
+                    null, null, null, null, null, null, null, Locale.ENGLISH, null, null, null)));
   }
 
   @Test

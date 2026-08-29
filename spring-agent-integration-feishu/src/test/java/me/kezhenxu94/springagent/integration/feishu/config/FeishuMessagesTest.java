@@ -25,7 +25,7 @@ class FeishuMessagesTest {
 
   static FeishuMessages messagesIn(final Locale locale) {
     return new FeishuMessages(
-        new FeishuProperties(null, null, null, null, null, null, null, locale, null, null));
+        new FeishuProperties(null, null, null, null, null, null, null, locale, null, null, null));
   }
 
   private static String shipped(final String template) throws Exception {

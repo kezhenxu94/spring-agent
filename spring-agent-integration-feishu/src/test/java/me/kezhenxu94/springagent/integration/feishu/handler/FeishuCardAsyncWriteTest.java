@@ -323,6 +323,7 @@ class FeishuCardAsyncWriteTest {
 
   private FeishuMessages messages() {
     return new FeishuMessages(
-        new FeishuProperties(null, null, null, null, null, null, null, Locale.ENGLISH, null, null));
+        new FeishuProperties(
+            null, null, null, null, null, null, null, Locale.ENGLISH, null, null, null));
   }
 }
