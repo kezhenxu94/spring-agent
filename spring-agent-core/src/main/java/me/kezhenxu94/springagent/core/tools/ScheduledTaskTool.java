@@ -80,6 +80,8 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
     final var rootMessageId = ToolContexts.require(context, ToolContexts.ROOT_MESSAGE_ID);
     final var chatId = ToolContexts.get(context, ToolContexts.CHAT_ID);
     final var chatType = ToolContexts.get(context, ToolContexts.CHAT_TYPE);
+    final var groupId = ToolContexts.get(context, ToolContexts.GROUP_ID);
+    final var tenantId = ToolContexts.get(context, ToolContexts.TENANT_ID);
 
     final var hasCron = !Strings.isNullOrEmpty(cronExpression);
     final var hasScheduledAt = !Strings.isNullOrEmpty(scheduledAt);
@@ -135,6 +137,8 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
                   .userId(userId)
                   .chatId(chatId)
                   .chatType(chatType)
+                  .groupId(groupId)
+                  .tenantId(tenantId)
                   .rootMessageId(rootMessageId)
                   .taskText(taskText)
                   .cronExpression(validated)
@@ -177,6 +181,8 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
                   .userId(userId)
                   .chatId(chatId)
                   .chatType(chatType)
+                  .groupId(groupId)
+                  .tenantId(tenantId)
                   .rootMessageId(rootMessageId)
                   .taskText(taskText)
                   .scheduledAt(fireAt)

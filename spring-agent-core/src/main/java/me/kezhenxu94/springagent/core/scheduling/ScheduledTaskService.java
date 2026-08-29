@@ -128,6 +128,10 @@ public class ScheduledTaskService {
             .userId(task.userId())
             .chatId(task.chatId())
             .chatType(task.chatType())
+            // The scopes the task was created in, so a firing reaches the same group and tenant
+            // homes and knowledge the conversation that created it could.
+            .groupId(task.groupId())
+            .tenantId(task.tenantId())
             .conversationId(task.rootMessageId())
             .rootMessageId(task.rootMessageId())
             .replyMessageId(task.rootMessageId())
