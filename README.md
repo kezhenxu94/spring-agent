@@ -171,11 +171,14 @@ Other things worth knowing before a real deployment:
   open id). An admin's agent reads and posts in chats they are not a member of; they can answer a
   question the agent put to somebody else and speak into a run already going for somebody else; and
   they get the admin-only tools, which today are the ones that write the triage playbooks
-  (`ListPlaybooks`, `WritePlaybook`). A run keeps the identity it started with, so an admin causes
-  things to happen *as* the person being helped — grant it only to people you would trust with
-  those files and credentials directly. Never list an events source's `owner-user-id` among them —
-  the application refuses to start on that pairing, since a triage run assuming an admin identity
-  would hand the admin-only tools to whoever wrote the event it is triaging.
+  (`ListPlaybooks`, `WritePlaybook`) and the ones that read back a knowledge base nobody logs in as
+  (`ListOwnerKnowledgeBase`, `SearchOwnerKnowledge`) — without those a playbook could be written
+  into a source owner's knowledge base and never read again. A run keeps the identity it started
+  with, so an admin causes things to happen *as* the person being helped — grant it only to people
+  you would trust with those files and credentials directly. Never list an events source's
+  `owner-user-id` among them — the application refuses to start on that pairing, since a triage run
+  assuming an admin identity would hand the admin-only tools to whoever wrote the event it is
+  triaging.
 - `SPRING_AGENT_LOCALE` chooses the language the agent's own text — and the tool descriptions the
   model reads — are written in. `en` and `zh_CN` ship.
 - `app.ai.system-prompt` is where a persona and house rules go. It replaces a five-thousand-character

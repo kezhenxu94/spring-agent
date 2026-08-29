@@ -1,8 +1,6 @@
 package me.kezhenxu94.springagent.core.knowledge;
 
 import java.nio.file.Path;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import lombok.RequiredArgsConstructor;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
@@ -27,12 +25,6 @@ import org.springframework.ai.tool.annotation.ToolParam;
  */
 @RequiredArgsConstructor
 public class KnowledgeBaseTools {
-
-  /** Enough to be useful in one result without turning a listing into the whole turn's context. */
-  private static final int MAX_PAGE_SIZE = 100;
-
-  private static final DateTimeFormatter DATE =
-      DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(ZoneId.systemDefault());
 
   private final KnowledgeBase knowledgeBase;
   private final UserWorkspaceFactory userWorkspaceFactory;
@@ -65,7 +57,7 @@ Usage:
     final var from = offset == null || offset < 0 ? 0 : offset;
     final var size =
         Math.min(
-            MAX_PAGE_SIZE,
+            KnowledgeFormat.MAX_PAGE_SIZE,
             limit == null || limit <= 0 ? properties.ai().rag().listPageSize() : limit);
 
     final KnowledgePage page;
@@ -81,23 +73,7 @@ Usage:
           : messages.get("knowledge-page-empty", from);
     }
 
-    final var result = new StringBuilder();
-    for (final var entry : page.entries()) {
-      result
-          .append(entry.docId())
-          .append("  ")
-          .append(entry.title())
-          .append("  [")
-          .append(messages.get(scopeLabel(entry.scope())))
-          .append(", ")
-          .append(messages.get("knowledge-chunks", entry.chunkCount()))
-          .append(", ")
-          .append(entry.createdAt() == null ? "" : DATE.format(entry.createdAt()))
-          .append("]\n");
-      if (entry.source() != null && !entry.source().isBlank()) {
-        result.append("    ").append(entry.source()).append('\n');
-      }
-    }
+    final var result = KnowledgeFormat.rows(page, messages, true);
 
     return page.hasMore()
         ? messages.get("knowledge-listed-more", page.entries().size(), result, from + size)
@@ -215,7 +191,8 @@ Usage:
 
     try {
       final var storedId = knowledgeBase.index(knowledge);
-      return messages.get("knowledge-indexed", title, messages.get(scopeLabel(target)), storedId);
+      return messages.get(
+          "knowledge-indexed", title, messages.get(KnowledgeFormat.scopeLabel(target)), storedId);
     } catch (RuntimeException e) {
       return messages.get("knowledge-index-failed", e.getMessage());
     }
@@ -256,25 +233,7 @@ tenant-wide one, all at once.
       return messages.get("knowledge-search-empty", query);
     }
 
-    final var result = new StringBuilder();
-    for (final var document : found) {
-      final var metadata = document.getMetadata();
-      result
-          .append("--- ")
-          .append(metadata.getOrDefault(KnowledgeMetadata.TITLE, ""))
-          .append(" (")
-          .append(metadata.getOrDefault(KnowledgeMetadata.DOC_ID, ""))
-          // The similarity that got this passage past app.ai.rag.similarity-threshold. Shown
-          // because that threshold is a raw cosine score whose useful value depends on the
-          // embedding model, and these numbers are the only way to tell what it should be: if
-          // passages nobody would call relevant are scoring above it, it is set too low.
-          .append(
-              document.getScore() == null ? "" : String.format(", score %.3f", document.getScore()))
-          .append(")\n")
-          .append(document.getText())
-          .append("\n\n");
-    }
-    return messages.get("knowledge-search-found", found.size(), result);
+    return messages.get("knowledge-search-found", found.size(), KnowledgeFormat.passages(found));
   }
 
   @Tool(
@@ -328,7 +287,10 @@ Usage:
     return moved
         .map(
             entry ->
-                messages.get("knowledge-moved", entry.title(), messages.get(scopeLabel(target))))
+                messages.get(
+                    "knowledge-moved",
+                    entry.title(),
+                    messages.get(KnowledgeFormat.scopeLabel(target))))
         .orElseGet(() -> messages.get("knowledge-move-not-found", docId));
   }
 
@@ -404,13 +366,5 @@ Usage:
     }
     final var home = userWorkspaceFactory.forRequest(context);
     return home.contains(resolved) ? null : messages.get("knowledge-path-denied");
-  }
-
-  private static String scopeLabel(final KnowledgeScope.Target target) {
-    return switch (target) {
-      case OWN -> "knowledge-scope-own";
-      case GROUP -> "knowledge-scope-group";
-      case TENANT -> "knowledge-scope-tenant";
-    };
   }
 }
