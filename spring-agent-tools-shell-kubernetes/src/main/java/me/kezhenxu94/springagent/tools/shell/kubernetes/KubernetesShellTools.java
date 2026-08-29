@@ -27,6 +27,20 @@ public class KubernetesShellTools {
   private final UserPodManager userPodManager;
   private final KubernetesShellProperties properties;
 
+  /**
+   * The point past which a runaway command would take this application down with it, rather than
+   * merely fill a context window.
+   *
+   * <p>Not a limit on what a tool result may cost the model — {@code app.ai.tools.max-result-chars}
+   * is that, applied to every tool alike by {@code LargeResponseInterceptor}, which spills an
+   * oversized result to the user's workspace instead of losing it. This one is about heap: a
+   * command is free to write more than a context window can hold, because the interceptor has
+   * somewhere to put it, but nothing is free to write more than the JVM can buffer. Deliberately
+   * far above any plausible threshold, so that reaching it means a {@code cat /dev/urandom} rather
+   * than a large log.
+   */
+  private static final int HEAP_CEILING = 64 * 1024 * 1024;
+
   // @formatter:off
   @Tool(
       name = "Bash",
@@ -119,7 +133,10 @@ Usage notes:
 
     try {
       final var podName = userPodManager.ensurePodFor(userId, groupId, tenantId);
-      final var maxBytes = properties.maxOutputBytes();
+      // Everything written since the last call, however much that is. What a result costs the
+      // model's context is not decided here: LargeResponseInterceptor sees every tool's result and
+      // spills an oversized one to the user's workspace, so a cap of our own would only truncate
+      // output it could otherwise have handed over in full.
       final var script =
           String.join(
               "\n",
@@ -128,17 +145,10 @@ Usage notes:
               "if [ ! -f \"$BG.pid\" ]; then echo NOT_FOUND; exit 0; fi",
               "OFF=$(cat \"$BG.offset\" 2>/dev/null || echo 0)",
               "SIZE=$(stat -c %s \"$BG.out\" 2>/dev/null || echo 0)",
-              "MAX=" + maxBytes,
-              "AVAIL=$((SIZE-OFF))",
-              "if [ \"$AVAIL\" -gt \"$MAX\" ]; then NEW=$MAX; TRUNC=1; else NEW=$AVAIL; TRUNC=0;"
-                  + " fi",
+              "NEW=$((SIZE-OFF))",
               "if [ \"$NEW\" -gt 0 ]; then",
               "  dd if=\"$BG.out\" bs=1 skip=$OFF count=$NEW 2>/dev/null",
               "  echo $((OFF+NEW)) > \"$BG.offset\"",
-              "fi",
-              "if [ \"$TRUNC\" = 1 ]; then",
-              "  echo",
-              "  echo \"... (output truncated at $MAX bytes; call BashOutput again for more)\"",
               "fi",
               "echo --SPRING-AGENT-STATUS--",
               "if kill -0 $(cat \"$BG.pid\") 2>/dev/null; then echo Running; else echo Completed;"
@@ -292,11 +302,13 @@ Usage notes:
       out.append("Exit code: ").append(result.exitCode());
     }
     if (result.truncated()) {
-      out.append("\n... (output truncated at ")
-          .append(properties.maxOutputBytes())
-          .append(" bytes)");
+      out.append("\n... (output stopped at ")
+          .append(HEAP_CEILING / (1024 * 1024))
+          .append(
+              " MB, which is all of it this application will hold in memory; redirect the"
+                  + " command's output to a file and read it back in pieces)");
     }
-    return truncate(out.toString(), properties.maxOutputBytes() + 256);
+    return out.toString();
   }
 
   private String runBackground(final String podName, final String bashId, final String command)
@@ -329,8 +341,8 @@ Usage notes:
 
   private ExecResult execSync(final String podName, final String script, final long timeoutMs)
       throws InterruptedException, ExecutionException, TimeoutException {
-    final var out = new BoundedByteArrayOutputStream(properties.maxOutputBytes());
-    final var err = new BoundedByteArrayOutputStream(properties.maxOutputBytes());
+    final var out = new BoundedByteArrayOutputStream(HEAP_CEILING);
+    final var err = new BoundedByteArrayOutputStream(HEAP_CEILING);
     try (var watch =
         kubernetesClient
             .pods()
@@ -377,19 +389,6 @@ Usage notes:
     return Math.min(Math.max(timeoutMs, 1L), properties.maxTimeoutMs());
   }
 
-  private String truncate(final String output, final int maxBytes) {
-    if (output.length() <= maxBytes) return output;
-    final var headerEnd = output.indexOf("\n\n");
-    if (headerEnd <= 0) {
-      return output.substring(0, maxBytes) + "\n... (output truncated)";
-    }
-    final var header = output.substring(0, headerEnd + 2);
-    final var body = output.substring(headerEnd + 2);
-    final var room = maxBytes - header.length();
-    if (room <= 0) return output.substring(0, maxBytes) + "\n... (output truncated)";
-    return header + body.substring(0, Math.min(body.length(), room)) + "\n... (output truncated)";
-  }
-
   private String applyRegexFilter(final String output, final String regex) {
     try {
       final var pattern = java.util.regex.Pattern.compile(regex);
@@ -420,7 +419,7 @@ Usage notes:
 
   private record ExecResult(String stdout, String stderr, Integer exitCode, boolean truncated) {}
 
-  /** Output stream that caps its size at the configured limit and discards subsequent bytes. */
+  /** Output stream that caps its size at the given limit and discards subsequent bytes. */
   private static final class BoundedByteArrayOutputStream extends OutputStream {
     private final ByteArrayOutputStream delegate = new ByteArrayOutputStream();
     private final int max;

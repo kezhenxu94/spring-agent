@@ -163,7 +163,6 @@ class DockerShellToolsIntegrationTest {
             Duration.ofMinutes(30),
             Duration.ofHours(4),
             Duration.ofMinutes(2),
-            30_000,
             120_000L,
             600_000L,
             new DockerShellProperties.Resources(null, null),
@@ -206,8 +205,7 @@ class DockerShellToolsIntegrationTest {
   private static SpringAgentProperties appProperties() {
     return new SpringAgentProperties(
         null,
-        new SpringAgentProperties.Ai(
-            null, Set.of(), null, null, null, null, "system prompt", null, null),
+        new SpringAgentProperties.Ai(Set.of(), null, null, null, null, "system prompt", null, null),
         null);
   }
 

@@ -211,8 +211,11 @@ Beans annotated `@AgentTool`, whose `@Tool` methods `AgentToolsProvider.compose(
   Untranslated tools keep their English, so this can be filled in one tool at a time.
 - Anything that has to happen around *every* call is a `ToolCallInterceptor`, not a change to each
   tool.
-- A tool returning something large should say so through `LargeResponseInterceptor`'s mechanism
-  rather than truncating in its own way.
+- A tool returning something large returns it whole and lets `LargeResponseInterceptor` decide;
+  it does not truncate in its own way. One threshold, `app.ai.tools.max-result-chars`, governs
+  every tool. A second cap inside a tool is worse than none: the interceptor then saves the
+  already-cut text to the workspace and tells the model it has the full result, which is how the
+  shell backends behaved until their own `max-output-bytes` was removed.
 
 ### A persistence backend
 

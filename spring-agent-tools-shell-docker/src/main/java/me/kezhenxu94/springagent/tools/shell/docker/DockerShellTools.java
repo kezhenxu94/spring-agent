@@ -127,7 +127,10 @@ Usage notes:
 
     try {
       final var container = userContainerManager.ensureContainerFor(userId);
-      final var maxBytes = properties.maxOutputBytes();
+      // Everything written since the last call, however much that is. What a result costs the
+      // model's context is not decided here: LargeResponseInterceptor sees every tool's result and
+      // spills an oversized one to the user's workspace, so a cap of our own would only truncate
+      // output it could otherwise have handed over in full.
       final var script =
           String.join(
               "\n",
@@ -136,17 +139,10 @@ Usage notes:
               "if [ ! -f \"$BG.pid\" ]; then echo NOT_FOUND; exit 0; fi",
               "OFF=$(cat \"$BG.offset\" 2>/dev/null || echo 0)",
               "SIZE=$(stat -c %s \"$BG.out\" 2>/dev/null || echo 0)",
-              "MAX=" + maxBytes,
-              "AVAIL=$((SIZE-OFF))",
-              "if [ \"$AVAIL\" -gt \"$MAX\" ]; then NEW=$MAX; TRUNC=1; else NEW=$AVAIL; TRUNC=0;"
-                  + " fi",
+              "NEW=$((SIZE-OFF))",
               "if [ \"$NEW\" -gt 0 ]; then",
               "  dd if=\"$BG.out\" bs=1 skip=$OFF count=$NEW 2>/dev/null",
               "  echo $((OFF+NEW)) > \"$BG.offset\"",
-              "fi",
-              "if [ \"$TRUNC\" = 1 ]; then",
-              "  echo",
-              "  echo \"... (output truncated at $MAX bytes; call BashOutput again for more)\"",
               "fi",
               "echo --SPRING-AGENT-STATUS--",
               "if kill -0 $(cat \"$BG.pid\") 2>/dev/null; then echo Running; else echo Completed;"
@@ -300,12 +296,7 @@ Usage notes:
       if (out.length() > 0) out.append('\n');
       out.append("Exit code: ").append(result.exitCode());
     }
-    if (result.truncated()) {
-      out.append("\n... (output truncated at ")
-          .append(properties.maxOutputBytes())
-          .append(" bytes)");
-    }
-    return truncate(out.toString(), properties.maxOutputBytes() + 256);
+    return out.toString();
   }
 
   /**
@@ -373,48 +364,23 @@ Usage notes:
       throw e;
     }
 
-    final var max = properties.maxOutputBytes();
-    final var stdout = bound(result.getStdout(), max);
-    final var stderr = bound(result.getStderr(), max);
+    // Nothing bounds this, and nothing here can: the Kubernetes module caps the exec stream as it
+    // is written, whereas Testcontainers' execInContainer buffers the whole command's output and
+    // hands back a String that is already in this heap by the time we see it. Truncating it now
+    // would lose text without having saved any memory — and would lose it for good, since
+    // LargeResponseInterceptor could otherwise have written it to the user's workspace. A command
+    // that writes more than this JVM can hold takes it down; that is the price of this backend,
+    // which is the laptop and single-host one.
     return new Result(
-        stdout,
-        stderr,
-        result.getExitCode(),
-        stdout.length() < nullSafeLength(result.getStdout())
-            || stderr.length() < nullSafeLength(result.getStderr()));
+        nullSafe(result.getStdout()), nullSafe(result.getStderr()), result.getExitCode());
   }
 
-  /**
-   * Caps output at the configured limit.
-   *
-   * <p>The Kubernetes module bounds the stream as it is written, which this cannot do: {@code
-   * execInContainer} buffers the whole thing and hands back a String. The cap is therefore about
-   * what reaches the model's context, not about what this process holds in memory.
-   */
-  private static String bound(final String value, final int max) {
-    if (value == null) return "";
-    return value.length() <= max ? value : value.substring(0, max);
-  }
-
-  private static int nullSafeLength(final String value) {
-    return value == null ? 0 : value.length();
+  private static String nullSafe(final String value) {
+    return value == null ? "" : value;
   }
 
   private long clamp(final long timeoutMs) {
     return Math.min(Math.max(timeoutMs, 1L), properties.maxTimeoutMs());
-  }
-
-  private String truncate(final String output, final int maxBytes) {
-    if (output.length() <= maxBytes) return output;
-    final var headerEnd = output.indexOf("\n\n");
-    if (headerEnd <= 0) {
-      return output.substring(0, maxBytes) + "\n... (output truncated)";
-    }
-    final var header = output.substring(0, headerEnd + 2);
-    final var body = output.substring(headerEnd + 2);
-    final var room = maxBytes - header.length();
-    if (room <= 0) return output.substring(0, maxBytes) + "\n... (output truncated)";
-    return header + body.substring(0, Math.min(body.length(), room)) + "\n... (output truncated)";
   }
 
   private String applyRegexFilter(final String output, final String regex) {
@@ -450,5 +416,5 @@ Usage notes:
     executor.shutdownNow();
   }
 
-  private record Result(String stdout, String stderr, Integer exitCode, boolean truncated) {}
+  private record Result(String stdout, String stderr, Integer exitCode) {}
 }
