@@ -2,10 +2,11 @@ server:
   shutdown: graceful
 spring:
   messages:
-    # What the agent writes into a conversation itself. CoreMessages reads through this message
-    # source rather than building one, so naming the bundle here is what makes those notes resolve.
-    # This application has no messages.properties of its own, hence the one entry.
-    basename: core/messages
+    # No basename here: core/messages — what the agent writes into a conversation itself, which
+    # CoreMessages reads through this same message source rather than building one — is appended by
+    # MessagesDefaults, and this application has no bundle of its own to name alongside it. Set
+    # `basename:` to name one and core's is still appended after it.
+    #
     # English, not the host's language, when app.locale is set to one that ships no bundle: on a
     # server the host's language is an accident of how the image was built rather than anybody's
     # choice. spring-agent-cli sets this the other way, its host being the user's own machine.
