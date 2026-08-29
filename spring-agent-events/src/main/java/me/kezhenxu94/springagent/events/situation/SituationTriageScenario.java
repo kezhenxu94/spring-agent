@@ -1,44 +1,40 @@
 package me.kezhenxu94.springagent.events.situation;
 
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
-import me.kezhenxu94.springagent.core.tools.ImageGenerationTools;
-import me.kezhenxu94.springagent.core.tools.PublishFileTool;
 import me.kezhenxu94.springagent.core.tools.ScheduledTaskTool;
-import me.kezhenxu94.springagent.core.tools.SkillManagementTools;
-import me.kezhenxu94.springagent.core.tools.SubagentTools;
-import me.kezhenxu94.springagent.core.tools.credentials.CredentialTools;
-import me.kezhenxu94.springagent.core.tools.mcp.McpServerManagementTools;
-import org.springaicommunity.agent.tools.ShellTools;
 
 /**
  * A run the system started about something it noticed, rather than one a person asked for.
  *
- * <p>Its input was written by somebody who does not know the agent will read it — an alerting rule,
- * an issue author, people talking in a chat — and may have been written by somebody who does and is
- * hostile. Anyone can open an issue whose body gives the agent instructions. So this scenario is
- * narrower than {@link me.kezhenxu94.springagent.core.agent.BuiltInScenarios#CHAT}, which offers
- * everything, and the narrowing is the point rather than a precaution.
+ * <p>The same agent with the same tools, less the one that would leave work behind. What differs
+ * from a chat run is not what it may do but what it is told and what it remembers: it is briefed
+ * from the situation rather than from a conversation, and it is told that everything it has been
+ * shown was written by somebody else.
  *
- * <p><b>What this cannot narrow, and what follows from that.</b> {@link #offers} is consulted about
- * the {@code @AgentTool} beans and about nothing else: the file-system tools, the todo tool, the
- * skills tool and every MCP callback — including the application-wide servers configured under
- * {@code spring.ai.mcp.client.*} — are added to every run regardless of scenario. A deployment that
- * gives the agent a GitHub MCP server therefore gives it to these runs too, with whatever write
- * access that server has. That is partly the intention here, since answering an issue is one of the
- * things this feature is for, but it means the reach of a triage run is set by how the deployment
- * is configured and not by this class. Two things follow, and neither is optional:
+ * <p><b>Where the safety actually comes from.</b> This run's input was written by whoever caused
+ * the event, and anyone who can open an issue can write it — so it is worth being precise about
+ * what protects the deployment, because it is not this class:
  *
  * <ul>
- *   <li>{@code app.events.sources.<name>.owner-user-id} must be an identity of the agent's own,
- *       never a person's. A run assumes it, and with it that person's file-system sandbox and their
- *       personal MCP servers — so pointing these runs at a human hands attacker-authored text their
- *       workspace and their credentials.
- *   <li>The prompt has to say that the observed text is data and not instruction. That is why
- *       {@code app.events.triage-prompt} says so at length, and why it is worth reading before
- *       editing.
+ *   <li>{@code app.events.sources.<name>.owner-user-id}, which must name an identity of the agent's
+ *       own and never a person's. A run assumes it, and with it that identity's file sandbox and
+ *       personal MCP servers. {@code SituationSweeper} refuses to evaluate a source without one and
+ *       says so at startup.
+ *   <li>the prompt, which says at length that the observed text is data to be assessed and never
+ *       instructions to follow, and the fence {@code SituationBrief} puts around it.
+ *   <li>whatever the deployment chose to give the agent at all. A shell exists only where {@code
+ *       app.ai.tools.shell.type} says so, and it defaults to {@code none}.
  * </ul>
  *
- * <p>The ask tool needs no mention here. A triage run is a background run, which makes {@code
+ * <p>An allow-list here would add little to that and cost something real. {@link #offers} is
+ * consulted about the {@code @AgentTool} beans and nothing else — the file-system tools, the todo
+ * tool, the skills tool and every MCP callback, including the application-wide servers under {@code
+ * spring.ai.mcp.client.*}, reach every run whatever this says. So a scenario that withheld the
+ * shell would still hand a run whatever reach the deployment's MCP servers have, while losing the
+ * agent the ability to look at the thing it is being asked about; an alert triaged without being
+ * able to read a log is mostly guesswork.
+ *
+ * <p>The ask tool needs no mention. A triage run is a background run, which makes {@code
  * AgentRunRegistry.addQuestionHandler} a no-op, so no handler is registered and the tool is never
  * composed in — there is nobody on the other end of a question about an alert.
  */
@@ -72,46 +68,13 @@ public final class SituationTriageScenario implements AgentScenario {
   }
 
   /**
-   * Everything that acts on the deployment itself rather than on the situation is withheld.
-   *
-   * <p>Three groups, for three reasons. Scheduling and subagents leave work behind that outlives
-   * the turn, with nobody to answer for it — the same reasoning that keeps them out of {@code
-   * SCHEDULED_TASK} and {@code SUBAGENT}. Credentials, MCP server management and skill management
-   * change what the agent can do next, and a run whose input is a stranger's text must not be able
-   * to grant itself anything. Publishing hands out URLs, and image generation spends money, neither
-   * of which is a step towards deciding whether an alert matters.
-   *
-   * <p>Shell tools are withheld by name for the same reason, and losing them costs something real:
-   * an agent that could run {@code kubectl logs} would triage an alert better than one that cannot.
-   * It is not a close call, though — a shell is the one tool where a successful prompt injection is
-   * indistinguishable from an intrusion. A deployment that wants investigation of that depth should
-   * give these runs a read-only MCP server, which is a reach somebody chose, rather than a shell,
-   * which is all of them.
+   * Everything but the scheduler, which is out for the reason it is out of {@code SCHEDULED_TASK}:
+   * work left behind outlives the turn that asked for it, and an unattended run has nobody to
+   * answer for it. A situation that keeps recurring would otherwise be able to leave a scheduled
+   * task behind on every look, which is how one alert becomes a growing pile of them.
    */
   @Override
   public boolean offers(final Object tool) {
-    return !(tool instanceof ScheduledTaskTool)
-        && !(tool instanceof SubagentTools)
-        && !(tool instanceof CredentialTools)
-        && !(tool instanceof McpServerManagementTools)
-        && !(tool instanceof SkillManagementTools)
-        && !(tool instanceof PublishFileTool)
-        && !(tool instanceof ImageGenerationTools)
-        && !isShellTool(tool);
-  }
-
-  /**
-   * The local backend by type, since it is Spring AI's own {@code ShellTools} and this module
-   * already compiles against that library. The other two by class name, because each lives in its
-   * own optional module: naming those types would make this module depend on both, and the answer
-   * has to be the same whether they are on the classpath or not.
-   */
-  private static boolean isShellTool(final Object tool) {
-    if (tool instanceof ShellTools) {
-      return true;
-    }
-    final var name = tool.getClass().getName();
-    return name.equals("me.kezhenxu94.springagent.tools.shell.docker.DockerShellTools")
-        || name.equals("me.kezhenxu94.springagent.tools.shell.kubernetes.KubernetesShellTools");
+    return !(tool instanceof ScheduledTaskTool);
   }
 }

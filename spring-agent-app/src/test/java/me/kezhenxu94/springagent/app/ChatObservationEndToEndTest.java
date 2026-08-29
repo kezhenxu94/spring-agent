@@ -131,9 +131,8 @@ class ChatObservationEndToEndTest extends AbstractIntegrationTest {
                 .map(callback -> callback.getToolDefinition().name())
                 .toList();
     assertThat(offered).contains("FeishuSendMessage", "RecordSituationAssessment");
-    // Still none of the things a run started by somebody else's words must not have.
+    // Still not able to leave work behind that nobody would answer for.
     assertThat(offered).doesNotContain("CreateScheduledTask");
-    assertThat(offered).noneMatch(name -> name.toLowerCase().contains("shell"));
   }
 
   @Test

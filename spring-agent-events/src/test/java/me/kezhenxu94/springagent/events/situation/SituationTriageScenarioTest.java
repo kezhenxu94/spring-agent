@@ -49,24 +49,29 @@ class SituationTriageScenarioTest {
   }
 
   @Test
-  @DisplayName("nothing that leaves work behind, changes what the agent can do, or spends money")
-  void shouldWithholdTheDangerousTools() {
+  @DisplayName("no scheduler, so one alert cannot become a growing pile of tasks")
+  void shouldWithholdTheScheduler() {
+    // Out for the reason it is out of SCHEDULED_TASK: work left behind outlives the turn that asked
+    // for it, and an unattended run has nobody to answer for it.
     assertThat(scenario.offers(mock(ScheduledTaskTool.class))).isFalse();
-    assertThat(scenario.offers(mock(SubagentTools.class))).isFalse();
-    assertThat(scenario.offers(mock(CredentialTools.class))).isFalse();
-    assertThat(scenario.offers(mock(McpServerManagementTools.class))).isFalse();
-    assertThat(scenario.offers(mock(SkillManagementTools.class))).isFalse();
-    assertThat(scenario.offers(mock(PublishFileTool.class))).isFalse();
-    assertThat(scenario.offers(mock(ImageGenerationTools.class))).isFalse();
   }
 
   @Test
-  @DisplayName("and no shell, which is the one place injection is indistinguishable from intrusion")
-  void shouldWithholdTheShell() {
-    // Losing it costs something real — an agent that could run `kubectl logs` would triage better —
-    // but a deployment wanting investigation of that depth should give these runs a read-only MCP
-    // server, which is a reach somebody chose, rather than a shell, which is all of them.
-    assertThat(scenario.offers(mock(ShellTools.class))).isFalse();
+  @DisplayName("everything else, including the tools that make an investigation worth anything")
+  void shouldOfferEverythingElse() {
+    // Deliberately not an allow-list. offers() is consulted about the @AgentTool beans and nothing
+    // else — every MCP callback reaches the run whatever this says — so withholding these would
+    // cost
+    // the agent the ability to look at what it is being asked about while closing nothing. What
+    // protects the deployment is the dedicated identity, the prompt framing, and
+    // app.ai.tools.shell.
+    assertThat(scenario.offers(mock(SubagentTools.class))).isTrue();
+    assertThat(scenario.offers(mock(CredentialTools.class))).isTrue();
+    assertThat(scenario.offers(mock(McpServerManagementTools.class))).isTrue();
+    assertThat(scenario.offers(mock(SkillManagementTools.class))).isTrue();
+    assertThat(scenario.offers(mock(PublishFileTool.class))).isTrue();
+    assertThat(scenario.offers(mock(ImageGenerationTools.class))).isTrue();
+    assertThat(scenario.offers(mock(ShellTools.class))).isTrue();
   }
 
   @Test

@@ -36,21 +36,27 @@ class SituationTriageToolGatingTest extends AbstractIntegrationTest {
   @Autowired AgentToolsProvider agentToolsProvider;
 
   @Test
-  @DisplayName("a triage run gets no shell, and an ordinary chat run does")
-  void shouldWithholdTheShellFromTriageRuns() {
-    // A shell is the one tool where a successful prompt injection is indistinguishable from an
-    // intrusion, and a triage run's input is written by whoever caused the event.
-    assertThat(triageTools()).noneMatch(KubernetesShellTools.class::isInstance);
-    assertThat(chatTools()).anyMatch(KubernetesShellTools.class::isInstance);
+  @DisplayName("a triage run cannot schedule work, and an ordinary chat run can")
+  void shouldWithholdTheSchedulerFromTriageRuns() {
+    // The one gate, and the CHAT half is the control: without it a scenario that withheld nothing
+    // at
+    // all, or a context where the bean was simply absent, would pass just as well.
+    assertThat(triageTools()).noneMatch(ScheduledTaskTool.class::isInstance);
+    assertThat(chatTools()).anyMatch(ScheduledTaskTool.class::isInstance);
   }
 
   @Test
-  @DisplayName("a triage run cannot schedule work or start subagents, and a chat run can")
-  void shouldWithholdWorkThatOutlivesTheRun() {
-    assertThat(triageTools()).noneMatch(ScheduledTaskTool.class::isInstance);
-    assertThat(triageTools()).noneMatch(SubagentTools.class::isInstance);
-    assertThat(chatTools()).anyMatch(ScheduledTaskTool.class::isInstance);
-    assertThat(chatTools()).anyMatch(SubagentTools.class::isInstance);
+  @DisplayName("it gets everything else a chat run does, resolved against the real beans")
+  void shouldOfferEverythingElse() {
+    // Including the shell, where a deployment turned one on. Withholding it would close nothing —
+    // every MCP callback reaches these runs whatever the scenario says — while leaving the agent
+    // unable to read a log about the alert it is triaging.
+    assertThat(triageTools()).anyMatch(KubernetesShellTools.class::isInstance);
+    assertThat(triageTools()).anyMatch(SubagentTools.class::isInstance);
+
+    final var withheld =
+        chatTools().stream().filter(tool -> !triageTools().contains(tool)).toList();
+    assertThat(withheld).singleElement().isInstanceOf(ScheduledTaskTool.class);
   }
 
   @Test

@@ -122,7 +122,7 @@ class EventsEndToEndTest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("the run is told the issue body is data, and is offered no shell to act on it with")
+  @DisplayName("the run is told the issue body is data, and cannot leave work behind")
   void shouldGiveTheRunAnUntrustedBriefAndNoShell() throws Exception {
     assertThat(deliver("delivery-2").statusCode()).isEqualTo(204);
     awaitAssessed("github:acme/widgets#42");
@@ -144,12 +144,12 @@ class EventsEndToEndTest extends AbstractIntegrationTest {
     // payloads would still look like a brief.
     assertThat(text).doesNotContain("delete the production cluster");
 
-    // And there is nothing on the run it could carry that instruction out with.
     final var offered = toolNames(prompt);
     assertThat(offered).contains("RecordSituationAssessment", "GetSituationEvents");
-    assertThat(offered).doesNotContain("CreateScheduledTask", "Task", "WaitForSubagent");
-    assertThat(offered).noneMatch(name -> name.toLowerCase().contains("shell"));
-    // A background run has nobody to ask, so the ask tool is not composed in at all.
+    // The one thing an unattended run must not do, since nobody would answer for what it left.
+    assertThat(offered).doesNotContain("CreateScheduledTask");
+    // A background run has nobody to ask, so the ask tool is never composed in — not because the
+    // scenario withholds it, but because there is no handler to give it.
     assertThat(offered).doesNotContain("AskUserQuestion");
   }
 
