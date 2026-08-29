@@ -64,7 +64,7 @@ class GitLabWebhookSourceTest {
   @Test
   void readsAnIssueEventAsOneObservation() {
     final var observations =
-        source.observations(
+        source.observation(
             delivery(
                 "Issue Hook",
                 "b1e2c3d4-0000-4000-8000-000000000001",
@@ -77,8 +77,8 @@ class GitLabWebhookSourceTest {
                 }
                 """));
 
-    assertThat(observations).hasSize(1);
-    final var observation = observations.getFirst();
+    assertThat(observations).isPresent();
+    final var observation = observations.orElseThrow();
     assertThat(observation.source()).isEqualTo("gitlab");
     assertThat(observation.deliveryId()).isEqualTo("b1e2c3d4-0000-4000-8000-000000000001");
     assertThat(observation.kind()).isEqualTo("issue.open");
@@ -92,7 +92,7 @@ class GitLabWebhookSourceTest {
   @Test
   void groupsEventsAboutOneMergeRequestAndSeparatesDifferentOnes() {
     final var opened =
-        source.observations(
+        source.observation(
             delivery(
                 "Merge Request Hook",
                 "a",
@@ -101,7 +101,7 @@ class GitLabWebhookSourceTest {
                  "object_attributes":{"iid":3,"action":"open","title":"Cache the thing"}}
                 """));
     final var commented =
-        source.observations(
+        source.observation(
             delivery(
                 "Note Hook",
                 "b",
@@ -111,7 +111,7 @@ class GitLabWebhookSourceTest {
                  "merge_request":{"iid":3,"title":"Cache the thing"}}
                 """));
     final var another =
-        source.observations(
+        source.observation(
             delivery(
                 "Merge Request Hook",
                 "c",
@@ -120,16 +120,16 @@ class GitLabWebhookSourceTest {
                  "object_attributes":{"iid":4,"action":"open"}}
                 """));
 
-    assertThat(opened.getFirst().correlationKey())
-        .isEqualTo(commented.getFirst().correlationKey())
-        .isNotEqualTo(another.getFirst().correlationKey());
-    assertThat(commented.getFirst().kind()).isEqualTo("note");
+    assertThat(opened.orElseThrow().correlationKey())
+        .isEqualTo(commented.orElseThrow().correlationKey())
+        .isNotEqualTo(another.orElseThrow().correlationKey());
+    assertThat(commented.orElseThrow().kind()).isEqualTo("note");
   }
 
   @Test
   void separatesTheSameIidInDifferentProjects() {
     final var here =
-        source.observations(
+        source.observation(
             delivery(
                 "Issue Hook",
                 "a",
@@ -138,7 +138,7 @@ class GitLabWebhookSourceTest {
                  "object_attributes":{"iid":1}}
                 """));
     final var there =
-        source.observations(
+        source.observation(
             delivery(
                 "Issue Hook",
                 "b",
@@ -147,13 +147,14 @@ class GitLabWebhookSourceTest {
                  "object_attributes":{"iid":1}}
                 """));
 
-    assertThat(here.getFirst().correlationKey()).isNotEqualTo(there.getFirst().correlationKey());
+    assertThat(here.orElseThrow().correlationKey())
+        .isNotEqualTo(there.orElseThrow().correlationKey());
   }
 
   @Test
   void fallsBackToProjectAndKindWithoutAnIid() {
     final var pipeline =
-        source.observations(
+        source.observation(
             delivery(
                 "Pipeline Hook",
                 "a",
@@ -162,14 +163,14 @@ class GitLabWebhookSourceTest {
                  "object_attributes":{"status":"failed"}}
                 """));
 
-    assertThat(pipeline.getFirst().correlationKey()).isEqualTo("gitlab:acme/widgets:pipeline");
-    assertThat(pipeline.getFirst().summary()).contains("failed");
+    assertThat(pipeline.orElseThrow().correlationKey()).isEqualTo("gitlab:acme/widgets:pipeline");
+    assertThat(pipeline.orElseThrow().summary()).contains("failed");
   }
 
   @Test
   void takesTheKindFromTheHeaderWhenTheBodyDoesNotSayIt() {
     final var observations =
-        source.observations(
+        source.observation(
             delivery(
                 "Merge Request Hook",
                 "a",
@@ -179,7 +180,7 @@ class GitLabWebhookSourceTest {
 
     // The header's "Merge Request Hook" and the body's "merge_request" must not become two
     // different kinds a deployment has to configure separately.
-    assertThat(observations.getFirst().kind()).isEqualTo("merge_request");
+    assertThat(observations.orElseThrow().kind()).isEqualTo("merge_request");
   }
 
   @Test
@@ -187,15 +188,15 @@ class GitLabWebhookSourceTest {
     final var delivery =
         new WebhookDelivery(Map.of(), "{\"whatever\":1}".getBytes(StandardCharsets.UTF_8));
 
-    assertThat(source.observations(delivery)).isEmpty();
+    assertThat(source.observation(delivery)).isEmpty();
   }
 
   @Test
   void yieldsNothingForMalformedJsonWithoutThrowing() {
     for (final var body : new String[] {"", "  ", "{", "]", "not json", "{\"object_kind\":"}) {
       final var delivery = delivery("Issue Hook", "a", body);
-      assertThatCode(() -> source.observations(delivery)).doesNotThrowAnyException();
-      assertThat(source.observations(delivery)).as(body).isEmpty();
+      assertThatCode(() -> source.observation(delivery)).doesNotThrowAnyException();
+      assertThat(source.observation(delivery)).as(body).isEmpty();
     }
   }
 
@@ -203,14 +204,14 @@ class GitLabWebhookSourceTest {
   void survivesAPayloadNestedFarDeeperThanAnythingGitLabSends() {
     final var delivery = delivery("Issue Hook", "a", "[".repeat(5000) + "]".repeat(5000));
 
-    assertThatCode(() -> source.observations(delivery)).doesNotThrowAnyException();
-    assertThat(source.observations(delivery)).isEmpty();
+    assertThatCode(() -> source.observation(delivery)).doesNotThrowAnyException();
+    assertThat(source.observation(delivery)).isEmpty();
   }
 
   @Test
   void survivesFieldsOfTheWrongType() {
     final var observations =
-        source.observations(
+        source.observation(
             delivery(
                 "Issue Hook",
                 "a",
@@ -220,9 +221,9 @@ class GitLabWebhookSourceTest {
                  "object_attributes":{"iid":"seven","action":42}}
                 """));
 
-    assertThat(observations).hasSize(1);
-    assertThat(observations.getFirst().kind()).isEqualTo("issue");
-    assertThat(observations.getFirst().correlationKey()).isEqualTo("gitlab:issue");
+    assertThat(observations).isPresent();
+    assertThat(observations.orElseThrow().kind()).isEqualTo("issue");
+    assertThat(observations.orElseThrow().correlationKey()).isEqualTo("gitlab:issue");
   }
 
   @Test
@@ -245,8 +246,8 @@ class GitLabWebhookSourceTest {
       // would make them differ for a reason that is the point of the design rather than a fault.
       // Measured again in that case, which happens at most once.
       before = Instant.now().getEpochSecond() / 60;
-      first = source.observations(delivery).getFirst().deliveryId();
-      second = source.observations(delivery).getFirst().deliveryId();
+      first = source.observation(delivery).orElseThrow().deliveryId();
+      second = source.observation(delivery).orElseThrow().deliveryId();
       after = Instant.now().getEpochSecond() / 60;
     } while (before != after);
 
@@ -256,7 +257,7 @@ class GitLabWebhookSourceTest {
         new WebhookDelivery(
             Map.of("X-Gitlab-Event", "Issue Hook"),
             body.replace("\"iid\":7", "\"iid\":8").getBytes(StandardCharsets.UTF_8));
-    assertThat(source.observations(different).getFirst().deliveryId()).isNotEqualTo(first);
+    assertThat(source.observation(different).orElseThrow().deliveryId()).isNotEqualTo(first);
   }
 
   private WebhookDelivery withToken(final String token) {

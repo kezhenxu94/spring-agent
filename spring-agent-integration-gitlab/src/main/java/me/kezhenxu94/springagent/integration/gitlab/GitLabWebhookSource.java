@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.observing.Observation;
 import me.kezhenxu94.springagent.events.source.WebhookDelivery;
@@ -73,14 +74,14 @@ public class GitLabWebhookSource implements WebhookSource {
   }
 
   @Override
-  public List<Observation> observations(final WebhookDelivery delivery) {
+  public Optional<Observation> observation(final WebhookDelivery delivery) {
     final var body = delivery.bodyAsText();
     final JsonNode root;
     try {
       root = MAPPER.readTree(body);
     } catch (final JacksonException e) {
       log.warn("Could not parse an authentic {} payload", NAME, e);
-      return List.of();
+      return Optional.empty();
     }
 
     if (!root.isObject()) {
@@ -89,7 +90,7 @@ public class GitLabWebhookSource implements WebhookSource {
       // than left to fall through, which would mint a situation keyed on the event kind alone for
       // a body that said nothing.
       log.debug("Ignoring a {} delivery whose body is not a JSON object", NAME);
-      return List.of();
+      return Optional.empty();
     }
 
     // object_kind is preferred over the header because it is the machine-readable one: the header
@@ -99,13 +100,13 @@ public class GitLabWebhookSource implements WebhookSource {
     final var kind = kind(root, delivery.header(EVENT_HEADER));
     if (kind == null) {
       log.debug("Ignoring a {} delivery that names no kind of event", NAME);
-      return List.of();
+      return Optional.empty();
     }
 
     final var project = projectPath(root);
     final var iid = iid(root);
 
-    return List.of(
+    return Optional.of(
         Observation.builder()
             .source(NAME)
             .deliveryId(deliveryId(delivery))

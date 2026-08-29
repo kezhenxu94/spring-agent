@@ -4,11 +4,10 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
-import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HexFormat;
-import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.TreeMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,12 +22,16 @@ import tools.jackson.databind.json.JsonMapper;
  * Grafana's unified alerting webhook contact point, which posts a batch of alerts rather than one
  * event.
  *
- * <p>One observation per element of {@code alerts}, because a batch is not a subject: Grafana
- * groups by whatever the notification policy says, so one delivery can carry a disk filling up on
- * one host and a queue backing up on another, and folding them into a single observation would ask
- * the agent for one opinion about two unrelated things. Correlating each alert on its own
- * fingerprint is also what makes the batching invisible — the same alert arriving alone, then in a
- * batch of thirty, lands on the same situation either way.
+ * <p>One delivery is one observation, batch and all. Grafana has already decided what belongs
+ * together — the contact point's {@code group_by} is exactly that decision, and {@code groupKey}
+ * names the group it produced — so taking the batch apart would be second-guessing the sender about
+ * its own alerts, and would ask the agent for a separate opinion on each of thirty things it was
+ * told are one thing.
+ *
+ * <p>The consequence worth knowing: a contact point grouped loosely, {@code group_by: []} most of
+ * all, puts unrelated alerts in one delivery and therefore in one situation. That is Grafana's
+ * grouping showing through rather than something to correct here, and the fix for it is the
+ * notification policy.
  *
  * <p>Authentication is whatever the contact point was configured with, since Grafana offers a
  * bearer token or HTTP basic and no signature at all. Both carry the same shared secret, so both
@@ -62,6 +65,12 @@ public class GrafanaWebhookSource implements WebhookSource {
    * hours.
    */
   private static final long DELIVERY_BUCKET_SECONDS = 60;
+
+  /** Past this a correlation key is stored as a digest; the column it lands in is bounded. */
+  private static final int MAX_KEY_LENGTH = 180;
+
+  /** How many alerts of a batch the summary names before it says how many more there are. */
+  private static final int SUMMARY_ALERTS = 5;
 
   @Override
   public String name() {
@@ -115,116 +124,117 @@ public class GrafanaWebhookSource implements WebhookSource {
   }
 
   @Override
-  public List<Observation> observations(final WebhookDelivery delivery) {
+  public Optional<Observation> observation(final WebhookDelivery delivery) {
     final JsonNode root;
     try {
       root = MAPPER.readTree(delivery.bodyAsText());
     } catch (final JacksonException e) {
       log.warn("Could not parse an authentic {} payload", NAME, e);
-      return List.of();
+      return Optional.empty();
     }
     final var alerts = root.path("alerts");
     if (!alerts.isArray() || alerts.isEmpty()) {
       // Grafana's test button and its "no data" plumbing both send a body with no alerts in it.
       // Nothing happened, so nothing is recorded.
       log.debug("Ignoring a {} delivery that carries no alerts", NAME);
-      return List.of();
+      return Optional.empty();
     }
-    final var bodyHash = sha256Hex(delivery.body());
+    final var status = firstText(text(root, "status"), "firing");
+    return Optional.of(
+        Observation.builder()
+            .source(NAME)
+            .deliveryId(deliveryId(delivery))
+            .kind("alert." + status)
+            .correlationKey(correlationKey(root))
+            .title(title(root, alerts))
+            .summary(summary(root, alerts, status))
+            // The delivery as it arrived. One observation now stands for the whole batch, so the
+            // batch is what the evidence has to be — and it is stored once rather than once per
+            // alert, which is most of what splitting used to cost.
+            .payloadJson(delivery.bodyAsText())
+            // observedAt defaults to now, and startsAt is deliberately not used for it. startsAt is
+            // when the condition began, so on a repeat notification of something that has been
+            // firing for an hour it is an hour old; recorded as the observation's time, that
+            // notification would arrive already older than the quiet period that closes a
+            // situation, and a persistently firing alert would resolve itself on arrival. When it
+            // started is evidence, and is in the summary.
+            .build());
+  }
+
+  /**
+   * What counts as the same delivery arriving twice.
+   *
+   * <p>Grafana sends no delivery id of its own, so one is made from the body and the minute it
+   * arrived in. A minute is chosen against two numbers Grafana works to: it retries a failed
+   * notification within seconds, so a retry lands in the same bucket and is recognised; and its
+   * {@code repeat_interval} is measured in minutes at the least and usually hours, so a
+   * re-notification of something still firing lands in a later bucket and is admitted as news —
+   * which it is, since "still firing an hour later" is the thing somebody wants to know.
+   *
+   * <p>The cost is a retry that straddles a bucket boundary being counted twice, which shows up as
+   * one duplicated observation inside a situation that would have existed anyway. Much cheaper than
+   * the other failure, which is never hearing that an alert is still going.
+   *
+   * <p>No index any more. There was one when a delivery became an observation per alert; a delivery
+   * is now one observation, so the body and the minute identify it completely.
+   */
+  private String deliveryId(final WebhookDelivery delivery) {
     final var bucket = clock.instant().getEpochSecond() / DELIVERY_BUCKET_SECONDS;
-    final var groupStatus = text(root, "status");
-
-    final var observations = new ArrayList<Observation>(alerts.size());
-    for (var index = 0; index < alerts.size(); index++) {
-      final var alert = alerts.get(index);
-      if (!alert.isObject()) {
-        log.debug("Ignoring element {} of a {} batch: not an object", index, NAME);
-        continue;
-      }
-      final var labels = labels(alert);
-      final var status = firstText(text(alert, "status"), groupStatus, "firing");
-      final var name = firstText(labels.get("alertname"), labels.get("rulename"), "alert");
-      observations.add(
-          Observation.builder()
-              .source(NAME)
-              .deliveryId(deliveryId(bodyHash, bucket, index))
-              .kind("alert." + status)
-              .correlationKey(correlationKey(alert, labels))
-              .title(title(name, labels))
-              .summary(summary(alert, labels, name, status))
-              // The one alert rather than the whole batch: the batch is an artefact of Grafana's
-              // grouping, and thirty alerts' worth of JSON stored against each of thirty
-              // observations is thirty times the same evidence.
-              .payloadJson(MAPPER.writeValueAsString(alert))
-              // observedAt defaults to now, and startsAt is deliberately not used for it. startsAt
-              // is when the condition began, so on a repeat notification of something that has been
-              // firing for an hour it is an hour old; recorded as the observation's time, that
-              // notification would arrive already older than the quiet period that closes a
-              // situation, and a persistently firing alert would resolve itself on arrival. When it
-              // started is evidence, and is in the summary.
-              .build());
-    }
-    return List.copyOf(observations);
+    return NAME + ":" + sha256Hex(delivery.body()) + ":" + bucket;
   }
 
   /**
-   * The one genuinely interesting decision here: Grafana sends no delivery identity of any kind, so
-   * one has to be minted, and what it is made of decides what counts as a retry.
+   * The group this delivery is about, which is Grafana's own idea of it.
    *
-   * <p>The hash of the body alone would be wrong. Grafana re-notifies about an alert that is still
-   * firing every {@code repeat_interval}, and that body is byte-for-byte the one sent before — so a
-   * pure content hash would silently discard every re-notification, and "this has been firing for
-   * an hour" is the most useful thing the source ever says. Time alone would be wrong the other
-   * way: a retry after a failed delivery would be counted as a second alert.
+   * <p>{@code groupKey} is what the notification policy grouped by, so the same group arriving
+   * again — with more alerts in it, or fewer — lands on the same situation, which is the behaviour
+   * that makes "this has been going on for twenty minutes" answerable. Falling back to the group
+   * labels covers an older Grafana that sends none; falling back to a constant is for a payload
+   * with nothing to group on at all, where collapsing into one situation about a source nobody can
+   * identify beats inventing a situation per delivery.
    *
-   * <p>So both, at a granularity that separates the two: content plus the minute it arrived in. A
-   * retry follows a failure within seconds and lands in the same bucket, while a re-notification
-   * comes minutes or hours later and is admitted as news. The cost is a retry that straddles a
-   * bucket boundary being counted twice, which shows up as one duplicated piece of evidence inside
-   * a situation that would have existed anyway — much cheaper than the alternative failure, which
-   * is silence about an alert that never stopped.
-   *
-   * <p>The index keeps the alerts of one batch apart from each other; without it a delivery of
-   * thirty would collapse into one observation.
+   * <p>Hashed once it grows long. A group key spells out every label it grouped on and has no
+   * bound, while the column this lands in has one.
    */
-  private String deliveryId(final String bodyHash, final long bucket, final int index) {
-    return NAME + ":" + bodyHash + ":" + bucket + ":" + index;
+  private String correlationKey(final JsonNode root) {
+    final var groupKey = text(root, "groupKey");
+    if (groupKey != null) {
+      return NAME + ":group:" + shortened(groupKey);
+    }
+    final var groupLabels = labels(root.path("groupLabels"));
+    if (!groupLabels.isEmpty()) {
+      return NAME + ":group:" + shortened(canonical(groupLabels));
+    }
+    final var commonLabels = labels(root.path("commonLabels"));
+    if (!commonLabels.isEmpty()) {
+      return NAME + ":common:" + shortened(canonical(commonLabels));
+    }
+    log.debug("A {} delivery carried neither a group key nor labels to group on", NAME);
+    return NAME + ":ungrouped";
+  }
+
+  /** As given where it is short enough to read in a log, and a digest of it where it is not. */
+  private static String shortened(final String key) {
+    return key.length() <= MAX_KEY_LENGTH ? key : sha256Hex(key.getBytes(StandardCharsets.UTF_8));
+  }
+
+  private static String canonical(final TreeMap<String, String> labels) {
+    final var text = new StringBuilder();
+    labels.forEach((key, value) -> text.append(key).append('=').append(value).append('\n'));
+    return text.toString();
   }
 
   /**
-   * Grafana's fingerprint is a hash of the alert's label set, computed by the alertmanager, and is
-   * therefore exactly the right correlation key: the same rule firing about the same instance
-   * carries the same fingerprint from the first notification to the resolution, so firing and
-   * resolved land in one situation.
-   *
-   * <p>Where it is missing the labels are hashed here instead. Sorted, because a JSON object has no
-   * order to rely on and two deliveries of the same alert would otherwise correlate differently.
-   */
-  private String correlationKey(final JsonNode alert, final TreeMap<String, String> labels) {
-    final var fingerprint = text(alert, "fingerprint");
-    if (fingerprint != null) {
-      return NAME + ":" + fingerprint;
-    }
-    if (labels.isEmpty()) {
-      // Nothing distinguishes this from any other unlabelled alert, and saying so is better than
-      // inventing a key per delivery: they collapse into one situation about a source sending
-      // alerts nobody can identify.
-      log.debug("A {} alert carried neither a fingerprint nor labels", NAME);
-      return NAME + ":unidentified";
-    }
-    final var canonical = new StringBuilder();
-    labels.forEach((key, value) -> canonical.append(key).append('=').append(value).append('\n'));
-    return NAME + ":labels:" + sha256Hex(canonical.toString().getBytes(StandardCharsets.UTF_8));
-  }
-
-  /**
-   * The alert's labels as text, sorted, skipping anything that is not a string. A label whose value
+   * A labels object as text, sorted, skipping anything that is not a string. A label whose value
    * arrives as an object or a number is not a label as far as correlation is concerned, and
    * coercing it would let the payload's author change a key by changing a type.
+   *
+   * <p>Takes the labels node rather than the thing carrying it, because the same shape appears
+   * three times in a Grafana payload: on the group, on what the alerts have in common, and on each
+   * alert.
    */
-  private TreeMap<String, String> labels(final JsonNode alert) {
+  private TreeMap<String, String> labels(final JsonNode node) {
     final var labels = new TreeMap<String, String>();
-    final var node = alert.path("labels");
     if (!node.isObject()) {
       return labels;
     }
@@ -239,17 +249,61 @@ public class GrafanaWebhookSource implements WebhookSource {
     return labels;
   }
 
-  private String title(final String name, final TreeMap<String, String> labels) {
-    final var instance = firstText(labels.get("instance"), labels.get("service"));
-    return instance == null ? name : name + " on " + instance;
+  /** What the group is about, from what Grafana grouped on, and how much of it there is. */
+  private String title(final JsonNode root, final JsonNode alerts) {
+    final var groupLabels = labels(root.path("groupLabels"));
+    final var commonLabels = labels(root.path("commonLabels"));
+    final var name =
+        firstText(
+            groupLabels.get("alertname"),
+            commonLabels.get("alertname"),
+            groupLabels.get("rulename"),
+            commonLabels.get("rulename"),
+            text(root, "title"));
+    final var where = firstText(commonLabels.get("instance"), commonLabels.get("service"));
+    if (name == null) {
+      return alerts.size() + " Grafana alerts";
+    }
+    final var title = where == null ? name : name + " on " + where;
+    return alerts.size() == 1 ? title : title + " (" + alerts.size() + " alerts)";
   }
 
-  private String summary(
-      final JsonNode alert,
-      final TreeMap<String, String> labels,
-      final String name,
-      final String status) {
-    final var line = new StringBuilder(name).append(' ').append(status);
+  /**
+   * The batch in one line each, up to a point.
+   *
+   * <p>Capped because a group can hold hundreds and the summary is what goes into the brief a
+   * triage run is given; the rest are one GetSituationEvents call away, in the payload. How many
+   * were left out is said rather than implied, and so is Grafana having truncated the batch before
+   * we saw it.
+   */
+  private String summary(final JsonNode root, final JsonNode alerts, final String status) {
+    final var line = new StringBuilder();
+    line.append(alerts.size()).append(alerts.size() == 1 ? " alert " : " alerts ").append(status);
+    final var truncated = root.path("truncatedAlerts");
+    if (truncated.isNumber() && truncated.intValue() > 0) {
+      line.append(", ").append(truncated.intValue()).append(" more truncated by Grafana");
+    }
+    line.append(':');
+
+    final var shown = Math.min(alerts.size(), SUMMARY_ALERTS);
+    for (var index = 0; index < shown; index++) {
+      final var alert = alerts.get(index);
+      if (!alert.isObject()) {
+        continue;
+      }
+      line.append("\n- ").append(describe(alert));
+    }
+    if (alerts.size() > shown) {
+      line.append("\n- and ").append(alerts.size() - shown).append(" more");
+    }
+    return line.toString();
+  }
+
+  /** One alert of the batch, as much of it as is worth a line. */
+  private String describe(final JsonNode alert) {
+    final var labels = labels(alert.path("labels"));
+    final var name = firstText(labels.get("alertname"), labels.get("rulename"), "alert");
+    final var line = new StringBuilder(name);
     final var instance = firstText(labels.get("instance"), labels.get("service"));
     if (instance != null) {
       line.append(" on ").append(instance);
@@ -257,6 +311,10 @@ public class GrafanaWebhookSource implements WebhookSource {
     final var severity = labels.get("severity");
     if (severity != null) {
       line.append(" [").append(severity).append(']');
+    }
+    final var status = text(alert, "status");
+    if (status != null) {
+      line.append(' ').append(status);
     }
     final var annotations = alert.path("annotations");
     final var detail = firstText(text(annotations, "summary"), text(annotations, "description"));
