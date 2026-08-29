@@ -8,12 +8,16 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
+import me.kezhenxu94.springagent.core.dao.models.ObservedEvent;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
+import me.kezhenxu94.springagent.core.dao.models.Situation;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
+import me.kezhenxu94.springagent.core.dao.repo.ObservedEventRepo;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
+import me.kezhenxu94.springagent.core.dao.repo.SituationRepo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +41,8 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
   @Autowired ScheduledTaskRepo scheduledTaskRepo;
   @Autowired PendingQuestionRepo pendingQuestionRepo;
   @Autowired ProcessedMessageRepo processedMessageRepo;
+  @Autowired SituationRepo situationRepo;
+  @Autowired ObservedEventRepo observedEventRepo;
 
   /**
    * The owner is per-subclass so the two backends cannot collide on the ownerId+name constraint.
@@ -220,5 +226,146 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
     // between claiming and answering from dropping the message for good.
     processedMessageRepo.release(messageId);
     assertThat(processedMessageRepo.claim(messageId)).isTrue();
+  }
+
+  @Test
+  @DisplayName("a situation round trips with its enums and timestamps, and is found by its key")
+  void situationRoundTrips() {
+    final var key = owner() + "-grafana:abc";
+    final var firstSeen = Instant.now().minus(Duration.ofMinutes(9)).truncatedTo(ChronoUnit.MILLIS);
+    final var due = Instant.now().plus(Duration.ofSeconds(30)).truncatedTo(ChronoUnit.MILLIS);
+
+    situationRepo.save(
+        Situation.builder()
+            .id(owner() + "-situation-1")
+            .source("grafana")
+            .correlationKey(key)
+            .title("api latency")
+            .status(Situation.Status.OPEN)
+            .phase(Situation.Phase.AWAITING_EVALUATION)
+            .firstSeenAt(firstSeen)
+            .awaitingSince(firstSeen)
+            .lastEventAt(firstSeen)
+            .evaluateAfter(due)
+            .generation(2)
+            .eventCount(41)
+            .decision(Situation.Decision.ACTED)
+            .severity("high")
+            .confidence(0.87)
+            .assessment("Correlates with the deploy at 11:58.")
+            .ownerUserId("ou_agent")
+            .chatId("oc_alerts")
+            .chatType("group")
+            .tenantId("tenant-1")
+            .build());
+
+    // The lookup on the ingest path: equality on two indexed properties, which on Redis is an
+    // intersection of two secondary index sets rather than a query.
+    final var found = situationRepo.findByCorrelationKeyAndStatus(key, Situation.Status.OPEN);
+    assertThat(found).extracting(Situation::id).containsExactly(owner() + "-situation-1");
+    final var situation = found.getFirst();
+    assertThat(situation.phase()).isEqualTo(Situation.Phase.AWAITING_EVALUATION);
+    assertThat(situation.decision()).isEqualTo(Situation.Decision.ACTED);
+    // The two numbers a triage run is shown, and the one it is scoped by.
+    assertThat(situation.eventCount()).isEqualTo(41);
+    assertThat(situation.generation()).isEqualTo(2);
+    assertThat(situation.confidence()).isEqualTo(0.87);
+    assertThat(situation.ownerUserId()).isEqualTo("ou_agent");
+    assertThat(situation.assessment()).contains("11:58");
+    // Timestamps matter more here than elsewhere: the debounce, its cap and the cooldown are all
+    // arithmetic on these, so a backend that dropped precision would change when runs happen.
+    assertThat(situation.evaluateAfter()).isEqualTo(due);
+    assertThat(situation.awaitingSince()).isEqualTo(firstSeen);
+
+    // The sweeper's own query, which is how a due situation is found at all.
+    assertThat(situationRepo.findByPhase(Situation.Phase.AWAITING_EVALUATION))
+        .extracting(Situation::id)
+        .contains(owner() + "-situation-1");
+  }
+
+  @Test
+  @DisplayName("closing a situation moves it between indexes rather than only rewriting a field")
+  void situationStatusChangeMaintainsTheIndexes() {
+    final var key = owner() + "-grafana:def";
+    situationRepo.save(
+        Situation.builder()
+            .id(owner() + "-situation-2")
+            .source("grafana")
+            .correlationKey(key)
+            .status(Situation.Status.OPEN)
+            .phase(Situation.Phase.AWAITING_EVALUATION)
+            .build());
+    assertThat(situationRepo.findByCorrelationKeyAndStatus(key, Situation.Status.OPEN)).hasSize(1);
+
+    // A whole-object save, which is the only way this contract changes anything — there is no
+    // partial update, deliberately.
+    situationRepo.save(
+        situationRepo.findById(owner() + "-situation-2").orElseThrow().toBuilder()
+            .status(Situation.Status.RESOLVED)
+            .phase(Situation.Phase.MONITORING)
+            .resolvedAt(Instant.now().truncatedTo(ChronoUnit.MILLIS))
+            .build());
+
+    // Both halves have to hold, and the first is the one a backend can get wrong: a stale index
+    // entry would keep handing arriving observations to a situation that has been closed, and would
+    // keep a closed one in front of the sweeper for ever.
+    assertThat(situationRepo.findByCorrelationKeyAndStatus(key, Situation.Status.OPEN)).isEmpty();
+    assertThat(situationRepo.findByCorrelationKeyAndStatus(key, Situation.Status.RESOLVED))
+        .extracting(Situation::id)
+        .containsExactly(owner() + "-situation-2");
+    assertThat(situationRepo.findByPhase(Situation.Phase.AWAITING_EVALUATION))
+        .extracting(Situation::id)
+        .doesNotContain(owner() + "-situation-2");
+  }
+
+  @Test
+  @DisplayName("the observations behind a situation come back, and only that situation's")
+  void observedEventsAreFoundBySituation() {
+    final var mine = owner() + "-situation-3";
+    final var theirs = owner() + "-situation-4";
+    observedEventRepo.save(
+        ObservedEvent.builder()
+            .id(owner() + "-delivery-1")
+            .situationId(mine)
+            .source("github")
+            .kind("issues.opened")
+            .summary("nobody has answered this")
+            .payloadJson("{\"action\":\"opened\"}")
+            .observedAt(Instant.now().truncatedTo(ChronoUnit.MILLIS))
+            .build());
+    observedEventRepo.save(
+        ObservedEvent.builder()
+            .id(owner() + "-delivery-2")
+            .situationId(theirs)
+            .source("github")
+            .kind("issues.opened")
+            .summary("a different thing entirely")
+            .build());
+
+    final var found = observedEventRepo.findBySituationId(mine);
+    assertThat(found).extracting(ObservedEvent::id).containsExactly(owner() + "-delivery-1");
+    assertThat(found.getFirst().payloadJson()).contains("opened");
+    assertThat(found.getFirst().summary()).isEqualTo("nobody has answered this");
+    assertThat(observedEventRepo.findBySituationId(theirs))
+        .extracting(ObservedEvent::id)
+        .containsExactly(owner() + "-delivery-2");
+  }
+
+  @Test
+  @DisplayName("recording a delivery twice leaves one observation, whatever the backend")
+  void observedEventsAreKeyedByDeliveryId() {
+    // The id is the transport's delivery key rather than a generated one, which is the whole of the
+    // deduplication story for this table: a redelivery rewrites the row it already wrote. A backend
+    // where save appended instead would inflate the evidence behind every situation.
+    final var id = owner() + "-delivery-3";
+    final var situationId = owner() + "-situation-5";
+    observedEventRepo.save(
+        ObservedEvent.builder().id(id).situationId(situationId).summary("first").build());
+    observedEventRepo.save(
+        ObservedEvent.builder().id(id).situationId(situationId).summary("second").build());
+
+    final var found = observedEventRepo.findBySituationId(situationId);
+    assertThat(found).hasSize(1);
+    assertThat(found.getFirst().summary()).isEqualTo("second");
   }
 }

@@ -71,7 +71,7 @@ class FeishuCardUpdaterReasoningTest {
     messages =
         new FeishuMessages(
             new FeishuProperties(
-                null, null, null, null, null, null, null, Locale.ENGLISH, null, null));
+                null, null, null, null, null, null, null, Locale.ENGLISH, null, null, null));
     card = new FeishuCard(feishu, "card-1", restTemplate, new UserHome(userHomeRoot), messages);
     om = new JsonMapper();
   }

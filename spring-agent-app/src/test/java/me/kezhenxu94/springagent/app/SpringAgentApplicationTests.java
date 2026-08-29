@@ -88,15 +88,19 @@ class SpringAgentApplicationTests extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("the advisor that logs the rejected request is actually at DEBUG")
-  void requestLoggingIsEnabled() {
-    // application.yaml turns this on so that a request the model endpoint refuses can be read back
-    // afterwards; without it a `400: Unknown` is unattributable, which is the whole reason the
-    // level is set. Asserted through the class rather than the logger name so that spring-ai moving
-    // SimpleLoggerAdvisor breaks the build instead of silently un-setting the level — and asserted
-    // at all because nothing else would notice: the block being re-commented, or the FQCN drifting,
-    // leaves a perfectly healthy application that has simply stopped recording the evidence.
-    assertThat(LoggerFactory.getLogger(SimpleLoggerAdvisor.class).isDebugEnabled()).isTrue();
+  @DisplayName(
+      "the advisor that logs the whole request is off, so logs do not hold what users wrote")
+  void requestLoggingIsOff() {
+    // At DEBUG this writes the rendered system prompt, the replayed conversation and every tool
+    // result into the log once per model call. That is how a request the endpoint refuses gets
+    // explained, and equally how the logs come to hold what users wrote — so it is off here, and a
+    // deployment that needs it turns it on with the environment variable application.yaml names.
+    //
+    // Asserted through the class rather than the logger name so that spring-ai moving
+    // SimpleLoggerAdvisor breaks the build rather than silently changing what is recorded, and
+    // asserted at all because nothing else would notice either direction: a level set by accident
+    // leaves a perfectly healthy application that has quietly started keeping conversations.
+    assertThat(LoggerFactory.getLogger(SimpleLoggerAdvisor.class).isDebugEnabled()).isFalse();
   }
 
   @Test

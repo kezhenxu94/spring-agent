@@ -54,7 +54,7 @@ class FeishuCardListenerBackgroundTest {
     final var messages =
         new FeishuMessages(
             new FeishuProperties(
-                null, null, null, null, null, null, null, Locale.ENGLISH, null, null));
+                null, null, null, null, null, null, null, Locale.ENGLISH, null, null, null));
     final var messageCard =
         new FeishuMessageCard(
             new JsonMapper(),

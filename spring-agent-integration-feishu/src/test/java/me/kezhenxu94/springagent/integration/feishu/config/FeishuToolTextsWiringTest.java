@@ -21,7 +21,7 @@ class FeishuToolTextsWiringTest {
   void contributesItsOwnSource() {
     final var properties =
         new FeishuProperties(
-            null, null, null, null, null, null, null, Locale.of("zh", "CN"), null, null);
+            null, null, null, null, null, null, null, Locale.of("zh", "CN"), null, null, null);
 
     final var texts = new FeishuAutoConfiguration().feishuToolTexts(properties);
 
@@ -36,7 +36,8 @@ class FeishuToolTextsWiringTest {
   @DisplayName("it follows app.feishu.locale, as everything else this module writes does")
   void followsTheModuleLocale() {
     final var properties =
-        new FeishuProperties(null, null, null, null, null, null, null, Locale.FRANCE, null, null);
+        new FeishuProperties(
+            null, null, null, null, null, null, null, Locale.FRANCE, null, null, null);
 
     assertThat(
             ((ModuleToolTexts) new FeishuAutoConfiguration().feishuToolTexts(properties)).locale())
