@@ -32,6 +32,7 @@ import com.lark.oapi.service.im.v1.resource.Message;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.integration.feishu.tools.FeishuChatAccess.ChatAccessDeniedException;
@@ -71,11 +72,12 @@ class FeishuChatToolsTest {
             feishu,
             new FeishuChatAccess(
                 feishu,
-                new SpringAgentProperties(
-                    null,
-                    new SpringAgentProperties.Ai(
-                        Set.of(), Map.of(), null, null, null, null, null, null),
-                    Locale.ENGLISH)));
+                new Admins(
+                    new SpringAgentProperties(
+                        null,
+                        new SpringAgentProperties.Ai(
+                            Set.of(), Map.of(), null, null, null, null, null, null),
+                        Locale.ENGLISH))));
   }
 
   /** The chat the run is in, which is the one the asking user needs no lookup to be allowed. */

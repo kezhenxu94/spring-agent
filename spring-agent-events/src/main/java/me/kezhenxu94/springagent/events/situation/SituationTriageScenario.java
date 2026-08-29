@@ -24,6 +24,14 @@ import me.kezhenxu94.springagent.core.tools.ScheduledTaskTool;
  *       instructions to follow, and the fence {@code SituationBrief} puts around it.
  *   <li>whatever the deployment chose to give the agent at all. A shell exists only where {@code
  *       app.ai.tools.shell.type} says so, and it defaults to {@code none}.
+ *   <li>{@code AgentScenario.adminTools()}, which this scenario leaves at its default of false.
+ *       Worth naming here because the identity above makes it load-bearing rather than incidental:
+ *       an {@code owner-user-id} is routinely listed in {@code app.ai.admins}, since it is the
+ *       identity that has to reach every chat it reports into, so the who half of the admin check
+ *       is satisfied on these runs and only the scenario half refuses. Were it to say yes, a triage
+ *       run would hold {@code PlaybookTools} and could write the very playbook its successors are
+ *       steered by — on the say-so of whoever wrote the event it is triaging, which is what {@code
+ *       PlaybookFilters} names document ids to prevent.
  * </ul>
  *
  * <p>An allow-list here would add little to that and cost something real. {@link #offers} is

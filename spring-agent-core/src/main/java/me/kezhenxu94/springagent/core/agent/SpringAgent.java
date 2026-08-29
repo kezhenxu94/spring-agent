@@ -24,6 +24,7 @@ import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
@@ -93,6 +94,10 @@ public class SpringAgent {
   final ChatMemory chatMemory;
 
   final SpringAgentProperties appConfiguration;
+
+  /** Asked only about who may join somebody else's run; see {@link #liveRunFor}. */
+  final Admins admins;
+
   final AgentToolsProvider agentToolsProvider;
 
   /** Read only to see whether a conversation already has questions out; the channels write it. */
@@ -220,6 +225,14 @@ public class SpringAgent {
    * gets a run, and a card, of its own. Watched because a background run has no card the reader
    * could be replying to, and a subagent is not the run they can see at all.
    *
+   * <p>An administrator is the exception, and the only one: they may speak into a run that is not
+   * theirs, because the case they exist for is exactly the one the same-person rule forbids —
+   * seeing a run go wrong in a group chat and correcting it before it finishes, rather than
+   * starting a second run beside it that argues with the first. The run stays the other person's
+   * throughout: their card, their memory, their identity and so their files and credentials. What
+   * the administrator gets is a say in it, not ownership of it, and {@code QueuedMessages} marks
+   * the message with who sent it so the model does not read it as the user changing their mind.
+   *
    * <p>Any of them where there is somehow more than one, which queueing itself makes unlikely: the
    * second message of a conversation now joins the first run rather than starting a second.
    */
@@ -231,7 +244,10 @@ public class SpringAgent {
         .filter(run -> !run.request().background())
         .filter(run -> Strings.isNullOrEmpty(run.request().parentRequestId()))
         .filter(run -> request.conversationId().equals(run.request().conversationId()))
-        .filter(run -> Objects.equals(request.userId(), run.request().userId()))
+        .filter(
+            run ->
+                Objects.equals(request.userId(), run.request().userId())
+                    || admins.isAdmin(request.userId()))
         .findAny()
         .orElse(null);
   }
@@ -325,7 +341,10 @@ public class SpringAgent {
 
     final var cancelFlag = new AtomicBoolean(false);
     final var queued =
-        new QueuedMessages(read -> notify(listeners, l -> l.onQueuedMessageRead(read)));
+        new QueuedMessages(
+            request.userId(),
+            messages,
+            read -> notify(listeners, l -> l.onQueuedMessageRead(read)));
     final var liveRun =
         new LiveRun(request, cancelFlag, listeners, new ConcurrentHashMap<>(), queued);
     if (requestId != null) {

@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.tools.shell.docker;
 
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.ConditionalOnShellBackend;
 import me.kezhenxu94.springagent.core.config.ShellToolsProperties.Type;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
@@ -64,10 +65,9 @@ public class DockerShellAutoConfiguration {
   UserContainerManager userContainerManager(
       final DockerShellProperties properties,
       final StorageProperties storageProperties,
-      final SpringAgentProperties appConfiguration,
+      final Admins admins,
       final ShellCredentialStore credentialStore) {
-    return new UserContainerManager(
-        properties, storageProperties, appConfiguration, credentialStore);
+    return new UserContainerManager(properties, storageProperties, admins, credentialStore);
   }
 
   @Bean(destroyMethod = "close")

@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Set;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.Tools;
@@ -59,6 +60,7 @@ class AgentToolsProviderGlobalMcpServersTest {
               mock(McpClientFactory.class),
               context,
               properties(),
+              new Admins(properties()),
               mock(org.springframework.beans.factory.ObjectProvider.class));
 
       provider.compose(
@@ -97,6 +99,7 @@ class AgentToolsProviderGlobalMcpServersTest {
               mock(McpClientFactory.class),
               context,
               properties(),
+              new Admins(properties()),
               mock(org.springframework.beans.factory.ObjectProvider.class));
 
       provider.build("ou_1", null, Map.of());

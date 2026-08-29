@@ -211,6 +211,7 @@ than an enum so that your own scenarios are first-class:
 public interface AgentScenario {
   default boolean conversationMemory() { return true; }   // read and append chat memory
   default boolean offers(Object tool) { return true; }    // is this @AgentTool bean offered?
+  default boolean adminTools() { return false; }          // may an administrator use AdminTools here?
   default boolean knowledgeRetrieval() { return true; }   // consult the knowledge base first
 }
 ```
@@ -219,7 +220,7 @@ public interface AgentScenario {
 
 | Scenario | What it is | What it withholds |
 | --- | --- | --- |
-| `CHAT` | Somebody is talking to the agent | Nothing |
+| `CHAT` | Somebody is talking to the agent | Nothing — and the only one that sets `adminTools()`, since it is the only one where a person asked for what is about to happen |
 | `SCHEDULED_TASK` | A task firing on its own schedule | `ScheduledTaskTool` — a run that fires on a schedule must not be able to schedule more, which is how one task becomes a growing pile |
 | `SUBAGENT` | A run another run asked for, whose answer is a tool result | `SubagentTools` and `ScheduledTaskTool`; and no conversation memory in either direction, since a subagent is given its task in full and must not write turns nobody said into the history |
 
@@ -238,6 +239,15 @@ public enum MyScenarios implements AgentScenario {
   }
 }
 ```
+
+`adminTools()` is the exception to everything else on that interface: it defaults to **false**, so a
+scenario you write is fail-closed without having heard of the concept. It gates the tools marked
+`AdminTool`, which are offered only when the scenario says yes *and* the run's user is named in
+`app.ai.admins` — `AgentToolsProvider` asks both together. The default is off because such a tool
+acts for the whole deployment rather than for one conversation, and because the identity a run
+assumes is often an administrator: an events source's `owner-user-id` usually is, which is why
+`SituationTriageScenario` leaving the default in place is what stops a run triaging attacker-written
+text from rewriting the playbook the next run is steered by.
 
 Two things follow from `offers` taking the tool object rather than a name. Your scenario can rule on
 tools this runtime ships, and a scenario shipped here can rule on yours — the annotation deliberately
@@ -276,7 +286,8 @@ Per-request identity reaches a tool through the tool context, under typed keys i
 
 `AgentToolsProvider.compose(...)` assembles the set once per request out of:
 
-- the `@AgentTool` beans in the context, minus whatever the scenario keeps out;
+- the `@AgentTool` beans in the context, minus whatever the scenario keeps out and minus the
+  `AdminTool`s unless both the scenario and `app.ai.admins` allow them;
 - filesystem and todo tools bound to that user's home;
 - the ask tool, when a handler exists and the property allows it;
 - that user's skills;

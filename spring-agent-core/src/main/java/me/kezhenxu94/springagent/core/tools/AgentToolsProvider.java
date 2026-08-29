@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.LocalizedPrompt;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
@@ -77,6 +78,9 @@ public class AgentToolsProvider {
   private final McpClientFactory mcpClientFactory;
   private final ApplicationContext applicationContext;
   private final SpringAgentProperties appConfiguration;
+
+  /** Asked only about the {@link AdminTool} beans; see {@link #resolveScenarioTools}. */
+  private final Admins admins;
 
   /**
    * The knowledge base, where a {@code spring-agent-rag-*} module supplies one. An {@link
@@ -170,7 +174,7 @@ public class AgentToolsProvider {
             .toString();
 
     final var tools = new ArrayList<Object>();
-    tools.addAll(resolveScenarioTools(request.scenario()));
+    tools.addAll(resolveScenarioTools(request.scenario(), request.userId()));
     tools.add(agentTools.fileSystemTools());
     tools.add(TodoWriteTool.builder().todoEventHandler(todoEventHandler).build());
     // Two independent gates, and both have to open. No handler means the run has no way to reach
@@ -407,14 +411,43 @@ public class AgentToolsProvider {
     return callbacks;
   }
 
-  /** The {@code @AgentTool} beans a run in {@code scenario} is offered, in registration order. */
-  public List<Object> resolveScenarioTools(final AgentScenario scenario) {
+  /**
+   * The {@code @AgentTool} beans a run in {@code scenario} for {@code userId} is offered, in
+   * registration order.
+   *
+   * <p>Two questions, and a tool has to pass both. {@link AgentScenario#offers} rules on each tool
+   * for this kind of run, and defaults to yes. The {@link AdminTool}s are then ruled on separately,
+   * by {@link AgentScenario#adminTools()} and {@code app.ai.admins} together — the kind of run has
+   * to be one a person asked for, and the person has to be an administrator.
+   *
+   * <p>The admin question is deliberately not folded into {@code offers}, even though that is the
+   * other per-tool question. {@code offers} defaults to yes and this has to default to no: {@code
+   * AgentScenario} is an interface a consumer implements, and a scenario written outside this
+   * repository would otherwise hand every user the admin tools by saying nothing at all — which is
+   * what most scenarios say.
+   *
+   * <p>Left out of the run rather than refused inside the tool, so that a model which may not call
+   * one never reads its description either. That is a refusal the model cannot misreport as the
+   * tool being broken, and it is a few hundred tokens off every ordinary user's turn.
+   */
+  public List<Object> resolveScenarioTools(final AgentScenario scenario, final String userId) {
+    final var admin = scenario.adminTools() && admins.isAdmin(userId);
     // getBeansWithAnnotation, so that @AgentTool is honoured on a @Bean factory method as well as
     // on
     // the bean's own class.
     return applicationContext.getBeansWithAnnotation(AgentTool.class).values().stream()
         .filter(scenario::offers)
+        .filter(tool -> admin || !(tool instanceof AdminTool))
         .toList();
+  }
+
+  /**
+   * What {@code scenario} allows, for a caller with no particular person in mind — listing the
+   * tools a deployment has, rather than composing a run. Never includes an {@link AdminTool}, since
+   * nobody has been named who could hold one.
+   */
+  public List<Object> resolveScenarioTools(final AgentScenario scenario) {
+    return resolveScenarioTools(scenario, null);
   }
 
   public AgentTools build(String userId, String chatId, Map<String, Object> toolContext)

@@ -8,7 +8,7 @@ import com.lark.oapi.service.im.v1.model.ListMember;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.stereotype.Component;
@@ -54,7 +54,7 @@ public class FeishuChatAccess {
   static final int MAX_MEMBER_PAGES_WHEN_FILTERING = 3;
 
   final Client feishu;
-  final SpringAgentProperties appConfiguration;
+  final Admins admins;
 
   /**
    * @param member true, false, or null where the member list could not be read to the end and so
@@ -84,7 +84,7 @@ public class FeishuChatAccess {
     if (chatId.equals(ToolContexts.get(toolContext, ToolContexts.CHAT_ID))) {
       return;
     }
-    if (appConfiguration.ai().admins().contains(userId)) {
+    if (admins.isAdmin(userId)) {
       log.info("Allowing admin {} into chat {} they may not be a member of", userId, chatId);
       return;
     }
@@ -117,7 +117,7 @@ public class FeishuChatAccess {
     if (chatId.equals(ToolContexts.get(toolContext, ToolContexts.CHAT_ID))) {
       return true;
     }
-    if (appConfiguration.ai().admins().contains(userId)) {
+    if (admins.isAdmin(userId)) {
       return true;
     }
     try {

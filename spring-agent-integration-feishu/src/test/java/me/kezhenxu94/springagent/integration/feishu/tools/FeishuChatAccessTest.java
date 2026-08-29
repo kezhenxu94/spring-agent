@@ -17,6 +17,7 @@ import com.lark.oapi.service.im.v1.resource.ChatMembers;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.integration.feishu.tools.FeishuChatAccess.ChatAccessDeniedException;
@@ -56,10 +57,11 @@ class FeishuChatAccessTest {
   private FeishuChatAccess accessWithAdmins(final Set<String> admins) {
     return new FeishuChatAccess(
         feishu,
-        new SpringAgentProperties(
-            null,
-            new SpringAgentProperties.Ai(admins, Map.of(), null, null, null, null, null, null),
-            Locale.ENGLISH));
+        new Admins(
+            new SpringAgentProperties(
+                null,
+                new SpringAgentProperties.Ai(admins, Map.of(), null, null, null, null, null, null),
+                Locale.ENGLISH)));
   }
 
   private static ToolContext context(final String userId, final String chatId) {

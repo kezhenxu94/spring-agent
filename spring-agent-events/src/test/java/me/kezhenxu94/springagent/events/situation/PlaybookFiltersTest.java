@@ -65,11 +65,49 @@ class PlaybookFiltersTest {
   }
 
   @Test
+  @DisplayName("the document ids a filter names are readable, so a playbook can be written to one")
+  void shouldReadTheDocumentIdsOutOfAFilter() {
+    assertThat(
+            parsed(withFilter("docId in ['runbook-github','runbook-oncall']")).docIdsFor("github"))
+        .containsExactly("runbook-github", "runbook-oncall");
+    assertThat(parsed(withFilter("docId == 'runbook-github'")).docIdsFor("github"))
+        .containsExactly("runbook-github");
+    // Both branches of an or, since either would be retrieved.
+    assertThat(parsed(withFilter("docId == 'a' || docId in ['b','c']")).docIdsFor("github"))
+        .containsExactly("a", "b", "c");
+  }
+
+  @Test
+  @DisplayName("a filter it cannot read the ids out of names none, rather than some of them")
+  void shouldNameNoIdsWhereItCannotReadThemAll() {
+    // The dangerous answer would be a partial one: "docId == 'a'" is in here, but the surrounding
+    // expression rejects it, and reporting it as accepted would send an administrator to write a
+    // playbook that is then filtered out.
+    assertThat(parsed(withFilter("docId == 'a' && source == 'wiki'")).docIdsFor("github"))
+        .isEmpty();
+    assertThat(parsed(withFilter("docId != 'a'")).docIdsFor("github")).isEmpty();
+    assertThat(parsed(withFilter("docId nin ['a']")).docIdsFor("github")).isEmpty();
+    assertThat(parsed(withFilter("source == 'wiki'")).docIdsFor("github")).isEmpty();
+  }
+
+  @Test
+  @DisplayName("no filter names no ids either, which the caller tells apart by asking forSource")
+  void shouldNameNoIdsWhereThereIsNoFilter() {
+    final var filters = parsed(withFilter(null));
+
+    assertThat(filters.docIdsFor("github")).isEmpty();
+    // The two empties mean different things — anything is accepted here, nothing is knowable above
+    // — and this is what keeps them apart.
+    assertThat(filters.forSource("github")).isNull();
+  }
+
+  @Test
   @DisplayName("and neither has a source nobody has heard of")
   void shouldHaveNoFilterForAnUnknownSource() {
     final var filters = parsed(withFilter("docId == 'runbook-github'"));
 
     assertThat(filters.forSource("grafana")).isNull();
     assertThat(filters.forSource(null)).isNull();
+    assertThat(filters.docIdsFor("grafana")).isEmpty();
   }
 }
