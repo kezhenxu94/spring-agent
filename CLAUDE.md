@@ -45,12 +45,14 @@ There is **no CI workflow that builds or tests**. The three workflows publish on
 ## Modules
 
 ```
-spring-agent-core              the agent runtime; backend-agnostic
+spring-agent-core              the agent runtime and every SPI; backend-agnostic
 spring-agent-persistence-{jpa,mongodb,redis}
 spring-agent-tools-shell-{kubernetes,docker}
+spring-agent-events           observations -> situations -> a triage run; serves /events/webhooks/<source>
+spring-agent-integration-{github,gitlab,grafana}   webhook readers for spring-agent-events
 spring-agent-rag-milvus       the knowledge base; the only implementation of core's KnowledgeBase
 spring-agent-integration-feishu
-spring-agent-app               deployable server; depends on every backend module
+spring-agent-app               deployable server; depends on every optional module
 spring-agent-cli               laptop command line; jpa + local shell only
 ```
 
@@ -62,7 +64,7 @@ spring-agent-cli               laptop command line; jpa + local shell only
 
 **Integrations observe runs through `AgentResponseListener`.** Attached to a request it covers that run; declared as a `@Bean` it covers *every* run, which is how a surface takes part in runs it did not initiate (a scheduled task firing, say). `onStart(AgentRunRegistry)` is the hook for contributing per-run state.
 
-**Tools** are beans annotated `@AgentTool` (allowed on a `@Bean` method too, for library types), whose Spring AI `@Tool` methods `AgentToolsProvider.compose(...)` assembles per request. `AgentScenario` gates which runs get the tool: it is an interface, `BuiltInScenarios` holds the ones shipped here, and a consumer can implement it and pass their own on the request. The annotation carries no scenario — an annotation attribute cannot have an interface type, which would confine gating to the built-in enum — so the scenario decides: `AgentScenario.offers(tool)` is asked about every `@AgentTool` bean and says yes by default. That is how `SCHEDULED_TASK` keeps `ScheduledTaskTool` out of a run that fires on a schedule. Per-request identity reaches a tool through the `toolContext` map, with typed keys in `core/tools/ToolContexts.java` — read them through those keys rather than by string. Cross-cutting behaviour around tool calls goes in a `ToolCallInterceptor` (`core/tools/interceptors/`), which the custom `ToolCallingManager` wires in.
+**Tools** are beans annotated `@AgentTool` (allowed on a `@Bean` method too, for library types), whose Spring AI `@Tool` methods `AgentToolsProvider.compose(...)` assembles per request. `AgentScenario` gates which runs get the tool: it is an interface, `BuiltInScenarios` holds the ones shipped here, and a consumer can implement it and pass their own on the request. The annotation carries no scenario — an annotation attribute cannot have an interface type, which would confine gating to the built-in enum — so the scenario decides: `AgentScenario.offers(tool)` is asked about every `@AgentTool` bean and says yes by default. That is how `SCHEDULED_TASK` keeps `ScheduledTaskTool` out of a run that fires on a schedule, and how `SUBAGENT` keeps both it and `SubagentTools` out — which is what caps subagent depth at one, with no counter to get wrong. `AgentScenario` also decides whether a run uses conversation memory and whether it consults the knowledge base. Per-request identity reaches a tool through the `toolContext` map, with typed keys in `core/tools/ToolContexts.java` — read them through those keys rather than by string. Cross-cutting behaviour around tool calls goes in a `ToolCallInterceptor` (`core/tools/interceptors/`), which the custom `ToolCallingManager` wires in.
 
 A run is offered exactly what `compose(...)` returns, so tools that come from elsewhere have to be collected there too: alongside the `@AgentTool` beans and the user's own MCP servers it appends the callbacks of every `ToolCallbackProvider` bean in the context. That is how application-wide MCP servers configured under `spring.ai.mcp.client.*` reach the model — Spring AI publishes them as such a bean but never wires it into a `ChatClient` itself. Those clients belong to the context and are never closed by a run; only the per-request MCP clients in `McpTools` are.
 
@@ -87,17 +89,41 @@ Core registers the knowledge tools only when a `KnowledgeBase` bean exists, orde
 
 Schema is owned by the application (`ddl-auto: update`) — there is no Flyway or Liquibase.
 
+**Not every run starts with somebody talking to the agent.** `core/observing/` is the contract for the other case, and core ships no implementation of it: a transport reports an `Observation` (source, delivery id, kind, correlation key, evidence, and a `Route` saying where a run about it may talk) to `EventIntakes`, which hands it to every `EventIntake` bean, each independent and each isolated from the others' failures. That is why a transport — the Feishu integration, a webhook receiver — depends only on core, and nothing consuming observations depends on a transport. `spring-agent-events` is the intake that correlates observations into situations by their key, debounces, and wakes a triage run; the `spring-agent-integration-{github,gitlab,grafana}` modules each contribute one `WebhookSource` and nothing else. All of it is off unless `app.events.enabled`, and a source not named in `app.events.sources` is dropped at the door. Payload text is written by whoever caused the event: it is evidence, never routing and never instructions, and a triage run must assume an identity of the agent's own rather than a person's — a scenario cannot withhold the files, credentials and MCP servers that come with an identity.
+
 **Asking the user a question ends the turn.** On a surface whose question handler is asynchronous (Feishu), the ask tool persists a `PendingQuestion`, returns no answers, and the run stops; the answer arrives later as a *new* `AgentRequest` on the same `conversationId`. A handler that can answer inline (the CLI) implements the `SynchronousQuestionHandler` marker instead and the turn continues. Do not assume an answer is available in the same run.
 
 Each library module ships a Spring Boot auto-configuration that component-scans its own package (registered in `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`), plus an `aot` package of `RuntimeHints` pulled in with `@ImportRuntimeHints`. Native image is first-class here: reflection, resources and proxies used by new code need hints registered there or the binary breaks at runtime while the JVM build passes.
 
 Text the agent writes itself (as opposed to what the model produced) is localized through a `MessageSource` — `CoreMessages`, `FeishuMessages`, `CliMessages` over `messages*.properties` (en, zh_CN). Do not hardcode such strings.
 
+## Documentation
+
+`README.md` at the root, everything else under `docs/`. Three documents, three audiences, and a
+change that alters behaviour updates the relevant one in the same commit:
+
+- **`README.md`** — somebody running the prebuilt server or CLI. Features as an end user meets them,
+  how to start each application, the switches and the environment variables. Update it when a
+  feature becomes user-visible, when starting or configuring either application changes, or when a
+  switch gains or loses a value.
+- **`docs/sdk.md`** — a Java developer embedding the published modules. Dependencies, minimum
+  configuration, `SpringAgent`/`AgentRequest`/`AgentResponseListener`, scenarios, tools and tool
+  context, the observing and knowledge SPIs, persistence, native image, the module table. Update it
+  when a public API, SPI or extension point changes, when a module is published or removed, or when
+  a scenario, listener hook or tool-context key is added.
+- **`docs/contributing.md`** — somebody changing this repository. Build/test/lint, module layout and
+  the classpath rules, how to add each kind of integration, conventions. Update it when the build,
+  the test layout or the module rules change, or when a new *kind* of integration becomes possible.
+
+None of them duplicates `application.yaml`, which stays the configuration reference — they link to
+it. Same for the code: link to the class that explains itself rather than copying its reasoning into
+a document that will drift.
+
 ## Conventions
 
 Commit messages follow Conventional Commits with lowercase, prose-style subjects that say *why* in plain English, e.g. `feat: let a scheduled task remember the conversation it belongs to (#11)`, `fix: say why a tool call was dropped, and how to get the tool back`. Prefixes in use: `feat`, `fix`, `refactor`, `build`, `ci`, `docs`, `style`. A PR number suffix `(#N)` is added when the change went through a PR.
 
-Comments in this codebase explain **why**, at length, and are load-bearing — build files, `application.yaml` and `docker-compose.yaml` carry paragraphs of rationale that are the closest thing to documentation here (there is no README). Match that: when a decision is non-obvious, write down the reason it was made and what breaks without it. Do not describe history in comments; git records that.
+Comments in this codebase explain **why**, at length, and are load-bearing — build files, `application.yaml` and `docker-compose.yaml` carry paragraphs of rationale that are the closest thing to design documentation here. Match that: when a decision is non-obvious, write down the reason it was made and what breaks without it. Do not describe history in comments; git records that.
 
 Configuration is documented in place. `spring-agent-app/src/main/resources/application.yaml` is the reference for every property and environment variable, including the system prompt; read it before adding a knob.
 
