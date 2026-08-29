@@ -18,20 +18,21 @@ import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1;
 import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1Data;
 import com.lark.oapi.service.im.v1.model.UserId;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 import java.util.Set;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
 import me.kezhenxu94.springagent.core.observing.EventIntake;
+import me.kezhenxu94.springagent.core.observing.EventIntakes;
 import me.kezhenxu94.springagent.core.observing.Observation;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.beans.factory.ObjectProvider;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -58,7 +59,6 @@ class FeishuChatObservationTest {
     springAgent = mock(SpringAgent.class);
     when(springAgent.accepting()).thenReturn(true);
     intake = mock(EventIntake.class);
-    when(intake.observe(any())).thenReturn(Optional.of("sit-1"));
     claimed = new HashSet<>();
     processedMessageRepo = mock(ProcessedMessageRepo.class);
     when(processedMessageRepo.claim(anyString())).thenAnswer(i -> claimed.add(i.getArgument(0)));
@@ -70,7 +70,7 @@ class FeishuChatObservationTest {
    * would fail on a null rather than pass quietly.
    */
   private FeishuMessageReceiveHandler handler(
-      final ObjectProvider<EventIntake> provider, final String... observedChatIds) {
+      final EventIntakes intakes, final String... observedChatIds) {
     final var properties =
         new FeishuProperties(
             null,
@@ -84,7 +84,9 @@ class FeishuChatObservationTest {
             null,
             null,
             Set.of(observedChatIds));
-    final var observations = new FeishuChatObservations(new JsonMapper(), properties, provider);
+    final var observations =
+        new FeishuChatObservations(
+            new JsonMapper(), properties, new FeishuMessages(properties), intakes);
     return new FeishuMessageReceiveHandler(
         new JsonMapper(),
         properties,
@@ -99,14 +101,13 @@ class FeishuChatObservationTest {
   }
 
   private FeishuMessageReceiveHandler handler(final String... observedChatIds) {
-    return handler(provider(intake), observedChatIds);
+    return handler(new EventIntakes(List.of(intake)), observedChatIds);
   }
 
   @SuppressWarnings("unchecked")
-  private ObjectProvider<EventIntake> provider(final EventIntake resolved) {
-    final ObjectProvider<EventIntake> provider = mock(ObjectProvider.class);
-    when(provider.getIfAvailable()).thenReturn(resolved);
-    return provider;
+  /** An application that consumes observations nowhere at all, which is the default. */
+  private static EventIntakes noIntakes() {
+    return new EventIntakes(List.of());
   }
 
   private P2MessageReceiveV1 event(
@@ -238,7 +239,7 @@ class FeishuChatObservationTest {
   @Test
   @DisplayName("no EventIntake on the classpath changes nothing at all")
   void doesNothingWithoutTheModule() throws Exception {
-    handler(provider(null), WATCHED).handle(event("om_7", WATCHED, "group", false));
+    handler(noIntakes(), WATCHED).handle(event("om_7", WATCHED, "group", false));
 
     verifyNoInteractions(intake);
     assertThat(claimed).isEmpty();
@@ -248,7 +249,9 @@ class FeishuChatObservationTest {
   @Test
   @DisplayName("a funnel that throws costs an observation, not the chat")
   void survivesAFailingIntake() {
-    when(intake.observe(any())).thenThrow(new IllegalStateException("events backend down"));
+    org.mockito.Mockito.doThrow(new IllegalStateException("events backend down"))
+        .when(intake)
+        .observe(any());
     final var handler = handler(WATCHED);
 
     // Nothing may escape: the handler runs on the thread acknowledging the event, and an exception
@@ -297,5 +300,34 @@ class FeishuChatObservationTest {
     // are spelled out so that renaming one is a failing test rather than a source that silently
     // falls onto the default policy.
     assertThat(FeishuChatObservations.SOURCE).isEqualTo("feishu-chat");
+  }
+
+  @Test
+  @DisplayName("the words put around what was said are the workspace's, and what was said is not")
+  void framesTheObservationInTheWorkspaceLanguage() {
+    // These two strings reach the model inside the brief a triage run is given, so they are the
+    // agent's own text and follow app.locale like the rest of it. What the person actually wrote is
+    // an argument and goes in untouched — translating evidence would be inventing it.
+    final var chinese = Locale.of("zh", "CN");
+    final var properties =
+        new FeishuProperties(
+            null, null, null, null, null, BOT, null, chinese, null, null, Set.of(WATCHED));
+    final var recorded = new java.util.ArrayList<Observation>();
+    final var observations =
+        new FeishuChatObservations(
+            new JsonMapper(),
+            properties,
+            new FeishuMessages(properties),
+            new EventIntakes(List.of(recorded::add)));
+
+    observations.observed(
+        event("om_9", WATCHED, "group", false).getEvent().getMessage(), "ou_alice", "tenant-1");
+
+    assertThat(recorded).singleElement();
+    final var observation = recorded.getFirst();
+    assertThat(observation.title()).isEqualTo("飞书群聊 " + WATCHED);
+    assertThat(observation.summary()).startsWith("ou_alice 说：");
+    // Said in English, recorded in English, whatever language the workspace speaks.
+    assertThat(observation.summary()).contains("rotate the gateway certificate");
   }
 }

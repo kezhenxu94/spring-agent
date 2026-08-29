@@ -6,14 +6,14 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import me.kezhenxu94.springagent.core.observing.EventIntake;
+import me.kezhenxu94.springagent.core.observing.EventIntakes;
 import me.kezhenxu94.springagent.core.observing.Observation;
 import me.kezhenxu94.springagent.core.observing.Route;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import me.kezhenxu94.springagent.integration.feishu.model.MessageContent;
 import me.kezhenxu94.springagent.integration.feishu.model.PostMessageContent;
 import me.kezhenxu94.springagent.integration.feishu.model.TextMessageContent;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -26,10 +26,11 @@ import tools.jackson.databind.json.JsonMapper;
  * the message that is not being answered — and keeping it apart is what makes it obvious at the
  * call site that nothing here starts a run.
  *
- * <p>Reached through an {@link ObjectProvider}, so this module keeps its compile dependency on core
- * alone: {@link EventIntake} is a core SPI with no implementation in core, and a deployment without
- * {@code spring-agent-events} on the classpath simply observes nothing. That is the default, not a
- * degraded mode.
+ * <p>Reported to {@link EventIntakes}, so this module keeps its compile dependency on core alone
+ * and knows nothing about who is listening: {@code spring-agent-events} turns these into
+ * situations, and an application that wants something else done with them adds an intake of its own
+ * and gets it. A deployment with no intake at all simply observes nothing, which is the default
+ * rather than a degraded mode.
  *
  * <p>What it promises the funnel is at-least-once with a stable delivery id, and no more than that.
  * Feishu redelivers an event it has not heard the acknowledgement for and a reconnecting connection
@@ -58,10 +59,12 @@ public class FeishuChatObservations {
   final FeishuProperties feishuProperties;
 
   /**
-   * The provider, not the bean: resolved per call rather than at construction so that this
-   * component starts in a context where nothing implements the SPI, which is most of them.
+   * The words this class puts around what was said. They reach the model inside the brief a triage
+   * run is given, so they are the agent's own text and are translated like the rest of it.
    */
-  final ObjectProvider<EventIntake> eventIntake;
+  final FeishuMessages messages;
+
+  final EventIntakes eventIntakes;
 
   /**
    * Reports {@code message} as something seen in the chat it came from, if that chat is watched at
@@ -79,8 +82,8 @@ public class FeishuChatObservations {
   public void observed(
       final EventMessage message, final String senderOpenId, final String tenantKey) {
     try {
-      final var intake = eventIntake.getIfAvailable();
-      if (intake == null) {
+      if (eventIntakes.isEmpty()) {
+        // Nothing would be done with it, and reading the message out of the event is not free.
         return;
       }
 
@@ -104,7 +107,7 @@ public class FeishuChatObservations {
         return;
       }
 
-      intake.observe(
+      eventIntakes.observe(
           Observation.builder()
               .source(SOURCE)
               // Feishu's own message id, unprefixed. It is stable across a redelivery of the same
@@ -119,11 +122,11 @@ public class FeishuChatObservations {
               // construction, and how much of it is worth reasoning about is a question for
               // whatever reads the window later.
               .correlationKey(SOURCE + ":" + chatId)
-              .title("Feishu group chat " + chatId)
+              .title(messages.get("chat-observation-title", chatId))
               // Who spoke belongs here: Observation has no field for it on purpose, because the
               // speaker is evidence and must never be mistaken for the identity a run about this
               // acts as.
-              .summary(senderOpenId + " said: " + text)
+              .summary(messages.get("chat-observation-said", senderOpenId, text))
               .payloadJson(message.getContent())
               .route(
                   Route.builder()
