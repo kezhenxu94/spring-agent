@@ -35,6 +35,7 @@ import org.springframework.ai.rag.retrieval.search.DocumentRetriever;
 import org.springframework.ai.rag.retrieval.search.VectorStoreDocumentRetriever;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
+import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.milvus.MilvusFilterExpressionConverter;
 import org.springframework.ai.vectorstore.milvus.MilvusVectorStore;
 import org.springframework.beans.factory.DisposableBean;
@@ -321,11 +322,11 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
   }
 
   @Override
-  public DocumentRetriever retrieverFor(final KnowledgeScope scope) {
+  public DocumentRetriever retrieverFor(final KnowledgeScope scope, final Filter.Expression extra) {
     final var rag = agentProperties.ai().rag();
     return VectorStoreDocumentRetriever.builder()
         .vectorStore(store)
-        .filterExpression(KnowledgeScopeFilter.readableBy(scope))
+        .filterExpression(KnowledgeScopeFilter.readableBy(scope, extra))
         .similarityThreshold(rag.similarityThreshold())
         .topK(rag.topK())
         .build();

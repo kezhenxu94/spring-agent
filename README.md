@@ -80,6 +80,21 @@ until somebody sets it up. Timings — how long to wait, how often at most, when
 — are per source, because an alert and a chat want very different manners. See the `app.events`
 block in `application.yaml`.
 
+What the agent should actually *do* about a source's events — what matters, what to check first, who
+to tell and where — is not a setting. It is a **playbook**: documents you write into the knowledge
+base and then edit like any other document, without a deployment. Each source names which of them
+are its playbook and what to look them up with (`playbook.query` and `playbook.filter`), and a
+triage run is given them before it decides anything. The base is always the one owned by that
+source's `owner-user-id` — never a group or tenant an incoming event named — so what the agent is
+told to do can never be chosen by whoever sent the event. A source with no playbook triages on the
+shipped prompt alone, as before.
+
+Nothing routes a run's output any more: `app.events.sources.<name>.route` is now only where a triage
+run's **failure** is reported. Those runs are unattended, so nothing else would ever mention one that
+broke; the notice is sent by the application rather than by the agent, since the failure most worth
+hearing about is the one where the model is what broke. It needs a surface that can send — the
+Feishu integration can — and is otherwise logged.
+
 ## Run the server
 
 ```sh

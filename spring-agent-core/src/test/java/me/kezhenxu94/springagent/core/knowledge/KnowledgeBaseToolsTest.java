@@ -58,7 +58,9 @@ class KnowledgeBaseToolsTest {
         }
 
         @Override
-        public DocumentRetriever retrieverFor(final KnowledgeScope scope) {
+        public DocumentRetriever retrieverFor(
+            final KnowledgeScope scope,
+            final org.springframework.ai.vectorstore.filter.Filter.Expression extra) {
           return query -> List.of();
         }
 

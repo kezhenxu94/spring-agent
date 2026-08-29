@@ -136,6 +136,7 @@ never has to infer it from the shape of an error.
 | `conversationId` | Groups the runs that share chat memory |
 | `rootMessageId`, `replyMessageId` | Opaque thread and message identifiers, passed through to tools |
 | `background` | An unattended run: nothing is streamed anywhere and the answer is not delivered, so it reaches a person only through what it sends while running |
+| `knowledgeRetrieval` | What the run's automatic retrieval should look at — a `KnowledgeScope`, an optional narrowing `Filter.Expression`, and an optional fixed query. Null on every request a surface builds, and then the scope is the run's own identity and the query is the message. For a run whose knowledge base is chosen by configuration rather than by who is asking |
 | `promptVariables` | Extra system-prompt variables; the identity ones are filled in by core |
 | `userMessage` | A `Consumer<ChatClient.PromptUserSpec>`, so text, media and options are yours to set |
 | `toolContext` | Extra tool-context entries; core's identity keys are filled in and win on conflict |
@@ -343,14 +344,21 @@ for the other case, and core ships no implementation of it:
   whole definition of what counts as a redelivery), a `kind`, a `correlationKey` (what groups
   observations into one situation, computed in code and never by the model), a title, a summary, the
   raw payload, and a `Route`.
-- **`Route`** — where a run about this may talk, and in whose scope. Resolved whole, never field by
-  field: an observation that knows its own chat must not pick up a tenant from configuration meant
-  for another source.
+- **`Route`** — where a run about this may talk, and in whose scope. An observation's route is its
+  own and is never filled in from configuration: a chat message knows the chat it came from, an alert
+  knows nowhere, and a run about the latter reaches people through what it was told to do rather than
+  through an address it was handed.
 - **`EventIntake`** — somewhere an observation goes. Every implementation in the context is given
   every observation, so consuming the same events twice for different reasons is ordinary. Intakes
   must be cheap, must not block on the model, and must not throw to mean "not mine".
 - **`EventIntakes`** — the fan-out, always a bean. A transport calls it once and needs no error
   handling: one intake failing must not stop another, or stop the transport from acknowledging.
+- **`Notifier`** (`core/notify/`) — the other direction: says something to a `Route` with no run
+  behind it. Core ships no implementation and a deployment without one simply has nowhere to send
+  these. It exists for the one thing a run cannot report about itself — that it failed, or never
+  started — so an implementation must not need a model, an agent or a live request to do its work.
+  A surface implements it as a `@Bean`; a caller takes an `ObjectProvider<Notifier>` and does nothing
+  when there is none.
 
 A transport therefore depends only on core, and nothing that consumes observations depends on a
 transport. Reporting one is a single call:
@@ -395,6 +403,16 @@ knowledge base in Milvus.
 Scoping is one definition, `KnowledgeScopeFilter`, used for retrieval and listing alike, and a
 filter clause is only ever emitted for a non-blank identity — a blank one would match every document
 that stores a blank there, which is every other user's.
+
+`retrieverFor(scope, extra)` takes an optional `Filter.Expression` that narrows a read to part of
+what a scope may reach — `retrieverFor(scope)` is the same call with no narrowing. It composes
+*under* the scope filter (`KnowledgeScopeFilter.readableBy(scope, extra)`), so it can only ever
+narrow and never widen, and both sides are parenthesised because a converter renders `AND` as
+`left && right` and adds parentheses for nothing but a `Filter.Group`. This is what `spring-agent-
+events` uses to read a source's playbook: `AgentRequest.knowledgeRetrieval` names the owning scope,
+the filter and a fixed query, and `AgentToolsProvider` builds the run's `RetrievalAugmentationAdvisor`
+from them. The query steers retrieval only — the advisor augments the *original* user message with
+what it found — so pinning it does not replace what the model is asked.
 
 ## The system prompt and other prose
 

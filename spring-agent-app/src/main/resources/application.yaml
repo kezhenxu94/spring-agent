@@ -713,6 +713,21 @@ app:
     # hands whoever can open an issue a prompt of their own, in every language at once.
     # triage-prompt: ...
 
+    # What a run is to do about a source's events — what matters, what to check, who to tell and
+    # where — is not configured here at all. It is prose, so it lives in the knowledge base as a
+    # playbook, and each source says below which documents are its playbook and what to look them up
+    # with. Set here, this applies to every source at once, which is rarely what anybody wants: a
+    # GitHub event and a page at three in the morning are dealt with differently or the playbook is
+    # not saying anything.
+    #
+    # The base looked in is always the one owned by that source's owner-user-id alone, never a group
+    # or a tenant the incoming event named. That is not configurable, and it is the point: these
+    # documents decide what the agent does about text an attacker can write, so what they are must
+    # not itself be decided by whoever sent the event.
+    # playbook:
+    #   query: ...
+    #   filter: ...
+
     # The sources this deployment watches. A source that is not named here is not configured, and
     # observations from it are dropped — including the ones the shipped webhook paths would accept,
     # so an endpoint nobody set a secret for is an endpoint that refuses everything.
@@ -731,16 +746,47 @@ app:
     #    # The webhook secret configured on the GitHub side; verified as an HMAC over the raw body.
     #    secret: ${EVENTS_GITHUB_SECRET:}
     #    owner-user-id: ${EVENTS_OWNER_USER_ID:}
-    #    # Where a run about a GitHub event may talk, since the event itself knows nowhere.
+    #    # Where to report that a triage run for this source FAILED — nothing else, and in
+    #    # particular not where the agent talks. A run that works reaches people the way its
+    #    # playbook says to; this is for the case where there was no run, because it is a background
+    #    # run and nothing else would ever mention it. Sent by the application rather than by the
+    #    # agent, deliberately: the failure most worth hearing about is the one where the model is
+    #    # what broke. Needs a surface implementing core's Notifier — the Feishu integration does;
+    #    # without one this is only logged.
     #    route:
-    #      chat-id: ${EVENTS_GITHUB_CHAT_ID:}
+    #      chat-id: ${EVENTS_GITHUB_ERROR_CHAT_ID:}
     #      chat-type: group
+    #    # Which of this owner's documents say how to deal with GitHub events, and what to look them
+    #    # up with. Both halves are stated together or not at all — a source that states a playbook
+    #    # replaces the top-level one whole, so a filter meant for one source's documents can never
+    #    # end up applied to another source's query.
+    #    #
+    #    # `query` is a fixed question about the source and never the event's own text. Retrieving
+    #    # against the event would let whoever wrote it choose which of your documents the model is
+    #    # shown, and would match a runbook against a stack trace besides. No query, no playbook.
+    #    #
+    #    # `filter` is a Spring AI filter expression over a chunk's metadata (docId, title, source,
+    #    # createdAt). It narrows what the owner may read and can never widen it, and it is parsed
+    #    # at startup — a malformed one stops the application rather than quietly matching nothing
+    #    # inside a run nobody is watching.
+    #    #
+    #    # Name exact document ids, as below, rather than leaving this blank. A triage run has the
+    #    # knowledge tools and IndexKnowledge writes into this same owner's base, so a filter that
+    #    # accepts anything the owner owns is a filter under which a run can write the playbook its
+    #    # successors read. Naming ids means a document indexed under an id of the run's own
+    #    # choosing is not a playbook, whatever it says about itself.
+    #    playbook:
+    #      query: How to handle GitHub issue, pull request and workflow events
+    #      filter: docId in ['runbook-github']
     #  grafana:
     #    # Sent by the contact point as a bearer token or as the basic-auth password.
     #    secret: ${EVENTS_GRAFANA_SECRET:}
     #    owner-user-id: ${EVENTS_OWNER_USER_ID:}
     #    route:
-    #      chat-id: ${EVENTS_GRAFANA_CHAT_ID:}
+    #      chat-id: ${EVENTS_GRAFANA_ERROR_CHAT_ID:}
+    #    playbook:
+    #      query: How to handle a firing alert, and who to page
+    #      filter: docId in ['runbook-oncall']
     #  feishu-chat:
     #    # Which chats are watched is a Feishu setting, under app.feishu, since that is the
     #    # integration doing the watching. This entry is what decides whether anything is made of

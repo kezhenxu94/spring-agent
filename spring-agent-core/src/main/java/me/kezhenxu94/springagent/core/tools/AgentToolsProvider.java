@@ -23,6 +23,7 @@ import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeReference;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeRetrieval;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
 import me.kezhenxu94.springagent.core.tools.mcp.McpClientFactory;
 import me.kezhenxu94.springagent.core.tools.mcp.ServerNameToolPrefixGenerator;
@@ -40,6 +41,7 @@ import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
 import org.springframework.ai.rag.generation.augmentation.ContextualQueryAugmenter;
+import org.springframework.ai.rag.preretrieval.query.transformation.QueryTransformer;
 import org.springframework.ai.rag.retrieval.search.DocumentRetriever;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
@@ -227,6 +229,20 @@ public class AgentToolsProvider {
    * parameter, which is available but unnecessary here: a fresh advisor is built for every request
    * anyway, so there is nothing for a parameter to vary.
    *
+   * <p>What is retrieved, and what it is retrieved against, are the request's to state. Almost no
+   * request does: the scope is then the run's own identity and the query is what the person said,
+   * which is the only sensible reading of "search my knowledge base for what I just asked". A
+   * request that does state a {@link KnowledgeRetrieval} is one whose knowledge base was chosen by
+   * configuration rather than by who is asking — event triage — and that record's javadoc is where
+   * the reasoning for each of its three fields lives.
+   *
+   * <p><b>A stated query is used for retrieval only.</b> {@link RetrievalAugmentationAdvisor} runs
+   * the query transformers, retrieves with the transformed query, and then calls its augmenter with
+   * the <i>original</i> query, so the user message the model sees is unchanged. That is what makes
+   * a fixed retrieval query safe to set: a triage run still gets its situation brief, and only the
+   * lookup is pinned. Were that to change upstream, the symptom would be a triage prompt replaced
+   * wholesale by the configured query string, which is worth recognising quickly.
+   *
    * <p>{@code allowEmptyContext} is load-bearing. Spring AI's default is to instruct the model not
    * to answer when retrieval found nothing, which for a general-purpose agent would turn every
    * question the knowledge base has no opinion about — that is, nearly all of them — into a
@@ -245,16 +261,22 @@ public class AgentToolsProvider {
     if (!rag.enabled() || !request.scenario().knowledgeRetrieval()) {
       return Optional.empty();
     }
+    final var stated = request.knowledgeRetrieval();
+    final var scope =
+        stated == null
+            ? new KnowledgeScope(request.userId(), request.groupId(), request.tenantId())
+            : stated.scope();
+    final var extra = stated == null ? null : stated.filter();
+    final List<QueryTransformer> transformers =
+        stated != null && stated.hasQuery()
+            ? List.of(query -> query.mutate().text(stated.query()).build())
+            : List.of();
     return Optional.ofNullable(knowledgeBase.getIfAvailable())
         .map(
             base ->
                 RetrievalAugmentationAdvisor.builder()
-                    .documentRetriever(
-                        reporting(
-                            base.retrieverFor(
-                                new KnowledgeScope(
-                                    request.userId(), request.groupId(), request.tenantId())),
-                            knowledgeHandler))
+                    .documentRetriever(reporting(base.retrieverFor(scope, extra), knowledgeHandler))
+                    .queryTransformers(transformers)
                     .queryAugmenter(
                         ContextualQueryAugmenter.builder()
                             .allowEmptyContext(true)

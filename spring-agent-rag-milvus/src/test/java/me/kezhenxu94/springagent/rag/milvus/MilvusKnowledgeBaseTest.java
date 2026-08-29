@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeEntry;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeMetadata;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeSource;
 import org.junit.jupiter.api.AfterAll;
@@ -469,6 +470,42 @@ class MilvusKnowledgeBaseTest {
 
       assertThat(base.search(bob, "alpha", 10)).isEmpty();
       assertThat(base.search(alice, "alpha", 10)).isNotEmpty();
+
+      base.destroy();
+    }
+
+    @Test
+    @DisplayName("an extra filter narrows retrieval, and still cannot reach across scopes")
+    void retrievalNarrowsButNeverWidens() throws Exception {
+      final var base = keywordBase();
+      final var agent = scope("bar-agent", "", "");
+      final var other = scope("bar-other", "", "");
+      base.index(
+          KnowledgeSource.ofText(
+              agent, KnowledgeScope.Target.OWN, "playbook", "alpha runbook", null, "runbook"));
+      base.index(
+          KnowledgeSource.ofText(
+              agent, KnowledgeScope.Target.OWN, "notes", "alpha notes", null, "notes"));
+      // Somebody else's document under the very id the filter names — the case where a filter
+      // composed beside the scope instead of under it would hand it over.
+      base.index(
+          KnowledgeSource.ofText(
+              other, KnowledgeScope.Target.OWN, "theirs", "alpha runbook", null, "runbook"));
+
+      final var parser = new org.springframework.ai.vectorstore.filter.FilterExpressionTextParser();
+      final var retrieved =
+          base.retrieverFor(agent, parser.parse("docId == 'runbook'"))
+              .retrieve(org.springframework.ai.rag.Query.builder().text("alpha runbook").build());
+
+      assertThat(retrieved)
+          .isNotEmpty()
+          .allSatisfy(
+              document -> {
+                assertThat(document.getMetadata().get(KnowledgeMetadata.DOC_ID))
+                    .isEqualTo("runbook");
+                assertThat(document.getMetadata().get(KnowledgeMetadata.OWNER))
+                    .isEqualTo("bar-agent");
+              });
 
       base.destroy();
     }

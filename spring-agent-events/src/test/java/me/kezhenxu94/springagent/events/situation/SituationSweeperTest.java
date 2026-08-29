@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.events.situation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -18,6 +19,8 @@ import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.models.Situation;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
+import me.kezhenxu94.springagent.core.notify.Notifier;
 import me.kezhenxu94.springagent.core.observing.Observation;
 import me.kezhenxu94.springagent.core.observing.Route;
 import me.kezhenxu94.springagent.events.config.EventsProperties;
@@ -29,6 +32,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.ai.vectorstore.filter.converter.PrintFilterExpressionConverter;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 /**
@@ -49,10 +54,15 @@ class SituationSweeperTest {
   private final MutableClock clock = new MutableClock(START);
   private final SpringAgent springAgent = mock(SpringAgent.class);
   private final ThreadPoolTaskScheduler scheduler = mock(ThreadPoolTaskScheduler.class);
+  private final Notifier notifier = mock(Notifier.class);
+
+  @SuppressWarnings("unchecked")
+  private final ObjectProvider<Notifier> notifiers = mock(ObjectProvider.class);
 
   @BeforeEach
   void setUp() {
     when(springAgent.accepting()).thenReturn(true);
+    when(notifiers.getIfAvailable()).thenReturn(notifier);
   }
 
   private EventsProperties properties(
@@ -78,6 +88,8 @@ class SituationSweeperTest {
   }
 
   private SituationSweeper sweeper(final EventsProperties properties) {
+    final var filters = new PlaybookFilters(properties);
+    filters.parseAll();
     return new SituationSweeper(
         springAgent,
         repos.situations,
@@ -86,6 +98,8 @@ class SituationSweeperTest {
         scheduler,
         new SituationBrief(repos.events, properties, TestI18n.english(), clock),
         TestI18n.prompts(Locale.ENGLISH),
+        filters,
+        notifiers,
         TestI18n.english(),
         clock);
   }
@@ -131,13 +145,75 @@ class SituationSweeperTest {
     assertThat(request.requestId()).isEqualTo("situation:" + situation.id() + "#1");
     // An identity of the agent's own, never the person who caused the event.
     assertThat(request.userId()).isEqualTo("ou_agent");
-    assertThat(request.chatId()).isEqualTo("oc_alerts");
+    // Nowhere to talk. The source's route is where a failed triage is reported, not a chat this run
+    // is handed; an alert knows nowhere, and where it says anything comes from its playbook.
+    assertThat(request.chatId()).isNull();
     assertThat(request.toolContext())
         .containsEntry(SituationTools.KEY_SITUATION_ID, situation.id());
     assertThat(request.listeners()).isNotEmpty();
     // Named in the workspace's language: a surface shows this where it lists a run it is not
     // streaming, so a person reads it.
     assertThat(request.description()).isEqualTo("Triage grafana situation " + situation.id());
+  }
+
+  @Test
+  @DisplayName("the run retrieves the source's playbook, from the owner's base and nowhere else")
+  void shouldRetrieveThePlaybook() {
+    final var properties =
+        EventsProperties.builder()
+            .enabled(true)
+            .debounce(Duration.ofSeconds(30))
+            .maxDebounce(Duration.ofMinutes(5))
+            .cooldown(Duration.ofMinutes(10))
+            .resolveAfterQuiet(Duration.ofHours(6))
+            .sources(
+                Map.of(
+                    "grafana",
+                    EventsProperties.Source.builder()
+                        .ownerUserId("ou_agent")
+                        .playbook(
+                            EventsProperties.Playbook.builder()
+                                .query("how to deal with alerts")
+                                .filter("docId == 'runbook-alerts'")
+                                .build())
+                        .build()))
+            .build();
+    // A tenant on the way in, which must not reach the retrieval scope.
+    new SituationEventIntake(properties, repos.situations, repos.events, repos.claims, clock)
+        .observe(
+            Observation.builder()
+                .source("grafana")
+                .deliveryId("d1")
+                .kind("alert.firing")
+                .correlationKey("grafana:abc")
+                .title("api latency")
+                .route(Route.builder().groupId("g1").tenantId("t1").build())
+                .build());
+    clock.advance(Duration.ofSeconds(31));
+
+    sweeper(properties).sweep();
+
+    final var retrieval = fired().knowledgeRetrieval();
+    assertThat(retrieval.query()).isEqualTo("how to deal with alerts");
+    assertThat(new PrintFilterExpressionConverter().convertExpression(retrieval.filter()))
+        .isEqualTo("docId EQ \"runbook-alerts\"");
+    // The owner alone. The group and tenant come from the observation, so a surface that reported
+    // one would otherwise choose which knowledge base an unattended run reasons from — and these
+    // are the documents that say what the agent does about text somebody else wrote.
+    assertThat(retrieval.scope()).isEqualTo(new KnowledgeScope("ou_agent", "", ""));
+  }
+
+  @Test
+  @DisplayName(
+      "a source with no playbook states no retrieval, so the run retrieves as it always did")
+  void shouldStateNoRetrievalWithoutAPlaybook() {
+    final var properties = properties(false, 2);
+    observed(properties, "d1");
+    clock.advance(Duration.ofSeconds(31));
+
+    sweeper(properties).sweep();
+
+    assertThat(fired().knowledgeRetrieval()).isNull();
   }
 
   @Test
@@ -289,6 +365,62 @@ class SituationSweeperTest {
     // Not queued for an immediate retry either: the next observation makes it due again, which is
     // what stops a permanent failure being retried for ever.
     assertThat(updated.phase()).isEqualTo(Situation.Phase.MONITORING);
+    // And somebody is told. This is the one thing an unattended run cannot report for itself: it is
+    // a background run, so no surface renders it, and without this the failure exists only in a log
+    // nobody is reading at the time.
+    final var text = ArgumentCaptor.forClass(String.class);
+    verify(notifier)
+        .send(eq(Route.builder().chatId("oc_alerts").chatType("group").build()), text.capture());
+    assertThat(text.getValue()).contains("grafana").contains("the model refused");
+  }
+
+  @Test
+  @DisplayName("a look that worked tells nobody anything")
+  void shouldNotReportASuccessfulLook() {
+    final var properties = properties(false, 2);
+    observed(properties, "d1");
+    clock.advance(Duration.ofSeconds(31));
+    sweeper(properties).sweep();
+
+    finish(fired(), AgentOutcome.COMPLETED);
+
+    // The route is for failures alone. A notice on every triage would make the channel unreadable
+    // and would be the agent narrating, which the prompt spends a paragraph forbidding.
+    verify(notifier, never()).send(any(), any());
+  }
+
+  @Test
+  @DisplayName("a deployment with no Notifier installed still records the failure and carries on")
+  void shouldSurviveWithoutANotifier() {
+    when(notifiers.getIfAvailable()).thenReturn(null);
+    final var properties = properties(false, 2);
+    observed(properties, "d1");
+    clock.advance(Duration.ofSeconds(31));
+    sweeper(properties).sweep();
+
+    final var listener = fired().listeners().getFirst();
+    listener.onError(new IllegalStateException("the model refused"));
+    listener.onFinished(AgentOutcome.FAILED);
+
+    assertThat(repos.situations.only().lastError()).contains("the model refused");
+  }
+
+  @Test
+  @DisplayName("a Notifier that fails does not displace the failure it was reporting")
+  void shouldSurviveANotifierThatThrows() {
+    doThrow(new IllegalStateException("feishu is down")).when(notifier).send(any(), any());
+    final var properties = properties(false, 2);
+    observed(properties, "d1");
+    clock.advance(Duration.ofSeconds(31));
+    sweeper(properties).sweep();
+
+    final var listener = fired().listeners().getFirst();
+    listener.onError(new IllegalStateException("the model refused"));
+    listener.onFinished(AgentOutcome.FAILED);
+
+    // The first failure is what was worth recording, and a surface that cannot reach its own
+    // service is a second one. Losing the first to the second is the mistake this guards.
+    assertThat(repos.situations.only().lastError()).contains("the model refused");
   }
 
   @Test
@@ -449,6 +581,8 @@ class SituationSweeperTest {
     // And the slot the failed start took is given back, since a leaked one is permanent.
     assertThat(sweeper.inFlight()).isZero();
     assertThat(repos.situations.only().lastError()).contains("boom");
+    // A run that never started is as invisible as one that failed, so it is reported the same way.
+    verify(notifier).send(any(), any());
   }
 
   @Test
@@ -490,6 +624,8 @@ class SituationSweeperTest {
             scheduler,
             new SituationBrief(repos.events, properties, TestI18n.messages(chinese), clock),
             TestI18n.prompts(chinese),
+            new PlaybookFilters(properties),
+            notifiers,
             TestI18n.messages(chinese),
             clock);
 

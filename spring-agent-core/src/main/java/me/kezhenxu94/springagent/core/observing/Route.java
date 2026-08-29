@@ -4,13 +4,18 @@ import lombok.Builder;
 
 /**
  * Where a run about something may talk, and in whose scope. The identity half of an {@link
- * Observation}, and the same four values a deployment configures for a source that has no chat of
- * its own.
+ * Observation}, and the same four values a deployment configures when it wants to be told
+ * something.
  *
  * <p>A type rather than four fields repeated in both places, because the two are the same question
- * asked of a surface and of a configuration file, and because they have to be resolved against each
- * other: a chat observation knows the chat it came from, while an alert knows nothing and takes
- * what it was given. {@link #orElse} is that resolution, and it is deliberately whole-object.
+ * asked of a surface and of a configuration file.
+ *
+ * <p>An observation's route is its own and is never filled in from configuration. A chat message
+ * knows the chat it came from and a run about it talks there; an alert knows nowhere, and a run
+ * about it reaches people through what it was told to do rather than through an address it was
+ * handed. Where a deployment configures a route it is for its own purposes — {@code
+ * app.events.sources.&lt;name&gt;.route} is where to report that a triage run failed — and that
+ * route is never merged into an observation.
  *
  * <p>Not merged into {@code Observation#payloadJson}. The payload is written by whoever caused the
  * event and is stored and shown as evidence; this is our own determination of who a run acts as.
@@ -31,17 +36,5 @@ public record Route(String chatId, String chatType, String groupId, String tenan
   /** Whether this says nothing about where to talk. */
   public boolean isEmpty() {
     return chatId == null || chatId.isBlank();
-  }
-
-  /**
-   * This route where it names a chat, and {@code fallback} where it does not.
-   *
-   * <p>All or nothing rather than field by field. A chat observation that named its chat must not
-   * pick up a tenant or a group from configuration meant for a different source — that would scope
-   * the run, and so the workspace and the knowledge it retrieves, to somewhere it did not come
-   * from.
-   */
-  public Route orElse(final Route fallback) {
-    return isEmpty() && fallback != null ? fallback : this;
   }
 }

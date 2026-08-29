@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import lombok.Builder;
 import lombok.Singular;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeRetrieval;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
 import org.springframework.ai.chat.client.ChatClient;
 
@@ -42,6 +43,12 @@ import org.springframework.ai.chat.client.ChatClient;
  *     itself. The default is a foreground run, whose answer a surface streams back to whoever it is
  *     for. A surface may still report a run that failed, which is the one thing a background run
  *     cannot report for itself.
+ * @param knowledgeRetrieval what the run's automatic retrieval should look at, for a run whose
+ *     knowledge base is chosen by configuration rather than by who is asking. Null on every request
+ *     a surface builds, and then the scope is the run's own identity and the query is the message —
+ *     see {@link me.kezhenxu94.springagent.core.knowledge.KnowledgeRetrieval} for the case this is
+ *     for. Ignored entirely where {@link AgentScenario#knowledgeRetrieval()} is false or the
+ *     deployment has no knowledge base
  * @param promptVariables extra system-prompt variables; the identity ones are filled in by core,
  *     and {@code threadId}, {@code parentId} and {@code mentions} default to empty when not given
  * @param toolContext extra tool-context entries; the {@link
@@ -64,6 +71,7 @@ public record AgentRequest(
     String groupId,
     String tenantId,
     boolean background,
+    KnowledgeRetrieval knowledgeRetrieval,
     Map<String, Object> promptVariables,
     Consumer<ChatClient.PromptUserSpec> userMessage,
     Map<String, Object> toolContext,

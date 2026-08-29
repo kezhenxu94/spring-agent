@@ -18,10 +18,14 @@ import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.models.Situation;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
 import me.kezhenxu94.springagent.core.dao.repo.SituationRepo;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeRetrieval;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
+import me.kezhenxu94.springagent.core.notify.Notifier;
 import me.kezhenxu94.springagent.events.config.EventsMessages;
 import me.kezhenxu94.springagent.events.config.EventsProperties;
 import me.kezhenxu94.springagent.events.tools.SituationTools;
 import org.springframework.ai.chat.prompt.PromptTemplate;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.stereotype.Component;
 
@@ -56,6 +60,16 @@ public class SituationSweeper {
   private final ThreadPoolTaskScheduler taskScheduler;
   private final SituationBrief brief;
   private final TriagePrompts triagePrompts;
+  private final PlaybookFilters playbookFilters;
+
+  /**
+   * Where a triage failure is reported, if anywhere.
+   *
+   * <p>An {@link ObjectProvider} because core ships no {@link Notifier}: a deployment whose
+   * surfaces implement none simply has nowhere to send these and the failure stays in the log,
+   * which is what happened before there was anywhere to send it.
+   */
+  private final ObjectProvider<Notifier> notifier;
 
   /**
    * For the one line of this class a person reads. Everything else it writes goes to a log, which
@@ -228,6 +242,7 @@ public class SituationSweeper {
               .background(true)
               .description(messages.get("run-description", claimed.source(), claimed.id()))
               .userMessage(spec -> spec.text(triagePrompt(policy, claimed)))
+              .knowledgeRetrieval(playbookFor(policy))
               .toolContext(Map.of(SituationTools.KEY_SITUATION_ID, claimed.id()))
               .listener(new Evaluation(claimed.id(), generation, policy))
               .build());
@@ -238,6 +253,7 @@ public class SituationSweeper {
       log.error("Could not start a triage run for situation {}", claimed.id(), e);
       situations.save(
           claimed.toBuilder().phase(Situation.Phase.MONITORING).lastError(describe(e)).build());
+      report(policy, claimed, e);
     }
   }
 
@@ -303,6 +319,70 @@ public class SituationSweeper {
     }
   }
 
+  /**
+   * The knowledge this run's automatic retrieval should look at: the source's playbook, or nothing
+   * stated at all where the source configured none.
+   *
+   * <p>The scope is the source's owner and only the owner — never the group or the tenant the
+   * situation carries. That is the point of stating it here rather than letting the run derive it
+   * from its own identity, and it is worth being exact about what it prevents: the group and tenant
+   * on a situation come from the observation, so a surface that reported a tenant would otherwise
+   * decide which knowledge base an unattended run reasons from, and the documents in it are the
+   * ones that say what the agent does about text somebody else wrote.
+   *
+   * <p>Returning null where there is no query, rather than a scope with nothing to look up, so that
+   * a deployment which has not written a playbook gets the retrieval it had before this existed.
+   */
+  private KnowledgeRetrieval playbookFor(final EventsProperties.Policy policy) {
+    if (!policy.playbook().hasQuery()) {
+      return null;
+    }
+    return new KnowledgeRetrieval(
+        new KnowledgeScope(policy.ownerUserId(), "", ""),
+        playbookFilters.forSource(policy.source()),
+        policy.playbook().query());
+  }
+
+  /**
+   * Tells whoever asked to be told that a triage run did not work.
+   *
+   * <p>Only a run that failed or never started, which is the one thing an unattended run cannot
+   * report for itself: it is a background run, so no surface renders it, and without this its
+   * failure exists only in a log nobody is reading at the time. A tool call that failed and the
+   * agent carried on from is not this — that is the agent working.
+   *
+   * <p>Deliberately not rate limited. Per-situation {@code cooldown} and {@code
+   * max-concurrent-evaluations} already bound how often this can happen, and a suppressor on top of
+   * them would be a thing that hides an outage in exactly the circumstances it is describing. If
+   * this ever becomes noisy, the noise is the report.
+   */
+  private void report(
+      final EventsProperties.Policy policy, final Situation situation, final Throwable error) {
+    final var route = policy.route();
+    if (route == null || route.isEmpty()) {
+      return;
+    }
+    final var target = notifier.getIfAvailable();
+    if (target == null) {
+      log.debug("No Notifier is installed, so the failure of {} is only logged", situation.id());
+      return;
+    }
+    try {
+      target.send(
+          route,
+          messages.get(
+              "triage-failed",
+              situation.source(),
+              situation.id(),
+              situation.title(),
+              describe(error)));
+    } catch (RuntimeException e) {
+      // Never let this displace what it was reporting. A surface that cannot reach its own service
+      // is a second failure, and the first one is already recorded on the situation.
+      log.error("Could not report the failure of situation {}", situation.id(), e);
+    }
+  }
+
   /** How many runs this sweeper believes are in flight. For tests and for logging. */
   public int inFlight() {
     return inFlight.get();
@@ -364,6 +444,10 @@ public class SituationSweeper {
             situationId,
             current.generation());
         return;
+      }
+
+      if (error != null) {
+        report(policy, current, error);
       }
 
       final var now = clock.instant();

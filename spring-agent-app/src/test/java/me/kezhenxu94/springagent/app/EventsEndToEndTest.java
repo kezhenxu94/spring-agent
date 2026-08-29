@@ -116,7 +116,10 @@ class EventsEndToEndTest extends AbstractIntegrationTest {
     assertThat(situation.generation()).isEqualTo(1);
     assertThat(situation.lastError()).isNull();
     assertThat(situation.ownerUserId()).isEqualTo("ou_agent");
-    assertThat(situation.chatId()).isEqualTo("oc_alerts");
+    // And no chat, though the source is configured with one: that route is where a *failed* triage
+    // is reported, not somewhere a run is handed to talk in. A webhook knows nowhere, and where a
+    // run about it says anything comes from the source's playbook.
+    assertThat(situation.chatId()).isNull();
     // The evidence is stored, and keyed by the delivery.
     assertThat(events.findBySituationId(situation.id())).hasSize(1);
   }

@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.rag.retrieval.search.DocumentRetriever;
+import org.springframework.ai.vectorstore.filter.Filter;
 
 /**
  * Durable, searchable knowledge scoped to a user, a group and a tenant — the contract core depends
@@ -65,7 +66,25 @@ public interface KnowledgeBase {
    * <p>Returning Spring AI's own {@link DocumentRetriever} rather than a type of ours is what lets
    * core assemble a stock {@code RetrievalAugmentationAdvisor} around it.
    */
-  DocumentRetriever retrieverFor(KnowledgeScope scope);
+  default DocumentRetriever retrieverFor(KnowledgeScope scope) {
+    return retrieverFor(scope, null);
+  }
+
+  /**
+   * The same, narrowed to the documents {@code extra} also matches — for a run that wants part of
+   * what its scope may read rather than all of it, such as event triage reading only the playbook
+   * documents its source names.
+   *
+   * <p>The narrowing is a parameter here rather than something a caller wraps around the retriever
+   * because it has to be applied where the scope filter is, in the query the store executes: a
+   * retriever that fetched by scope and discarded afterwards would return the configured number of
+   * documents and then throw most of them away, which for a top-k search means the wanted ones are
+   * usually not among them.
+   *
+   * <p>{@code extra} can only ever narrow — {@link KnowledgeScopeFilter#readableBy(KnowledgeScope,
+   * Filter.Expression)} composes it, and it is the only thing allowed to.
+   */
+  DocumentRetriever retrieverFor(KnowledgeScope scope, Filter.Expression extra);
 
   /**
    * An on-demand search, for when the automatic retrieval on the turn did not bring back what was

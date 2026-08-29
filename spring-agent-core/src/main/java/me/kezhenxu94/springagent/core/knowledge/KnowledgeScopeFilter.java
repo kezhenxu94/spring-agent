@@ -20,9 +20,11 @@ import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder.Op;
  * in the deployment — every other user's knowledge, handed to whoever asked. The tests cover that
  * case by name.
  *
- * <p>Only {@code eq}, {@code or} and {@code and} are used. Milvus' filter converter has no case for
- * {@code ISNULL}/{@code ISNOTNULL} and throws when it meets one, so "this field does not apply" is
- * expressed as a blank string rather than as a null check.
+ * <p>Only {@code eq}, {@code or}, {@code and} and {@code group} are built here. Milvus' filter
+ * converter has no case for {@code ISNULL}/{@code ISNOTNULL} and throws when it meets one, so "this
+ * field does not apply" is expressed as a blank string rather than as a null check. A caller may
+ * hand in an expression of its own to narrow a read further, and that one may use whatever the
+ * store understands — see {@link #readableBy(KnowledgeScope, Filter.Expression)}.
  */
 @UtilityClass
 public class KnowledgeScopeFilter {
@@ -31,7 +33,37 @@ public class KnowledgeScopeFilter {
    * What {@code scope} may read: its own documents, plus its group's and tenant's if it has any.
    */
   public static Filter.Expression readableBy(final KnowledgeScope scope) {
-    return disjunction(new FilterExpressionBuilder(), scope).build();
+    return readableBy(scope, null);
+  }
+
+  /**
+   * The same, narrowed further by {@code extra} — a caller that wants some of what a scope may read
+   * rather than all of it, such as a triage run reading only the documents its source's playbook
+   * names.
+   *
+   * <p>{@code extra} narrows and can never widen, because it is {@code and}-ed onto the scope
+   * disjunction rather than replacing it. That is the whole reason this is a parameter here instead
+   * of each caller composing its own expression: an expression assembled elsewhere could be
+   * assembled wrongly, and the failure would be silent and would hand over somebody else's
+   * knowledge.
+   *
+   * <p><b>Both sides are parenthesised, and both have to be.</b> A converter renders {@code AND} as
+   * {@code left && right} and adds parentheses for nothing but a {@link Filter.Group} — see {@code
+   * AbstractFilterExpressionConverter#doExpression} — so precedence here is a matter of what the
+   * tree says explicitly. Left ungrouped, the scope disjunction would bind {@code extra} to only
+   * its last branch, handing over every one of a group's documents whether or not {@code extra}
+   * held of them; and an {@code extra} that is itself a disjunction, which {@code docId in [...]}
+   * written out longhand is, would lose its own last branch to the {@code and} the same way.
+   * Grouping a single comparison is redundant, and cheaper than deciding case by case which shapes
+   * need it.
+   */
+  public static Filter.Expression readableBy(
+      final KnowledgeScope scope, final Filter.Expression extra) {
+    final var b = new FilterExpressionBuilder();
+    if (extra == null) {
+      return disjunction(b, scope).build();
+    }
+    return b.and(grouped(b, scope), b.group(new FilterExpressionBuilder.Op(extra))).build();
   }
 
   /**
