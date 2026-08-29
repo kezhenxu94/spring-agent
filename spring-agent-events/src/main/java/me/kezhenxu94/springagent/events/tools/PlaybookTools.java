@@ -8,7 +8,6 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeSource;
-import me.kezhenxu94.springagent.core.tools.AdminTool;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.events.config.EventsMessages;
 import me.kezhenxu94.springagent.events.config.EventsProperties;
@@ -33,14 +32,16 @@ import org.springframework.ai.tool.annotation.ToolParam;
  * therefore configured but unwritable, which is how a source ends up with a playbook query and no
  * playbook behind it.
  *
- * <p><b>An {@code AdminTool}, and that is the whole of the safety story.</b> These write into
- * another identity's knowledge base and steer every future unattended run about a source, so who
- * may call them matters more than what they check. Being an {@code AdminTool} means two things
- * hold: the caller is named in {@code app.ai.admins}, and the run is one a person is watching —
- * never a scheduled task, a subagent, or a triage run. That last exclusion is the one that counts,
- * and {@code SituationTriageScenario} explains why: a triage run assumes the source owner's
- * identity, a deployment has good reason to make that identity an admin, and without the exclusion
- * a run could write the playbook its successors read on the say-so of whoever wrote the event.
+ * <p><b>Declared {@code @AgentTool(admin = true)}, and that is the whole of the safety story.</b>
+ * These write into another identity's knowledge base and steer every future unattended run about a
+ * source, so who may call them matters more than what they check. Only somebody named in {@code
+ * app.ai.admins} is offered them at all.
+ *
+ * <p>Which puts the weight on the identity a run assumes rather than on anything checked here. A
+ * situation triage assumes the source's {@code owner-user-id} and reads text whoever caused the
+ * event wrote, so were that identity an administrator these tools would be in a stranger's reach —
+ * and the playbook they wrote would steer every triage after it. {@code SituationSweeper} refuses
+ * to start on that pairing; nothing in this class could detect it.
  *
  * <p>The document id check below is a different kind of guard, and a weaker one on purpose: it
  * catches an administrator writing a playbook that will silently never be retrieved, which is a
@@ -48,7 +49,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
  */
 @Slf4j
 @RequiredArgsConstructor
-public class PlaybookTools implements AdminTool {
+public class PlaybookTools {
 
   private final KnowledgeBase knowledgeBase;
   private final EventsProperties properties;

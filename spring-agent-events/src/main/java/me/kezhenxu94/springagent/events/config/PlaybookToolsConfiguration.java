@@ -33,7 +33,7 @@ import org.springframework.context.annotation.Bean;
 public class PlaybookToolsConfiguration {
 
   @Bean
-  @AgentTool
+  @AgentTool(admin = true)
   @ConditionalOnBean(KnowledgeBase.class)
   @ConditionalOnMissingBean
   PlaybookTools playbookTools(

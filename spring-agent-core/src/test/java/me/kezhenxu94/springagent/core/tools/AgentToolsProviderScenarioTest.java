@@ -32,8 +32,7 @@ class AgentToolsProviderScenarioTest {
   static class OwnedTool {}
 
   /** Stands in for a real one — {@code PlaybookTools} — which core cannot see from here. */
-  @AgentTool
-  static class AnAdminTool implements AdminTool {}
+  static class AnAdminTool {}
 
   @AgentTool
   static class AnnotatedOwnedTool extends OwnedTool {}
@@ -57,7 +56,13 @@ class AgentToolsProviderScenarioTest {
       return new OwnedTool();
     }
 
+    /**
+     * Declared on the factory method rather than the class, which is the case worth covering: it is
+     * how {@code PlaybookTools} is registered, and reading the attribute off the bean's own class
+     * would see the default here and offer it to everybody.
+     */
     @Bean
+    @AgentTool(admin = true)
     AnAdminTool anAdminTool() {
       return new AnAdminTool();
     }
@@ -99,43 +104,64 @@ class AgentToolsProviderScenarioTest {
   }
 
   @Test
-  @DisplayName("an admin tool needs both an eligible scenario and an administrator")
-  void anAdminToolNeedsBothHalves() {
+  @DisplayName("an admin tool goes to an administrator, and to nobody else")
+  void anAdminToolGoesToAnAdministrator() {
     try (var context = new AnnotationConfigApplicationContext(Tools.class)) {
       final var provider = provider(context, "ou_admin");
 
-      // Both halves: a chat run, which is the only built-in scenario that says adminTools(), and a
-      // person named in app.ai.admins.
       assertThat(provider.resolveScenarioTools(BuiltInScenarios.CHAT, "ou_admin"))
           .hasAtLeastOneElementOfType(AnAdminTool.class);
-
-      // The person, but not the kind of run. This is the half SituationTriageScenario relies on:
-      // there the identity a run assumes is routinely an administrator, and only the scenario
-      // refuses.
-      assertThat(provider.resolveScenarioTools(BuiltInScenarios.SCHEDULED_TASK, "ou_admin"))
-          .doesNotHaveAnyElementsOfTypes(AnAdminTool.class);
-      assertThat(provider.resolveScenarioTools(BuiltInScenarios.SUBAGENT, "ou_admin"))
-          .doesNotHaveAnyElementsOfTypes(AnAdminTool.class);
-
-      // The kind of run, but not the person.
       assertThat(provider.resolveScenarioTools(BuiltInScenarios.CHAT, "ou_somebody"))
           .doesNotHaveAnyElementsOfTypes(AnAdminTool.class);
-      // And a run with nobody behind it is nobody's administrator.
+      // A run with nobody behind it is nobody's administrator.
       assertThat(provider.resolveScenarioTools(BuiltInScenarios.CHAT, null))
           .doesNotHaveAnyElementsOfTypes(AnAdminTool.class);
     }
   }
 
   @Test
-  @DisplayName("a scenario written elsewhere gets no admin tools by saying nothing")
-  void aConsumerScenarioIsFailClosed() {
-    // Why the admin question is not folded into offers(): this scenario allows every tool it is
-    // asked about, which is what an SDK consumer's scenario does by default. It must still not
-    // hand out an admin tool.
+  @DisplayName("an administrator keeps them in their own unattended runs, which is the point")
+  void anAdministratorKeepsThemWhenDelegating() {
+    // Deliberate rather than overlooked. A scheduled task and a subagent both act on a brief this
+    // same administrator wrote, so withholding here would only stop them deferring or delegating
+    // work they could do in the chat they are sitting in.
+    //
+    // What must never happen is an identity that reads strangers' text being an administrator, and
+    // that is refused by SituationSweeper at startup — no code on this path can tell such a run
+    // from an administrator's own.
+    try (var context = new AnnotationConfigApplicationContext(Tools.class)) {
+      final var provider = provider(context, "ou_admin");
+
+      assertThat(provider.resolveScenarioTools(BuiltInScenarios.SCHEDULED_TASK, "ou_admin"))
+          .hasAtLeastOneElementOfType(AnAdminTool.class);
+      assertThat(provider.resolveScenarioTools(BuiltInScenarios.SUBAGENT, "ou_admin"))
+          .hasAtLeastOneElementOfType(AnAdminTool.class);
+    }
+  }
+
+  @Test
+  @DisplayName("a scenario written elsewhere rules on an admin tool like any other")
+  void aConsumerScenarioRulesOnThemLikeAnyOther() {
+    // A consumer's scenario decides these the way it decides everything else: say nothing and an
+    // administrator gets them, say no and nobody does. There is no separate admin question on the
+    // interface to forget about, because the identity is the boundary.
+    //
+    // What a scenario cannot do any more is rule on the category — @AgentTool(admin) is on the
+    // bean definition, not the type, so offers() sees only the object. Refusing one means naming
+    // its class, as here.
     final var saysNothing = new AgentScenario() {};
+    final var refuses =
+        new AgentScenario() {
+          @Override
+          public boolean offers(final Object tool) {
+            return !(tool instanceof AnAdminTool);
+          }
+        };
 
     try (var context = new AnnotationConfigApplicationContext(Tools.class)) {
       assertThat(provider(context, "ou_admin").resolveScenarioTools(saysNothing, "ou_admin"))
+          .hasAtLeastOneElementOfType(AnAdminTool.class);
+      assertThat(provider(context, "ou_admin").resolveScenarioTools(refuses, "ou_admin"))
           .doesNotHaveAnyElementsOfTypes(AnAdminTool.class)
           .hasAtLeastOneElementOfType(LibraryTool.class);
     }

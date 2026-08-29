@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
  *   <li>Reading and posting in Feishu chats they are not a member of ({@code FeishuChatAccess}).
  *   <li>Answering a question the agent asked somebody else, and having their message read into a
  *       run that belongs to somebody else rather than starting a second one.
- *   <li>The tools marked {@code AdminTool}, which nobody else is offered at all.
+ *   <li>The tools declared {@code @AgentTool(admin = true)}, which nobody else is offered at all.
  *   <li>A {@code role=admin} label on their shell sandbox, for a cluster that wants to tell them
  *       apart.
  * </ul>
@@ -26,6 +26,11 @@ import org.springframework.stereotype.Component;
  * the identity it started with — its files, its credentials, its MCP servers. So an admin can cause
  * things to happen as somebody else, and the set is one to keep to the people who would be trusted
  * with those things directly.
+ *
+ * <p>For the same reason the reverse pairing is refused outright: an identity that reads text
+ * written by strangers must never be listed here, because a run assuming it holds whatever it
+ * holds. {@code SituationSweeper} will not start when an event source's {@code owner-user-id} is
+ * one of these.
  *
  * <p>Membership is by the surface's own user id, which is whatever that surface puts on a request:
  * a Feishu open id, a CLI user name. There is no directory behind it and no group expansion — a

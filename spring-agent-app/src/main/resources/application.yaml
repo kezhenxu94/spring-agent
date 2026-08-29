@@ -340,7 +340,7 @@ app:
     #   - Speaking into a run that is already going for somebody else, instead of starting a second
     #     one beside it. Their message is read at the next gap between tool calls, marked as theirs
     #     (SpringAgent#liveRunFor).
-    #   - The tools marked AdminTool, which nobody else is offered at all — today ListPlaybooks and
+    #   - The tools declared @AgentTool(admin = true), which nobody else is offered at all — today ListPlaybooks and
     #     WritePlaybook, below.
     #   - A role=admin label on their shell sandbox, for a cluster that wants to tell them apart.
     #
@@ -349,10 +349,14 @@ app:
     # their credentials, their MCP servers. So an admin can cause things to happen as somebody
     # else. List the people who would be trusted with those things directly, and nobody else.
     #
-    # An admin tool additionally needs the run to be one a person asked for. Nothing that fires on
-    # a timer or acts on text somebody else wrote gets one, however admin the identity it runs as —
-    # which matters because app.events.sources.<name>.owner-user-id is often listed here, being the
-    # identity that has to reach every chat it reports into. See SituationTriageScenario.
+    # An admin tool is decided on the user id alone, so an administrator holds one in their own
+    # scheduled tasks and subagents as well — both act on a brief they wrote themselves.
+    #
+    # Which makes the identity the boundary, and there is one pairing to avoid: never list an
+    # app.events.sources.<name>.owner-user-id here. A triage run assumes that identity and reads
+    # whatever the event's author wrote, so it would put WritePlaybook in a stranger's reach. The
+    # application refuses to start on that pairing rather than leaving it to be noticed. If such an
+    # identity needs to reach chats it is not in, give that source an identity of its own.
     admins: ${ADMINS:}
     embedding:
       # How the tool-search index is built, which is a few hundred tool descriptions embedded at
@@ -755,8 +759,11 @@ app:
     # logged in as it to write the documents. Somebody listed in app.ai.admins writes them from an
     # ordinary chat instead, with ListPlaybooks and WritePlaybook: the first says, per source, which
     # base is read, with what question, and which document ids the filter below accepts; the second
-    # writes one of them. Both need a knowledge base (app.ai.rag.enabled), and neither reaches a
-    # triage run — see SituationTriageScenario for why that exclusion is the load-bearing one.
+    # writes one of them. Both need a knowledge base (app.ai.rag.enabled).
+    #
+    # The owner itself must not be in app.ai.admins, and the application refuses to start if it is:
+    # a triage run assuming an admin identity would hand these very tools to whoever wrote the
+    # event it is triaging, and the playbook it wrote would steer every triage after it.
     # playbook:
     #   query: ...
     #   filter: ...

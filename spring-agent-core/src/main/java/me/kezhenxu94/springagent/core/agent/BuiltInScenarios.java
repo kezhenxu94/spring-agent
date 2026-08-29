@@ -5,17 +5,7 @@ import me.kezhenxu94.springagent.core.tools.SubagentTools;
 
 /** The scenarios this runtime ships with. */
 public enum BuiltInScenarios implements AgentScenario {
-  /**
-   * Somebody talking to the agent, and waiting for the answer. The only scenario here that may hold
-   * an admin tool, because it is the only one where a person asked for what is about to happen —
-   * see {@link AgentScenario#adminTools()}.
-   */
-  CHAT {
-    @Override
-    public boolean adminTools() {
-      return true;
-    }
-  },
+  CHAT,
   SCHEDULED_TASK {
     @Override
     public boolean offers(final Object tool) {
