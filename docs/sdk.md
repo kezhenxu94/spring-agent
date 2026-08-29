@@ -310,6 +310,14 @@ rather than touching the tools. The custom `ToolCallingManager` wires every such
 the result to the user's workspace and hands the model the path, for every tool alike, so a tool of
 your own should return what it has rather than cap it first.
 
+That manager is also where `spring.ai.tools.limits.*` is read: it is built here rather than taken
+from Spring AI's auto-configuration, which backs off, so the limits are applied by hand in
+`SpringAgentCoreAutoConfiguration`. Core raises the two that bound a turn — `ToolCallingDefaults`
+sets `max-calls-per-tool-default` and `max-total-tool-calls` to 200 each, against upstream's 40 and
+150 — because a run that reaches for the same tool a hundred times is normal here, and hitting a
+limit ends the turn mid-thought rather than answering less well. Set either property to override,
+or to `-1` to remove that limit entirely.
+
 ### The tools that ship
 
 Roughly: filesystem (`Read`, `Write`, `Edit`), `TodoWrite`, memories (`MemoryView`, `MemoryCreate`,

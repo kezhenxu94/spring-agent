@@ -149,6 +149,21 @@ spring:
         transcription:
           base-url: ${TRANSCRIPTION_OPENAI_BASE_URL}
           api-key: ${TRANSCRIPTION_OPENAI_API_KEY}
+    tools:
+      limits:
+        # How many tool calls one turn may make. Spring AI's own numbers are 40 per tool and 150
+        # in total, which are the numbers for a chat assistant answering a question with a lookup
+        # or two; a triage run here reads an event, searches the knowledge base, walks a cluster
+        # and writes back, reaching for the same file-reading or listing tool many times over.
+        # Hitting the limit does not shorten the answer, it ends the turn mid-thought, so both are
+        # raised to where they still catch a model looping on a tool that keeps failing.
+        #
+        # Both are the same number on purpose — see ToolCallingDefaults, which is where these
+        # values come from when nothing sets them, so that an application embedding core gets them
+        # too. Keep the two in agreement. Set either to -1 to remove that limit entirely, and note
+        # that removing them both means a run that never gives up is bounded only by the model.
+        max-calls-per-tool-default: ${MAX_CALLS_PER_TOOL:200}
+        max-total-tool-calls: ${MAX_TOTAL_TOOL_CALLS:200}
     vectorstore:
       # Which vector store backs the tool search index. `simple` keeps that index in the heap and
       # mirrors it to a local JSON file (app.ai.vectorstore.simple.file) — no server to run, at
