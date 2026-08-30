@@ -9,7 +9,7 @@ spring:
     #
     # English, not the host's language, when app.locale is set to one that ships no bundle: on a
     # server the host's language is an accident of how the image was built rather than anybody's
-    # choice. spring-agent-cli sets this the other way, its host being the user's own machine.
+    # choice. spring-agent-app-cli sets this the other way, its host being the user's own machine.
     fallback-to-system-locale: false
   main:
     banner-mode: off

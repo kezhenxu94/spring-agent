@@ -51,9 +51,9 @@ Other tasks:
 
 ```sh
 ./gradlew :spring-agent-app:bootRun          # the server
-./gradlew :spring-agent-cli:bootRun          # the command line (stdin/tty wired for JLine)
+./gradlew :spring-agent-app-cli:bootRun      # the command line (stdin/tty wired for JLine)
 ./gradlew :spring-agent-app:bootBuildImage   # container image (Paketo buildpack, no Dockerfile)
-./gradlew :spring-agent-cli:nativeCompile -Pnative
+./gradlew :spring-agent-app-cli:nativeCompile -Pnative
 ```
 
 `-Pnative` is required for any native task: the GraalVM plugin is applied conditionally so that a
@@ -76,7 +76,7 @@ spring-agent-integration-{github,gitlab,grafana}   webhook readers for spring-ag
 spring-agent-integration-feishu       Feishu/Lark chats and cards as a surface
 spring-agent-rag-milvus               the knowledge base; the only KnowledgeBase implementation
 spring-agent-app                      deployable server; depends on every optional module
-spring-agent-cli                      laptop command line; jpa + local shell only
+spring-agent-app-cli                  laptop command line; jpa + local shell only
 ```
 
 `spring-agent-core` must stay free of any persistence backend. This is enforced by
@@ -120,7 +120,7 @@ Every new module looks the same from the build's point of view:
 ### A chat surface
 
 A surface is anything that turns messages into `AgentRequest`s and shows the answer.
-`spring-agent-integration-feishu` and `spring-agent-cli` are the two shipped examples, and they sit
+`spring-agent-integration-feishu` and `spring-agent-app-cli` are the two shipped examples, and they sit
 at opposite ends of the one axis that matters: whether the surface can answer a question within the
 run.
 

@@ -28,7 +28,7 @@ pluginManager.withPlugin('org.graalvm.buildtools.native') {
   // app.ai.tools.shell.type is the same, and defaults to none: without shell-kubernetes or
   // shell-local the image has no Bash tool whatever TOOLS_SHELL_TYPE says when it runs.
   // The property, when passed, replaces the module's own defaults rather than adding to them, so a
-  // module whose baked-in combination is already what it wants (spring-agent-cli, which is a
+  // module whose baked-in combination is already what it wants (spring-agent-app-cli, which is a
   // laptop tool and bakes shell-local) does not need the flag repeated on every native build.
   def backends = providers.gradleProperty('nativeBackends')
       .getOrElse(project.findProperty('nativeDefaultBackends') ?: '')

@@ -24,7 +24,7 @@ nmcpAggregation {
 
 dependencies {
   // Lenient by design: a project that does not apply com.gradleup.nmcp (spring-agent-app and
-  // spring-agent-cli, which ship as images and binaries rather than as artifacts) contributes
+  // spring-agent-app-cli, which ship as images and binaries rather than as artifacts) contributes
   // nothing and is silently skipped, so this list does not have to be maintained.
   subprojects.each { nmcpAggregation project(it.path) }
 }
