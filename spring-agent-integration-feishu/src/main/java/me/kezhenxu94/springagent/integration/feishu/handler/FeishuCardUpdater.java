@@ -133,6 +133,15 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   private final Set<String> added = new LinkedHashSet<>();
 
   /**
+   * Which card of the run's the elements above are on, so that this updater notices when the card
+   * it was writing to filled up and the run moved onto another — see {@link #sync()}.
+   */
+  private long generation;
+
+  /** The same for the tool calls: how many of them the pane on an earlier card is showing. */
+  private int callsOnEarlierCards;
+
+  /**
    * The topmost of the subagent panels this run has on the card, or null while it has none.
    *
    * <p>What an anchor search landing on {@link FeishuCardElements#SUBAGENTS} resolves to: that
@@ -150,6 +159,13 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
 
   private final String subagentId;
   private final String description;
+
+  /**
+   * The updater of the run that started this subagent, which is what says where a panel goes on
+   * their shared card — the panels sit in a place among that run's own elements and only it knows
+   * which of those the card has. Null on the run itself, which has no parent.
+   */
+  private final FeishuCardUpdater parent;
 
   /**
    * The brief that subagent was given, kept for the same reason the description is: the panel is
@@ -247,6 +263,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
             null,
             null,
             null,
+            null,
             null);
     return updater;
   }
@@ -261,6 +278,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing,
       final FeishuMessages messages,
       final FeishuSubagentPanel panels,
+      final FeishuCardUpdater parent,
       final String subagentId,
       final String description,
       final String brief) {
@@ -289,7 +307,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         panels,
         subagentId,
         description,
-        brief);
+        brief,
+        parent);
   }
 
   private FeishuCardUpdater(
@@ -307,7 +326,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       final FeishuSubagentPanel panels,
       final String subagentId,
       final String description,
-      final String brief) {
+      final String brief,
+      final FeishuCardUpdater parent) {
     this.card = card;
     this.om = om;
     this.modelPricing = modelPricing != null ? modelPricing : Map.of();
@@ -323,6 +343,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     this.subagentId = subagentId;
     this.description = description;
     this.brief = brief;
+    this.parent = parent;
+    this.generation = card.generation();
   }
 
   /** Whether this is a subagent's panel rather than the card's own run. */
@@ -423,6 +445,9 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         card.cardId(),
         contentElementId,
         content != null ? content.length() : 0);
+    // Before the new content lands, so that a card the run has just moved onto carries on from
+    // what was on the card it left rather than from what has just been said.
+    sync();
     this.lastBaseContent = content;
     this.failureNotice = "";
     sendContent(lastBaseContent);
@@ -478,6 +503,9 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    */
   public synchronized void setToolStatus(
       String toolName, String toolInput, ToolContext toolContext) {
+    // Before the call is added, so that a card the run has just moved onto shows this call rather
+    // than counting it among the ones left on the card above.
+    sync();
     toolCallsInFlight++;
     final var input = parseObject(toolInput);
     final var description = input == null ? null : singleLine(input.path(DESCRIPTION_FIELD));
@@ -547,8 +575,17 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     if (elements == null || toolCalls.isEmpty()) {
       return;
     }
+    sync();
     final var running = callStillOut();
-    final var hidden = Math.max(0, toolCalls.size() - CALLS_SHOWN);
+    // The calls left on a card the run has filled are hidden here for the same reason the oldest
+    // are: they have a pane already, on the card above, and the count says how many rather than
+    // this pane showing them twice.
+    final var hidden = Math.max(callsOnEarlierCards, toolCalls.size() - CALLS_SHOWN);
+    if (hidden >= toolCalls.size()) {
+      // Every call this run has made is on an earlier card and it has made none since. A pane
+      // saying so and holding nothing is not worth the space on a card that has just started.
+      return;
+    }
     final var shown =
         toolCalls.subList(hidden, toolCalls.size()).stream()
             .map(call -> new FeishuCardElements.ToolCall(call.title(), call.rendered()))
@@ -576,9 +613,15 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     }
     final var array = om.createArrayNode();
     array.add(om.readTree(pane));
-    if (card.insertBefore(
-        anchorOf(FeishuCardElements.TOOLS), array.toString(), card.cardId() + ":tools")) {
+    final var generationBefore = generation;
+    if (insertAbove(FeishuCardElements.TOOLS, array.toString(), "tools")) {
       added.add(FeishuCardElements.TOOLS);
+      return;
+    }
+    if (movedOn(generationBefore)) {
+      // Built again rather than sent again: the pane the run has just left holds the calls made so
+      // far, and the one being put on the card it moved to holds what it does from here.
+      showToolCalls(expanded);
     }
   }
 
@@ -762,10 +805,68 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   }
 
   private synchronized void sendContent(String content) {
+    sync();
+    if (card.continued(contentElementId, Strings.nullToEmpty(content)).isEmpty()) {
+      // Nothing for this card to show: the run has yet to say a word, or everything it has said is
+      // on a card it filled and left. An element holding neither is one the card is better without
+      // — see FeishuCardElements on why the answer is added when there is an answer.
+      return;
+    }
     if (!added(contentElementId)) {
       return;
     }
-    card.stream(contentElementId, content);
+    // The whole of what the run has said, and the card's to cut: only it knows how much of it the
+    // card above took before it filled up.
+    card.streamContinuing(contentElementId, content);
+  }
+
+  /**
+   * Catches this updater up with the card it writes to, which is not necessarily the card it was
+   * writing to a moment ago: a card that fills up is finished and the run carries on writing to a
+   * new one — see {@code FeishuCard#continueOnNewCard()}.
+   *
+   * <p>Nothing is carried over. The elements go back to being ones this run has yet to add, so each
+   * is put on the new card as the run next writes to it, and what the run has already said and
+   * already called is left on the card above rather than repeated: that is where the reader was
+   * reading it, and repeating it is what would fill the new card too.
+   *
+   * <p>Noticed rather than announced — a card that has rolled over cannot call back into an updater
+   * whose lock is held by the thread waiting on the very write that failed. So every path that
+   * consults {@link #added} passes through here first, under this updater's own lock.
+   */
+  private void sync() {
+    final var current = card.generation();
+    if (generation == current) {
+      return;
+    }
+    // Before anything below, which can write to the card and so come back through here.
+    generation = current;
+    added.clear();
+    firstSubagentPanelId = null;
+    callsOnEarlierCards = toolCalls.size();
+  }
+
+  /** Whether {@code elementId} is on the card the run is writing to now. */
+  private synchronized boolean onCard(final String elementId) {
+    sync();
+    return added.contains(elementId);
+  }
+
+  /**
+   * Whether the card filled up and was replaced while a write was being made to it, which makes the
+   * failure that write reported one worth retrying: it failed against a card the run has left, and
+   * the anchor it named is on that card rather than on this one.
+   */
+  private boolean movedOn(final long generationBefore) {
+    return card.generation() != generationBefore;
+  }
+
+  /** Puts {@code arrayJson} in this element's place in the card's order, once. */
+  private synchronized boolean insertAbove(
+      final String elementId, final String arrayJson, final String suffix) {
+    // The card's id is in the key rather than only the element's: a run may be on its third card by
+    // now, and the same element added to each of them is three inserts and not one retried.
+    return card.insertBefore(anchorOf(elementId), arrayJson, card.cardId() + ":" + suffix);
   }
 
   /**
@@ -776,18 +877,25 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    * <p>An insert that fails is not remembered, so the next write tries again — with the same
    * idempotency key, which is what stops a retry that only looked like a failure from leaving two
    * copies on the card. Returns whether the element is there to be written to.
+   *
+   * <p>The one failure retried at once is a card that filled up: the run is on a new card as of
+   * this call, that card has none of these elements, and the anchor just used was on the one it
+   * left. Working it out again and inserting into the new card is what makes the first thing a run
+   * says after a rollover appear rather than the one after it. It cannot go round more than twice —
+   * a card that has taken nothing is never continued, so the retry has no rollover of its own.
    */
   private synchronized boolean added(final String elementId) {
+    sync();
     if (elements == null) {
-      // A subagent: its panel came with every element it writes into.
-      return true;
+      // A subagent: its panel came with every element it writes into, so what has to be on the
+      // card is the panel and never this element.
+      return insertPanel();
     }
     if (added.contains(elementId)) {
       return true;
     }
-    final var inserted =
-        card.insertBefore(
-            anchorOf(elementId), elements.forInsert(elementId), card.cardId() + ":" + elementId);
+    final var generationBefore = generation;
+    final var inserted = insertAbove(elementId, elements.forInsert(elementId), elementId);
     if (inserted) {
       added.add(elementId);
       // The sources go in above the spend row, so from here on they are the top of the footer, and
@@ -795,11 +903,51 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       if (FeishuCardElements.REFERENCES.equals(elementId)) {
         card.footerGrewTo(elementId);
       }
-    } else {
-      log.warn(
-          "No {} element on card {}, so there is nowhere to write it", elementId, card.cardId());
+      return true;
     }
-    return inserted;
+    if (movedOn(generationBefore)) {
+      return added(elementId);
+    }
+    log.warn("No {} element on card {}, so there is nowhere to write it", elementId, card.cardId());
+    return false;
+  }
+
+  /**
+   * Puts this subagent's panel on the card, which is what everything it goes on to say is written
+   * into. Called once as the subagent starts, and again on every card the run continues onto, since
+   * the panel is left behind with the card that filled up.
+   *
+   * <p>Where it lands is the parent's to say rather than this updater's: the panels have a place
+   * among the run's own elements, above its tool calls, and only the parent knows which of those
+   * the card has reached. Which is also why it is told the panel landed — from then on the elements
+   * it adds go in above the subagents rather than among them.
+   */
+  synchronized boolean insertPanel() {
+    sync();
+    final var panelElementId = FeishuSubagentPanel.panelElementId(subagentId);
+    if (added.contains(panelElementId)) {
+      return true;
+    }
+    if (parent == null) {
+      // Nobody to say where on the card it goes, so it is taken to be there already: a panel put
+      // on a card by something other than a run — a test — is one this cannot place or replace.
+      return true;
+    }
+    final var generationBefore = generation;
+    final var inserted =
+        card.insertBefore(
+            parent.subagentPanelAnchor(),
+            panels.forInsert(subagentId, description, brief, null),
+            card.cardId() + ":" + subagentId);
+    if (inserted) {
+      added.add(panelElementId);
+      parent.subagentPanelAdded(panelElementId);
+      return true;
+    }
+    if (movedOn(generationBefore)) {
+      return insertPanel();
+    }
+    return false;
   }
 
   /** The card this run is written to, which is the card a subagent of it gets a panel on. */
@@ -813,6 +961,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    * which panels are there.
    */
   private synchronized String anchorOf(final String elementId) {
+    sync();
     final var anchor = elements.anchorOf(elementId, added);
     return FeishuCardElements.SUBAGENTS.equals(anchor) ? firstSubagentPanelId : anchor;
   }
@@ -825,6 +974,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    * already there and the subagents read in the order they were started.
    */
   synchronized String subagentPanelAnchor() {
+    sync();
     return anchorOf(FeishuCardElements.SUBAGENTS);
   }
 
@@ -833,6 +983,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    * above the subagents rather than among them from here on.
    */
   synchronized void subagentPanelAdded(final String panelElementId) {
+    sync();
     if (firstSubagentPanelId == null) {
       firstSubagentPanelId = panelElementId;
     }
@@ -871,9 +1022,20 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     } else {
       spend.add(model, usage);
     }
-    // Grey, like the conversation hint it sits beside: both are the card talking about the run
-    // rather than the run talking, and the footer reads as one line when they are the same colour.
-    // The subagent panels' own spend line is left alone — it is inside a panel, not in this footer.
+    showSpend();
+  }
+
+  /**
+   * Writes what the run has spent so far into its footer.
+   *
+   * <p>Grey, like the conversation hint it sits beside: both are the card talking about the run
+   * rather than the run talking, and the footer reads as one line when they are the same colour.
+   * The subagent panels' own spend line is left alone — it is inside a panel, not in this footer.
+   */
+  private synchronized void showSpend() {
+    if (spend.models.isEmpty()) {
+      return;
+    }
     final var line = "<font color='grey'>" + spend.render(startedAt) + "</font>";
     if (spendOnCard(line)) {
       card.stream(spendElementId, line);
@@ -893,7 +1055,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    * leaving the card without a spend line for the rest of the run.
    */
   private synchronized boolean spendOnCard(final String line) {
-    if (elements == null || added.contains(spendElementId)) {
+    if (elements == null || onCard(spendElementId)) {
       // A subagent's panel came with its own spend line in it.
       return true;
     }
@@ -1106,10 +1268,21 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   @Override
   public synchronized void onFinished(AgentOutcome outcome) {
     if (!isSubagent()) {
+      // What the run said and what it cost, once more, because the card it is finishing may have
+      // taken over from a full one after the last of either was written: the write that filled the
+      // card up never landed, and nothing else is coming to replace it. Free on a run that filled
+      // no card — the card drops a write that would not change what an element holds.
+      sendContent(withFailure(lastBaseContent));
+      showSpend();
       closeReasoningPane();
       closeToolsPane();
       countReferences();
       card.finish();
+      return;
+    }
+    // The panel is what is being rewritten, so it has to be on the card the run is writing to now:
+    // a run that filled a card while this subagent worked left the panel behind on it.
+    if (!insertPanel()) {
       return;
     }
     card.replace(
@@ -1121,9 +1294,11 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
             outcome,
             // The card rewrites the images in what it is streamed, but a panel is an element it is
             // given whole, so the one place a run's own words go into one resolves them itself.
-            withFailure(card.reuploadImages(lastBaseContent)),
+            // Cut to this card's share of the report first: resolving an image changes the length
+            // of what it is written in, and the cut is by the length the run itself wrote.
+            card.reuploadImages(card.continued(contentElementId, withFailure(lastBaseContent))),
             spend.render(startedAt)),
-        subagentId + ":end");
+        card.cardId() + ":" + subagentId + ":end");
   }
 
   /**
@@ -1152,6 +1327,12 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     if (elements == null || referencesElementId == null || references.isEmpty()) {
       return;
     }
+    if (!onCard(referencesElementId)) {
+      // The panel is on a card the run has filled and left, and the count belongs on the panel a
+      // reader can still see it growing on. There is none here, and adding one at the end of the
+      // run to say what was read at the start of it would be a footnote about another card.
+      return;
+    }
     card.replace(
         referencesElementId,
         elements.referencesPanel(references.size(), renderReferences()),
@@ -1159,7 +1340,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   }
 
   private void closeReasoningPane() {
-    if (elements == null || !added.contains(FeishuCardElements.REASONING)) {
+    if (elements == null || !onCard(FeishuCardElements.REASONING)) {
       return;
     }
     card.replace(
@@ -1190,12 +1371,12 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     // Nothing to show and nothing shown yet means there is nothing to say: a run that writes an
     // empty list — the tool is offered to every run — would otherwise put an element on the card to
     // hold it.
-    if (items.isEmpty() && !added.contains(todoElementId)) {
+    if (items.isEmpty() && !onCard(todoElementId)) {
       return;
     }
     log.info("updateTodoList: cardId={}, itemCount={}", card.cardId(), listed.size());
     final var panel = elements.todoPanel(listed.size(), items);
-    if (added.contains(todoElementId)) {
+    if (onCard(todoElementId)) {
       // A key that changes with the panel, for the reason the tool pane's does: an idempotency key
       // reused across replacements has Feishu take the first and ignore the rest.
       card.replace(todoElementId, panel, card.cardId() + ":todo:" + (++todoRevision));
@@ -1203,8 +1384,13 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     }
     final var array = om.createArrayNode();
     array.add(om.readTree(panel));
-    if (card.insertBefore(anchorOf(todoElementId), array.toString(), card.cardId() + ":todo")) {
+    final var generationBefore = generation;
+    if (insertAbove(todoElementId, array.toString(), "todo")) {
       added.add(todoElementId);
+      return;
+    }
+    if (movedOn(generationBefore)) {
+      handle(todos);
     }
   }
 }

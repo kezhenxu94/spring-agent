@@ -163,6 +163,13 @@ To receive any of this the app's event subscription needs **用户和机器人�
 required — the first is delivered over webhooks only, so a deployment on the long connection is
 greeted by the second either way.
 
+A turn is answered in a card that is written as the run goes: the answer as it streams, what the
+model thought, every tool call and what it returned, a panel per subagent, the to-do list, and what
+the turn cost. Feishu allows a card 30KB and 200 elements, and a long turn can outgrow both — so
+when a card fills up the agent finishes it and replies another onto the same message, carrying on
+where it left off, as many times as the turn needs. A very long answer arrives as a run of cards
+rather than stopping partway; the stop button is always on the one still being written.
+
 Everything else is optional and set in
 [`application.yaml`](spring-agent-app/src/main/resources/application.yaml). Two switches decide what
 the deployment actually is:

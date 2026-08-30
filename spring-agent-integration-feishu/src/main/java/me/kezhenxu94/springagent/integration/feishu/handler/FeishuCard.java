@@ -78,6 +78,12 @@ import org.springframework.web.client.RestTemplate;
  * a round trip for it. They are the ones that happen once per run rather than once per chunk, which
  * is what makes that affordable. See {@link #await}.
  *
+ * <p><b>A card has a size, and a turn does not.</b> Feishu refuses a write that would take a card
+ * over 30KB or over 200 elements, and neither is a limit a run can be asked to stay within — how
+ * much the model says and how many tools it calls are the turn's to decide. So a card that fills up
+ * is finished and replied to with another, as many times as the turn needs, and the run carries on
+ * writing into this same object: see {@link #continueOnNewCard()}.
+ *
  * <p>The image keys are here for the same reason they are shared: the same picture may be in a
  * subagent's report and in the answer the run writes from it, and the tenant only needs it once.
  */
@@ -86,13 +92,55 @@ public class FeishuCard {
 
   private static final int CODE_STREAMING_MODE_CLOSED = 300309;
 
+  /**
+   * What Feishu says when a card cannot hold any more: {@code 200860} when its content is over the
+   * 30KB a card is allowed, {@code 300305} when it is over the 200 elements one may carry.
+   *
+   * <p>Two codes, one situation — the card is full — and one remedy, which is {@link
+   * #continueOnNewCard()}: a long turn is not a bug to be capped, and neither limit is one a run
+   * can be written to stay under, since what the model says and how many tools it calls are not
+   * ours to decide.
+   */
+  private static final int CODE_CARD_OVER_MAX_SIZE = 200860;
+
+  private static final int CODE_TOO_MANY_ELEMENTS = 300305;
+
   private static final Pattern IMAGE_PATTERN = Pattern.compile("!\\[(.*?)\\]\\(([^)\\s]+)\\)");
 
   private static final String FILE_SCHEME = "file:";
 
   private final Client feishu;
 
-  @Getter private final String cardId;
+  /**
+   * The card being written to, which is not necessarily the card this started as: see {@link
+   * #continueOnNewCard()}. Read on every call, so that a rollover reaches everything holding this
+   * object — the updaters, the subagent panels, the question handler — without any of them being
+   * told.
+   */
+  @Getter private volatile String cardId;
+
+  /**
+   * How many cards the run has been through, which is what a writer compares against to notice that
+   * the card it had put its elements on is not the card being written to any more. Bumped last,
+   * once the new card is the one this object writes to.
+   */
+  @Getter private volatile long generation;
+
+  /**
+   * Where a card to continue on comes from, or null on a card that cannot be continued — a
+   * background notice, a test. Set rather than passed to the constructor because what it does needs
+   * this card: it replies a second card onto the same message and hands the run's stop button over
+   * to it, which is {@code FeishuCardListener}'s to do and not this class's.
+   */
+  private volatile Continuation continuation;
+
+  /**
+   * Somewhere for the run to carry on writing once a card is full: a new card, replied onto the
+   * same message as the one being left behind, or null if one could not be made.
+   */
+  public interface Continuation {
+    String newCard(String fullCardId);
+  }
 
   private final RestTemplate restTemplate;
   private final HomeDir home;
@@ -129,11 +177,36 @@ public class FeishuCard {
    */
   private final List<Op> queued = new ArrayList<>();
 
-  /** What each element was last sent, so an update that changes nothing costs no call. */
+  /**
+   * What each element last had accepted, so an update that changes nothing costs no call.
+   *
+   * <p>Recorded when the call returns rather than when it is made, which is what makes it the
+   * answer to what the card actually holds — which is where {@link #continuedFrom} comes from when
+   * a card fills up, and is one a write that was refused must not be counted towards.
+   */
   private final Map<String, String> sent = new HashMap<>();
+
+  /**
+   * Where each element's content picks up on this card, in characters of what its writer hands us:
+   * nothing until the card has filled up once, and from then on the length of what the card that
+   * filled up had accepted for that element.
+   *
+   * <p>What its writer hands us and not what was shown, so that a run on its fourth card is still
+   * cutting the one answer it has been saying all along at the right place. And what was accepted
+   * rather than what was sent, since the write that filled the card up was refused: counting it
+   * would leave that much of the answer on neither card.
+   */
+  private final Map<String, Integer> continuedFrom = new HashMap<>();
 
   /** When the last batch of writes returned, or 0 before there has been one. */
   private long streamedAt;
+
+  /**
+   * Whether anything has landed on this card since the run moved onto it. What tells a card that
+   * has filled up from a single write too big for any card: the first is worth continuing on a new
+   * card, the second would fill that one too and every card after it, so it is refused instead.
+   */
+  private boolean wroteSinceContinuation;
 
   /** Whether a worker is draining the queue, so that only one ever is. */
   private boolean pumping;
@@ -186,6 +259,15 @@ public class FeishuCard {
   }
 
   /**
+   * Says where a card to carry on writing to comes from, once this one is full. Without one a full
+   * card stays full: the writes that no longer fit are logged and dropped, which is what a card
+   * nobody is watching — see {@link Continuation}.
+   */
+  public void continuation(final Continuation continuation) {
+    this.continuation = continuation;
+  }
+
+  /**
    * The topmost element of the footer, which is what "above the footer" has to mean for an insert.
    *
    * <p>It starts at the spend row, which every card is sent carrying — the conversation hint is
@@ -195,6 +277,27 @@ public class FeishuCard {
    * bottom.
    */
   private volatile String footerElementId = FeishuCardElements.USAGE;
+
+  /**
+   * What this card shows of {@code content}, for an element whose content carries on across cards:
+   * all of it on a card that has not filled up, what has been added since on one the run continued
+   * onto — marked as carried on, so a card that opens mid-sentence says why — and nothing at all
+   * where everything there is to say is on the card above.
+   *
+   * <p>Asked as well as applied, because the writer has to know whether there is anything to show
+   * before it puts an element on the card to show it in.
+   */
+  public synchronized String continued(final String elementId, final String content) {
+    final var said = Strings.nullToEmpty(content);
+    final var from = continuedFrom.getOrDefault(elementId, 0);
+    if (from <= 0) {
+      return said;
+    }
+    if (said.length() <= from) {
+      return "";
+    }
+    return messages.get("card-continued") + said.substring(from);
+  }
 
   /** Says that {@code elementId} has joined the footer, above whatever was its top until now. */
   void footerGrewTo(final String elementId) {
@@ -235,7 +338,16 @@ public class FeishuCard {
    * may not come.
    */
   public void stream(final String elementId, final String content) {
-    enqueue(new Stream(elementId, Strings.nullToEmpty(content), null));
+    enqueue(new Stream(elementId, Strings.nullToEmpty(content), false, null));
+  }
+
+  /**
+   * The same, for an element the run goes on adding to over a turn — its answer, a subagent's
+   * report. What is written is the whole of it every time, and what the card shows is the part of
+   * it this card is responsible for: see {@link #continued}.
+   */
+  public void streamContinuing(final String elementId, final String content) {
+    enqueue(new Stream(elementId, Strings.nullToEmpty(content), true, null));
   }
 
   /**
@@ -288,7 +400,8 @@ public class FeishuCard {
     CompletableFuture<Boolean> landed();
   }
 
-  private record Stream(String elementId, String content, CompletableFuture<Boolean> landed)
+  private record Stream(
+      String elementId, String content, boolean continuing, CompletableFuture<Boolean> landed)
       implements Op {}
 
   private record Replace(
@@ -482,10 +595,7 @@ public class FeishuCard {
     return characters;
   }
 
-  /**
-   * Empties the queue, dropping the streaming writes whose content the card already has, and
-   * records what the rest of them will put there.
-   */
+  /** Empties the queue, dropping the streaming writes whose content the card already has. */
   private List<Op> takeBatch() {
     final var batch = new ArrayList<Op>(queued.size());
     for (final var op : queued) {
@@ -496,7 +606,6 @@ public class FeishuCard {
           }
           continue;
         }
-        sent.put(write.elementId(), write.content());
       }
       batch.add(op);
     }
@@ -534,10 +643,7 @@ public class FeishuCard {
     try {
       landed =
           switch (op) {
-            // The images last, and here rather than where the content was written: a run renders
-            // its whole answer on every chunk, so uploading as it was written meant uploading on
-            // the run's thread, and once per chunk instead of once per call that carries it.
-            case Stream write -> stream(write.elementId(), reuploadImages(write.content()), true);
+            case Stream write -> streamed(write);
             case Replace change -> update(change);
             case Insert insert -> insert(insert);
             case Finish ignored -> close();
@@ -554,6 +660,95 @@ public class FeishuCard {
   // ---------------------------------------------------------------------------------------------
   // The calls, all of them made from the worker draining the queue and nowhere else
   // ---------------------------------------------------------------------------------------------
+
+  /**
+   * Whether Feishu is saying the card cannot hold what it was just sent, whichever limit it hit.
+   */
+  private static boolean full(final int code) {
+    return code == CODE_CARD_OVER_MAX_SIZE || code == CODE_TOO_MANY_ELEMENTS;
+  }
+
+  /**
+   * Finishes this card and carries on writing to a new one, replied onto the same message, so that
+   * a turn longer than a card can hold is shown across as many cards as it takes rather than
+   * stopping at the first limit it meets. Returns whether there is a card to carry on writing to.
+   *
+   * <p>Nothing is copied over. What the run had already said stays on the card above, which is
+   * where the reader was reading it, and this object goes on being the run's card with a different
+   * id behind it — the writers notice by {@link #generation()}, put their elements on the new card
+   * as they next write to each, and continue from where the card that filled up left off. Copying
+   * would be worse than useless: the elements are the reason the card filled up, so a card that
+   * arrived carrying them would be full before the run wrote a word.
+   *
+   * <p>The new card is made before the old one is closed. Closing first would leave a run whose
+   * tenant refused the second card with nowhere to write at all, and a card that is full is still a
+   * card a reader can see.
+   *
+   * <p>Made from the thread draining the queue and nowhere else, which is what lets it close a card
+   * — a queued operation — without queueing anything.
+   */
+  private boolean continueOnNewCard() {
+    final var handOver = continuation;
+    if (handOver == null) {
+      return false;
+    }
+    synchronized (this) {
+      if (!wroteSinceContinuation) {
+        // Nothing has fitted on this card, so nothing would fit on the next one either: what is
+        // being written is bigger than a card, and continuing would reply a card per attempt.
+        log.error("Card {} is full and so would every card after it be", cardId);
+        return false;
+      }
+    }
+    final var full = cardId;
+    final var continued = handOver.newCard(full);
+    if (Strings.isNullOrEmpty(continued)) {
+      log.error("Card {} is full and there is no card to continue it on", full);
+      return false;
+    }
+    // The card being left behind, finished: its stop button belongs to the card the run is now
+    // writing to, and a card left in streaming mode goes on saying it is being written to.
+    close();
+    synchronized (this) {
+      cardId = continued;
+      sent.forEach((elementId, content) -> continuedFrom.put(elementId, content.length()));
+      // A card's sequence is its own, and the new one has been written to once, by the reply that
+      // sent it.
+      sequence.set(2);
+      sent.clear();
+      footerElementId = FeishuCardElements.USAGE;
+      wroteSinceContinuation = false;
+      generation++;
+    }
+    log.info("Card {} was full, and run continues on card {}", full, continued);
+    return true;
+  }
+
+  /** Records that the card has taken something, which is what makes it worth continuing. */
+  private synchronized void wrote() {
+    wroteSinceContinuation = true;
+  }
+
+  /** One streaming write, remembered by what the card took rather than by what it was handed. */
+  private boolean streamed(final Stream write) {
+    final var showing =
+        write.continuing() ? continued(write.elementId(), write.content()) : write.content();
+    if (showing.isEmpty() && write.continuing()) {
+      // Everything there is to show is on the card this one continues: nothing to send, and
+      // nothing accepted here to move the cut on by.
+      return true;
+    }
+    // The images last, and here rather than where the content was written: a run renders its whole
+    // answer on every chunk, so uploading as it was written meant uploading on the run's thread,
+    // and once per chunk instead of once per call that carries it.
+    if (!stream(write.elementId(), reuploadImages(showing), true)) {
+      return false;
+    }
+    synchronized (this) {
+      sent.put(write.elementId(), write.content());
+    }
+    return true;
+  }
 
   @SneakyThrows
   private boolean stream(final String elementId, final String content, final boolean allowRetry) {
@@ -586,8 +781,14 @@ public class FeishuCard {
         reenableStreaming();
         return stream(elementId, content, false);
       }
+      // Not retried here, even once there is a card to write to: this element is not on that card
+      // yet, and putting it there is the writer's to do — see continueOnNewCard().
+      if (full(response.getCode())) {
+        continueOnNewCard();
+      }
       return false;
     }
+    wrote();
     return true;
   }
 
@@ -619,8 +820,12 @@ public class FeishuCard {
           seq,
           response.getCode(),
           response.getMsg());
+      if (full(response.getCode())) {
+        continueOnNewCard();
+      }
       return false;
     }
+    wrote();
     return true;
   }
 
@@ -651,8 +856,12 @@ public class FeishuCard {
           seq,
           response.getCode(),
           response.getMsg());
+      if (full(response.getCode())) {
+        continueOnNewCard();
+      }
       return false;
     }
+    wrote();
     return true;
   }
 
