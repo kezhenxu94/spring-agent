@@ -18,6 +18,13 @@ import org.springframework.messaging.MessageHandler;
  * plain {@link MessageHandler} on a direct channel rather than a flow, so the seam between the two
  * is one method.
  *
+ * <p><b>This is where the sender has to be somebody.</b> {@link MailObservations} reads every
+ * message and says who vouched for it, and this is what refuses to pass on a message nobody did.
+ * The two are separate so that reading a mailbox stays usable on its own — an application embedding
+ * this module may want an observation for every message that arrives, to log or count or warn on —
+ * while the rule about whose mail may reach the agent is applied in one place, on the path that
+ * leads to a run.
+ *
  * <p>Never throws. An exception here would travel back up the adapter's dispatch and, depending on
  * how the adapter is feeling about it, either be logged as an error event or leave the message
  * unflagged to be read again on the next pass — for ever, if whatever is wrong with the message is
@@ -51,7 +58,7 @@ public class MailObservationHandler implements MessageHandler {
       }
       final var uid = uids.getUID(mail);
       final var observation = observations.of(mail, uids.getUIDValidity(), uid);
-      if (observation.isEmpty()) {
+      if (observation.actor() == null) {
         // Why is said by SenderIdentity, which has the detail. This says that a message was here
         // at all, so that "nothing happened" can be told apart from "nothing arrived" — the two
         // look identical from outside and want entirely different things looked at.
@@ -61,12 +68,8 @@ public class MailObservationHandler implements MessageHandler {
       // At info because the whole point of the source is that this happened, and because it is one
       // line per message rather than per poll: a mailbox busy enough for this to be noise is one
       // busy enough that the situations it opens are the noise instead.
-      log.info(
-          "Reporting message {} in {} from {}",
-          uid,
-          properties.folder(),
-          observation.get().actor());
-      intakes.observe(observation.get());
+      log.info("Reporting message {} in {} from {}", uid, properties.folder(), observation.actor());
+      intakes.observe(observation);
     } catch (Exception e) {
       // Including the case the payload is lazy about: with the folder left open for the uid,
       // reading the body can still fail on a connection that dropped in between.

@@ -37,7 +37,7 @@ public final class SenderIdentity {
    */
   public static Optional<String> of(
       final Message message, final String authservId, final String header) {
-    final var from = fromAddress(message);
+    final var from = claimedFrom(message);
     if (from.isEmpty()) {
       log.info("Ignoring a message: it names no single sender in From");
       return Optional.empty();
@@ -124,11 +124,16 @@ public final class SenderIdentity {
   /**
    * The one address in {@code From}, lowercased, or empty.
    *
+   * <p>What the message claims and nothing more: {@code From} is a string its author typed, so this
+   * is evidence in the same way the body is evidence. It may be shown, logged and put in a payload;
+   * it may never become an observation's actor, a route, or part of a correlation key. Turning a
+   * claim into an identity is what {@link #of} is for.
+   *
    * <p>Empty where there is more than one. A {@code From} naming two people is legal, vanishingly
    * rare, and has no single answer to "who sent this" — and picking the first would let a message
    * name a trusted sender alongside whoever actually wrote it.
    */
-  private static Optional<String> fromAddress(final Message message) {
+  static Optional<String> claimedFrom(final Message message) {
     try {
       final var from = message.getFrom();
       if (from == null || from.length != 1 || !(from[0] instanceof InternetAddress internet)) {
