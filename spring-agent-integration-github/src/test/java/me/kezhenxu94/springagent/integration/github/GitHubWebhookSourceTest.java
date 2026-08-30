@@ -133,6 +133,10 @@ class GitHubWebhookSourceTest {
     assertThat(observation.correlationKey()).isEqualTo("github:acme/widgets#7");
     assertThat(observation.title()).isEqualTo("acme/widgets#7");
     assertThat(observation.summary()).contains("Disk is full").contains("octocat");
+    // The same name twice over, and not a duplication: the summary is evidence a reader wants
+    // first, while the actor is the fact admission is decided on. GitHub's HMAC has covered the
+    // body by the time this runs, which is what makes the second one worth anything.
+    assertThat(observation.actor()).isEqualTo("octocat");
     assertThat(observation.payloadJson()).contains("\"number\": 7");
     // A webhook knows nowhere to talk; the route comes from configuration.
     assertThat(observation.route().isEmpty()).isTrue();
@@ -300,6 +304,26 @@ class GitHubWebhookSourceTest {
     assertThat(observations).isPresent();
     assertThat(observations.orElseThrow().kind()).isEqualTo("issues");
     assertThat(observations.orElseThrow().correlationKey()).isEqualTo("github:issues");
+    // Including the actor. A number where a login was due is no login, and reporting "7" would
+    // hand whoever wrote the payload a name to aim a trusted-actors pattern at.
+    assertThat(observations.orElseThrow().actor()).isNull();
+  }
+
+  @Test
+  void reportsNoActorWhereThePayloadNamesNone() {
+    final var observations =
+        source.observation(
+            delivery(
+                "push",
+                "a",
+                """
+                {"repository": {"full_name": "acme/widgets"}}
+                """));
+
+    // Absent rather than blank or a placeholder. TrustedActors has to be able to tell "nobody
+    // vouched for a name" apart from a name it was given and did not like, since the first is a
+    // misconfiguration worth saying out loud and the second is the feature working.
+    assertThat(observations.orElseThrow().actor()).isNull();
   }
 
   @Test
