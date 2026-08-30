@@ -553,6 +553,7 @@ binary breaks at runtime while the JVM build passes.
 | `spring-agent-integration-github` | Reads GitHub webhook deliveries as observations |
 | `spring-agent-integration-gitlab` | The same for GitLab |
 | `spring-agent-integration-grafana` | The same for Grafana alert notifications |
+| `spring-agent-integration-email` | A watched IMAP mailbox as observations. Not a webhook: it dials out and holds the connection, so it carries its own `app.email.enabled` on top of `app.events.enabled`. Accepts only senders DKIM authenticated, and refuses to start without a `trusted-actors` list |
 | `spring-agent-integration-feishu` | Feishu/Lark chats and cards as an agent surface, plus its docs, sheets, base and wiki tools, and drive import/export |
 | `spring-agent-rag-milvus` | The knowledge base, and the only implementation of core's `KnowledgeBase` |
 | `spring-agent-app-web` | A browser surface over the runtime and nothing else; not published, it ships as an image |

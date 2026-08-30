@@ -1,0 +1,39 @@
+plugins {
+  id 'springagent.java-library-conventions'
+}
+
+description = 'Email integration for spring-agent-events: reads a watched IMAP mailbox as observations.'
+
+dependencies {
+  implementation project(':spring-agent-core')
+  // Everything that decides what becomes of an observation, and the per-source settings this reads
+  // to refuse to start without a trusted-actors list. This module only knows how to read a mailbox.
+  implementation project(':spring-agent-events')
+
+  implementation 'org.springframework.boot:spring-boot-starter'
+
+  // Holding an IMAP connection open is the part of this with the subtle failure modes — cancelling
+  // an IDLE that is blocked on a read, reconnecting without hammering the server, and marking a
+  // message handled exactly late enough that a crash costs a duplicate rather than a loss.
+  // ImapIdleChannelAdapter does all three, and does them better than the loop this module used to
+  // carry: it cancels IDLE on a timer so a connection that died without closing is noticed rather
+  // than waited on for ever, and it bookmarks with an IMAP user flag of its own instead of the
+  // \Seen flag, so the agent's progress through the mailbox is not the same bit a person toggles by
+  // reading it.
+  //
+  // Only the adapter and one handler are used. No IntegrationFlow, no DSL: this codebase has no
+  // other Spring Integration in it, and a maintainer should meet two types here rather than a
+  // programming model.
+  implementation 'org.springframework.boot:spring-boot-starter-integration'
+  implementation 'org.springframework.integration:spring-integration-mail'
+  // The Jakarta Mail implementation behind it. Not spring-boot-starter-mail, which exists to *send*
+  // and would publish a JavaMailSender this deployment has no use for — and the one thing this must
+  // never do is reply to an address a message chose for itself.
+  implementation 'org.eclipse.angus:jakarta.mail'
+
+  // HTML mail read by a real parser. Spring AI's own reader rather than jsoup directly: it is
+  // managed by the Spring AI BOM, so the jsoup underneath is a version somebody else keeps current
+  // — and taking it also lifts the stale 1.15.4 that arrives transitively under
+  // spring-ai-agent-utils' flexmark converter, which nothing was choosing on purpose.
+  implementation 'org.springframework.ai:spring-ai-jsoup-document-reader'
+}

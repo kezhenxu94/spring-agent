@@ -60,6 +60,23 @@ Other tasks:
 `-Pnative` is required for any native task: the GraalVM plugin is applied conditionally so that a
 plain `bootBuildImage` does not silently turn into a native build.
 
+`spring-agent-app/src/main/resources/application-local.yaml` holds the switches for running the
+server against real services. It is loaded by the `local` profile and every block in it is gated on
+a second profile of its own, so `local` alone still changes nothing — keep that shape when adding a
+block, or the next person to add one turns on yours by accident:
+
+```sh
+./gradlew :spring-agent-app:bootRun --args='--spring.profiles.active=local,integration-email'
+```
+
+It exists for the features whose settings have to agree across several blocks before anything will
+start — the mailbox source needs four, and refuses to start rather than run half-configured — so
+that turning one on is a profile rather than a shell history. It is committed, so nothing secret
+goes in it: credentials are environment variables and come from `.env`, and `application.yaml`
+remains the reference for what every property means. `LocalProfilesTest` binds it under each
+profile, because both ways this file can be wrong — a block that never activates, and one that
+activates when it should not — are silent.
+
 Java bytecode targets **21** (`options.release = 21`), built with a **GraalVM 25** toolchain because
 `native-image` ships with it. Do not use APIs newer than 21. Exact dependency versions live in
 `gradle/libs.versions.toml`, where several pins carry load-bearing comments explaining why the BOM
@@ -215,6 +232,46 @@ Payload text is written by whoever caused the event. Treat it as untrusted every
 evidence to be shown, never routing, and never instructions. In particular, do not assume the run has
 a chat: only an observation that knew its own chat gives it one, and `app.events.sources.<source>.route`
 is where a *failed* triage is reported, not where the agent talks.
+
+### A polled event source
+
+Not everything that reports observations is dialled *into*. `spring-agent-integration-email` is the
+other shape: it dials out, holds a connection, and reports what arrives on it. There is no SPI for
+this and there does not need to be one — a poller depends on core, builds an `Observation`, and
+calls `EventIntakes.observe`. Everything in the webhook section above about `correlationKey`,
+`deliveryId`, one-delivery-one-observation, the per-source prompt and the playbook applies here
+unchanged.
+
+What differs is four things:
+
+- **Taking the module is not free**, so it carries its own `app.<thing>.enabled`, defaulting to
+  false, *in addition to* `app.events.enabled`. A webhook source contributes a reader to an endpoint
+  somebody else already opened; a poller opens a connection and logs in somewhere.
+- **Do not write the connection loop.** Reconnection, backoff, and noticing a connection that died
+  without closing are where the subtle failures live, and a maintained client almost certainly has
+  them. The email module holds no loop of its own: `ImapIdleChannelAdapter` from
+  `spring-integration-mail` does the connecting, the reconnecting and the cancelling of a blocked
+  IDLE, and this repository contributes a `MessageHandler`.
+- **The delivery id has to come from the server, not from the payload.** For mail that is
+  `UIDVALIDITY:UID` and never the `Message-ID` header, which the sender writes: two messages may
+  claim the same one, and the second would be passed over for good by a claim that never expires.
+  Every polled source has this decision and it is the easiest one to get wrong, because the
+  payload's own identifier is right there and looks authoritative.
+- **The bookmark has to survive a restart.** The email module marks each message with an IMAP
+  keyword of its own after reporting it, in that order, so a crash costs a duplicate — which the
+  funnel collapses — rather than a lost message. A high-water mark held in memory loses everything
+  that arrives while the application is down.
+
+**Authenticating the sender is the poller's job, and it is not the same job as a signature.** A
+webhook source proves a delivery came from the vendor with an HMAC over the body, and then whatever
+the body says about who caused the event is authenticated too. A poller usually has nothing of the
+kind: an email `From` header is a string anybody can type. So `Observation.actor` — which
+`trusted-actors` is matched against — must be filled in only from something that actually
+establishes identity, and left empty otherwise. The email module reads a DKIM verdict out of the
+`Authentication-Results` header its own mail server wrote, takes only the topmost header bearing the
+configured `authserv-id`, and requires the signing domain to align with the `From` domain. Read
+`AuthenticationResults` before writing anything similar; the ordering rule in it is the whole
+defence, and searching the headers for the first that says `pass` would find the attacker's.
 
 ### Somewhere to send a notice
 

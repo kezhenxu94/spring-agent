@@ -907,6 +907,22 @@ app:
     #    playbook:
     #      query: How to handle GitHub issue, pull request and workflow events
     #      filter: docId in ['runbook-github']
+    #  email:
+    #    owner-user-id: ${EVENTS_OWNER_USER_ID:}
+    #    # Required for this source, unlike every other one, and the application refuses to start
+    #    # without it. Elsewhere an absent list means everybody and is merely complained about,
+    #    # because a deployment upgrading into the feature should not silently stop triaging a
+    #    # webhook it already had. Nobody upgrades into a mailbox: an address is reachable by
+    #    # whoever learns it, so everybody here means the internet.
+    #    #
+    #    # Matched against the sender's address, and only after DKIM verified it — see app.email
+    #    # below for what that rests on. Mind the metacharacter: '.+@example\.com' is the careful
+    #    # spelling, and '.+@example.com' would also admit '.+@exampleXcom'.
+    #    trusted-actors:
+    #      - '.+@example\.com'
+    #    playbook:
+    #      query: How to handle mail sent to the team address
+    #      filter: docId in ['runbook-email']
     #  grafana:
     #    # Sent by the contact point as a bearer token or as the basic-auth password.
     #    secret: ${EVENTS_GRAFANA_SECRET:}
@@ -921,6 +937,66 @@ app:
     #    # integration doing the watching. This entry is what decides whether anything is made of
     #    # what it sees, and the timings it is made with.
     #    owner-user-id: ${EVENTS_OWNER_USER_ID:}
+  # The watched mailbox: the one event source that is not a webhook, and the only one that dials
+  # out rather than being dialled. It holds an IMAP connection open and reads what arrives.
+  #
+  # Off by default like everything that opens a socket. Note that this is two switches, not one:
+  # app.events.enabled puts the machinery there that makes anything of what is read, and this puts
+  # the reader there. Neither does anything alone.
+  email:
+    enabled: ${EMAIL_ENABLED:false}
+    host: ${EMAIL_HOST:}
+    port: ${EMAIL_PORT:993}
+    username: ${EMAIL_USERNAME:}
+    password: ${EMAIL_PASSWORD:}
+    # Which folder to watch. INBOX unless the server sorts mail into somewhere else first.
+    folder: ${EMAIL_FOLDER:INBOX}
+
+    # WHAT MAKES A SENDER A SENDER, and the setting to understand before turning any of this on.
+    #
+    # A From header is a string its author typed. On its own it is no more an identity than the
+    # subject line, so an allow-list matched against it straight would be worse than no list at
+    # all — it would take the part of a message most obviously under an attacker's control and let
+    # it decide whether the agent reads the rest. What makes it an identity is a DKIM signature
+    # that verified for a domain the address belongs to.
+    #
+    # Nothing here verifies that signature. This reads the verdict out of the RFC 8601
+    # Authentication-Results header, taking only the topmost one bearing this name — headers
+    # accumulate downward, so the first one that is yours is the one your own last hop wrote, and
+    # anything below it the sender could have typed.
+    #
+    # Which means this is only worth what the following assumption is worth, and it is an
+    # assumption about your mail plumbing rather than about this application:
+    #
+    #   * the mailbox is fed by a server you control;
+    #   * that server verifies DKIM and records the result in this header;
+    #   * that server STRIPS inbound headers already bearing this authserv-id before adding its
+    #     own. RFC 8601 section 5 says it should. If yours does not, none of the above holds, and
+    #     any stranger can write a header claiming a pass.
+    #
+    # The application refuses to start if this is unset, because the alternative is authenticating
+    # nobody, dropping every message, and looking exactly like a mailbox nobody has written to.
+    authserv-id: ${EMAIL_AUTHSERV_ID:}
+
+    # The IMAP keyword marking a message already reported. A flag of the agent's own rather than
+    # \Seen, so that its progress through the mailbox is not the same bit a person toggles by
+    # opening a message — and so that somebody reading the mailbox cannot make it skip mail.
+    user-flag: ${EMAIL_USER_FLAG:spring-agent-seen}
+    # How many messages to take in one pass. What stops a first start against a mailbox with a
+    # thousand messages in it from becoming a thousand situations at once; the rest follow.
+    max-fetch-size: ${EMAIL_MAX_FETCH_SIZE:50}
+    # How much of a message is kept as evidence. A body has no useful upper bound, and the
+    # situation it lands in stores a bounded number of them.
+    max-body-length: ${EMAIL_MAX_BODY_LENGTH:8000}
+    # How often to cancel and reissue the idling read. IMAP IDLE blocks until the server speaks, so
+    # a connection that died without being closed looks exactly like a quiet mailbox — for ever.
+    # Under the twenty-nine minutes the RFC allows, and low enough that a dead connection is found
+    # within one interval rather than at the next delivery nobody gets.
+    cancel-idle-interval: ${EMAIL_CANCEL_IDLE_INTERVAL:PT9M}
+    # How long to wait before reconnecting after a failure. A server that is down stays down for
+    # minutes, and a tight loop against it is how a mailbox gets its account locked.
+    reconnect-delay: ${EMAIL_RECONNECT_DELAY:PT30S}
+
   feishu:
     # The frame of the card the bot replies with, as a Spring resource location: the card's
     # configuration — including the streaming summary the chat list shows while a run is working —

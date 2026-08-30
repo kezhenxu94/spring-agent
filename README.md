@@ -98,6 +98,14 @@ separation between the parts of what it is shown, so that framing raises the cos
 rather than making it impossible. Bounding who can send at all is the part that can actually be
 decided, and this is where it is decided.
 
+Mail is a source too, and the only one that dials out rather than being dialled: `app.email.*`
+watches an IMAP mailbox and reads what arrives as observations. It is the strictest of the sources
+and refuses to start unless told whose mail to accept, because unlike a signed webhook a mailbox is
+reachable by anybody who learns the address. A sender counts as somebody only where DKIM verified
+their domain, which this reads from the `Authentication-Results` header your own mail server writes
+— so it works only where the mailbox is fed by a server you control that verifies DKIM and strips
+inbound forgeries of that header. Nothing ever replies to a sender.
+
 What the agent should actually *do* about a source's events — what matters, what to check first, who
 to tell and where — is not a setting. It is a **playbook**: documents you write into the knowledge
 base and then edit like any other document, without a deployment. Each source names which of them
