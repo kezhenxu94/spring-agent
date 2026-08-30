@@ -9,6 +9,7 @@ import java.util.Set;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.config.Admins;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
@@ -184,6 +185,20 @@ class AgentToolsProviderScenarioTest {
 
     assertThat(BuiltInScenarios.SCHEDULED_TASK.offers(scheduledTaskTool)).isFalse();
     assertThat(BuiltInScenarios.CHAT.offers(scheduledTaskTool)).isTrue();
+  }
+
+  @Test
+  @DisplayName("a scheduled run is the only one offered the tools that act on the firing task")
+  void onlyAFiringActsOnItself() {
+    final var firingTool =
+        new FiringScheduledTaskTool(
+            mock(ScheduledTaskRepo.class),
+            mock(ScheduledTaskService.class),
+            mock(CoreMessages.class));
+
+    assertThat(BuiltInScenarios.SCHEDULED_TASK.offers(firingTool)).isTrue();
+    assertThat(BuiltInScenarios.CHAT.offers(firingTool)).isFalse();
+    assertThat(BuiltInScenarios.SUBAGENT.offers(firingTool)).isFalse();
   }
 
   private static AgentToolsProvider provider(final AnnotationConfigApplicationContext context) {

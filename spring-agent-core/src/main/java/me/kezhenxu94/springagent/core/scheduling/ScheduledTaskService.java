@@ -5,6 +5,7 @@ import jakarta.annotation.PostConstruct;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ScheduledFuture;
@@ -34,6 +35,13 @@ public class ScheduledTaskService {
   final ThreadPoolTaskScheduler taskScheduler;
 
   final ConcurrentMap<String, ScheduledFuture<?>> scheduledFutures = new ConcurrentHashMap<>();
+
+  /**
+   * The one-off tasks a firing of their own has given a next time, so that {@link
+   * TaskLifecycleListener} does not then mark them done. Entered by {@link #rearmFiringTask} and
+   * taken out by whichever of the two reads it first.
+   */
+  final Set<String> rearmed = ConcurrentHashMap.newKeySet();
 
   @PostConstruct
   public void init() {
@@ -105,9 +113,24 @@ public class ScheduledTaskService {
         task.scheduledAt());
   }
 
-  void fire(final ScheduledTask task) {
+  void fire(final ScheduledTask armed) {
     if (!springAgent.accepting()) {
-      log.info("Shutting down, skipping scheduled task fire: {}", task.id());
+      log.info("Shutting down, skipping scheduled task fire: {}", armed.id());
+      return;
+    }
+    // Read the task back rather than firing the copy this timer closed over. The count of firings
+    // is written by the firing before this one, and the status can have been set by anything since
+    // the timer was armed — a firing of a task somebody has already cancelled is the case that
+    // costs a run for nothing.
+    final var task = scheduledTaskRepo.findById(armed.id()).orElse(null);
+    if (task == null) {
+      log.info("Scheduled task {} no longer exists, dropping its schedule", armed.id());
+      dropSchedule(armed.id());
+      return;
+    }
+    if (task.status() != ScheduledTask.Status.ACTIVE) {
+      log.info("Scheduled task {} is {}, dropping its schedule", task.id(), task.status());
+      dropSchedule(task.id());
       return;
     }
     if (task.expiresAt() != null && task.expiresAt().isBefore(java.time.Instant.now())) {
@@ -116,6 +139,19 @@ public class ScheduledTaskService {
       unschedule(task.id());
       return;
     }
+    final var runsSoFar = task.runCount() == null ? 0 : task.runCount();
+    if (task.maxRuns() != null && runsSoFar >= task.maxRuns()) {
+      log.info(
+          "Scheduled task {} has had all {} of its runs, completing", task.id(), task.maxRuns());
+      scheduledTaskRepo.updateStatus(task.id(), ScheduledTask.Status.COMPLETED);
+      // dropSchedule rather than unschedule: unschedule cancels the run whose id is this task's,
+      // and nothing here is running.
+      dropSchedule(task.id());
+      return;
+    }
+    // Counted before the run rather than after it, so a firing that never comes back — a crash, a
+    // shutdown mid-run — still spends its turn. The alternative loses the bound entirely.
+    scheduledTaskRepo.incrementRunCount(task.id());
     log.info("Firing scheduled task {}: {}", task.id(), task.taskText());
 
     // A firing carries the conversation of the thread the task was created in, so each run reads
@@ -139,6 +175,34 @@ public class ScheduledTaskService {
             .userMessage(spec -> spec.text(firingPrompt(task)))
             .listener(new TaskLifecycleListener(task, task.cronExpression() != null))
             .build());
+  }
+
+  /**
+   * Ends the task whose firing is asking for it, once what it was waiting for has happened.
+   *
+   * <p>Deliberately not {@link #unschedule}: a firing is given the task's own id as its request id,
+   * so cancelling by that id would abort the very run that called this — the task would stop, and
+   * the run explaining why would never finish.
+   */
+  public void stopFiringTask(final String taskId) {
+    dropSchedule(taskId);
+    rearmed.remove(taskId);
+    scheduledTaskRepo.updateStatus(taskId, ScheduledTask.Status.COMPLETED);
+    log.info("Scheduled task {} stopped itself", taskId);
+  }
+
+  /**
+   * Gives a one-off task a next firing, in place of the one that is running now. The task is the
+   * same row it always was, which is what keeps a chain of follow-ups from becoming a pile of
+   * tasks: however many times a firing arranges the next one, there is still one task.
+   */
+  public void rearmFiringTask(final ScheduledTask saved) {
+    // Entered before the schedule so that a run finishing while this method is still working still
+    // finds the mark. TaskLifecycleListener would otherwise write the task off as done.
+    rearmed.add(saved.id());
+    dropSchedule(saved.id());
+    schedule(saved);
+    log.info("Scheduled task {} re-armed itself for {}", saved.id(), saved.scheduledAt());
   }
 
   /**
@@ -174,6 +238,11 @@ public class ScheduledTaskService {
       // A cron task keeps its schedule and its ACTIVE status whatever a single firing
       // did.
       if (isCron) {
+        return;
+      }
+      // A firing that gave this task a next time has already said what happens to it. Marking it
+      // done here would take away the schedule the run just asked for.
+      if (rearmed.remove(task.id())) {
         return;
       }
       final var terminalStatus =

@@ -80,6 +80,15 @@ public class ScheduledTask {
   // null and then read those rows' nulls into it.
   private Boolean background;
 
+  // How many firings the task gets in total, null for a task nothing counts, and how many it has
+  // had. The bound is enforced by ScheduledTaskService before each firing rather than by the model,
+  // so "ten times" is exactly ten however the firings are spaced and whatever a run decides to do.
+  //
+  // Boxed, and read as null-means-zero, for the same reason as `background` above: the schema is
+  // ddl-auto with no migrations, so these columns arrive on a table that already has rows.
+  private Integer maxRuns;
+  private Integer runCount;
+
   // STRING so the stored value matches what MongoDB writes, and so the column stays readable and
   // stable if the enum is ever reordered.
   //

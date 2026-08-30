@@ -14,4 +14,11 @@ public interface MongoScheduledTaskRepo
   @Query("{ '_id': ?0 }")
   @Update("{ '$set': { 'status': ?1 } }")
   void updateStatus(String id, ScheduledTask.Status status);
+
+  @Override
+  @Query("{ '_id': ?0 }")
+  // $inc treats a missing field as zero, so a task written before the field existed counts from
+  // one.
+  @Update("{ '$inc': { 'runCount': 1 } }")
+  void incrementRunCount(String id);
 }

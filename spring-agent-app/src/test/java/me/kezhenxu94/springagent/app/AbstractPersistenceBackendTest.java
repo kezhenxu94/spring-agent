@@ -166,6 +166,40 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
   }
 
   @Test
+  @DisplayName(
+      "incrementRunCount counts a firing from nothing, and leaves the rest of the task alone")
+  void incrementRunCountCountsFromNothing() {
+    final var id = owner() + "-task-2";
+    scheduledTaskRepo.save(
+        ScheduledTask.builder()
+            .id(id)
+            .userId(owner())
+            .taskText("remind me")
+            .cronExpression("0 */10 * * * *")
+            .maxRuns(10)
+            .status(ScheduledTask.Status.ACTIVE)
+            .build());
+
+    // From null rather than from zero: the column arrives on tasks written before it existed, and
+    // a backend that cannot count from nothing loses the bound on every one of them.
+    scheduledTaskRepo.incrementRunCount(id);
+    assertThat(scheduledTaskRepo.findById(id))
+        .get()
+        .extracting(ScheduledTask::runCount)
+        .isEqualTo(1);
+
+    scheduledTaskRepo.incrementRunCount(id);
+    final var reloaded = scheduledTaskRepo.findById(id).orElseThrow();
+    assertThat(reloaded.runCount()).isEqualTo(2);
+    assertThat(reloaded.maxRuns()).isEqualTo(10);
+    assertThat(reloaded.taskText()).isEqualTo("remind me");
+    assertThat(reloaded.status()).isEqualTo(ScheduledTask.Status.ACTIVE);
+    assertThat(scheduledTaskRepo.findByUserIdAndStatus(owner(), ScheduledTask.Status.ACTIVE))
+        .extracting(ScheduledTask::id)
+        .contains(id);
+  }
+
+  @Test
   @DisplayName("a pending question round trips, and answering it takes it out of the conversation")
   void pendingQuestionRoundTripsAndLeavesPending() {
     final var conversation = owner() + "-om_root";

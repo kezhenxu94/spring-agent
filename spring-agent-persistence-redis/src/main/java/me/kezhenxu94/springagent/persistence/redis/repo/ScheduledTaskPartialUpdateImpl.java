@@ -16,16 +16,32 @@ import org.springframework.data.redis.core.RedisKeyValueTemplate;
  * which is the half that a hand-rolled {@code HSET} would silently skip and that {@code
  * findByStatus} depends on.
  */
-public class ScheduledTaskStatusUpdateImpl implements ScheduledTaskStatusUpdate {
+public class ScheduledTaskPartialUpdateImpl implements ScheduledTaskPartialUpdate {
 
   private final RedisKeyValueTemplate template;
 
-  public ScheduledTaskStatusUpdateImpl(final RedisKeyValueTemplate template) {
+  public ScheduledTaskPartialUpdateImpl(final RedisKeyValueTemplate template) {
     this.template = template;
   }
 
   @Override
   public void updateStatus(final String id, final ScheduledTask.Status status) {
     template.update(PartialUpdate.newPartialUpdate(id, ScheduledTask.class).set("status", status));
+  }
+
+  /**
+   * Redis has no {@code $inc} reachable through this API, so the count is read back before it is
+   * written. Safe without a transaction because a task's run count has exactly one writer — the
+   * scheduler thread firing that task — and the write is still partial, so it cannot undo an edit
+   * made to the rest of the task meanwhile.
+   */
+  @Override
+  public void incrementRunCount(final String id) {
+    final var current = template.findById(id, ScheduledTask.class).orElse(null);
+    if (current == null) {
+      return;
+    }
+    final var next = current.runCount() == null ? 1 : current.runCount() + 1;
+    template.update(PartialUpdate.newPartialUpdate(id, ScheduledTask.class).set("runCount", next));
   }
 }
