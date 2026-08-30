@@ -23,7 +23,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
 
   public SpringAgentProperties {
-    // An application that configures no DashScope at all is a legitimate one — spring-agent-cli is
+    // An application that configures no DashScope at all is a legitimate one — spring-agent-app-cli
+    // is
     // the first — and leaving this null made the vision ChatClient fail the whole context with a
     // NullPointerException at startup rather than the image tools simply not working.
     dashscope = dashscope == null ? Dashscope.NONE : dashscope;

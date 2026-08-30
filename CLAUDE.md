@@ -24,9 +24,9 @@ Other tasks:
 
 ```sh
 ./gradlew :spring-agent-app:bootRun          # the server
-./gradlew :spring-agent-cli:bootRun          # the command line (stdin/tty wired for JLine)
+./gradlew :spring-agent-app-cli:bootRun      # the command line (stdin/tty wired for JLine)
 ./gradlew :spring-agent-app:bootBuildImage   # container image (Paketo buildpack, no Dockerfile)
-./gradlew :spring-agent-cli:nativeCompile -Pnative
+./gradlew :spring-agent-app-cli:nativeCompile -Pnative
 ```
 
 `-Pnative` is required for any native task: the GraalVM plugin is applied conditionally so that a plain `bootBuildImage` does not silently turn into a native build (see the comment in `spring-agent-app/build.gradle`).
@@ -53,7 +53,7 @@ spring-agent-integration-{github,gitlab,grafana}   webhook readers for spring-ag
 spring-agent-rag-milvus       the knowledge base; the only implementation of core's KnowledgeBase
 spring-agent-integration-feishu
 spring-agent-app               deployable server; depends on every optional module
-spring-agent-cli               laptop command line; jpa + local shell only
+spring-agent-app-cli           laptop command line; jpa + local shell only
 ```
 
 `spring-agent-core` must stay free of any persistence backend. This is enforced by `checkRuntimeClasspathIsolation` (wired into `check`, defined in `buildSrc/.../springagent.classpath-isolation.gradle`, configured at the bottom of `spring-agent-core/build.gradle`): it fails the build if Hibernate, the Mongo driver, Jedis, Milvus, fabric8 and friends reach core's runtime classpath. If that task fails, a dependency became `api` or grew a new transitive — fix the dependency, do not widen the allow-list.

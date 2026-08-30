@@ -197,9 +197,9 @@ Other things worth knowing before a real deployment:
 There is no prebuilt binary; build it from a clone.
 
 ```sh
-./gradlew :spring-agent-cli:bootRun                    # needs the same OPENAI_*/EMBEDDING_* variables
+./gradlew :spring-agent-app-cli:bootRun                    # needs the same OPENAI_*/EMBEDDING_* variables
 # or a native binary:
-./gradlew :spring-agent-cli:nativeCompile -Pnative
+./gradlew :spring-agent-app-cli:nativeCompile -Pnative
 ```
 
 Everything lives in SQLite under `~/.spring-agent`. Type a sentence to talk to the agent; anything

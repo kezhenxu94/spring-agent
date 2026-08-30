@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Configuration;
 /**
  * The condition with {@code app.persistence.type} left unset, which is the path neither application
  * in this repository takes: {@code spring-agent-app} defaults the property to {@code jpa} and
- * {@code spring-agent-cli} sets it outright, so both always hand the condition a value. An SDK
+ * {@code spring-agent-app-cli} sets it outright, so both always hand the condition a value. An SDK
  * consumer that depends on one backend module and configures nothing — the arrangement {@link
  * ConditionalOnPersistenceBackend} documents as the ordinary one — is the only caller that reaches
  * it, and so the only one that can be broken by it.
