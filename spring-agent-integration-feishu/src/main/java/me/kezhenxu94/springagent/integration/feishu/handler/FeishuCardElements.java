@@ -86,7 +86,11 @@ public class FeishuCardElements {
    */
   private static final String TOOL_CALL = "tool_call";
 
-  /** The run's task list. */
+  /**
+   * The run's task list: a panel like the ones above it, titled with how many tasks it holds and
+   * open while the run works. Replaced whole whenever the list changes, since the count is in the
+   * title, so it has no body id — nothing is ever streamed into it.
+   */
   static final String TODO = "todo";
 
   /** Where the knowledge the run was handed came from: the closed panel in the footer. */
@@ -143,7 +147,7 @@ public class FeishuCardElements {
 
   /**
    * The chat options a run is sent with, for the one of them the card reports: how hard the model
-   * was asked to think, shown beside the model in the usage footer.
+   * was asked to think, shown in the thinking panel's title.
    *
    * <p>The bean the autoconfiguration binds, rather than the same property read back through a
    * placeholder of our own: a setting that belongs to another module is then named once, where it
@@ -192,6 +196,18 @@ public class FeishuCardElements {
       throw new IllegalStateException("No '" + elementId + "' element in " + cardElements);
     }
     element.put("element_id", elementId);
+    // The thinking panel's title says how hard the model was asked to think, in the brackets the
+    // other panels put a count in: it is the fact about the thinking a reader wants before deciding
+    // whether to open it, and it belongs to the panel rather than to the spend line the run's cost
+    // is on. Done here, on the element itself, so that the panel says it whether it is being put on
+    // the card or replaced as the run ends — the two go through different callers.
+    if (REASONING.equals(elementId)) {
+      final var effort = reasoningEffort();
+      if (effort != null && !effort.isBlank()) {
+        final var title = (ObjectNode) element.path("header").path("title");
+        title.put("content", titleWithSuffix(title.path("content").asString(), effort));
+      }
+    }
     // The two panels and the spend row are the elements with something inside them that the run
     // writes to, so what is inside gets an id here as well, for the reason the element itself does:
     // a deployment restyling one has no say in what the run streams into.
@@ -298,27 +314,50 @@ public class FeishuCardElements {
   public String referencesPanel(final int count, final String sources) {
     final var element = element(REFERENCES);
     final var title = (ObjectNode) element.path("header").path("title");
-    title.put("content", titleWithCount(title.path("content").asText(), count));
+    title.put("content", titleWithSuffix(title.path("content").asString(), String.valueOf(count)));
     ((ObjectNode) element.path("elements").get(0)).put("content", sources == null ? "" : sources);
     return om.writeValueAsString(element);
   }
 
   /**
-   * The panel's title with the count on the end of it, inside whatever the template wrapped the
-   * title in.
+   * The task list as a whole element: how many tasks there are in the title, and the tasks
+   * themselves inside it.
+   *
+   * <p>Whole for the reason the knowledge-sources panel is — the count is in the title and a title
+   * is not something a stream can reach — and every time the list changes rather than once at the
+   * end, because the list is the run saying what it means to do next and a stale count on it would
+   * be worse than none. That the replacement reopens a panel a reader had folded is accepted: the
+   * chevron is theirs to set again, and Feishu tells us nothing about where they left it.
+   *
+   * <p>Open, unlike the others, because a task list is the one thing on a working card that says
+   * what is still to come; the template is what says so, and this only leaves it as it found it.
+   */
+  @SneakyThrows
+  public String todoPanel(final int count, final String items) {
+    final var element = element(TODO);
+    final var title = (ObjectNode) element.path("header").path("title");
+    title.put("content", titleWithSuffix(title.path("content").asString(), String.valueOf(count)));
+    ((ObjectNode) element.path("elements").get(0)).put("content", items == null ? "" : items);
+    return om.writeValueAsString(element);
+  }
+
+  /**
+   * A panel's title with {@code suffix} bracketed on the end of it, inside whatever the template
+   * wrapped the title in: how many sources or tasks it holds, or how hard the model was asked to
+   * think — every panel here says what is behind its chevron in the same shape.
    *
    * <p>Appending to the rendered title rather than composing one here is what keeps the styling in
    * {@code card-elements.json}, where a deployment can change it. But appending naively would put
-   * the count after the closing tag, so a grey title would be followed by a black count — hence
-   * going in before it. A template whose title carries no such wrapper simply gets the count on the
-   * end, which is the same thing for a title that never opened a tag.
+   * the brackets after the closing tag, so a grey title would be followed by a black count — hence
+   * going in before it. A template whose title carries no such wrapper simply gets the brackets on
+   * the end, which is the same thing for a title that never opened a tag.
    */
-  private static String titleWithCount(final String title, final int count) {
-    final var suffix = "(" + count + ")";
+  private static String titleWithSuffix(final String title, final String suffix) {
+    final var bracketed = "(" + suffix + ")";
     final var closing = title.lastIndexOf("</");
     return closing < 0
-        ? title + suffix
-        : title.substring(0, closing) + suffix + title.substring(closing);
+        ? title + bracketed
+        : title.substring(0, closing) + bracketed + title.substring(closing);
   }
 
   /**
@@ -411,7 +450,7 @@ public class FeishuCardElements {
    * because it is not in one — a chat completion reports the reasoning tokens it produced but never
    * the effort it was asked for, so the request side is the only side that knows.
    */
-  public String reasoningEffort() {
+  private String reasoningEffort() {
     return chatProperties == null ? null : chatProperties.getReasoningEffort();
   }
 
