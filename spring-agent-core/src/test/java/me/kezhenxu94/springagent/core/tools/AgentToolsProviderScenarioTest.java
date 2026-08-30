@@ -225,7 +225,8 @@ class AgentToolsProviderScenarioTest {
                     null,
                     null,
                     null),
-                Locale.ENGLISH)),
+                Locale.ENGLISH,
+                null)),
         mock(org.springframework.beans.factory.ObjectProvider.class));
   }
 }

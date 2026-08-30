@@ -231,7 +231,8 @@ class ToolInputFileRefsSecurityTest {
                 null,
                 null,
                 null),
-            Locale.ENGLISH),
+            Locale.ENGLISH,
+            null),
         new UserWorkspaceFactory(
             FileSystemStorageProperties.builder().location(storage.toString()).build()),
         messages(),
@@ -243,6 +244,6 @@ class ToolInputFileRefsSecurityTest {
     source.setBasename(CoreMessages.BASENAME);
     source.setDefaultEncoding("UTF-8");
     source.setFallbackToSystemLocale(false);
-    return new CoreMessages(source, new SpringAgentProperties(null, null, Locale.ENGLISH));
+    return new CoreMessages(source, new SpringAgentProperties(null, null, Locale.ENGLISH, null));
   }
 }

@@ -12,6 +12,7 @@ import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.core.dao.models.ObservedEvent;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
+import me.kezhenxu94.springagent.core.dao.models.SeenUpdate;
 import me.kezhenxu94.springagent.core.dao.models.Situation;
 import me.kezhenxu94.springagent.core.dao.repo.ChatSessionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
@@ -19,6 +20,7 @@ import me.kezhenxu94.springagent.core.dao.repo.ObservedEventRepo;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
+import me.kezhenxu94.springagent.core.dao.repo.SeenUpdateRepo;
 import me.kezhenxu94.springagent.core.dao.repo.SituationRepo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -46,6 +48,7 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
   @Autowired SituationRepo situationRepo;
   @Autowired ObservedEventRepo observedEventRepo;
   @Autowired ChatSessionRepo chatSessionRepo;
+  @Autowired SeenUpdateRepo seenUpdateRepo;
 
   /**
    * The owner is per-subclass so the two backends cannot collide on the ownerId+name constraint.
@@ -438,5 +441,29 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
 
     chatSessionRepo.deleteById(owner() + "-conv-1");
     assertThat(chatSessionRepo.findById(owner() + "-conv-1")).isEmpty();
+  }
+
+  @Test
+  @DisplayName("how much of the update notes a person has read survives a round trip")
+  void seenUpdateRoundTrips() {
+    final var now = Instant.now();
+    seenUpdateRepo.save(
+        SeenUpdate.builder().id(owner() + "-reader").version(3).updatedAt(now).build());
+
+    assertThat(seenUpdateRepo.findById(owner() + "-reader"))
+        .get()
+        .satisfies(it -> assertThat(it.version()).isEqualTo(3));
+
+    // Saving over it is how somebody is brought up to date, so the second write has to win rather
+    // than be rejected as a duplicate id.
+    seenUpdateRepo.save(
+        SeenUpdate.builder().id(owner() + "-reader").version(5).updatedAt(now).build());
+    assertThat(seenUpdateRepo.findById(owner() + "-reader"))
+        .get()
+        .satisfies(it -> assertThat(it.version()).isEqualTo(5));
+
+    // And somebody who has never been greeted has no row, which is what the greeting reads as
+    // "this person is new" rather than "this person is up to date".
+    assertThat(seenUpdateRepo.findById(owner() + "-stranger")).isEmpty();
   }
 }

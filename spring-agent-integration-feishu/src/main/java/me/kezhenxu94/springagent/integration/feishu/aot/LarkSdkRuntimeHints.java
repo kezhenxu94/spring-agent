@@ -115,6 +115,8 @@ import com.lark.oapi.service.im.v1.model.IsInChatChatMembersResp;
 import com.lark.oapi.service.im.v1.model.ListChatReq;
 import com.lark.oapi.service.im.v1.model.ListChatResp;
 import com.lark.oapi.service.im.v1.model.ListMessageResp;
+import com.lark.oapi.service.im.v1.model.P1P2PChatCreatedV1;
+import com.lark.oapi.service.im.v1.model.P2ChatAccessEventBotP2pChatEnteredV1;
 import com.lark.oapi.service.im.v1.model.P2MessageReadV1;
 import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1;
 import com.lark.oapi.service.im.v1.model.ReplyMessageReq;
@@ -280,6 +282,8 @@ public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
           ListMessageResp.class,
           P2MessageReadV1.class,
           P2MessageReceiveV1.class,
+          P1P2PChatCreatedV1.class,
+          P2ChatAccessEventBotP2pChatEnteredV1.class,
           ReplyMessageReq.class,
           ReplyMessageReqBody.class,
           CreateSpreadsheetReq.class,

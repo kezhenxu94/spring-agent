@@ -305,13 +305,14 @@ class SubagentToolsTest {
             null,
             null,
             null),
-        Locale.ENGLISH);
+        Locale.ENGLISH,
+        null);
   }
 
   private static CoreMessages messages(final Locale locale) {
     final var source = new ResourceBundleMessageSource();
     source.setBasename(CoreMessages.BASENAME);
     source.setDefaultEncoding("UTF-8");
-    return new CoreMessages(source, new SpringAgentProperties(null, null, locale));
+    return new CoreMessages(source, new SpringAgentProperties(null, null, locale, null));
   }
 }

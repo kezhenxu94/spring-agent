@@ -507,6 +507,13 @@ but knows nothing about who owns them, so a "your conversations" listing built o
 every user everyone else's. What was *said* in one stays in chat memory, read back by the same id —
 so there is one copy of a transcript rather than a second one for the UI to let drift.
 
+`SeenUpdateRepo` is the other one, for a surface that greets people. It holds one number per person:
+the version of the last release note they were shown, so a surface can work out what is new *for
+them* rather than announcing everything to everybody. Read and written by the person's id on that
+surface, and deliberately with no delete — forgetting would greet somebody a second time with what
+they have already read. `spring-agent-integration-feishu` is the surface that uses it today; the
+notes themselves are that module's, not core's.
+
 Redis needs Redis 8 or Redis Stack, and a server configured to *keep* what it is given
 (`maxmemory-policy noeviction`, plus AOF or RDB). These are the agent's own records, not a cache: a
 Redis provisioned the usual way for caching will evict a stored credential or an unfired scheduled

@@ -61,7 +61,8 @@ class FeishuChatAccessTest {
             new SpringAgentProperties(
                 null,
                 new SpringAgentProperties.Ai(admins, Map.of(), null, null, null, null, null, null),
-                Locale.ENGLISH)));
+                Locale.ENGLISH,
+                null)));
   }
 
   private static ToolContext context(final String userId, final String chatId) {

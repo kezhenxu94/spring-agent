@@ -128,7 +128,8 @@ class AgentToolsProviderAskTest {
             "You are an agent.",
             null,
             null),
-        Locale.ENGLISH);
+        Locale.ENGLISH,
+        null);
   }
 
   private static List<Question> questions() {

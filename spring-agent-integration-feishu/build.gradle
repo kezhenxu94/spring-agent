@@ -22,4 +22,9 @@ dependencies {
   implementation 'org.springframework.ai:spring-ai-starter-model-openai'
   implementation libs.spring.ai.agent.utils
   implementation libs.guava
+
+  // The update notes are markdown files with a YAML frontmatter block, and this is what reads that
+  // block. Boot pulls it in anyway for application.yaml, but a module that parses YAML of its own
+  // should say so rather than compile against somebody else's transitive.
+  implementation 'org.yaml:snakeyaml'
 }
