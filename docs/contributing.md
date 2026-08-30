@@ -179,6 +179,15 @@ Four things every implementation has to get right:
   situation about a pull request or twelve unrelated ones, and it is computed in code precisely so
   that a thousand alerts about one database collapse without an inference costing anything. Pick the
   most specific thing in the payload that names the *subject* rather than the event.
+- **Report an `actor` where you can vouch for one, and nothing where you cannot.** It is what
+  `app.events.sources.<source>.trusted-actors` is matched against, and the only thing bounding who
+  can put text in front of the agent. A name is reportable when the delivery's authentication covers
+  it — GitHub's HMAC covers the body its `sender.login` sits in, so that qualifies. A name you
+  merely read does not: reporting one turns the allow-list into a bypass, because the attacker then
+  writes both sides of the comparison. Leaving it null is the correct answer for anything
+  machine-generated, and the intake says so out loud the first time a list is configured for such a
+  source. Who caused an event is *also* still evidence and still belongs in `summary` — the two are
+  not the same thing said twice.
 
 `deliveryId` is the transport's idempotency key: stable across a redelivery, different for genuine
 news. Where the vendor mints one, use it. Where it does not, mint one that has both properties and

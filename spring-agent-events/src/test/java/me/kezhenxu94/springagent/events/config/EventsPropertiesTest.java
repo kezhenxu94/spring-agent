@@ -3,6 +3,7 @@ package me.kezhenxu94.springagent.events.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.observing.Route;
 import org.junit.jupiter.api.DisplayName;
@@ -231,6 +232,63 @@ class EventsPropertiesTest {
     assertThat(playbook.query()).isNull();
     assertThat(playbook.filter()).isNull();
     assertThat(playbook.hasQuery()).isFalse();
+  }
+
+  @Test
+  @DisplayName("a source states whose events it wants, and gets exactly that list back")
+  void shouldResolveTrustedActors() {
+    final var properties =
+        properties(
+            Map.of(
+                "github",
+                EventsProperties.Source.builder()
+                    .trustedActors(List.of("octocat", "dependabot\\[bot\\]"))
+                    .build()));
+
+    assertThat(properties.policyFor("github").orElseThrow().trustedActors())
+        .containsExactly("octocat", "dependabot\\[bot\\]");
+  }
+
+  @Test
+  @DisplayName("a source that names nobody is unfiltered, which is what an upgrade wants")
+  void shouldHaveNoTrustedActorsByDefault() {
+    // Null and not an empty list, because the two would have to mean opposite things and only one
+    // of them can be the default. Absent means everybody, so a deployment that upgrades into this
+    // feature carries on triaging; SituationSweeper is what says out loud that it is doing so.
+    final var properties =
+        properties(Map.of("github", EventsProperties.Source.builder().secret("s").build()));
+
+    assertThat(properties.policyFor("github").orElseThrow().trustedActors()).isNull();
+  }
+
+  @Test
+  @DisplayName("an empty list says nothing, exactly as a blank string does")
+  void shouldTreatAnEmptyTrustedActorsListAsAbsent() {
+    // The binder hands back an empty list for a key written with nothing under it, and pick() takes
+    // the first non-null — so without emptyToNull this would beat the layers beneath it and mean
+    // something quite different from leaving the setting out.
+    final var properties =
+        properties(
+            Map.of("github", EventsProperties.Source.builder().trustedActors(List.of()).build()));
+
+    assertThat(properties.policyFor("github").orElseThrow().trustedActors()).isNull();
+  }
+
+  @Test
+  @DisplayName("there is no top-level list for a source to inherit from")
+  void shouldNotShareTrustedActorsBetweenSources() {
+    // Deliberately unlike every timing around it. Patterns are written in one source's vocabulary —
+    // GitHub logins, email addresses — and a global list applied to a source it was never written
+    // for either admits the wrong people or, far more likely, silently admits nobody at all.
+    final var properties =
+        properties(
+            Map.of(
+                "github",
+                EventsProperties.Source.builder().trustedActors(List.of("octocat")).build(),
+                "grafana",
+                EventsProperties.Source.builder().secret("s").build()));
+
+    assertThat(properties.policyFor("grafana").orElseThrow().trustedActors()).isNull();
   }
 
   static EventsProperties properties(final Map<String, EventsProperties.Source> sources) {

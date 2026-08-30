@@ -841,11 +841,40 @@ app:
     # Every timing above can be overridden per source, since the sources genuinely differ: an alert
     # should settle for half a minute, while a chat wants long enough for the people in it to answer
     # each other first and a much longer cooldown afterwards.
+    #
+    # trusted-actors is the other setting worth deciding rather than inheriting, and it is the only
+    # thing here that bounds who can put text in front of the agent. Everything an event carries was
+    # written by whoever caused it, and the prompts say so at length — but a model has no privilege
+    # separation between the parts of what it is shown, so that framing raises the cost of an attack
+    # and is not a boundary. Who is able to send at all is the part that can be decided, and this is
+    # where it is.
+    #
+    # It is a list of regular expressions matched against an identity the source authenticated —
+    # sender.login inside a body GitHub's HMAC has already covered, say. Matched whole and without
+    # regard to case, so 'octocat' admits OctoCat and does not admit evil-octocat. Note that '.' is
+    # a regular-expression metacharacter: '.+@apache\.org' is the careful spelling, and
+    # '.+@apache.org' would also admit '.+@apacheXorg'.
+    #
+    # Leaving it out means everybody, which is what a deployment upgrading into this feature gets so
+    # that its triage does not stop overnight. Every source without one is named at startup, at
+    # error level, once. A private repository or an internal GitLab whose users are all trusted says
+    # so as ['.*'] — explicitly, rather than by anything read from the payload, since a repository
+    # flipped to public would otherwise open the door with no configuration change and no restart.
+    #
+    # A source that authenticates nobody cannot satisfy a list. Grafana is the case: alerts are
+    # machine-generated and carry no actor, so configuring trusted-actors for it rejects everything
+    # it sends, and it says so in the log the first time. Leave it out for a source you trust whole.
     sources: {}
     #  github:
     #    # The webhook secret configured on the GitHub side; verified as an HMAC over the raw body.
     #    secret: ${EVENTS_GITHUB_SECRET:}
     #    owner-user-id: ${EVENTS_OWNER_USER_ID:}
+    #    # Whose events this deployment is willing to be told about. Omit for a private repository
+    #    # where everybody who can open an issue is already trusted, or say ['.*'] to write that
+    #    # down; name them where the repository is public and anybody can.
+    #    trusted-actors:
+    #      - octocat
+    #      - dependabot\[bot\]
     #    # Where to report that a triage run for this source FAILED — nothing else, and in
     #    # particular not where the agent talks. A run that works reaches people the way its
     #    # playbook says to; this is for the case where there was no run, because it is a background

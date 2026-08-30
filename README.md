@@ -84,6 +84,20 @@ until somebody sets it up. Timings — how long to wait, how often at most, when
 — are per source, because an alert and a chat want very different manners. See the `app.events`
 block in `application.yaml`.
 
+Who a source will listen to is `app.events.sources.<name>.trusted-actors`: a list of regular
+expressions, matched whole and without regard to case against an identity the source authenticated —
+a GitHub login inside a body the signature already covered, say. Anything else is dropped before it
+is recorded, and the sender is told nothing, since an answer that distinguished the two would let
+anybody read the list back. Leave it out and everybody is heard, which is what an existing
+deployment keeps on upgrading; every source without one is named in the log at startup. A private
+repository or an internal GitLab where everybody is already trusted says so as `['.*']`.
+
+It is worth being plain about what this does and does not buy. Everything an event carries was
+written by whoever caused it, and the triage prompts say so at length — but a model has no privilege
+separation between the parts of what it is shown, so that framing raises the cost of an attack
+rather than making it impossible. Bounding who can send at all is the part that can actually be
+decided, and this is where it is decided.
+
 What the agent should actually *do* about a source's events — what matters, what to check first, who
 to tell and where — is not a setting. It is a **playbook**: documents you write into the knowledge
 base and then edit like any other document, without a deployment. Each source names which of them

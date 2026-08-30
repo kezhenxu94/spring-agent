@@ -30,6 +30,14 @@ import tools.jackson.databind.json.JsonMapper;
  * String.equals} would return at the first differing character and let a patient caller recover the
  * token one character at a time, which for a static token is a total compromise rather than the
  * per-delivery nuisance it would be for an HMAC.
+ *
+ * <p>That weakness carries through to the actor this reports, and the difference from GitHub is
+ * worth knowing before trusting it. GitHub's actor sits inside a body its HMAC covers, so forging
+ * one means forging the signature; GitLab's token says nothing about the body it arrived with, so
+ * whoever holds the token writes {@code user.username} as freely as the rest of the payload. A
+ * {@code trusted-actors} list here is therefore only ever as strong as the token's secrecy — it
+ * distinguishes the colleagues using a GitLab this deployment trusts, and it does not withstand
+ * somebody who has the token.
  */
 @Slf4j
 public class GitLabWebhookSource implements WebhookSource {
@@ -114,6 +122,9 @@ public class GitLabWebhookSource implements WebhookSource {
             .correlationKey(correlationKey(project, iid, kind))
             .title(title(project, iid, kind))
             .summary(summary(root, kind, project, iid))
+            // As authenticated as anything else GitLab sends, which is to say by a static token
+            // rather than by a signature — see the note on this class about what that is worth.
+            .actor(actor(root))
             .payloadJson(body)
             // Left to default to now, as with GitHub: the payload's created_at belongs to the issue
             // or merge request, not to this event about it.
@@ -226,11 +237,21 @@ public class GitLabWebhookSource implements WebhookSource {
     if (headline != null) {
       line.append(": ").append(headline);
     }
-    final var actor = firstText(text(root.path("user"), "username"), text(root, "user_username"));
+    final var actor = actor(root);
     if (actor != null) {
       line.append(" (by ").append(actor).append(')');
     }
     return line.toString();
+  }
+
+  /**
+   * Who GitLab says caused the event, for {@link Observation#actor()}.
+   *
+   * <p>Two spellings because GitLab has two: the object-oriented hooks nest it under {@code user},
+   * while push and tag hooks put {@code user_username} at the top level.
+   */
+  private static String actor(final JsonNode root) {
+    return firstText(text(root.path("user"), "username"), text(root, "user_username"));
   }
 
   /** {@code "Merge Request Hook"} as {@code "merge_request"}, so header and body agree. */

@@ -118,6 +118,30 @@ public class SituationSweeper {
                                 source,
                                 source)));
 
+    // And every configured source should say whose events it will accept. Complained about rather
+    // than refused, unlike the administrator check below: a deployment that upgrades into this
+    // feature has no such setting, and refusing to start would take its whole triage down over a
+    // configuration that was correct the day before. Loud, because the default is the permissive
+    // one and nothing else will ever mention it — see EventsProperties.Source#trustedActors for
+    // why shipping the strict default would be the worse mistake.
+    properties
+        .sources()
+        .keySet()
+        .forEach(
+            source ->
+                properties
+                    .policyFor(source)
+                    .filter(policy -> policy.trustedActors() == null)
+                    .ifPresent(
+                        policy ->
+                            log.error(
+                                "app.events.sources.{}.trusted-actors is not set, so anybody who"
+                                    + " can reach {} can put text in front of the agent. Name the"
+                                    + " actors this deployment expects, or ['.*'] to say that"
+                                    + " everybody who can reach it is already trusted.",
+                                source,
+                                source)));
+
     // And that identity must not be an administrator. A triage run assumes it and then reads text
     // whoever caused the event wrote, so an admin owner hands that author the admin tools —
     // WritePlaybook among them, which would let an issue body rewrite the playbook every later

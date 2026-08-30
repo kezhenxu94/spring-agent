@@ -394,7 +394,18 @@ for the other case, and core ships no implementation of it:
   (the name policy is configured under), a `deliveryId` (the transport's idempotency key, and the
   whole definition of what counts as a redelivery), a `kind`, a `correlationKey` (what groups
   observations into one situation, computed in code and never by the model), a title, a summary, the
-  raw payload, and a `Route`.
+  raw payload, a `Route`, and an `actor`.
+- **`Observation.actor`** — who caused it, as an identity the transport can *vouch for*, for the one
+  purpose of deciding whether to admit the observation at all. `spring-agent-events` matches it
+  against `app.events.sources.<name>.trusted-actors` and drops what does not match, before anything
+  is recorded. Authenticated is the whole of the word: GitHub names the actor inside a body its HMAC
+  has already covered, so it is one; an email `From:` header is a string anybody can type, so it is
+  not. A source with no better evidence than that must report nothing here rather than something
+  plausible — reporting a name lifted from an unauthenticated part of a payload turns the allow-list
+  into a bypass, since the attacker then writes both sides of the comparison. Leave it unset where
+  the transport cannot authenticate anyone, which is the honest answer for anything
+  machine-generated. It is never routing, never the identity a run assumes, and never rendered into
+  a prompt — who caused an event is *also* still evidence, and that half belongs in `summary`.
 - **`Route`** — where a run about this may talk, and in whose scope. An observation's route is its
   own and is never filled in from configuration: a chat message knows the chat it came from, an alert
   knows nowhere, and a run about the latter reaches people through what it was told to do rather than
@@ -422,7 +433,8 @@ eventIntakes.observe(
         .kind("incident.opened")
         .correlationKey("incident:" + incidentId)
         .title(incident.title())
-        .summary(oneLine(incident))
+        .summary(oneLine(incident))   // who caused it goes here, as evidence
+        .actor(authenticatedCaller)   // and here only if you can vouch for the name; else omit
         .payloadJson(raw)
         .route(Route.builder().chatId(chatId).chatType("group").build())
         .build());

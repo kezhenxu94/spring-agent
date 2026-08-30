@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.dao.models.Situation;
 import me.kezhenxu94.springagent.core.observing.Observation;
@@ -44,7 +45,14 @@ class SituationEventIntakeTest {
 
   private SituationEventIntake intake(final EventsProperties properties) {
     return new SituationEventIntake(
-        properties, repos.situations, repos.events, repos.claims, clock);
+        properties, trustedActors(properties), repos.situations, repos.events, repos.claims, clock);
+  }
+
+  /** The real thing rather than a stub, so these tests exercise the admission path as it ships. */
+  private static TrustedActors trustedActors(final EventsProperties properties) {
+    final var actors = new TrustedActors(properties);
+    actors.compileAll();
+    return actors;
   }
 
   private EventsProperties properties(final int maxEventsPerSituation) {
@@ -290,6 +298,53 @@ class SituationEventIntakeTest {
   }
 
   @Test
+  @DisplayName("an untrusted actor is dropped without a claim, so widening the list later works")
+  void shouldDropAnUntrustedActorWithoutClaiming() {
+    final var strict = trusted("octocat");
+    final var intake = intake(strict);
+
+    intake.observe(alert("d1").actor("mallory").build());
+
+    assertThat(repos.situations.all()).isEmpty();
+    // The same reasoning as the unconfigured source above, and it bites harder here. A claim never
+    // expires, so a refusal taken before the deployment fixed its list would outlive the mistake:
+    // the operator widens the list, the event arrives again, and it is passed over for good as
+    // something already seen.
+    assertThat(repos.claims.size()).isZero();
+
+    intake(trusted("octocat", "mallory")).observe(alert("d1").actor("mallory").build());
+
+    assertThat(repos.situations.all()).hasSize(1);
+  }
+
+  @Test
+  @DisplayName("a trusted actor is recorded as any other observation is")
+  void shouldRecordATrustedActor() {
+    intake(trusted("octocat")).observe(alert("d1").actor("octocat").build());
+
+    assertThat(repos.situations.all()).hasSize(1);
+    assertThat(repos.events.size()).isEqualTo(1);
+  }
+
+  /** The alert source, but willing to hear only from {@code actors}. */
+  private EventsProperties trusted(final String... actors) {
+    return EventsProperties.builder()
+        .enabled(true)
+        .maxEventsPerSituation(200)
+        .debounce(DEBOUNCE)
+        .maxDebounce(MAX_DEBOUNCE)
+        .cooldown(COOLDOWN)
+        .sources(
+            Map.of(
+                "grafana",
+                EventsProperties.Source.builder()
+                    .ownerUserId("ou_bot")
+                    .trustedActors(List.of(actors))
+                    .build()))
+        .build();
+  }
+
+  @Test
   @DisplayName("past the cap an observation is counted but not stored")
   void shouldStopStoringPastTheCap() {
     final var intake = intake(properties(3));
@@ -310,6 +365,7 @@ class SituationEventIntakeTest {
     final var exploding =
         new SituationEventIntake(
             properties,
+            trustedActors(properties),
             repos.situations,
             new me.kezhenxu94.springagent.core.dao.repo.ObservedEventRepo() {
               @Override
