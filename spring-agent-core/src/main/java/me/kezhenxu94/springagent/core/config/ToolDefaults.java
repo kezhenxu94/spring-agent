@@ -3,6 +3,7 @@ package me.kezhenxu94.springagent.core.config;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.Tools;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.Tools.AskUserQuestion;
+import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.Tools.Skills;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.Tools.Subagent;
 import org.springframework.boot.EnvironmentPostProcessor;
 import org.springframework.boot.SpringApplication;
@@ -47,6 +48,11 @@ public class ToolDefaults implements EnvironmentPostProcessor, Ordered {
 
   static final String SUBAGENT_WAIT_TIMEOUT = "app.ai.tools.subagent.wait-timeout";
 
+  static final String SKILLS_OFFER_AFTER_EXPENSIVE_RUNS =
+      "app.ai.tools.skills.offer-after-expensive-runs";
+
+  static final String SKILLS_TOOL_CALL_THRESHOLD = "app.ai.tools.skills.tool-call-threshold";
+
   static final String MAX_RESULT_CHARS = "app.ai.tools.max-result-chars";
 
   static final String MAX_INLINED_INPUT_CHARS = "app.ai.tools.max-inlined-input-chars";
@@ -73,6 +79,10 @@ public class ToolDefaults implements EnvironmentPostProcessor, Ordered {
                     Subagent.DEFAULT_WAIT_POLL.toString(),
                     SUBAGENT_WAIT_TIMEOUT,
                     Subagent.DEFAULT_WAIT_TIMEOUT.toString(),
+                    SKILLS_OFFER_AFTER_EXPENSIVE_RUNS,
+                    String.valueOf(Skills.DEFAULT_OFFER_AFTER_EXPENSIVE_RUNS),
+                    SKILLS_TOOL_CALL_THRESHOLD,
+                    String.valueOf(Skills.DEFAULT_TOOL_CALL_THRESHOLD),
                     MAX_RESULT_CHARS,
                     String.valueOf(Tools.DEFAULT_MAX_RESULT_CHARS),
                     MAX_INLINED_INPUT_CHARS,

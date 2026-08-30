@@ -15,6 +15,7 @@ import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.advisors.AutoSkillToolsAdvisor;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.config.Admins;
@@ -60,6 +61,9 @@ public class AgentToolsProvider {
 
   /** The memory prompt's file, without its locale suffix or extension. */
   public static final String MEMORY_PROMPT = "auto-memory";
+
+  /** The skill-offer prompt's file, without its locale suffix or extension. */
+  public static final String SKILL_PROMPT = "auto-skill";
 
   /** The knowledge-retrieval augmentation prompt's file, without its locale suffix or extension. */
   public static final String KNOWLEDGE_RETRIEVAL_PROMPT = "knowledge-retrieval";
@@ -217,7 +221,36 @@ public class AgentToolsProvider {
             .memorySystemPrompt(LocalizedPrompt.resource(MEMORY_PROMPT, appConfiguration.locale()))
             .build());
 
+    skillOffer(tools).ifPresent(advisors::add);
+
     return new AgentComposition(tools.toArray(), List.copyOf(advisors), agentTools.mcpTools());
+  }
+
+  /**
+   * The advisor that offers the user a skill once a turn has cost more tool calls than anyone would
+   * want to pay twice, or nothing where this run could not act on the offer anyway.
+   *
+   * <p>Two gates. The deployment has to want the offer made at all, and the run has to have been
+   * given the tools that write a skill — the scenario decides that, and the composed list is where
+   * its decision has already been made, so it is read rather than asked a second time. Offering a
+   * skill to a run that cannot write one costs the user a turn to find that out.
+   *
+   * <p>Core's own prompt in the workspace's language, for the reason the memory advisor above
+   * gives.
+   */
+  private Optional<Advisor> skillOffer(final List<Object> tools) {
+    final var skills = appConfiguration.ai().tools().skills();
+    if (!skills.offerAfterExpensiveRuns()) {
+      return Optional.empty();
+    }
+    if (tools.stream().noneMatch(SkillManagementTools.class::isInstance)) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        AutoSkillToolsAdvisor.builder()
+            .toolCallThreshold(skills.toolCallThreshold())
+            .skillSystemPrompt(LocalizedPrompt.resource(SKILL_PROMPT, appConfiguration.locale()))
+            .build());
   }
 
   /**

@@ -124,7 +124,7 @@ class AgentToolsProviderAskTest {
             Map.of(),
             null,
             null,
-            new Tools(new AskUserQuestion(true, null), null, null, null),
+            new Tools(new AskUserQuestion(true, null), null, null, null, null),
             "You are an agent.",
             null,
             null),

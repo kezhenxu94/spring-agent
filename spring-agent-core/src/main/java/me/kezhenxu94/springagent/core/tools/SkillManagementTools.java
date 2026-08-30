@@ -81,10 +81,13 @@ Usage:
 - When creating a new skill, write SKILL.md first. It must contain at minimum:
     ---
     name: <skill-name>
-    description: <one-line description>
+    description: <one-line description of what it does and when to use it>
     ---
     <instructions>
 - Additional files (scripts, references, etc.) can be written alongside SKILL.md.
+- Write into the user's own skills directory. A group's or the tenant's shared one is for a skill
+  the user has asked to share: everyone who shares that directory will have the skill loaded into
+  their own conversations, and nobody reviews it on the way in.
 """)
   public String writeSkillFile(
       @ToolParam(description = "Absolute path to the file inside a skill folder") String filePath,

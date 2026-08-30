@@ -521,6 +521,33 @@ app:
         # for it. Matched to spring.ai.openai.chat.timeout above, since a subagent is a chat turn
         # and cannot sensibly outlast one.
         wait-timeout: ${SUBAGENT_WAIT_TIMEOUT:30m}
+      skills:
+        # Whether a turn that has cost a great many tool calls ends with the agent offering to keep
+        # what it worked out as a skill.
+        #
+        # A skill is a folder of instructions the agent loads by name — SkillManagementTools writes
+        # them, the Skill tool runs them, and the index is rebuilt per request, so one written today
+        # is invocable on the next run. What was missing was anything that noticed a run worth
+        # keeping: a question that took forty tool calls costs forty again the next time somebody
+        # asks it.
+        #
+        # This is a nudge and nothing more. Past the threshold below, a paragraph is appended to the
+        # system message asking the agent to finish its answer and then offer, in one sentence, to
+        # save the method. Nothing is written unless the user says yes on the turn after — and where
+        # the run was not given the skill tools in the first place, no offer is made at all.
+        #
+        # Turning it off is for a deployment that would rather its skills were written by hand.
+        # Every skill kept is listed to the model in every conversation that follows, so they are
+        # not free once they exist.
+        offer-after-expensive-runs: ${SKILLS_OFFER_AFTER_EXPENSIVE_RUNS:true}
+        # How many tool calls one turn has to make before that offer is asked for.
+        #
+        # Counted per turn rather than per conversation, since what a skill would save is the cost
+        # of answering this question again. Twenty is well past what an ordinary answer takes and
+        # short of where a person starts to notice a run is slow, which is the window where the
+        # offer is both warranted and still welcome. Lower it and the agent starts offering to
+        # remember things nobody will ask twice.
+        tool-call-threshold: ${SKILLS_TOOL_CALL_THRESHOLD:20}
       # How long any tool's result may be before it is written to the user's workspace and the
       # model handed the path instead of the text — see LargeResponseInterceptor, which applies
       # this to every tool alike, the shell included. Nothing is lost: the model reads the file

@@ -300,6 +300,7 @@ class SubagentToolsTest {
                     Duration.ofMillis(100),
                     Duration.ofMillis(300)),
                 null,
+                null,
                 null),
             null,
             null,

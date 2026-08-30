@@ -52,7 +52,10 @@ another's files. The same line runs through everything else:
   recipient never sees the URL or headers. Servers the deployment configures for everybody under
   `spring.ai.mcp.client.*` are listed alongside them and belong to nobody.
 - **Skills** are folders with a `SKILL.md` in the user's own skills directory. The agent writes and
-  deletes them on request; paths outside that directory are refused.
+  deletes them on request; paths outside that directory are refused. After a turn that has cost a
+  great many tool calls it also offers one unprompted — it finishes the answer, then asks whether to
+  keep the method it worked out, and writes the skill only if you say yes. Turn the offer off with
+  `SKILLS_OFFER_AFTER_EXPENSIVE_RUNS=false`, or move the bar with `SKILLS_TOOL_CALL_THRESHOLD`.
 - **Memories** are files in the user's memories directory, written and read back by the agent
   itself.
 - **Credentials** are per-user: a Kubernetes Secret mounted into that user's sandbox, or an
