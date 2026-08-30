@@ -30,6 +30,7 @@ conversation:
 | remember something about you | the memory tools | notes it reads back before replying |
 | hold a token for later | `SetCredential` | the secret in its sandbox, never in a prompt |
 | do this every Monday | `CreateScheduledTask` | a run that fires on its own |
+| every 10 minutes until it is fixed, or 10 times | `CreateScheduledTask` with `maxRuns`, `StopThisScheduledTask` | a task that counts its own runs, and ends itself when what it watched for happens |
 | take on something long | `StartSubagent` | a second run doing the work, reporting back |
 | write this down for the team | `IndexKnowledge` | an answer that consults it from then on |
 

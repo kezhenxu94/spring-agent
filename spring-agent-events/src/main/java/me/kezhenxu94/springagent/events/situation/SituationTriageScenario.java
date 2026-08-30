@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.events.situation;
 
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
+import me.kezhenxu94.springagent.core.tools.FiringScheduledTaskTool;
 import me.kezhenxu94.springagent.core.tools.ScheduledTaskTool;
 
 /**
@@ -95,6 +96,8 @@ public final class SituationTriageScenario implements AgentScenario {
    */
   @Override
   public boolean offers(final Object tool) {
-    return !(tool instanceof ScheduledTaskTool);
+    // The firing tools go with it: a triage run is not a firing of any task, so they would find
+    // none and refuse.
+    return !(tool instanceof ScheduledTaskTool) && !(tool instanceof FiringScheduledTaskTool);
   }
 }

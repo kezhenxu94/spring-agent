@@ -219,9 +219,9 @@ public interface AgentScenario {
 
 | Scenario | What it is | What it withholds |
 | --- | --- | --- |
-| `CHAT` | Somebody is talking to the agent | Nothing |
-| `SCHEDULED_TASK` | A task firing on its own schedule | `ScheduledTaskTool` — a run that fires on a schedule must not be able to schedule more, which is how one task becomes a growing pile |
-| `SUBAGENT` | A run another run asked for, whose answer is a tool result | `SubagentTools` and `ScheduledTaskTool`; and no conversation memory in either direction, since a subagent is given its task in full and must not write turns nobody said into the history |
+| `CHAT` | Somebody is talking to the agent | `FiringScheduledTaskTool` — nothing is firing, so there is no task for it to act on |
+| `SCHEDULED_TASK` | A task firing on its own schedule | `ScheduledTaskTool` — a run that fires on a schedule must not be able to schedule more, which is how one task becomes a growing pile. It keeps `FiringScheduledTaskTool`, which acts only on the task that is firing: it can end that task or give it its next time, so a run can honour "until X happens" and "remind me again later" without the number of tasks ever growing |
+| `SUBAGENT` | A run another run asked for, whose answer is a tool result | `SubagentTools`, `ScheduledTaskTool` and `FiringScheduledTaskTool`; and no conversation memory in either direction, since a subagent is given its task in full and must not write turns nobody said into the history |
 
 `spring-agent-events` adds `SituationTriageScenario` for a run woken by something the agent
 observed rather than by a person.
@@ -343,7 +343,8 @@ Roughly: filesystem (`Read`, `Write`, `Edit`), `TodoWrite`, memories (`MemoryVie
 `WriteSkillFile`, `DeleteSkill`, `DeleteSkillFile`), MCP registration (`AddMcpServer`,
 `ListMcpServers`, `RemoveMcpServer`, `ShareMcpServer`, `UnshareMcpServer`), credentials
 (`SetCredential`, `ListCredentials`, `DeleteCredential`), scheduling (`CreateScheduledTask`,
-`ListScheduledTasks`, `UpdateScheduledTask`, `CancelScheduledTask`), subagents (`StartSubagent`,
+`ListScheduledTasks`, `UpdateScheduledTask`, `CancelScheduledTask`, plus `StopThisScheduledTask` and
+`RescheduleThisScheduledTask` offered only to a firing, for the task it is a firing of), subagents (`StartSubagent`,
 `WaitForSubagent`, `CancelSubagent`), publishing (`PublishFile`, `UpdatePublishedFile`,
 `RenewPublishedFile`, `UnpublishFile`), knowledge (`SearchKnowledge`, `IndexKnowledge`,
 `ListKnowledgeBase`, `UpdateKnowledgeScope`, `DeleteKnowledge`, plus `ListOwnerKnowledgeBase` and

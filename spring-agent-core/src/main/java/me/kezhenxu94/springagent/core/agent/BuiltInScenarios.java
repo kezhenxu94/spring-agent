@@ -1,16 +1,25 @@
 package me.kezhenxu94.springagent.core.agent;
 
+import me.kezhenxu94.springagent.core.tools.FiringScheduledTaskTool;
 import me.kezhenxu94.springagent.core.tools.ScheduledTaskTool;
 import me.kezhenxu94.springagent.core.tools.SubagentTools;
 
 /** The scenarios this runtime ships with. */
 public enum BuiltInScenarios implements AgentScenario {
-  CHAT,
+  CHAT {
+    @Override
+    public boolean offers(final Object tool) {
+      // Nothing is firing, so there is no task for the firing tools to act on. They would refuse if
+      // called; keeping them out spends no tokens describing tools that can only say no.
+      return !(tool instanceof FiringScheduledTaskTool);
+    }
+  },
   SCHEDULED_TASK {
     @Override
     public boolean offers(final Object tool) {
       // A run that fires on a schedule must not be able to schedule more work, which is how one
-      // task becomes a growing pile of them.
+      // task becomes a growing pile of them. What it may do is end or re-arm the one task it is a
+      // firing of, which is FiringScheduledTaskTool and is offered.
       return !(tool instanceof ScheduledTaskTool);
     }
   },
@@ -38,7 +47,9 @@ public enum BuiltInScenarios implements AgentScenario {
       // reason it is out of a scheduled task — work left behind outlives the turn that asked for
       // it,
       // and here there is nobody to answer for it.
-      return !(tool instanceof SubagentTools) && !(tool instanceof ScheduledTaskTool);
+      return !(tool instanceof SubagentTools)
+          && !(tool instanceof ScheduledTaskTool)
+          && !(tool instanceof FiringScheduledTaskTool);
     }
   }
 }

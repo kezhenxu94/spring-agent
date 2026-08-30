@@ -11,7 +11,7 @@ import org.springframework.data.redis.core.RedisKeyValueTemplate;
  *
  * <p>A {@link PartialUpdate} rather than a read-modify-write keeps the {@code status} secondary
  * index correct, which {@code findByConversationIdAndStatus} depends on — see {@link
- * ScheduledTaskStatusUpdateImpl} for the longer version.
+ * ScheduledTaskPartialUpdateImpl} for the longer version.
  */
 public class PendingQuestionStatusUpdateImpl implements PendingQuestionStatusUpdate {
 

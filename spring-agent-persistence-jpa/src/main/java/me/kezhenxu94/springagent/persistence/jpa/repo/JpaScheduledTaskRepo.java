@@ -18,4 +18,11 @@ public interface JpaScheduledTaskRepo
   @Transactional
   @Query("update ScheduledTask t set t.status = :status where t.id = :id")
   void updateStatus(String id, ScheduledTask.Status status);
+
+  @Override
+  @Modifying(clearAutomatically = true)
+  @Transactional
+  // coalesce because the column arrives null on every task that predates it, and null + 1 is null.
+  @Query("update ScheduledTask t set t.runCount = coalesce(t.runCount, 0) + 1 where t.id = :id")
+  void incrementRunCount(String id);
 }

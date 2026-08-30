@@ -27,4 +27,11 @@ public interface ScheduledTaskRepo {
    * hold a stale copy and must not write the rest of its fields back over a concurrent update.
    */
   void updateStatus(String id, ScheduledTask.Status status);
+
+  /**
+   * Counts one firing of the task, for the sake of {@code maxRuns}. Partial for the same reason
+   * {@link #updateStatus} is: the caller is the scheduler, holding the copy of the task it armed a
+   * timer with, and writing that back would undo whatever has been edited since.
+   */
+  void incrementRunCount(String id);
 }

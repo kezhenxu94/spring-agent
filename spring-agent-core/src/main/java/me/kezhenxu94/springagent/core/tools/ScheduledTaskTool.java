@@ -38,6 +38,8 @@ is midnight on weekdays. For a one-off, give scheduledAt as an ISO-8601 timestam
 with an offset, such as "2025-01-15T10:00:00+08:00".
 Resolve anything relative ("tomorrow morning") with CurrentDateTime first, since the \
 times here are absolute. Give either cronExpression or scheduledAt, never both.
+For a task that runs a set number of times ("remind me every 10 minutes, 10 times"), give maxRuns \
+rather than working out when it would stop: the scheduler keeps the count, so it is exact.
 """)
   public String createScheduledTask(
       @ToolParam(description = "The prompt to send to the agent when the task fires")
@@ -74,6 +76,12 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
                       + " created in, as a normal run does.",
               required = false)
           final Boolean background,
+      @ToolParam(
+              description =
+                  "How many times the task fires in total, after which it stops by itself; null for"
+                      + " a task that fires until it expires or is cancelled",
+              required = false)
+          final Integer maxRuns,
       final ToolContext context) {
 
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
@@ -112,6 +120,12 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
       resolvedExpiresAt = parsed;
     }
 
+    if (maxRuns != null && maxRuns < 1) {
+      return "Error: maxRuns must be at least 1, or null for a task nothing counts.";
+    }
+
+    final var runsNote = maxRuns == null ? "" : " It fires " + maxRuns + " times in all.";
+
     final var expiryNote =
         resolvedExpiresAt == null
             ? "It never expires."
@@ -144,6 +158,7 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
                   .cronExpression(validated)
                   .expiresAt(resolvedExpiresAt)
                   .background(background)
+                  .maxRuns(maxRuns)
                   .status(ScheduledTask.Status.ACTIVE)
                   .build());
       scheduledTaskService.schedule(task);
@@ -159,6 +174,7 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
           + task.id()
           + ". "
           + expiryNote
+          + runsNote
           + overrideNote
           + backgroundNote
           + " Change it later with UpdateScheduledTask and that id, or cancel it with"
@@ -188,6 +204,7 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
                   .scheduledAt(fireAt)
                   .expiresAt(resolvedExpiresAt)
                   .background(background)
+                  .maxRuns(maxRuns)
                   .status(ScheduledTask.Status.ACTIVE)
                   .build());
       scheduledTaskService.schedule(task);
@@ -199,6 +216,7 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
           + task.id()
           + ". "
           + expiryNote
+          + runsNote
           + backgroundNote
           + " Change it later with UpdateScheduledTask and that id, or cancel it with"
           + " CancelScheduledTask.";
@@ -224,6 +242,12 @@ times here are absolute. Give either cronExpression or scheduledAt, never both.
                     + t.taskText()
                     + " | schedule="
                     + (t.cronExpression() != null ? t.cronExpression() : t.scheduledAt())
+                    + (t.maxRuns() == null
+                        ? ""
+                        : " | runs="
+                            + (t.runCount() == null ? 0 : t.runCount())
+                            + "/"
+                            + t.maxRuns())
                     + (Boolean.TRUE.equals(t.background()) ? " | background" : ""))
         .collect(Collectors.joining("\n"));
   }
