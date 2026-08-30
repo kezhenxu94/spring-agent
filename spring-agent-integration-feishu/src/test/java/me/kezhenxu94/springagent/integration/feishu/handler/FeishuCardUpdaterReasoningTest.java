@@ -32,6 +32,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springaicommunity.agent.tools.TodoWriteTool.Todos;
 import org.springaicommunity.agent.tools.TodoWriteTool.Todos.Status;
 import org.springaicommunity.agent.tools.TodoWriteTool.Todos.TodoItem;
+import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.client.RestTemplate;
 import tools.jackson.databind.json.JsonMapper;
@@ -116,6 +117,39 @@ class FeishuCardUpdaterReasoningTest {
         .contains("\"expanded\":false")
         .contains("Thinking about it.")
         .contains("\"element_id\":\"reasoning_body\"");
+  }
+
+  @Test
+  @DisplayName("the title says how hard the model was asked to think")
+  void theTitleCarriesTheEffort() throws Exception {
+    // On the panel rather than on the spend line: it is a fact about the thinking, and it is what
+    // tells a reader what is behind the chevron before they open it — the same job the count does
+    // on the knowledge-sources panel.
+    final var updater =
+        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages, "xhigh"), null);
+
+    updater.onReasoning("Thinking about it.");
+
+    // Inside the colour the title is set in, not after it, or a grey title would be followed by a
+    // black bracket.
+    assertThat(insertOf("reasoning"))
+        .contains("<font color='grey'>" + messages.get("card-reasoning") + "(xhigh)</font>");
+
+    // And still there when the pane is folded away, which rewrites the element whole.
+    updater.onFinished(AgentOutcome.COMPLETED);
+    assertThat(replacements().get(0)).contains(messages.get("card-reasoning") + "(xhigh)");
+  }
+
+  @Test
+  @DisplayName("a deployment that states no effort gets a title with no empty brackets on it")
+  void noEffortNoBrackets() throws Exception {
+    final var updater =
+        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), null);
+
+    updater.onReasoning("Thinking about it.");
+
+    assertThat(insertOf("reasoning"))
+        .contains("<font color='grey'>" + messages.get("card-reasoning") + "</font>");
   }
 
   @Test
@@ -273,7 +307,23 @@ class FeishuCardUpdaterReasoningTest {
 
   /** The real elements: what the card gains as the run first has something to put in them. */
   private static FeishuCardElements cardElements(final FeishuMessages messages) {
+    return cardElements(messages, null);
+  }
+
+  /** The same, for a deployment that states how hard the model should think. */
+  private static FeishuCardElements cardElements(
+      final FeishuMessages messages, final String effort) {
+    final OpenAiChatProperties chatProperties;
+    if (effort == null) {
+      chatProperties = null;
+    } else {
+      chatProperties = new OpenAiChatProperties();
+      chatProperties.setReasoningEffort(effort);
+    }
     return new FeishuCardElements(
-        new JsonMapper(), messages, new ClassPathResource("feishu/card-elements.json"), null);
+        new JsonMapper(),
+        messages,
+        new ClassPathResource("feishu/card-elements.json"),
+        chatProperties);
   }
 }

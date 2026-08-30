@@ -128,8 +128,8 @@ class FeishuCardUpdaterUsageTest {
   }
 
   @Test
-  @DisplayName("the effort the run was sent with is a segment of its own, after the models")
-  void theEffortFollowsTheModel() throws Exception {
+  @DisplayName("the effort is not on the spend line — it belongs to the thinking panel's title")
+  void theEffortIsNotOnTheSpendLine() throws Exception {
     updater =
         FeishuCardUpdater.forRun(
             card,
@@ -146,13 +146,17 @@ class FeishuCardUpdaterUsageTest {
     updater.onModel("the-model");
     updater.onUsage("another-model", new DefaultUsage(1_000, 2_000, 3_000));
 
-    // Once after the models, not per model: the same effort was sent on every call of the turn.
-    assertThat(lastFooter()).contains("the-model + another-model · xhigh · ↑1000 ↓2000");
+    // The line names what answered and what that cost, and nothing about how it was asked to
+    // think: that is a fact about the thinking, and it is said on the panel holding the thinking
+    // — see FeishuCardUpdaterReasoningTest. A footer that said it too would say it twice.
+    assertThat(lastFooter())
+        .contains("the-model + another-model · ↑1000 ↓2000")
+        .doesNotContain("xhigh");
   }
 
   @Test
-  @DisplayName("a deployment that states no effort names the model alone, not empty brackets")
-  void noEffortConfigured() throws Exception {
+  @DisplayName("a run that has spent nothing yet names the model alone")
+  void onlyTheModelBeforeItSpends() throws Exception {
     updater.onModel("the-model");
 
     assertThat(lastFooter()).isEqualTo("<font color='grey'>the-model</font>");

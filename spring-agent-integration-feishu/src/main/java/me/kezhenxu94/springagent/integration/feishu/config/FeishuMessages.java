@@ -54,6 +54,7 @@ public class FeishuMessages {
         .replace("{stop}", jsonEscaped(get("card-stop")))
         .replace("{reasoning}", jsonEscaped(get("card-reasoning")))
         .replace("{references}", jsonEscaped(get("card-references")))
+        .replace("{todo}", jsonEscaped(get("card-todo")))
         .replace("{conversationHint}", jsonEscaped(get("card-conversation-hint")));
   }
 

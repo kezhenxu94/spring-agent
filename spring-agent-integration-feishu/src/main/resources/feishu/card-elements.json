@@ -72,16 +72,33 @@
     "tell a reader nothing about which of them to open. It is not an element of the card — the run builds one",
     "per call and nests them here — so unlike everything else in this file it is never inserted by",
     "id and carries none.",
-    "'todo' is the run's task list, under the answer. 'references' is where the knowledge the run",
+    "'todo' is the run's task list, under the answer, in a panel of the same kind as the three",
+    "above it — the card wants one sort of pane, not four — with the number of tasks in its title",
+    "and, unlike them, born open: a task list is what the run means to do next, which is the one",
+    "thing on the card a reader watching a long run keeps coming back to, and folding it away by",
+    "default would hide the only forward-looking thing there. The list changes as the run works,",
+    "and a title carrying a count cannot be streamed into, so the panel is replaced whole each",
+    "time — which resets the chevron. A reader who folds it will see it open again on the next",
+    "write, and that is accepted rather than worked around: the alternative is a count that goes",
+    "stale, and Feishu reports a panel's chevron to nobody, so there is nothing to read back.",
+    "'references' is where the knowledge the run",
     "was given came from, and 'usage' is what the turn has cost, both in the card's footer with",
     "the sources above the spend. They are worth showing because retrieval happens",
     "without the model asking for it and leaves no tool call behind: without them a reader cannot",
     "tell that anything was consulted, let alone what. A turn that retrieved nothing adds no",
     "element rather than an empty one.",
-    "Both panel titles are notation-sized, the card's smallest: a closed panel is a line offering",
-    "something rather than saying it, and at body size the chevron line competes with the answer",
-    "it sits beside. The size lives on the title's markdown rather than on the panel, because it is",
-    "the header text being sized and not what the panel holds — the contents carry their own.",
+    "Every panel title here is notation-sized and grey, as a subagent's is: a closed panel is a",
+    "line offering something rather than saying it, and at body size and in black the chevron line",
+    "competes with the answer it sits beside. Four panels drawn four ways read as four different",
+    "sorts of thing rather than as the same offer made about different work, so they are drawn",
+    "alike, and each one says what is behind the chevron in the same shape: the bold name of the",
+    "section, then what tells this one apart — a count in brackets, or the thing it is doing now.",
+    "The reasoning title's brackets hold how hard the model was asked to think rather than a",
+    "count, which is the fact about the thinking a reader wants before opening it; it is filled in",
+    "by FeishuCardElements from the chat options the run was sent with, and is left off entirely",
+    "where a deployment states no effort. The size and the colour live on the title's markdown",
+    "rather than on the panel, because it is the header text being styled and not what the panel",
+    "holds — the contents carry their own.",
     "It is a closed panel, unlike 'reasoning' which is born open: thinking is the only thing",
     "happening while a run is working and is worth showing unprompted, whereas sources are a",
     "question a reader asks only once they have read the answer. So it arrives as one narrow grey",
@@ -97,7 +114,7 @@
     "header": {
       "title": {
         "tag": "markdown",
-        "content": "{reasoning}",
+        "content": "<font color='grey'>{reasoning}</font>",
         "text_size": "notation"
       },
       "width": "auto_when_fold",
@@ -191,10 +208,33 @@
     "text_size": "notation"
   },
   "todo": {
-    "tag": "markdown",
-    "content": "",
-    "text_align": "left",
-    "text_size": "normal_v2"
+    "tag": "collapsible_panel",
+    "expanded": true,
+    "vertical_spacing": "4px",
+    "header": {
+      "title": {
+        "tag": "markdown",
+        "content": "<font color='grey'>{todo}</font>",
+        "text_size": "notation"
+      },
+      "width": "auto_when_fold",
+      "vertical_align": "center",
+      "icon": {
+        "tag": "standard_icon",
+        "token": "right-small-ccm_outlined",
+        "size": "16px 16px"
+      },
+      "icon_position": "follow_text",
+      "icon_expanded_angle": 90
+    },
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "",
+        "text_align": "left",
+        "text_size": "notation"
+      }
+    ]
   },
   "references": {
     "tag": "collapsible_panel",

@@ -207,6 +207,9 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   /** How many times the pane has been replaced, which is what makes each replacement its own. */
   private int toolPaneRevision;
 
+  /** The same, for the task list, which is replaced whole every time it changes. */
+  private int todoRevision;
+
   /**
    * Everything the model has thought, kept because closing the pane at the end of the run replaces
    * the element whole and a replacement without it would empty the pane it is closing.
@@ -359,7 +362,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
 
     /** The one line of it: models, tokens, cost and how long, or nothing at all if nothing ran. */
     private String render(final Instant since) {
-      final var models = String.join(" + ", this.models) + effort();
+      final var models = String.join(" + ", this.models);
       if (promptTokens == 0 && completionTokens == 0) {
         return models;
       }
@@ -374,20 +377,6 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
           completionTokens,
           cost.isEmpty() ? "" : " · " + cost,
           formatElapsed(Duration.between(since, Instant.now())));
-    }
-
-    /**
-     * How hard the run asked the model to think, as a segment of its own after the models — the
-     * footer's other facts are separated the same way, and it applies to every call the turn made
-     * rather than to one of the models named.
-     *
-     * <p>Empty where no effort is configured, so the footer reads as it always did. An updater
-     * writing into a subagent panel is built without card elements — a panel is rendered whole
-     * rather than assembled from them — so there is nothing to read it from there either.
-     */
-    private String effort() {
-      final var effort = elements == null ? null : elements.reasoningEffort();
-      return effort == null || effort.isBlank() ? "" : " · " + effort;
     }
   }
 
@@ -739,11 +728,12 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
      * was for where it said anything. The tool stays first so the list still reads down the left
      * edge as what the run used, with the sentence as the part that tells two calls of it apart.
      *
-     * <p>Separated by a dash rather than a colon, which is what every other status line on this
-     * card does — {@code card-subagent-*} and {@code card-tool-calls} all read {@code **name** —
-     * detail}. A colon also reads as a label introducing a value, and the sentence after it is not
-     * one: it is what the call is for, and a call's input is where the {@code field: value} pairs
-     * are.
+     * <p>Separated by a dash, where the card's own panel titles put nothing but a space between
+     * their name and their detail: those set the name in bold, which is what tells the two halves
+     * apart there, and this line is one weight throughout — a tool name and a sentence run together
+     * read as one phrase. Not a colon, which reads as a label introducing a value, and the sentence
+     * after it is not one: it is what the call is for, and a call's input is where the {@code
+     * field: value} pairs are.
      */
     private String title() {
       return Strings.isNullOrEmpty(description)
@@ -1178,28 +1168,43 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         card.cardId() + ":reasoning:end");
   }
 
+  /**
+   * The run's task list, in a panel titled with how many tasks are on it.
+   *
+   * <p>Replaced whole rather than written into, the way the tool pane is and for the same reason: a
+   * count lives in the title and a title is not something a stream can reach. So a reader who folds
+   * the panel will see it open again on the next write — accepted here rather than worked around,
+   * because Feishu reports a chevron to nobody and the alternative is a count that lies. It is the
+   * one panel on the card that is born open: a task list is what the run means to do next, which is
+   * what a reader watching a long run comes back for.
+   */
   @Override
   public synchronized void handle(Todos todos) {
-    if (todoElementId == null) {
+    // A subagent's panel holds a report and what it cost, so there is nowhere to put one.
+    if (todoElementId == null || elements == null) {
       return;
     }
-    final var items =
-        todos == null || todos.todos() == null
-            ? ""
-            : todos.todos().stream().map(this::formatTodoItem).collect(Collectors.joining("\n"));
+    final var listed =
+        todos == null || todos.todos() == null ? List.<Todos.TodoItem>of() : todos.todos();
+    final var items = listed.stream().map(this::formatTodoItem).collect(Collectors.joining("\n"));
     // Nothing to show and nothing shown yet means there is nothing to say: a run that writes an
     // empty list — the tool is offered to every run — would otherwise put an element on the card to
     // hold it.
     if (items.isEmpty() && !added.contains(todoElementId)) {
       return;
     }
-    final var markdown = items.isEmpty() ? "" : messages.get("card-todo-heading") + "\n" + items;
-    log.info(
-        "updateTodoList: cardId={}, itemCount={}",
-        card.cardId(),
-        todos != null ? todos.todos().size() : 0);
-    if (added(todoElementId)) {
-      card.stream(todoElementId, markdown);
+    log.info("updateTodoList: cardId={}, itemCount={}", card.cardId(), listed.size());
+    final var panel = elements.todoPanel(listed.size(), items);
+    if (added.contains(todoElementId)) {
+      // A key that changes with the panel, for the reason the tool pane's does: an idempotency key
+      // reused across replacements has Feishu take the first and ignore the rest.
+      card.replace(todoElementId, panel, card.cardId() + ":todo:" + (++todoRevision));
+      return;
+    }
+    final var array = om.createArrayNode();
+    array.add(om.readTree(panel));
+    if (card.insertBefore(anchorOf(todoElementId), array.toString(), card.cardId() + ":todo")) {
+      added.add(todoElementId);
     }
   }
 }
