@@ -403,7 +403,7 @@ class FeishuSheetToolsTest {
         ArgumentCaptor.forClass(com.lark.oapi.service.sheets.v3.model.CreateSpreadsheetReq.class);
     verify(spreadsheetResource).create(captor.capture());
     assertThat(captor.getValue().getSpreadsheet().getFolderToken())
-        .isEqualTo(FeishuFileConstants.DEFAULT_FOLDER_TOKEN);
+        .isEqualTo(FeishuFiles.DEFAULT_FOLDER_TOKEN);
   }
 
   @Test

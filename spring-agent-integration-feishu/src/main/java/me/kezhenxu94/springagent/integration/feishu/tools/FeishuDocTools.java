@@ -71,7 +71,7 @@ public class FeishuDocTools {
       ToolContext toolContext) {
     final var targetFolderToken =
         folderToken == null || folderToken.isBlank()
-            ? FeishuFileConstants.DEFAULT_FOLDER_TOKEN
+            ? FeishuFiles.DEFAULT_FOLDER_TOKEN
             : folderToken;
     final var document = feishuDocxService.createDocument(targetFolderToken, title);
     feishuPermissionTools.grantDefaultPermissions(toolContext, document.getDocumentId(), "docx");

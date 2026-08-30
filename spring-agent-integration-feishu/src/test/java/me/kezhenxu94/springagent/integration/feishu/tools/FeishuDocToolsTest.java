@@ -110,12 +110,12 @@ class FeishuDocToolsTest {
   void createDocumentUsesDefaultFolder() {
     final var document =
         Document.newBuilder().documentId("doxDefaultFolder").revisionId(1).title("My Doc").build();
-    when(feishuDocxService.createDocument(FeishuFileConstants.DEFAULT_FOLDER_TOKEN, "My Doc"))
+    when(feishuDocxService.createDocument(FeishuFiles.DEFAULT_FOLDER_TOKEN, "My Doc"))
         .thenReturn(document);
 
     tools.createDocument("My Doc", null, TOOL_CONTEXT);
 
-    verify(feishuDocxService).createDocument(FeishuFileConstants.DEFAULT_FOLDER_TOKEN, "My Doc");
+    verify(feishuDocxService).createDocument(FeishuFiles.DEFAULT_FOLDER_TOKEN, "My Doc");
   }
 
   @Test

@@ -88,8 +88,7 @@ class FeishuBitableToolsTest {
 
     tools.createBitable("My Base", null, null, TOOL_CONTEXT);
 
-    verify(feishuBitableService)
-        .createApp(FeishuFileConstants.DEFAULT_FOLDER_TOKEN, "My Base", null);
+    verify(feishuBitableService).createApp(FeishuFiles.DEFAULT_FOLDER_TOKEN, "My Base", null);
   }
 
   @Test
