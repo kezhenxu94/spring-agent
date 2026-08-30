@@ -120,6 +120,7 @@ class AgentToolsProviderGlobalToolsTest {
             "You are an agent.",
             null,
             null),
-        Locale.ENGLISH);
+        Locale.ENGLISH,
+        null);
   }
 }

@@ -25,14 +25,15 @@ class GitHubTriagePromptTest {
   private static final Locale CHINESE = Locale.of("zh", "CN");
 
   private static String promptIn(final Locale locale) {
-    return new TriagePrompts(new SpringAgentProperties(null, null, locale)).forSource("github");
+    return new TriagePrompts(new SpringAgentProperties(null, null, locale, null))
+        .forSource("github");
   }
 
   @Test
   @DisplayName("this module's own prompt is used, not the general one")
   void shouldUseItsOwnPrompt() {
     final var general =
-        new TriagePrompts(new SpringAgentProperties(null, null, Locale.ENGLISH))
+        new TriagePrompts(new SpringAgentProperties(null, null, Locale.ENGLISH, null))
             .forSource("no-such-source");
 
     assertThat(promptIn(Locale.ENGLISH)).isNotEqualTo(general).contains("repository on GitHub");

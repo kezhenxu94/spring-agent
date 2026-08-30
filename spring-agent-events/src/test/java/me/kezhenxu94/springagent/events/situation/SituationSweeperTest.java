@@ -105,7 +105,8 @@ class SituationSweeperTest {
         new SpringAgentProperties(
             null,
             new SpringAgentProperties.Ai(ids, Map.of(), null, null, null, null, null, null),
-            Locale.ENGLISH));
+            Locale.ENGLISH,
+            null));
   }
 
   private SituationSweeper sweeper(final EventsProperties properties, final Admins admins) {

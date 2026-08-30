@@ -77,7 +77,8 @@ class FeishuChatToolsTest {
                         null,
                         new SpringAgentProperties.Ai(
                             Set.of(), Map.of(), null, null, null, null, null, null),
-                        Locale.ENGLISH))));
+                        Locale.ENGLISH,
+                        null))));
   }
 
   /** The chat the run is in, which is the one the asking user needs no lookup to be allowed. */
