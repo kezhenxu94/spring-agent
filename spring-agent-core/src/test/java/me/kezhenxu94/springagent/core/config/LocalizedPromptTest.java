@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Locale;
+import java.util.Map;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -78,6 +79,26 @@ class LocalizedPromptTest {
                                 Locale.forLanguageTag(tag.replace('_', '-')))))
                     .build())
         .doesNotThrowAnyException();
+  }
+
+  /**
+   * The skill-offer prompt is rendered on every tool-call iteration past the threshold, with the
+   * count filled in. A translation that lost the placeholder — or grew a brace of its own — would
+   * fail there, inside somebody's expensive run, rather than here.
+   */
+  @ParameterizedTest
+  @ValueSource(strings = {"en", "zh_CN"})
+  @DisplayName("every translation of the skill prompt renders with the tool call count")
+  void skillPromptRenders(final String tag) {
+    final var rendered =
+        PromptTemplate.builder()
+            .resource(
+                LocalizedPrompt.resource(
+                    AgentToolsProvider.SKILL_PROMPT, Locale.forLanguageTag(tag.replace('_', '-'))))
+            .build()
+            .render(Map.of("TOOL_CALL_COUNT", 42));
+
+    assertThat(rendered).contains("42");
   }
 
   @Test

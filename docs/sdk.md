@@ -297,6 +297,18 @@ Per-request identity reaches a tool through the tool context, under typed keys i
   bean but never wires it into a `ChatClient` itself. Those clients belong to the context and are
   never closed by a run.
 
+It also contributes two advisors, since both are tools in everything but shape:
+`AutoMemoryToolsAdvisor`, which adds the memory tools and the paragraph that explains them, and
+`AutoSkillToolsAdvisor` (`core.advisors`), which counts a turn's tool calls from inside the
+tool-calling loop and, past `app.ai.tools.skills.tool-call-threshold`, appends a paragraph asking the
+model to offer the user a skill made of what it just worked out. The second writes nothing itself and
+registers no tools — the offer is prose in the reply, and the skill is written by `WriteSkillFile` on
+a later turn if the user agrees. It is only added to runs that were given the skill tools, and only
+while `app.ai.tools.skills.offer-after-expensive-runs` is on. Both are ordinary advisors with
+builders, so an application assembling its own `ChatClient` can use either directly; the skill one
+takes only a prompt `Resource` (a template over `TOOL_CALL_COUNT`), a threshold and an order, and
+holds no type of this project's own.
+
 Because the set is open-ended and can grow between one turn and the next, turn on Spring AI's
 tool-search advisor (`spring.ai.chat.client.tool-search-advisor.enabled`) unless you know your tool
 set is small: it retrieves the few tools a turn needs instead of sending the model all of them.

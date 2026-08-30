@@ -7,6 +7,7 @@ import java.util.Set;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.Accessors;
+import me.kezhenxu94.springagent.core.advisors.AutoSkillToolsAdvisor;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -228,7 +229,7 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
         rag = new Rag(false, 0, 0d, 0, 0);
       }
       if (tools == null) {
-        tools = new Tools(null, null, null, null);
+        tools = new Tools(null, null, null, null, null);
       }
     }
 
@@ -249,6 +250,7 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
     public record Tools(
         AskUserQuestion askUserQuestion,
         Subagent subagent,
+        Skills skills,
         Integer maxResultChars,
         Integer maxInlinedInputChars) {
 
@@ -286,6 +288,9 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
         }
         if (subagent == null) {
           subagent = new Subagent(0, null, null);
+        }
+        if (skills == null) {
+          skills = new Skills(null, 0);
         }
         if (maxResultChars == null || maxResultChars <= 0) {
           maxResultChars = DEFAULT_MAX_RESULT_CHARS;
@@ -346,6 +351,46 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
           }
           if (waitTimeout == null || waitTimeout.isZero() || waitTimeout.isNegative()) {
             waitTimeout = DEFAULT_WAIT_TIMEOUT;
+          }
+        }
+      }
+
+      /**
+       * @param offerAfterExpensiveRuns whether a turn that has cost a great many tool calls ends
+       *     with the agent offering to keep what it worked out as a skill. Nothing is written by
+       *     the offer itself — the user has to say yes, on the turn after — so this is a switch
+       *     over whether the offer is ever made, for a deployment that would rather its skills were
+       *     written by hand. Null is read as "not configured" and replaced by {@link
+       *     #DEFAULT_OFFER_AFTER_EXPENSIVE_RUNS}.
+       * @param toolCallThreshold how many tool calls one turn has to make first. Counted per turn
+       *     rather than per conversation, because it is the cost of answering this question again
+       *     that a skill would save. Zero and below are read as "not configured" and replaced by
+       *     {@link #DEFAULT_TOOL_CALL_THRESHOLD}; turning the offer off is what {@code
+       *     offerAfterExpensiveRuns} is for, since a threshold of zero would offer on every turn.
+       */
+      public record Skills(Boolean offerAfterExpensiveRuns, int toolCallThreshold) {
+
+        /**
+         * On, because it costs nothing until a turn is expensive and writes nothing without being
+         * asked to. A user who never wants it says no, and a deployment that never wants it turns
+         * this off.
+         */
+        public static final boolean DEFAULT_OFFER_AFTER_EXPENSIVE_RUNS = true;
+
+        /**
+         * See {@code AutoSkillToolsAdvisor.DEFAULT_TOOL_CALL_THRESHOLD}, which is where the number
+         * is explained and which this hands over unchanged. Stated again here so that the property
+         * has a default of its own if the advisor is ever swapped for another.
+         */
+        public static final int DEFAULT_TOOL_CALL_THRESHOLD =
+            AutoSkillToolsAdvisor.DEFAULT_TOOL_CALL_THRESHOLD;
+
+        public Skills {
+          if (offerAfterExpensiveRuns == null) {
+            offerAfterExpensiveRuns = DEFAULT_OFFER_AFTER_EXPENSIVE_RUNS;
+          }
+          if (toolCallThreshold <= 0) {
+            toolCallThreshold = DEFAULT_TOOL_CALL_THRESHOLD;
           }
         }
       }
