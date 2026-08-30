@@ -206,7 +206,12 @@ public class FeishuCardListener implements AgentResponseListener {
       // the run, and the run does not end until the subagents it started have — so a panel can
       // never be looking for a card that has already been finalized.
       updatersByRun.put(runId, cardUpdater);
-      registry.addResponseListener(new CardRun(runId, cardMessageId));
+      final var cardRun = new CardRun(runId, cardMessageId);
+      // A turn can say more than a card can hold, and Feishu refuses the write that would take one
+      // over its limit. So the run is given somewhere to carry on: another card, replied onto the
+      // same message, as many times over as the turn needs — see FeishuCard#continueOnNewCard().
+      card.continuation(full -> continueOn(cardRun, replyTo, full));
+      registry.addResponseListener(cardRun);
     } catch (Exception e) {
       log.error("Failed to attach a Feishu card to run {}", runId, e);
       abortOrCarryOn(registry, "failed to attach a Feishu reply card: " + e.getMessage());
@@ -232,21 +237,6 @@ public class FeishuCardListener implements AgentResponseListener {
       final AgentRunRegistry registry, final AgentRequest request, final FeishuCardUpdater parent) {
     final var runId = request.requestId();
     final var card = parent.card();
-    final var inserted =
-        card.insertBefore(
-            parent.subagentPanelAnchor(),
-            subagentPanel.forInsert(runId, request.description(), request.brief(), null),
-            runId);
-    if (!inserted) {
-      // Worth doing anyway: the answer the subagent produces still reaches the run that waits for
-      // it, and the reader loses the account of how it got there rather than the work itself.
-      log.warn(
-          "No panel on card {} for subagent {}, which will run unreported", card.cardId(), runId);
-      return;
-    }
-    // Only now: what the run puts on the card next goes in above the subagents, and there is one to
-    // be above.
-    parent.subagentPanelAdded(FeishuSubagentPanel.panelElementId(runId));
     final var updater =
         FeishuCardUpdater.forSubagent(
             card,
@@ -254,9 +244,20 @@ public class FeishuCardListener implements AgentResponseListener {
             appConfiguration.ai().modelPricing(),
             messages,
             subagentPanel,
+            parent,
             runId,
             request.description(),
             request.brief());
+    // Through the updater rather than here, because this is not the only time it happens: a run
+    // that fills its card and carries on onto another leaves the panel behind on the full one, and
+    // the updater is what puts it back — see FeishuCardUpdater#insertPanel().
+    if (!updater.insertPanel()) {
+      // Worth doing anyway: the answer the subagent produces still reaches the run that waits for
+      // it, and the reader loses the account of how it got there rather than the work itself.
+      log.warn(
+          "No panel on card {} for subagent {}, which will run unreported", card.cardId(), runId);
+      return;
+    }
     registry.addResponseListener(updater);
     registry.addToolContext(FeishuCardUpdater.TOOL_CONTEXT_KEY.key(), updater);
   }
@@ -271,11 +272,58 @@ public class FeishuCardListener implements AgentResponseListener {
     }
   }
 
+  /**
+   * Creates the card a run whose current one is full carries on writing to, replies it onto the
+   * message the run is answering, and moves the stop button onto it. Returns the new card's id, or
+   * null if there is none — in which case the run goes on writing to the card it has, and the
+   * writes that do not fit are logged and lost.
+   *
+   * <p>The stop button moves because there is only ever one run behind these cards and it is the
+   * card in front of the reader that they will press: the card being left behind has its button
+   * taken off as it is finished, so the entry naming it would answer for a button that is gone.
+   *
+   * <p>Replied onto the same message rather than onto the card being left, so that however many
+   * cards a turn takes they all hang off the one message it is answering — which is also what makes
+   * this repeatable: the second card is made exactly the way the first was.
+   */
+  private String continueOn(final CardRun cardRun, final String replyTo, final String fullCardId) {
+    try {
+      final var cardId = createCard(cardRun.runId);
+      final var cardMessageId = cardId == null ? null : replyCard(cardRun.runId, replyTo, cardId);
+      if (cardMessageId == null) {
+        log.error(
+            "No card to continue run {} on, after card {} filled up", cardRun.runId, fullCardId);
+        return null;
+      }
+      final var run = runsByCardMessage.remove(cardRun.cardMessageId);
+      if (run != null) {
+        runsByCardMessage.put(cardMessageId, run);
+      }
+      cardRun.cardMessageId = cardMessageId;
+      log.info(
+          "Run {} continues on card {}, sent as message {}", cardRun.runId, cardId, cardMessageId);
+      return cardId;
+    } catch (Exception e) {
+      log.error("Failed to continue run {} on a new card", cardRun.runId, e);
+      return null;
+    }
+  }
+
   /** The per-run half: the shared listener is a singleton, this holds one run's message ids. */
-  @RequiredArgsConstructor
   private final class CardRun implements AgentResponseListener {
     private final String runId;
-    private final String cardMessageId;
+
+    /**
+     * The message the run's card is currently sent as, which is not necessarily the one it started
+     * with: a full card is replaced by another, replied onto the same message, and the stop button
+     * goes with it. Written by {@link #continueOn} from the thread draining that card's writes.
+     */
+    private volatile String cardMessageId;
+
+    private CardRun(final String runId, final String cardMessageId) {
+      this.runId = runId;
+      this.cardMessageId = cardMessageId;
+    }
 
     @Override
     public void onFinished(final AgentOutcome outcome) {

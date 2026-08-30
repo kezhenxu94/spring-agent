@@ -343,7 +343,7 @@ class FeishuCardUpdaterToolStatusTest {
         panels.forInsert("sub_1", "Reading the timeline", "Read it and say when it starts", null),
         "sub_1");
     return FeishuCardUpdater.forSubagent(
-        card, om, null, messages, panels, "sub_1", "Reading the timeline", "Read it");
+        card, om, null, messages, panels, null, "sub_1", "Reading the timeline", "Read it");
   }
 
   /** What was last streamed into one element of the card. */

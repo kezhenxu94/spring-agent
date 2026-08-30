@@ -233,6 +233,7 @@ class FeishuCardUpdaterUsageTest {
         Map.of("the-model", new ModelPricing(1.0, 1.0, 1.0, Currency.USD)),
         messages,
         panels,
+        null,
         "sub_1",
         "Reading the timeline",
         "Read the timeline and say when it starts");

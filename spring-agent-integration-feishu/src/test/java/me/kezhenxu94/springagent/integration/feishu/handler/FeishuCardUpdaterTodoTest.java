@@ -149,6 +149,7 @@ class FeishuCardUpdaterTodoTest {
             null,
             messages,
             new FeishuSubagentPanel(om, messages),
+            null,
             "sub-1",
             "reading",
             "read it")

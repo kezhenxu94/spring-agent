@@ -118,6 +118,7 @@ class FeishuCardUpdaterErrorTest {
             null,
             messages,
             panels,
+            null,
             "sub_1",
             "Reading the log",
             "Read the log and say what broke");
