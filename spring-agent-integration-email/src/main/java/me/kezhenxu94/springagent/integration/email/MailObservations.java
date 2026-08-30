@@ -7,7 +7,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.observing.Observation;
@@ -21,12 +20,20 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>A class of its own rather than a method on the watcher, so that everything with a decision in
  * it can be tested against a {@code MimeMessage} built in memory, and the watcher is left with only
  * the parts that need a server.
+ *
+ * <p>A mapping and not a policy. Whether a message may wake the agent is decided by {@link
+ * MailObservationHandler}, which is what lets somebody embedding this module read the same mailbox
+ * for a purpose of their own — counting what arrives, warning about what does not — without taking
+ * on the agent's rules about whose mail counts.
  */
 @Slf4j
 @RequiredArgsConstructor
 public class MailObservations {
 
   private static final JsonMapper MAPPER = new JsonMapper();
+
+  /** Stands in for the {@code From} of a message that names no single sender. */
+  private static final String UNKNOWN_SENDER = "(unknown sender)";
 
   /**
    * How long a correlation key may be before it is hashed instead.
@@ -40,40 +47,48 @@ public class MailObservations {
   private final EmailProperties properties;
 
   /**
-   * The observation for {@code message}, or empty where nobody vouched for who sent it.
+   * The observation for {@code message} — every message, whether anybody vouched for it or not.
    *
-   * <p>Empty rather than an observation with no actor, though the intake would drop that too. The
-   * two differ in what they cost: an unauthenticated message dropped here is never parsed, never
-   * has its body reduced, and never reaches the funnel, which is what keeps a mailbox somebody
-   * found the address of from being a way to spend this process's time.
+   * <p>Authentication is reported here rather than acted on: {@link Observation#actor()} is the
+   * sender where DKIM vouched for one and null where nothing did, which is the difference {@code
+   * TrustedActors} needs between an actor it was given and did not like and no actor at all. What
+   * to do about it belongs to the caller — {@link MailObservationHandler} drops an unvouched
+   * message before any intake sees it, and a consumer embedding this module gets an observation for
+   * every message read, which is what makes logging or alerting on the mailbox possible without
+   * involving the agent at all.
+   *
+   * <p>What that costs is that mail nobody vouched for is parsed and its body reduced before it is
+   * thrown away. Bounded rather than open-ended: {@code app.email.max-body-length} caps the text
+   * kept from one message and the receiver's fetch size caps how many are read in a pass.
    *
    * @param uidValidity the folder's generation, from {@code UIDFolder#getUIDValidity}
    * @param uid the message's uid within that generation
    */
-  public Optional<Observation> of(final Message message, final long uidValidity, final long uid) {
-    final var actor = SenderIdentity.of(message, properties.authservId(), "Authentication-Results");
-    if (actor.isEmpty()) {
-      return Optional.empty();
-    }
-    final var sender = actor.get();
+  public Observation of(final Message message, final long uidValidity, final long uid) {
+    final var sender =
+        SenderIdentity.of(message, properties.authservId(), "Authentication-Results").orElse(null);
+    // What the message says about itself, for the parts of an observation that are evidence. On the
+    // authenticated path it is the same string as the sender above, since a DKIM verdict vouches
+    // for the address as written; on any other it is a name nobody checked, and it stays out of the
+    // actor and out of the correlation key for exactly that reason.
+    final var from = SenderIdentity.claimedFrom(message).orElse(UNKNOWN_SENDER);
     final var subject = subjectOf(message);
     final var body = MessageText.bodyOf(message, properties.maxBodyLength());
 
-    return Optional.of(
-        Observation.builder()
-            .source(EmailProperties.SOURCE)
-            // The server's own numbering, never the Message-ID header. See deliveryId below.
-            .deliveryId(uidValidity + ":" + uid)
-            .kind("mail.received")
-            .correlationKey(correlationKey(sender, message, uidValidity, uid))
-            .title(subject.isBlank() ? "Mail from " + sender : subject)
-            .summary(summary(sender, subject, body))
-            .actor(sender)
-            .payloadJson(payload(sender, subject, body))
-            // Left to default to now, not the Date header. Date is written by the sender, and a
-            // backdated one would land an observation already older than the quiet period that
-            // closes a situation — which is to say, arrive pre-resolved.
-            .build());
+    return Observation.builder()
+        .source(EmailProperties.SOURCE)
+        // The server's own numbering, never the Message-ID header. See deliveryId below.
+        .deliveryId(uidValidity + ":" + uid)
+        .kind("mail.received")
+        .correlationKey(correlationKey(sender, message, uidValidity, uid))
+        .title(subject.isBlank() ? "Mail from " + from : subject)
+        .summary(summary(from, subject, body))
+        .actor(sender)
+        .payloadJson(payload(from, subject, body))
+        // Left to default to now, not the Date header. Date is written by the sender, and a
+        // backdated one would land an observation already older than the quiet period that
+        // closes a situation — which is to say, arrive pre-resolved.
+        .build();
   }
 
   /**
@@ -88,9 +103,17 @@ public class MailObservations {
    * <p>Falling back to the uid rather than to the message's own {@code Message-ID} where there is
    * no thread: a first message in a thread correlates with nothing yet, and using an id the sender
    * chose would let two unrelated messages claim to be one conversation.
+   *
+   * <p>Where nobody vouched for the sender the key is the uid and nothing else — not the thread the
+   * message names, not the address it claims to come from. Both are its author's to write, and
+   * honouring either would leave a consumer that chose to report unvouched mail with a situation
+   * anybody who learned the address could join.
    */
   private String correlationKey(
       final String sender, final Message message, final long uidValidity, final long uid) {
+    if (sender == null) {
+      return EmailProperties.SOURCE + ":" + uidValidity + "/" + uid;
+    }
     final var thread = threadRoot(message);
     final var key =
         EmailProperties.SOURCE
@@ -114,14 +137,14 @@ public class MailObservations {
     return inReplyTo == null || inReplyTo.isBlank() ? null : inReplyTo.trim();
   }
 
-  private String summary(final String sender, final String subject, final String body) {
+  private String summary(final String from, final String subject, final String body) {
     final var headline = subject.isBlank() ? "(no subject)" : subject;
-    return "From " + sender + " — " + headline + (body.isBlank() ? "" : "\n" + body);
+    return "From " + from + " — " + headline + (body.isBlank() ? "" : "\n" + body);
   }
 
-  private String payload(final String sender, final String subject, final String body) {
+  private String payload(final String from, final String subject, final String body) {
     final ObjectNode node = MAPPER.createObjectNode();
-    node.put("from", sender);
+    node.put("from", from);
     node.put("subject", subject);
     node.put("body", body);
     return node.toString();
