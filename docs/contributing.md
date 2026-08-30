@@ -52,6 +52,7 @@ Other tasks:
 ```sh
 ./gradlew :spring-agent-app:bootRun          # the server
 ./gradlew :spring-agent-app-cli:bootRun      # the command line (stdin/tty wired for JLine)
+./gradlew :spring-agent-app-web:bootRun      # the browser UI, on :8080
 ./gradlew :spring-agent-app:bootBuildImage   # container image (Paketo buildpack, no Dockerfile)
 ./gradlew :spring-agent-app-cli:nativeCompile -Pnative
 ```
@@ -77,6 +78,7 @@ spring-agent-integration-feishu       Feishu/Lark chats and cards as a surface
 spring-agent-rag-milvus               the knowledge base; the only KnowledgeBase implementation
 spring-agent-app                      deployable server; depends on every optional module
 spring-agent-app-cli                  laptop command line; jpa + local shell only
+spring-agent-app-web                  browser surface; no integrations, Feishu OAuth for login only
 ```
 
 `spring-agent-core` must stay free of any persistence backend. This is enforced by

@@ -25,6 +25,7 @@ Other tasks:
 ```sh
 ./gradlew :spring-agent-app:bootRun          # the server
 ./gradlew :spring-agent-app-cli:bootRun      # the command line (stdin/tty wired for JLine)
+./gradlew :spring-agent-app-web:bootRun      # the browser UI, on :8080
 ./gradlew :spring-agent-app:bootBuildImage   # container image (Paketo buildpack, no Dockerfile)
 ./gradlew :spring-agent-app-cli:nativeCompile -Pnative
 ```
@@ -54,6 +55,7 @@ spring-agent-rag-milvus       the knowledge base; the only implementation of cor
 spring-agent-integration-feishu
 spring-agent-app               deployable server; depends on every optional module
 spring-agent-app-cli           laptop command line; jpa + local shell only
+spring-agent-app-web           browser surface; no integrations, Feishu OAuth for login only
 ```
 
 `spring-agent-core` must stay free of any persistence backend. This is enforced by `checkRuntimeClasspathIsolation` (wired into `check`, defined in `buildSrc/.../springagent.classpath-isolation.gradle`, configured at the bottom of `spring-agent-core/build.gradle`): it fails the build if Hibernate, the Mongo driver, Jedis, Milvus, fabric8 and friends reach core's runtime classpath. If that task fails, a dependency became `api` or grew a new transitive — fix the dependency, do not widen the allow-list.
@@ -126,6 +128,17 @@ Commit messages follow Conventional Commits with lowercase, prose-style subjects
 Comments in this codebase explain **why**, at length, and are load-bearing — build files, `application.yaml` and `docker-compose.yaml` carry paragraphs of rationale that are the closest thing to design documentation here. Match that: when a decision is non-obvious, write down the reason it was made and what breaks without it. Do not describe history in comments; git records that.
 
 Configuration is documented in place. `spring-agent-app/src/main/resources/application.yaml` is the reference for every property and environment variable, including the system prompt; read it before adding a knob.
+
+**`spring-agent-app-web`'s `application.yaml` is derived from that file and has to stay in step with it.** The two applications run the same runtime, so a setting must mean the same thing in both — a deployment that moves from the server to the browser surface should not silently get different tool limits, a different subagent budget or a different sandbox. A knob added to the server's file belongs in the web one too, with the same default and the same rationale.
+
+Only four kinds of difference are legitimate, and each is stated in the header comment at the top of the web file rather than left to be found by diffing:
+
+- **absent modules** — `app.events` and `app.feishu` have no configuration there because the module carries neither, and configuring absent code is a lie about what the binary does;
+- **`app.web.*`** — who may log in, how long a finished run stays replayable, how long an unanswered question lives;
+- **what the surface needs and the server does not** — `spring.threads.virtual`, `spring.mvc.async` for the SSE streams, `spring.servlet.multipart` for uploads;
+- **per-application storage** — its own SQLite file, its own vector-store file, its own published-file URLs.
+
+Anything else drifting is a bug in one of the two. `DockerShellDefaultsTest` in `spring-agent-app-web` is the check that notices for the shell sandbox, and it binds the properties rather than parsing the YAML, so it also catches a block landing at a nesting level Boot ignores in silence.
 
 ## Running locally
 

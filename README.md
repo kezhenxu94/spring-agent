@@ -192,6 +192,48 @@ Other things worth knowing before a real deployment:
   caching will quietly evict a stored credential or an unfired task.
 - `/actuator/health` and `/actuator/prometheus` are exposed for probes and metrics.
 
+## Run the web UI
+
+A third application, `spring-agent-app-web`: the agent and a browser, and nothing else. No bot, no
+webhook receiver, no chat platform — so what it gives you is the runtime itself with everything a run
+does made visible: the answer as it streams, what the model is thinking, every tool call and what it
+returned, a card per subagent, the live to-do list, the sources a knowledge base was consulted for,
+what the turn cost, and the agent's own questions as a form you answer in the page.
+
+```sh
+./gradlew :spring-agent-app-web:bootRun     # the same OPENAI_*/EMBEDDING_* variables, plus the three below
+```
+
+Then open <http://localhost:8080>. Sign-in is Feishu OAuth, so three more variables are needed:
+
+| Variable | What it is |
+| --- | --- |
+| `FEISHU_APP_ID`, `FEISHU_APP_SECRET` | The Feishu app's credentials. The same pair the bot uses, but only the OAuth half is used here — no SDK, no websocket, no bot |
+| `FEISHU_TENANT_ID` | Whose people may use this deployment, as a tenant key. **There is no permissive default**: unset, nobody is let in. The agent acts with the logged-in person's credentials and files, so this is the line between a colleague and a stranger who happens to have installed the same app |
+
+In the Feishu app's console, add `http://localhost:8080/login/oauth2/code/feishu` (and the same URL
+under your real host) as a redirect URI, and grant the app the profile scopes it needs to return
+`open_id` and `tenant_key`.
+
+**A run outlives the page it was started from.** The stream to the browser is a reader of a run that
+is happening on the server, never the run itself — so refreshing, closing the tab, or coming back an
+hour later re-attaches and redraws everything, and nothing a browser does can cancel a run except
+pressing Stop. A question the agent asked is written down rather than held open, so it survives a
+restart of the server too, and is still there to answer when you come back.
+
+Its own switches, on top of the ones in the table above:
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `WEB_JOURNAL_RETENTION` | `30m` | How long a finished run's detail — its tool calls, its subagents, its thinking — is kept for a browser that comes back to it. Past this the conversation is still there; how it was reached is not |
+| `WEB_JOURNAL_MAX_RUNS` | `500` | How many runs are held in memory at all. Finished ones are dropped first; a live run never is |
+| `WEB_QUESTION_TTL` | `24h` | How long an unanswered question stays answerable |
+| `WEB_LOCALE` | `en` | The language for a reader whose browser asks for one nothing is written in. Theirs is detected from `Accept-Language`, and the switcher in the page overrides both |
+
+`TOOLS_SHELL_TYPE` defaults to `none` here, unlike the command line. This surface is reachable by
+everyone in the tenant, and `local` would mean every one of them can run commands in the server
+process with its filesystem and its secrets; use `kubernetes` or `docker`, which sandbox per user.
+
 ## Run the command line
 
 There is no prebuilt binary; build it from a clone.
