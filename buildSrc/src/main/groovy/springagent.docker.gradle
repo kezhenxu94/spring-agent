@@ -1,7 +1,10 @@
 // A plain string rather than reading it back off the task: bootBuildImage.imageName is a Property,
 // so interpolating the getter into a GString yields "task ... property 'imageName'" instead of the
 // name, which silently produced unusable tags.
-def image = "ghcr.io/kezhenxu94/spring-agent"
+// The name is per-module, so a second application applying this plugin gets an image of its own
+// rather than pushing over the first one's. Unset means spring-agent, which is what the server has
+// always published under and must keep publishing under.
+def image = "ghcr.io/kezhenxu94/${project.findProperty('imageBaseName') ?: 'spring-agent'}"
 
 // Full references rather than bare tags, so CI can hand over docker/metadata-action's output as-is
 // and this file needs to know nothing about refs. The local default is latest plus the commit,

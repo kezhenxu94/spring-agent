@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spring Agent</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230B0E14'/><rect x='9' y='7' width='2.5' height='18' rx='1.25' fill='%23FFB020'/><circle cx='19' cy='11' r='2.5' fill='%234FD1C5'/><circle cx='19' cy='19' r='2.5' fill='%23FFB020'/></svg>">
+
+  <!--
+    Theme before first paint. A class added afterwards is a white flash on a dark desktop, which is
+    the one thing a theme switcher must not do. Auto means the operating system's setting; a stored
+    choice overrides it.
+  -->
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem('spring-agent-theme') || 'auto';
+        var dark = stored === 'dark' || (stored === 'auto'
+          && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', dark);
+      } catch (e) {
+        // Private browsing refuses localStorage outright. Auto is a fine answer.
+      }
+    })();
+  </script>
+
+  <link rel="preload" as="font" type="font/woff2" href="/fonts/ibm-plex-sans-400-latin.woff2" crossorigin>
+  <link rel="stylesheet" href="/fonts/fonts.css">
+
+  <!--
+    Tailwind's browser build compiles this block and scans the markup for utility classes.
+
+    @theme is where the design lives. Colour here is state and nothing else, the way it is on an
+    instrument panel: amber means this is running and you are attached to it, teal means it finished,
+    violet means it is waiting on a person, coral means it failed. Nothing is coloured for decoration,
+    so a glance at the page is a reading of what the agent is doing.
+
+    The @custom-variant is load-bearing: v4 keys `dark:` off prefers-color-scheme by default, so
+    without it the theme switcher would toggle a class nothing responds to.
+  -->
+  <style type="text/tailwindcss">
+    @import "tailwindcss";
+    @custom-variant dark (&:where(.dark, .dark *));
+
+    @theme {
+      /* Ground and structure. Cool rather than neutral grey — this is an instrument, not paper. */
+      --color-ink:      #0B0E14;
+      --color-panel:    #121722;
+      --color-rail:     #1F2736;
+      --color-edge:     #2B3549;
+      --color-mist:     #8494AC;
+      --color-paper:    #E6EDF7;
+
+      /* State. Each one is a thing a run can be, and nothing else uses them. */
+      --color-signal:   #FFB020;
+      --color-settled:  #4FD1C5;
+      --color-waiting:  #C4B5FD;
+      --color-alarm:    #FF6B6B;
+
+      --font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
+      --font-sans: "IBM Plex Sans", -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+      --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+    }
+  </style>
+  <script src="/vendor/tailwindcss.js"></script>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/vendor/marked.min.js"></script>
+  <script src="/vendor/purify.min.js"></script>
+</head>
+
+<body class="h-full bg-white font-sans text-[15px] text-ink antialiased dark:bg-ink dark:text-paper">
+
+<div id="app" class="flex h-full">
+
+  <!-- ───────────────────────────── conversations and scheduled work ───────────────────────────── -->
+  <aside id="sidebar"
+         class="fixed inset-y-0 left-0 z-30 hidden w-[270px] shrink-0 flex-col border-r border-zinc-200
+                bg-zinc-50 md:static md:flex dark:border-rail dark:bg-panel">
+
+    <div class="flex items-center gap-2.5 px-4 pt-4 pb-3">
+      <svg viewBox="0 0 32 32" class="size-6 shrink-0" aria-hidden="true">
+        <rect x="9" y="7" width="2.5" height="18" rx="1.25" class="fill-zinc-400 dark:fill-edge"/>
+        <circle cx="19" cy="11" r="2.5" class="fill-settled"/>
+        <circle cx="19" cy="19" r="2.5" class="fill-signal"/>
+      </svg>
+      <span class="font-display text-[15px] font-semibold tracking-tight">Spring Agent</span>
+    </div>
+
+    <div class="px-3 pb-3">
+      <button id="new-conversation"
+              class="group flex w-full items-center gap-2 rounded-lg border border-zinc-300 px-3 py-2
+                     text-[13px] font-medium transition hover:border-zinc-400 hover:bg-white
+                     focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal
+                     dark:border-edge dark:hover:border-mist dark:hover:bg-rail">
+        <span class="text-mist transition group-hover:text-signal">+</span>
+        <span data-i18n="nav.new">New conversation</span>
+      </button>
+    </div>
+
+    <nav class="flex-1 overflow-y-auto px-3 pb-2">
+      <h2 class="px-1 pb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-mist"
+          data-i18n="nav.conversations">Conversations</h2>
+      <ul id="conversation-list" class="space-y-px"></ul>
+
+      <h2 class="mt-6 px-1 pb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-mist"
+          data-i18n="nav.tasks">Scheduled</h2>
+      <ul id="task-list" class="space-y-1.5"></ul>
+    </nav>
+
+    <div class="space-y-2.5 border-t border-zinc-200 p-3 dark:border-rail">
+      <div class="flex items-center gap-1.5">
+        <label for="language-select" class="sr-only" data-i18n="language">Language</label>
+        <select id="language-select"
+                class="min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-2 py-1.5
+                       font-mono text-[11px] focus-visible:outline-2 focus-visible:outline-signal
+                       dark:border-edge dark:bg-rail"></select>
+        <label for="theme-select" class="sr-only" data-i18n="theme">Theme</label>
+        <select id="theme-select"
+                class="min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-2 py-1.5
+                       font-mono text-[11px] focus-visible:outline-2 focus-visible:outline-signal
+                       dark:border-edge dark:bg-rail">
+          <option value="auto" data-i18n="theme.auto">Match system</option>
+          <option value="light" data-i18n="theme.light">Light</option>
+          <option value="dark" data-i18n="theme.dark">Dark</option>
+        </select>
+      </div>
+      <div class="flex items-center gap-2">
+        <img id="me-avatar" alt=""
+             class="size-6 shrink-0 rounded-full bg-zinc-200 object-cover dark:bg-rail">
+        <span id="me-name" class="min-w-0 flex-1 truncate text-[12px] text-mist"></span>
+        <form method="post" action="/logout">
+          <input type="hidden" id="logout-csrf" name="_csrf">
+          <button type="submit"
+                  class="font-mono text-[10px] uppercase tracking-wider text-mist transition
+                         hover:text-alarm focus-visible:outline-2 focus-visible:outline-signal"
+                  data-i18n="nav.signout">Sign out</button>
+        </form>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ───────────────────────────────────── the run ───────────────────────────────────── -->
+  <main class="flex min-w-0 flex-1 flex-col">
+
+    <header class="flex h-12 shrink-0 items-center gap-3 border-b border-zinc-200 px-4 dark:border-rail">
+      <button id="toggle-sidebar"
+              class="-ml-1 rounded p-1.5 text-mist hover:bg-zinc-100 md:hidden dark:hover:bg-rail"
+              aria-label="Menu">☰</button>
+      <h1 id="conversation-title" class="min-w-0 flex-1 truncate text-[13px] font-medium"
+          data-i18n="app.title">Spring Agent</h1>
+
+      <!--
+        The status strip. This application's whole premise is that a run is on the server and this
+        page is only attached to it, so "am I attached, and is it still going" is the question the
+        header exists to answer.
+      -->
+      <div id="status"
+           class="flex shrink-0 items-center gap-1.5 rounded-full border border-zinc-200 px-2.5 py-1
+                  font-mono text-[10px] uppercase tracking-[0.12em] text-mist dark:border-rail">
+        <span id="status-dot" class="size-1.5 rounded-full bg-zinc-300 dark:bg-edge"></span>
+        <span id="status-text" data-i18n="status.idle">Idle</span>
+      </div>
+    </header>
+
+    <div id="transcript" class="flex-1 overflow-y-auto scroll-smooth px-4 py-8 sm:px-6"></div>
+
+    <div class="shrink-0 border-t border-zinc-200 px-4 py-3 sm:px-6 dark:border-rail">
+      <div class="mx-auto max-w-[46rem]">
+
+        <!-- What has been uploaded but not yet sent. Empty and hidden until there is something. -->
+        <ul id="attachments" class="mb-2 hidden flex-wrap gap-1.5"></ul>
+
+        <!--
+          items-stretch, not items-end: the textarea and the buttons are given the same height by
+          the row rather than each guessing at one, which is what had them sitting a pixel or two
+          apart. The textarea is `block` for the same reason — as an inline element it sits on the
+          text baseline and carries a descender gap under it that nothing else in the row has.
+        -->
+        <div class="flex items-stretch gap-2">
+          <button id="attach" type="button"
+                  class="flex w-11 shrink-0 items-center justify-center rounded-xl border
+                         border-zinc-300 text-mist transition hover:border-zinc-400 hover:text-ink
+                         focus-visible:outline-2 focus-visible:outline-offset-2
+                         focus-visible:outline-signal dark:border-edge dark:hover:border-mist
+                         dark:hover:text-paper"
+                  data-i18n-title="composer.attach">
+            <svg viewBox="0 0 20 20" fill="none" class="size-[18px]" aria-hidden="true">
+              <path d="M13.5 6.5 8 12a2 2 0 1 0 2.8 2.8l5.7-5.7a4 4 0 1 0-5.7-5.7L5 9.3"
+                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <span class="sr-only" data-i18n="composer.attach">Attach files</span>
+          </button>
+          <input id="file-input" type="file" multiple class="hidden">
+
+          <textarea id="composer" rows="1"
+                    class="block max-h-52 min-h-11 w-full flex-1 resize-none rounded-xl border
+                           border-zinc-300 bg-white px-3.5 py-[0.7rem] text-[14px] leading-[1.4]
+                           outline-none transition placeholder:text-mist focus:border-signal/70
+                           focus:ring-2 focus:ring-signal/15 dark:border-edge dark:bg-panel"
+                    data-i18n-placeholder="composer.placeholder"></textarea>
+
+          <button id="send"
+                  class="min-h-11 shrink-0 self-end rounded-xl bg-ink px-4 text-[13px] font-medium
+                         text-white transition hover:bg-zinc-700
+                         focus-visible:outline-2 focus-visible:outline-offset-2
+                         focus-visible:outline-signal disabled:opacity-40
+                         dark:bg-paper dark:text-ink dark:hover:bg-white"
+                  data-i18n="composer.send">Send</button>
+          <button id="stop"
+                  class="hidden min-h-11 shrink-0 self-end items-center gap-1.5 rounded-xl border
+                         border-signal/50 bg-signal/10 px-4 text-[13px] font-medium
+                         text-signal transition hover:bg-signal/20
+                         focus-visible:outline-2 focus-visible:outline-offset-2
+                         focus-visible:outline-signal">
+            <span class="block size-2 rounded-[2px] bg-signal"></span>
+            <span data-i18n="composer.stop">Stop run</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

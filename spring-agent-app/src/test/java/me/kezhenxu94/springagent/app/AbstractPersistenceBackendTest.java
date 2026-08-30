@@ -7,11 +7,13 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import me.kezhenxu94.springagent.core.dao.models.ChatSession;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.core.dao.models.ObservedEvent;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.models.Situation;
+import me.kezhenxu94.springagent.core.dao.repo.ChatSessionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ObservedEventRepo;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
@@ -43,6 +45,7 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
   @Autowired ProcessedMessageRepo processedMessageRepo;
   @Autowired SituationRepo situationRepo;
   @Autowired ObservedEventRepo observedEventRepo;
+  @Autowired ChatSessionRepo chatSessionRepo;
 
   /**
    * The owner is per-subclass so the two backends cannot collide on the ownerId+name constraint.
@@ -401,5 +404,39 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
     final var found = observedEventRepo.findBySituationId(situationId);
     assertThat(found).hasSize(1);
     assertThat(found.getFirst().summary()).isEqualTo("second");
+  }
+
+  @Test
+  @DisplayName("a chat session is found by its owner, and by nobody else")
+  void chatSessionsAreScopedToTheirOwner() {
+    final var now = Instant.now();
+    chatSessionRepo.save(
+        ChatSession.builder()
+            .id(owner() + "-conv-1")
+            .userId(owner())
+            .tenantId("tenant-1")
+            .createdAt(now)
+            .updatedAt(now)
+            .build());
+    chatSessionRepo.save(
+        ChatSession.builder()
+            .id(owner() + "-conv-2")
+            .userId(owner() + "-somebody-else")
+            .createdAt(now)
+            .updatedAt(now)
+            .build());
+
+    // The whole point of the model: asking for one person's conversations must not answer with
+    // another person's. A backend that ignored the userId would still pass a round-trip test.
+    assertThat(chatSessionRepo.findByUserId(owner()))
+        .extracting(ChatSession::id)
+        .containsExactly(owner() + "-conv-1");
+
+    assertThat(chatSessionRepo.findById(owner() + "-conv-1"))
+        .get()
+        .satisfies(it -> assertThat(it.tenantId()).isEqualTo("tenant-1"));
+
+    chatSessionRepo.deleteById(owner() + "-conv-1");
+    assertThat(chatSessionRepo.findById(owner() + "-conv-1")).isEmpty();
   }
 }

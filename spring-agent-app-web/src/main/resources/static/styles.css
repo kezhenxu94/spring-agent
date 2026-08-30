@@ -1,0 +1,469 @@
+/*
+ * What Tailwind's utilities do not cover: the run spine, the model's own markdown, and the toasts.
+ *
+ * Plain CSS on purpose. Tailwind here is the browser build in vendor/, which compiles only the
+ * `<style type="text/tailwindcss">` block in index.html — a linked stylesheet is loaded by the
+ * browser directly and never reaches it, so an `@import "tailwindcss"` or an `@apply` in this file
+ * would silently do nothing. The tokens are therefore repeated as custom properties below, once per
+ * theme, rather than read from Tailwind's @theme.
+ */
+
+:root {
+  --ink: #0B0E14;
+  --panel: #121722;
+  --rail: #1F2736;
+  --edge: #2B3549;
+  --mist: #8494AC;
+  --paper: #E6EDF7;
+
+  --signal: #FFB020;
+  --settled: #4FD1C5;
+  --waiting: #C4B5FD;
+  --alarm: #FF6B6B;
+
+  /* Light theme: the same hues, darkened enough to hold contrast on white. */
+  --fg: #0B0E14;
+  --fg-dim: #5A6880;
+  --line: #E4E7EC;
+  --surface: #FAFAFB;
+  --code-bg: #F4F5F7;
+  --signal-fg: #B26A00;
+  --settled-fg: #0F766E;
+  --alarm-fg: #C03434;
+}
+
+.dark {
+  --fg: #E6EDF7;
+  --fg-dim: #8494AC;
+  --line: #1F2736;
+  --surface: #121722;
+  --code-bg: #161C28;
+  --signal-fg: #FFB020;
+  --settled-fg: #4FD1C5;
+  --alarm-fg: #FF6B6B;
+}
+
+/* ─────────────────────────────────────── the run spine ───────────────────────────────────────
+ *
+ * A run is drawn as a rail with stations on it. The gutter holds the journal's sequence number for
+ * the event, which is the same number the browser sends back as Last-Event-ID to resume — so the
+ * rail is a picture of how far this page has got, not an ornament. Everything else hangs to the
+ * right of it and lines up on one column.
+ */
+
+.run {
+  position: relative;
+  padding-left: 3.25rem;
+}
+
+.run + .run { margin-top: 2rem; }
+
+.run-rail {
+  position: absolute;
+  left: 2.55rem;
+  top: 0.55rem;
+  bottom: 0.55rem;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklch, var(--line), transparent 100%),
+    var(--line) 8%,
+    var(--line) 92%,
+    color-mix(in oklch, var(--line), transparent 100%)
+  );
+}
+
+/* While the run is going the rail carries a slow travelling highlight — the one piece of ambient
+   motion in the page, and it means something: this is still moving. */
+.run:not([data-outcome]) .run-rail::after {
+  content: "";
+  position: absolute;
+  inset-inline: -0.5px;
+  height: 22%;
+  background: linear-gradient(to bottom, transparent, var(--signal), transparent);
+  opacity: 0.55;
+  animation: rail-travel 2.8s ease-in-out infinite;
+}
+
+@keyframes rail-travel {
+  0%   { top: -22%; }
+  100% { top: 100%; }
+}
+
+.run[data-outcome="CANCELLED"] .run-rail,
+.run[data-outcome="FAILED"] .run-rail { opacity: 0.5; }
+
+.run-row {
+  position: relative;
+  padding-block: 0.35rem;
+}
+
+/* The number itself. Quiet enough to read as texture until you look for it. */
+.run-seq {
+  position: absolute;
+  left: -3.25rem;
+  top: 0.75rem;
+  width: 2rem;
+  text-align: right;
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--fg-dim);
+  opacity: 0.55;
+}
+
+/* Each station pins to the rail with a small tick, so a row reads as attached to it. */
+.run-row::before {
+  content: "";
+  position: absolute;
+  left: -0.7rem;
+  top: 1.05rem;
+  width: 0.45rem;
+  height: 1px;
+  background: var(--line);
+}
+.run-row-answer::before { display: none; }
+
+.run-row-answer { padding-block: 0.75rem; }
+
+/* A row arriving while you watch slides in from the rail. Replay does not use this — a hundred
+   rows animating on reattach would be a slot machine. See app.js. */
+.run-row-live {
+  animation: row-in 260ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+@keyframes row-in {
+  from { opacity: 0; transform: translateX(-0.35rem); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ─────────────────────────────────────── folds ─────────────────────────────────────── */
+
+.fold {
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.fold-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+.fold-summary::-webkit-details-marker { display: none; }
+.fold-summary:hover .fold-label { color: var(--fg); }
+
+.fold-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  flex: none;
+}
+.bg-mist { background: var(--mist); }
+.bg-settled { background: var(--settled); }
+.bg-waiting { background: var(--waiting); }
+.bg-signal { background: var(--signal); }
+.bg-alarm { background: var(--alarm); }
+
+.fold-label {
+  color: var(--fg-dim);
+  transition: color 120ms ease;
+}
+.fold-count { margin-left: auto; }
+
+.fold-summary::after {
+  content: "›";
+  color: var(--fg-dim);
+  transition: transform 140ms ease;
+  font-size: 13px;
+  line-height: 1;
+}
+.fold[open] > .fold-summary::after { transform: rotate(90deg); }
+
+.fold-body {
+  border-top: 1px solid var(--line);
+  padding: 0.65rem 0.7rem;
+}
+
+/* ─────────────────────────────────────── tools ─────────────────────────────────────── */
+
+.tool-state { font-family: var(--font-mono, monospace); font-size: 11px; }
+
+.tool-io {
+  margin-top: 0.3rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.4rem;
+  background: var(--code-bg);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--fg-dim);
+  /* Its own scroller. A long command or a wide result must not widen the page. */
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.tool-out {
+  max-height: 11rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+/* ─────────────────────────────────────── subagents ───────────────────────────────────────
+ *
+ * A dashed edge, because a subagent is work happening somewhere else that this run is waiting on —
+ * it is not part of the answer, it is a branch off it.
+ */
+
+.subagent {
+  border: 1px solid var(--line);
+  /* Thicker on the left, which is the edge nearest the rail: a subagent is a branch off this run
+     rather than another panel in it, and the accent is what says where it branched from. */
+  border-left: 2px solid var(--edge);
+  border-radius: 0 0.6rem 0.6rem 0;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface);
+}
+.subagent-done { border-left-color: var(--settled); }
+.subagent-fork { font-size: 12px; opacity: 0.7; }
+
+.subagent-tool {
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.25rem;
+  background: var(--code-bg);
+  font-size: 10.5px;
+  color: var(--fg-dim);
+}
+
+/* ─────────────────────────────────────── to-do ─────────────────────────────────────── */
+
+.todo {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 13px;
+  color: var(--fg-dim);
+}
+.todo-mark {
+  width: 0.75rem;
+  flex: none;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+}
+.todo-done { color: var(--fg-dim); opacity: 0.6; }
+.todo-done > span:last-child { text-decoration: line-through; }
+.todo-active { color: var(--fg); font-weight: 500; }
+.todo-active .todo-mark { color: var(--signal-fg); }
+
+/* ─────────────────────────────────────── queued, failure ─────────────────────────────────────── */
+
+.queued {
+  border-left: 2px solid var(--edge);
+  padding-left: 0.55rem;
+  font-size: 12.5px;
+  color: var(--fg-dim);
+}
+.queued-read { border-color: var(--settled); }
+
+.failure {
+  border: 1px solid color-mix(in oklch, var(--alarm) 45%, transparent);
+  background: color-mix(in oklch, var(--alarm) 8%, transparent);
+  border-radius: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  color: var(--fg);
+}
+
+/* ─────────────────────────────────────── the question ───────────────────────────────────────
+ *
+ * Violet, which is used for nothing else, because "the agent is waiting on a person" is the one
+ * state that will not resolve itself.
+ */
+
+.question {
+  border: 1px solid color-mix(in oklch, var(--waiting) 55%, transparent);
+  background: color-mix(in oklch, var(--waiting) 9%, transparent);
+  border-radius: 0.7rem;
+  padding: 0.8rem 0.9rem;
+}
+
+.question-option {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  padding: 0.25rem 0.4rem;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.question-option:hover { background: color-mix(in oklch, var(--waiting) 14%, transparent); }
+.question-option input { margin-top: 0.28rem; accent-color: var(--waiting); }
+
+/* ─────────────────────────────────────── toasts ───────────────────────────────────────
+ *
+ * Errors have to be seen. A request that fails silently — which is what this page did before —
+ * looks exactly like a request that worked, so anything thrown surfaces here.
+ */
+
+#toasts {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: min(26rem, calc(100vw - 2rem));
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow: 0 8px 24px -8px rgb(0 0 0 / 0.35);
+  animation: toast-in 200ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+.toast-leaving { animation: toast-out 160ms ease forwards; }
+
+.toast-alarm { border-color: color-mix(in oklch, var(--alarm) 55%, transparent); }
+.toast-alarm .toast-mark { color: var(--alarm-fg); }
+.toast-settled .toast-mark { color: var(--settled-fg); }
+.toast-mark { font-family: var(--font-mono, monospace); font-size: 12px; line-height: 1.35; }
+
+.toast-close {
+  margin-left: auto;
+  color: var(--fg-dim);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 0.15rem;
+}
+.toast-close:hover { color: var(--fg); }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes toast-out {
+  to { opacity: 0; transform: translateY(0.35rem); }
+}
+
+/* ─────────────────────────────────────── the model's markdown ─────────────────────────────────────── */
+
+.prose > * + * { margin-top: 0.8em; }
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  font-family: var(--font-display, inherit);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin-top: 1.5em;
+}
+.prose h1 { font-size: 1.3em; }
+.prose h2 { font-size: 1.15em; }
+.prose h3 { font-size: 1.02em; }
+.prose ul, .prose ol { padding-left: 1.3em; }
+.prose ul { list-style: disc; }
+.prose ol { list-style: decimal; }
+.prose li::marker { color: var(--fg-dim); }
+.prose li + li { margin-top: 0.25em; }
+.prose a {
+  color: var(--fg);
+  text-decoration: underline;
+  text-decoration-color: var(--signal);
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+}
+.prose a:hover { color: var(--signal-fg); }
+.prose code {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.86em;
+  border-radius: 0.25rem;
+  padding: 0.1em 0.35em;
+  background: var(--code-bg);
+}
+.prose pre {
+  overflow-x: auto;
+  border-radius: 0.5rem;
+  border: 1px solid var(--line);
+  padding: 0.7rem 0.85rem;
+  background: var(--code-bg);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.prose pre code { background: transparent; padding: 0; font-size: inherit; }
+.prose blockquote {
+  border-left: 2px solid var(--signal);
+  padding-left: 0.8em;
+  color: var(--fg-dim);
+}
+.prose table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.prose th, .prose td {
+  border: 1px solid var(--line);
+  padding: 0.35em 0.65em;
+  text-align: left;
+}
+.prose th { font-weight: 600; background: var(--code-bg); }
+.prose img { max-width: 100%; height: auto; border-radius: 0.5rem; }
+.prose hr { border: 0; border-top: 1px solid var(--line); }
+
+/* ─────────────────────────────────────── the quality floor ─────────────────────────────────────── */
+
+/* A live indicator that breathes; the only motion in the chrome. */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.dot-live { animation: pulse-dot 1.6s ease-in-out infinite; }
+
+::selection { background: color-mix(in oklch, var(--signal) 30%, transparent); }
+
+/* Scrollbars, so a dark page does not get a bright one. */
+* { scrollbar-width: thin; scrollbar-color: var(--edge) transparent; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--edge); }
+::-webkit-scrollbar-track { background: transparent; }
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Dragging a file anywhere over the page is an offer to upload it, so the whole page acknowledges
+   it rather than only a drop zone somebody has to find. */
+body.dropping::after {
+  content: "";
+  position: fixed;
+  inset: 0.5rem;
+  z-index: 50;
+  border: 2px dashed var(--signal);
+  border-radius: 0.9rem;
+  background: color-mix(in oklch, var(--signal) 6%, transparent);
+  pointer-events: none;
+}

@@ -152,6 +152,34 @@ services:
         condition: service_healthy
         required: false
 
+  app-web:
+    # The browser surface, the third of the applications and a deployable of its own rather than a
+    # second face on `app`: it carries no integration at all, so running both means two containers
+    # and two images, not one with a flag. Its own profile for the same reason `app` has one.
+    profiles: [app-web]
+    image: ghcr.io/kezhenxu94/spring-agent-web:latest
+    env_file:
+      - path: .env
+        required: false
+    environment: *app-env
+    ports:
+      # A port of its own, so `app` and `app-web` can run side by side against the same backends.
+      - "${APP_WEB_HOST_PORT:-8081}:8080"
+    volumes:
+      # The same reasoning as `app`: /workspace is the buildpack image's working directory, and both
+      # the SQLite database and the simple vector store's index are written relative to it.
+      - agent-web-data:/workspace/data
+    depends_on:
+      mongodb:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_healthy
+        required: false
+      milvus:
+        condition: service_healthy
+        required: false
+
   mongodb:
     profiles: [mongodb]
     image: mongo:8
@@ -278,6 +306,7 @@ services:
 
 volumes:
   agent-data:
+  agent-web-data:
   mongodb-data:
   redis-data:
   etcd-data:
