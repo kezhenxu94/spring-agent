@@ -33,7 +33,6 @@ import lombok.SneakyThrows;
 import lombok.extern.jackson.Jacksonized;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
-import me.kezhenxu94.springagent.core.tools.HomeDir;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.FeishuMessageCard;
@@ -244,7 +243,7 @@ public class FeishuTools {
       ToolContext toolContext) {
     try {
       final var dest =
-          resolveSafeArtifactPath(fileName, userWorkspaceFactory.forRequest(toolContext));
+          FeishuFiles.artifactPath(fileName, userWorkspaceFactory.forRequest(toolContext));
       log.info("Downloading file: fileKey={}", fileKey);
       final var response =
           feishu
@@ -498,7 +497,7 @@ public class FeishuTools {
     }
     try {
       final var dest =
-          resolveSafeArtifactPath(fileName, userWorkspaceFactory.forRequest(toolContext));
+          FeishuFiles.artifactPath(fileName, userWorkspaceFactory.forRequest(toolContext));
       log.info("Downloading Drive file: token={}", fileToken);
       final var response =
           feishu
@@ -530,29 +529,6 @@ public class FeishuTools {
       return matcher.group("token");
     }
     return null;
-  }
-
-  java.nio.file.Path resolveSafeArtifactPath(final String fileName, final HomeDir home)
-      throws IOException {
-    if (fileName == null || fileName.isBlank()) {
-      throw new IllegalArgumentException("fileName is required");
-    }
-    final String basename;
-    try {
-      final var nameOnly = java.nio.file.Path.of(fileName).getFileName();
-      basename = nameOnly == null ? null : nameOnly.toString();
-    } catch (java.nio.file.InvalidPathException e) {
-      throw new IllegalArgumentException("fileName is invalid: " + fileName, e);
-    }
-    if (basename == null || basename.isBlank() || ".".equals(basename) || "..".equals(basename)) {
-      throw new IllegalArgumentException("fileName is invalid: " + fileName);
-    }
-    final var artifacts = home.artifacts().normalize();
-    final var dest = artifacts.resolve(basename).normalize();
-    if (!dest.startsWith(artifacts)) {
-      throw new IllegalArgumentException("fileName escapes artifacts directory: " + fileName);
-    }
-    return dest;
   }
 
   FeishuFileInfo buildFileInfo(final com.lark.oapi.service.drive.v1.model.File file) {

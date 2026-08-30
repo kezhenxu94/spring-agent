@@ -13,6 +13,7 @@ import me.kezhenxu94.springagent.core.tools.i18n.ModuleToolTexts;
 import me.kezhenxu94.springagent.integration.feishu.tools.FeishuBitableTools;
 import me.kezhenxu94.springagent.integration.feishu.tools.FeishuChatTools;
 import me.kezhenxu94.springagent.integration.feishu.tools.FeishuDocTools;
+import me.kezhenxu94.springagent.integration.feishu.tools.FeishuImportExportTools;
 import me.kezhenxu94.springagent.integration.feishu.tools.FeishuSheetTools;
 import me.kezhenxu94.springagent.integration.feishu.tools.FeishuTools;
 import me.kezhenxu94.springagent.integration.feishu.tools.FeishuWikiTools;
@@ -62,7 +63,8 @@ class FeishuToolsLocalizedEndToEndTest {
         new FeishuWikiTools(null),
         new FeishuSheetTools(null, null, null, null, null),
         new FeishuDocTools(null, null, null, null, null, null, null, null),
-        new FeishuBitableTools(null, null, null, null, null));
+        new FeishuBitableTools(null, null, null, null, null),
+        new FeishuImportExportTools(null, null));
   }
 
   @Test

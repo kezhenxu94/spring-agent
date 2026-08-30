@@ -79,7 +79,17 @@ import com.lark.oapi.service.docx.v1.model.UpdateBlockRequest;
 import com.lark.oapi.service.drive.v1.model.BaseMember;
 import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberReq;
 import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberReqBody;
+import com.lark.oapi.service.drive.v1.model.CreateExportTaskReq;
+import com.lark.oapi.service.drive.v1.model.CreateExportTaskResp;
+import com.lark.oapi.service.drive.v1.model.CreateImportTaskReq;
+import com.lark.oapi.service.drive.v1.model.CreateImportTaskResp;
+import com.lark.oapi.service.drive.v1.model.DownloadExportTaskReq;
+import com.lark.oapi.service.drive.v1.model.DownloadExportTaskResp;
 import com.lark.oapi.service.drive.v1.model.DownloadFileReq;
+import com.lark.oapi.service.drive.v1.model.GetExportTaskReq;
+import com.lark.oapi.service.drive.v1.model.GetExportTaskResp;
+import com.lark.oapi.service.drive.v1.model.GetImportTaskReq;
+import com.lark.oapi.service.drive.v1.model.GetImportTaskResp;
 import com.lark.oapi.service.drive.v1.model.ListFileReq;
 import com.lark.oapi.service.drive.v1.model.ListFileResp;
 import com.lark.oapi.service.drive.v1.model.UploadAllMediaReq;
@@ -230,6 +240,19 @@ public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
           BatchCreatePermissionMemberReq.class,
           BatchCreatePermissionMemberReqBody.class,
           DownloadFileReq.class,
+          // Import and export, request and response both: the ticket a task is started with and
+          // the status it is polled for are read back out of the responses by Gson, so a response
+          // left unregistered polls a task whose every field is null and never finishes.
+          CreateImportTaskReq.class,
+          CreateImportTaskResp.class,
+          GetImportTaskReq.class,
+          GetImportTaskResp.class,
+          CreateExportTaskReq.class,
+          CreateExportTaskResp.class,
+          GetExportTaskReq.class,
+          GetExportTaskResp.class,
+          DownloadExportTaskReq.class,
+          DownloadExportTaskResp.class,
           ListFileReq.class,
           ListFileResp.class,
           UploadAllMediaReq.class,

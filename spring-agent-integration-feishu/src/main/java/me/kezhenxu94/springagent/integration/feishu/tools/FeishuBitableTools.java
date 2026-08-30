@@ -111,7 +111,7 @@ public class FeishuBitableTools {
 
     final var targetFolderToken =
         folderToken == null || folderToken.isBlank()
-            ? FeishuFileConstants.DEFAULT_FOLDER_TOKEN
+            ? FeishuFiles.DEFAULT_FOLDER_TOKEN
             : folderToken;
 
     final var app = feishuBitableService.createApp(targetFolderToken, title, timeZone);

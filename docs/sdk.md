@@ -524,7 +524,7 @@ binary breaks at runtime while the JVM build passes.
 | `spring-agent-integration-github` | Reads GitHub webhook deliveries as observations |
 | `spring-agent-integration-gitlab` | The same for GitLab |
 | `spring-agent-integration-grafana` | The same for Grafana alert notifications |
-| `spring-agent-integration-feishu` | Feishu/Lark chats and cards as an agent surface, plus its docs, sheets, base and wiki tools |
+| `spring-agent-integration-feishu` | Feishu/Lark chats and cards as an agent surface, plus its docs, sheets, base and wiki tools, and drive import/export |
 | `spring-agent-rag-milvus` | The knowledge base, and the only implementation of core's `KnowledgeBase` |
 
 Adding a module decides nothing on its own. `app.ai.tools.shell.type` decides the shell and defaults
