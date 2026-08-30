@@ -85,6 +85,9 @@ class GitLabWebhookSourceTest {
     assertThat(observation.correlationKey()).isEqualTo("gitlab:acme/widgets!7");
     assertThat(observation.title()).isEqualTo("acme/widgets!7");
     assertThat(observation.summary()).contains("Disk is full").contains("tanuki");
+    // Authenticated only as far as GitLab's static token goes, which is not far — see the note on
+    // GitLabWebhookSource about what a trusted-actors list here is and is not worth.
+    assertThat(observation.actor()).isEqualTo("tanuki");
     assertThat(observation.payloadJson()).contains("\"iid\": 7");
     assertThat(observation.route().isEmpty()).isTrue();
   }
@@ -224,6 +227,26 @@ class GitLabWebhookSourceTest {
     assertThat(observations).isPresent();
     assertThat(observations.orElseThrow().kind()).isEqualTo("issue");
     assertThat(observations.orElseThrow().correlationKey()).isEqualTo("gitlab:issue");
+    assertThat(observations.orElseThrow().actor()).isNull();
+  }
+
+  @Test
+  void readsTheActorFromEitherSpellingGitLabUses() {
+    // The object hooks nest it under "user"; push and tag hooks put "user_username" at the top
+    // level. Missing the second would leave every push unattributable, and so refused by any
+    // trusted-actors list the deployment wrote.
+    final var push =
+        source.observation(
+            delivery(
+                "Push Hook",
+                "a",
+                """
+                {"object_kind": "push",
+                 "project": {"path_with_namespace": "acme/widgets"},
+                 "user_username": "tanuki"}
+                """));
+
+    assertThat(push.orElseThrow().actor()).isEqualTo("tanuki");
   }
 
   @Test

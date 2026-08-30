@@ -29,12 +29,24 @@ import org.springframework.stereotype.Component;
  * <p>Deduplication lives here rather than in each transport, so there is one namespace of claims
  * and one definition of what a retry is. A transport's only obligation is that {@link
  * Observation#deliveryId()} is stable across a redelivery and different for a genuine repeat.
+ *
+ * <p>Admission lives here for the same reason, and covers the same ground: a source nobody
+ * configured is dropped, and so is an actor {@link TrustedActors} was not told to expect. Both
+ * checks are made once, here, rather than in each transport — three near-identical allow-lists in
+ * three integration modules would drift apart, and a new source would arrive with none at all.
+ *
+ * <p>What that costs is worth stating. This drops the observation from <em>this</em> intake, not
+ * from the application: {@link me.kezhenxu94.springagent.core.observing.EventIntakes} has already
+ * handed it to every other {@code EventIntake} bean, which have policies of their own and know
+ * nothing of {@code app.events}. An application that adds an intake adds something these settings
+ * do not govern.
  */
 @Slf4j
 @Component
 public class SituationEventIntake implements EventIntake {
 
   private final EventsProperties properties;
+  private final TrustedActors trustedActors;
   private final SituationRepo situations;
   private final ObservedEventRepo events;
   private final ProcessedMessageRepo processedMessages;
@@ -58,11 +70,13 @@ public class SituationEventIntake implements EventIntake {
 
   public SituationEventIntake(
       final EventsProperties properties,
+      final TrustedActors trustedActors,
       final SituationRepo situations,
       final ObservedEventRepo events,
       final ProcessedMessageRepo processedMessages,
       final Clock clock) {
     this.properties = properties;
+    this.trustedActors = trustedActors;
     this.situations = situations;
     this.events = events;
     this.processedMessages = processedMessages;
@@ -76,6 +90,20 @@ public class SituationEventIntake implements EventIntake {
       // Not an error. A deployment configures the sources it wants, and a surface reports what it
       // saw without being asked to know which those are.
       log.debug("Ignoring observation from {}: the source is not configured", observation.source());
+      return;
+    }
+
+    if (!trustedActors.trusts(observation.source(), observation.actor())) {
+      // Before the claim, and that is the whole of why it is here rather than a few lines down. A
+      // claim never expires, so a refusal taken after one would outlive the configuration that
+      // caused it: the deployment widens its list, the same event arrives again, and it is passed
+      // over for good as a delivery already seen. Refused here, widening the list and replaying the
+      // event works — which for a mailbox, where the message is still sitting there, is the
+      // difference between a correctable mistake and a lost one.
+      log.debug(
+          "Ignoring observation from {}: {} is not a trusted actor",
+          observation.source(),
+          observation.actor());
       return;
     }
 

@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.events.config;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import me.kezhenxu94.springagent.core.observing.Route;
@@ -183,6 +184,8 @@ public record EventsProperties(
             configured.ownerUserId(),
             pick(configured.route(), builtIn.route(), Route.NONE),
             pick(configured.playbook(), builtIn.playbook(), playbook),
+            // No global layer, unlike every line around it. See Source#trustedActors.
+            pick(emptyToNull(configured.trustedActors()), builtIn.trustedActors(), null),
             pick(configured.debounce(), builtIn.debounce(), debounce),
             pick(configured.maxDebounce(), builtIn.maxDebounce(), maxDebounce),
             pick(configured.cooldown(), builtIn.cooldown(), cooldown),
@@ -206,6 +209,18 @@ public record EventsProperties(
   }
 
   /**
+   * The list-valued {@link #blankToNull}, and needed for the same reason.
+   *
+   * <p>The binder hands back an empty list for a key written with nothing under it, and {@link
+   * #pick} takes the first non-null — so without this, {@code trusted-actors:} with an empty value
+   * would beat the layers beneath it and mean something entirely different from leaving it out. An
+   * empty setting says nothing, whatever its type.
+   */
+  private static <T> List<T> emptyToNull(final List<T> value) {
+    return value == null || value.isEmpty() ? null : List.copyOf(value);
+  }
+
+  /**
    * Per-source overrides. Every field is nullable and means "say nothing, take what applies" —
    * which is why none of them are defaulted in a compact constructor here, unlike the top level.
    *
@@ -220,6 +235,25 @@ public record EventsProperties(
    *     observation's own route — the chat a message came from — is never filled in from here.
    * @param playbook which of {@code ownerUserId}'s documents say how to deal with this source's
    *     events, and what to look them up with
+   * @param trustedActors whose events this source is willing to be told about, as regular
+   *     expressions matched against {@link
+   *     me.kezhenxu94.springagent.core.observing.Observation#actor()}. Compiled at startup by
+   *     {@code TrustedActors}, which refuses to start on one that will not parse, and read by
+   *     {@code SituationEventIntake} before an observation is recorded.
+   *     <p>Null — the default — means everyone, which is what keeps a deployment that upgrades into
+   *     this working the way it did the day before. Not an oversight to be tightened later: an
+   *     allow-list that arrived switched on would stop existing triage silently, and a source that
+   *     quietly evaluates nothing is the failure this module's startup checks exist to avoid. What
+   *     it costs is that the safe configuration has to be chosen, which is why {@code
+   *     SituationSweeper} names every source that has not chosen it.
+   *     <p>A private repository or an internal GitLab says so as {@code ['.*']} rather than by
+   *     anything read from the payload. Trust inferred from a {@code repository.private} flag would
+   *     move the decision into the body of the very request it governs, and a repository flipped to
+   *     public would then open the door with no configuration change and no restart.
+   *     <p>No top-level fallback, for the reason {@link Playbook} is overridden whole: patterns are
+   *     written in one source's vocabulary — GitHub logins, email addresses — and applying a global
+   *     list to a source it was never written for either admits the wrong people or, more likely,
+   *     silently admits nobody.
    */
   @lombok.Builder
   public record Source(
@@ -228,6 +262,7 @@ public record EventsProperties(
       String ownerUserId,
       Route route,
       Playbook playbook,
+      List<String> trustedActors,
       Duration debounce,
       Duration maxDebounce,
       Duration cooldown,
@@ -292,6 +327,7 @@ public record EventsProperties(
       String ownerUserId,
       Route route,
       Playbook playbook,
+      List<String> trustedActors,
       Duration debounce,
       Duration maxDebounce,
       Duration cooldown,

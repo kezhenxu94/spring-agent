@@ -1,0 +1,120 @@
+# Profiles for running the server on a laptop, against real services rather than against nothing.
+#
+# Loaded only under the `local` profile, and every block in it is gated on a second profile of its
+# own, so activating `local` alone still changes nothing. That is the shape to keep as more blocks
+# arrive: this file is a set of switches somebody turns on deliberately, one feature at a time, and
+# a block that applied merely because the file was loaded would be a surprise waiting for whoever
+# adds the next one.
+#
+#   ./gradlew :spring-agent-app:bootRun --args='--spring.profiles.active=local,integration-email'
+#
+# Not a place for credentials. It is committed, so everything secret is an environment variable and
+# comes from .env like the rest — see the "Running locally" notes in CLAUDE.md.
+#
+# Not a second reference either. application.yaml documents every property and every default, and
+# the values here exist only to set, together, the handful that have to agree before a feature will
+# start. Where the two disagree about what something means, that file is right.
+
+---
+# Reading a mailbox. Four settings across two blocks have to agree before this source runs at all,
+# and the application refuses to start rather than run half configured — which is exactly why they
+# are worth having in one place instead of in a shell history:
+#
+#   EMAIL_HOST=imap.example.com \
+#   EMAIL_USERNAME=agent@example.com \
+#   EMAIL_PASSWORD=<an application-specific password, where the provider issues those> \
+#   EMAIL_AUTHSERV_ID=<see below> \
+#   EMAIL_TRUSTED_ACTORS='.+@example\.com' \
+#     ./gradlew :spring-agent-app:bootRun --args='--spring.profiles.active=local,integration-email'
+#
+# Nothing here is defaulted to a provider's settings, deliberately. A host could be guessed from a
+# provider's documentation, but EMAIL_AUTHSERV_ID cannot: it is whatever the server that verifies
+# DKIM for this mailbox writes into the Authentication-Results header, and a value that does not
+# match it exactly is the one mistake in this file that fails quietly rather than loudly — every
+# message is dropped for having no authenticated sender, and a mailbox nobody is reading looks
+# exactly like a mailbox nobody has written to. A plausible default would be a guess that costs
+# somebody an afternoon.
+#
+# The quick way to find it is to start with this profile and send yourself a message: the logging
+# below is on already, and a message whose identities do not match names the ones it carried
+# instead — usually one of those is the value to configure. The other way is to open a message
+# already in the mailbox, show its original, and read the topmost Authentication-Results line;
+# everything before its first semicolon is the value.
+#
+# Whatever it turns out to be, it is only worth something if that same server strips inbound
+# headers already claiming its name, so that only its own verdict is ever read. That is an
+# assumption about somebody else's mail plumbing, and nothing here can check it.
+#
+# WHEN NOTHING HAPPENS, work down this list. Each step rules out one of the places the path can go
+# quiet, in the order they occur:
+#
+#   1. Did the block apply at all? Both profiles have to be active. `--debug` prints Boot's
+#      condition report; look for EmailAutoConfiguration under "Positive matches". If it is under
+#      negative ones, the reason is printed beside it.
+#   2. Did it connect? One line at startup names the mailbox, the account and the settings below.
+#      No line means step 1. A line and then nothing means the connection or the credentials, which
+#      the Spring Integration logger below reports.
+#   3. Did mail arrive? Every message read is logged, whether or not anything came of it. Note that
+#      a message already reported is flagged and never read again — that is the bookmark, so
+#      anything already consumed stays silent however many times you restart. Send a new message
+#      rather than waiting for an old one to reappear.
+#   4. Was the sender authenticated? A message read but not reported says why, and where the
+#      authserv-id is what is wrong it names the identities the message carried instead.
+#   5. Was the sender trusted? That decision belongs to the events module, which logs it.
+#   6. Did anything become of it? A situation waits out the debounce before it is evaluated. Both
+#      timings are shortened here for exactly this reason.
+#
+# The loggers each step needs are turned on below, so none of this needs arranging first.
+spring:
+  config:
+    activate:
+      on-profile: integration-email
+# On by default under this profile, because a local run of this feature is nearly always somebody
+# finding out why it is doing nothing, and having to discover which loggers to turn on is part of
+# what makes that slow. Verbose on purpose, and only here: none of it belongs in a deployment, where
+# the mail being read is somebody's and the interesting line is the situation that comes out.
+logging:
+  level:
+    # Which messages were read, which were reported, and — the one worth having — why a message was
+    # not. A mismatched authserv-id is named here, along with the identities that were on the
+    # message instead.
+    me.kezhenxu94.springagent.integration.email: INFO
+    # Connecting, logging in, idling, and reconnecting. Where to look when the line above never
+    # appears at all: bad credentials and an unreachable host both show up here and nowhere else.
+    org.springframework.integration.mail: INFO
+    # What became of an observation once it was reported: whether the sender was trusted, which
+    # situation it joined, and when that situation is due to be looked at.
+    me.kezhenxu94.springagent.events: DEBUG
+app:
+  events:
+    # The mailbox is only a transport. This is what makes anything of what it reads, and without it
+    # the source would connect, read, report, and be listened to by nobody.
+    enabled: true
+    # Short, because waiting half a minute to see whether a change worked is how a local loop stops
+    # being used. The server's own defaults are the ones to reason about; these are for watching.
+    debounce: PT5S
+    cooldown: PT1M
+    sources:
+      email:
+        # An identity of the agent's own and never a person's, as everywhere else — a triage run
+        # assumes it, along with that identity's file sandbox and its personal MCP servers.
+        owner-user-id: ${EVENTS_OWNER_USER_ID:ou_local_agent}
+        # Whose mail is read at all. Required for this source and for no other: elsewhere an absent
+        # list means everybody and is merely complained about, which cannot be right for an address
+        # anybody can write to. Left to resolve to nothing on purpose — the application then refuses
+        # to start and names this setting, which is a better first encounter with the feature than a
+        # mailbox that quietly reports nothing.
+        #
+        # Comma-separated, and each entry a regular expression matched against the whole address.
+        # Mind the metacharacter: '.+@example\.com' is the careful spelling.
+        trusted-actors: ${EMAIL_TRUSTED_ACTORS:}
+  email:
+    enabled: true
+    host: ${EMAIL_HOST:}
+    port: ${EMAIL_PORT:993}
+    username: ${EMAIL_USERNAME:}
+    password: ${EMAIL_PASSWORD:}
+    folder: ${EMAIL_FOLDER:INBOX}
+    # Whose verdict on a DKIM signature is read. See the note above before setting it, and check it
+    # against a real message rather than against a provider's documentation.
+    authserv-id: ${EMAIL_AUTHSERV_ID:}

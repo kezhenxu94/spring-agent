@@ -127,10 +127,23 @@ class SituationSweeperTest {
         clock);
   }
 
+  /** The real thing rather than a stub, so these tests exercise the admission path as it ships. */
+  private static TrustedActors trustedActors(final EventsProperties properties) {
+    final var actors = new TrustedActors(properties);
+    actors.compileAll();
+    return actors;
+  }
+
   /** Puts a real situation in the store the way the intake would, so nothing is hand-built. */
   private Situation observed(final EventsProperties properties, final String deliveryId) {
     final var intake =
-        new SituationEventIntake(properties, repos.situations, repos.events, repos.claims, clock);
+        new SituationEventIntake(
+            properties,
+            trustedActors(properties),
+            repos.situations,
+            repos.events,
+            repos.claims,
+            clock);
     intake.observe(
         Observation.builder()
             .source("grafana")
@@ -202,7 +215,13 @@ class SituationSweeperTest {
                         .build()))
             .build();
     // A tenant on the way in, which must not reach the retrieval scope.
-    new SituationEventIntake(properties, repos.situations, repos.events, repos.claims, clock)
+    new SituationEventIntake(
+            properties,
+            trustedActors(properties),
+            repos.situations,
+            repos.events,
+            repos.claims,
+            clock)
         .observe(
             Observation.builder()
                 .source("grafana")
@@ -309,7 +328,13 @@ class SituationSweeperTest {
     final var sweeper = sweeper(properties);
     // Two situations, both overdue, one slot.
     final var intake =
-        new SituationEventIntake(properties, repos.situations, repos.events, repos.claims, clock);
+        new SituationEventIntake(
+            properties,
+            trustedActors(properties),
+            repos.situations,
+            repos.events,
+            repos.claims,
+            clock);
     for (final var key : List.of("grafana:a", "grafana:b")) {
       intake.observe(
           Observation.builder()
@@ -682,6 +707,22 @@ class SituationSweeperTest {
     final var properties = properties(false, 2);
 
     sweeper(properties, admins(Set.of("ou_someone_else"))).start();
+
+    verify(scheduler).scheduleWithFixedDelay(any(Runnable.class), eq(properties.sweepInterval()));
+  }
+
+  @Test
+  @DisplayName("a source that names no trusted actors is complained about, but still starts")
+  void shouldStartDespiteASourceThatTrustsEverybody() {
+    // Complained about and not refused, deliberately, and this test is what pins the difference
+    // from the administrator case above. A deployment that upgrades into this feature has no such
+    // setting anywhere, so refusing would take its whole triage down over a configuration that was
+    // correct the day before — the failure this class's startup checks exist to prevent, not to
+    // cause. What the operator gets is a line in the log naming every source it applies to.
+    final var properties = properties(false, 2);
+    assertThat(properties.policyFor("grafana").orElseThrow().trustedActors()).isNull();
+
+    sweeper(properties).start();
 
     verify(scheduler).scheduleWithFixedDelay(any(Runnable.class), eq(properties.sweepInterval()));
   }

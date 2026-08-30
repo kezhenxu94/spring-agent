@@ -158,6 +158,12 @@ public class GitHubWebhookSource implements WebhookSource {
             .correlationKey(correlationKey(repository, number, workflow, event))
             .title(title(repository, number, workflow, kind))
             .summary(summary(root, kind, repository, number))
+            // Reported as an identity, not only as evidence, because here it is one: verify() has
+            // covered the whole body with GitHub's HMAC by the time this runs, so sender.login is a
+            // name GitHub attests to rather than one the payload merely contains. That is the
+            // difference Observation#actor turns on, and it is what makes a trusted-actors list for
+            // this source a real check rather than a formality.
+            .actor(actor(root))
             .payloadJson(body)
             // observedAt is left to default to now on purpose. The payload's timestamps
             // (created_at, updated_at) belong to the object the event is about, not to the event: a
@@ -246,10 +252,17 @@ public class GitHubWebhookSource implements WebhookSource {
     return repository + " " + kind;
   }
 
+  /** Who GitHub says caused the event, for {@link Observation#actor()}. */
+  private static String actor(final JsonNode root) {
+    return text(root.path("sender"), "login");
+  }
+
   /**
-   * One line a human would read first. Who caused the event is in here rather than in a field of
-   * its own, because it is evidence like the rest of the payload — the identity a triage run acts
-   * as is never the identity of whoever tripped it.
+   * One line a human would read first. Who caused the event is in here as well as in {@link
+   * Observation#actor()}, and the two are not the same thing said twice: this is the evidence a
+   * reader wants first, shown to the model like the rest of the payload, while the other is a fact
+   * about the delivery that decides whether there is a run to show it to. Neither is the identity a
+   * triage run acts as, which is never the identity of whoever tripped it.
    */
   private String summary(
       final JsonNode root, final String kind, final String repository, final Integer number) {
@@ -271,7 +284,7 @@ public class GitHubWebhookSource implements WebhookSource {
     if (headline != null) {
       subject.append(": ").append(headline);
     }
-    final var actor = text(root.path("sender"), "login");
+    final var actor = actor(root);
     if (actor != null) {
       subject.append(" (by ").append(actor).append(')');
     }

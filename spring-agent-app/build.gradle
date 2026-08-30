@@ -75,6 +75,10 @@ dependencies {
   implementation project(':spring-agent-integration-github')
   implementation project(':spring-agent-integration-gitlab')
   implementation project(':spring-agent-integration-grafana')
+  // The one source that is not a webhook, and the one whose presence is not free: it dials out and
+  // holds a connection to a mailbox. So unlike the three above it carries a switch of its own,
+  // app.email.enabled, which defaults to false — taking it still decides nothing.
+  implementation project(':spring-agent-integration-email')
   // The knowledge base. Optional for an SDK consumer, and the only implementation of core's
   // KnowledgeBase contract, so taking it is what decides a deployment has one at all — there is no
   // property that turns a knowledge base on without it. app.ai.rag.enabled turns it back off.
