@@ -497,6 +497,16 @@ Redis mapping annotations at once, which works because an annotation whose type 
 is discarded on reflection. Schema is owned by the application (`ddl-auto: update`); there is no
 Flyway or Liquibase.
 
+Adding a model or a query means updating all three implementations in
+`spring-agent-persistence-*`, and on Redis an `@Indexed` field is the *definition* of what can be
+filtered on rather than a tuning knob — it has no query planner.
+
+`ChatSessionRepo` is the one contract a surface is likely to want for itself. It records which
+`conversationId`s belong to which user, and nothing else: chat memory can enumerate conversation ids
+but knows nothing about who owns them, so a "your conversations" listing built on it would show
+every user everyone else's. What was *said* in one stays in chat memory, read back by the same id —
+so there is one copy of a transcript rather than a second one for the UI to let drift.
+
 Redis needs Redis 8 or Redis Stack, and a server configured to *keep* what it is given
 (`maxmemory-policy noeviction`, plus AOF or RDB). These are the agent's own records, not a cache: a
 Redis provisioned the usual way for caching will evict a stored credential or an unfired scheduled
@@ -526,6 +536,7 @@ binary breaks at runtime while the JVM build passes.
 | `spring-agent-integration-grafana` | The same for Grafana alert notifications |
 | `spring-agent-integration-feishu` | Feishu/Lark chats and cards as an agent surface, plus its docs, sheets, base and wiki tools, and drive import/export |
 | `spring-agent-rag-milvus` | The knowledge base, and the only implementation of core's `KnowledgeBase` |
+| `spring-agent-app-web` | A browser surface over the runtime and nothing else; not published, it ships as an image |
 
 Adding a module decides nothing on its own. `app.ai.tools.shell.type` decides the shell and defaults
 to `none`; `app.events.enabled` decides the events receiver and defaults to false; `app.ai.rag.enabled`
