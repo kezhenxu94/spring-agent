@@ -20,7 +20,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     since {@link CoreMessages} reads through the application's own message source.
  */
 @ConfigurationProperties(prefix = "app")
-public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
+public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale, Shutdown shutdown) {
 
   public SpringAgentProperties {
     // An application that configures no DashScope at all is a legitimate one — spring-agent-app-cli
@@ -28,6 +28,25 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale) {
     // the first — and leaving this null made the vision ChatClient fail the whole context with a
     // NullPointerException at startup rather than the image tools simply not working.
     dashscope = dashscope == null ? Dashscope.NONE : dashscope;
+    shutdown = shutdown == null ? new Shutdown(null) : shutdown;
+  }
+
+  /**
+   * @param inFlightWaitTimeout how long {@code SpringAgent#onShutdown} waits for in-flight agent
+   *     streams to finish before giving up on them. Must agree with the deployment's own grace
+   *     period — Kubernetes {@code terminationGracePeriodSeconds} — or the pod is killed while this
+   *     wait is still running. Defaults to {@link #DEFAULT_IN_FLIGHT_WAIT_TIMEOUT}.
+   */
+  public record Shutdown(Duration inFlightWaitTimeout) {
+    public static final Duration DEFAULT_IN_FLIGHT_WAIT_TIMEOUT = Duration.ofMinutes(30);
+
+    public Shutdown {
+      if (inFlightWaitTimeout == null
+          || inFlightWaitTimeout.isZero()
+          || inFlightWaitTimeout.isNegative()) {
+        inFlightWaitTimeout = DEFAULT_IN_FLIGHT_WAIT_TIMEOUT;
+      }
+    }
   }
 
   /**

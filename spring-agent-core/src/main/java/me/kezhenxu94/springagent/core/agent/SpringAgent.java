@@ -267,7 +267,8 @@ public class SpringAgent {
   public void onShutdown() throws InterruptedException {
     accepting = false;
     log.info("Shutdown: waiting for {} in-flight agent stream(s) to complete", inFlight.get());
-    final long deadline = System.currentTimeMillis() + 10 * 60 * 1000L;
+    final long deadline =
+        System.currentTimeMillis() + appConfiguration.shutdown().inFlightWaitTimeout().toMillis();
     int elapsed = 0;
     while (inFlight.get() > 0 && System.currentTimeMillis() < deadline) {
       Thread.sleep(2000);
