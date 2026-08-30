@@ -119,6 +119,28 @@ back the login on published-file pages. Set `APP_FEISHU_ENABLED=false` to leave 
 integration out; the shipped `application.yaml` still names the app id and secret for that login, so
 override the `spring.security.oauth2` block as well if you run without Feishu at all.
 
+Opening a chat with the bot for the first time is answered with a welcome card: what the agent is,
+and a few things you can tap to ask it rather than having to work out what to type. After that,
+opening the chat says nothing — unless the agent has learned to do something you have not been told
+about, in which case you get one card listing exactly what changed since your last visit, and
+nothing you have already read.
+
+That "since" is the notes under
+[`feishu/updates/`](spring-agent-integration-feishu/src/main/resources/feishu/updates), one markdown
+file per version, named `1.md`, `2.md` and so on; the greeting itself is
+[`feishu/welcome.md`](spring-agent-integration-feishu/src/main/resources/feishu/welcome.md). The
+agent records the number of the last note each person was shown, which is what lets it tell them
+only the new ones. To write your own, point `FEISHU_WELCOME` and `FEISHU_UPDATES` at files of your
+own — see `app.feishu` in
+[`application.yaml`](spring-agent-app/src/main/resources/application.yaml) for the rules, including
+what a gap in the numbering does.
+
+To receive any of this the app's event subscription needs **用户和机器人的会话首次被创建**
+(`p2p_chat_create`) and **用户进入与机器人的会话**
+(`im.chat.access_event.bot_p2p_chat_entered_v1`) added in the Feishu console. Only the second is
+required — the first is delivered over webhooks only, so a deployment on the long connection is
+greeted by the second either way.
+
 Everything else is optional and set in
 [`application.yaml`](spring-agent-app/src/main/resources/application.yaml). Two switches decide what
 the deployment actually is:

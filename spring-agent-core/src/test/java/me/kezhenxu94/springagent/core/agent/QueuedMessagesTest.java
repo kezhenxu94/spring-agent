@@ -133,6 +133,6 @@ class QueuedMessagesTest {
     final var source = new ResourceBundleMessageSource();
     source.setBasename(CoreMessages.BASENAME);
     source.setDefaultEncoding("UTF-8");
-    return new CoreMessages(source, new SpringAgentProperties(null, null, Locale.ENGLISH));
+    return new CoreMessages(source, new SpringAgentProperties(null, null, Locale.ENGLISH, null));
   }
 }

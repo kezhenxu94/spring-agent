@@ -58,6 +58,22 @@ public class FeishuMessages {
         .replace("{conversationHint}", jsonEscaped(get("card-conversation-hint")));
   }
 
+  /**
+   * Fills the welcome card template's label placeholders. Its title and its prose are not among
+   * them: those come from the note in {@code welcome.md}, which a deployment rewrites wholesale.
+   */
+  public String renderWelcomeCard(final String cardJson) {
+    return cardJson.replace("{welcomeSuggestHint}", jsonEscaped(get("welcome-suggest-hint")));
+  }
+
+  /**
+   * Fills the update card template's one placeholder, its title, which needs how many notes are
+   * about to be listed to say anything true.
+   */
+  public String renderUpdateCard(final String cardJson, final int count) {
+    return cardJson.replace("{updateTitle}", jsonEscaped(get("update-title", count)));
+  }
+
   /** Fills the question form template's label placeholders. */
   public String renderQuestionForm(final String formJson) {
     return formJson

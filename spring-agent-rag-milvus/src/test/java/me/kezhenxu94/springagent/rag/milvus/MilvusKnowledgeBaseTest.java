@@ -106,7 +106,8 @@ class MilvusKnowledgeBaseTest {
             "you are an agent",
             null,
             null),
-        Locale.ENGLISH);
+        Locale.ENGLISH,
+        null);
   }
 
   private static KnowledgeScope scope(final String owner, final String group, final String tenant) {

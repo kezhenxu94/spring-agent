@@ -907,6 +907,29 @@ app:
     # as above; a file of your own may restyle these five elements, but the card above has to keep
     # the footer they are anchored to (see FeishuCardElements).
     card-elements: ${FEISHU_CARD_ELEMENTS:classpath:/feishu/card-elements.json}
+    # What somebody is greeted with the first time they open a chat with the bot, and what they are
+    # shown afterwards when the agent has learned to do something they have not been told about.
+    # Two halves, because the words and the frame around them are edited by different people at
+    # different times:
+    #
+    #  * `welcome` and `updates` are the words — markdown files with a YAML frontmatter block.
+    #    `welcome.md` carries the greeting, its `title`, and the `suggestions` the card offers to
+    #    ask; the notes under `updates` are named `1.md`, `2.md`, … and a note's number *is* its
+    #    filename. That number is what the agent records against each person, so it can show them
+    #    what changed since their last visit and nothing else. Add a note by adding the next number
+    #    in the same commit as the change it describes; a gap ends the list, so do not leave one.
+    #    Both take a language-suffixed sibling — `welcome_zh_CN.md`, `updates/1_zh_CN.md`, resolved the way messages.properties
+    #    is, and both may point at a `file:` directory of your own.
+    #  * `welcome-card` and `update-card` are the frame — the card JSON the notes are poured into.
+    #    Same rules as reply-card above, including the native-image hint for a classpath location
+    #    other than the default.
+    #
+    # A deployment shipping no notes at all greets nobody and says nothing, which is what an empty
+    # `updates` directory means.
+    welcome: ${FEISHU_WELCOME:classpath:/feishu/welcome.md}
+    updates: ${FEISHU_UPDATES:classpath:/feishu/updates/}
+    welcome-card: ${FEISHU_WELCOME_CARD:classpath:/feishu/welcome-card.json}
+    update-card: ${FEISHU_UPDATE_CARD:classpath:/feishu/update-card.json}
     # Which language the cards speak — their own words, as opposed to anything the model wrote:
     # the labels on the reply card and the question form, and the toasts a button answers with.
     # Defaults to the host's language; en and zh_CN ship with it, and any other is a
