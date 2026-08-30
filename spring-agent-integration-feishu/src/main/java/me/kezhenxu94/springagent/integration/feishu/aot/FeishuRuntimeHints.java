@@ -74,7 +74,9 @@ public class FeishuRuntimeHints implements RuntimeHintsRegistrar {
           "feishu/reply-card.json",
           "feishu/card-elements.json",
           "feishu/question-form.json",
-          "feishu/subagent-panel.json");
+          "feishu/subagent-panel.json",
+          "feishu/welcome-card.json",
+          "feishu/update-card.json");
 
   /** The cards' own words, whose locale is only known when the binary runs. */
   private static final String MESSAGES_BUNDLE = "feishu.messages";
@@ -96,6 +98,12 @@ public class FeishuRuntimeHints implements RuntimeHintsRegistrar {
     // which would consult the host's locale ahead of the base file.
     hints.resources().registerPattern("feishu/tools.properties");
     hints.resources().registerPattern("feishu/tools_*.properties");
+
+    // The greeting and the numbered update notes, in every language they ship in. FeishuUpdates
+    // reads each by the name it must have rather than listing the directory — see the comment
+    // there — so a pattern that makes them readable is all the binary needs.
+    hints.resources().registerPattern("feishu/welcome*.md");
+    hints.resources().registerPattern("feishu/updates/*.md");
 
     // The parameterized form, not the raw class: it is the generic type that carries the payload's
     // own property hints down from FeishuResponse#data.
