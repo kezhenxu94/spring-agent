@@ -133,61 +133,159 @@ async function api(path, options = {}) {
 
 // ─────────────────────────────────────── theme and language ───────────────────────────────────────
 
+// Icons, at 16 and stroked in currentColor so they take the button's own state.
+const ICONS = {
+  auto: '<rect x="2.4" y="2.8" width="11.2" height="8.2" rx="1.5"/><path d="M6 13.6h4"/>',
+  light: '<circle cx="8" cy="8" r="2.9"/><path d="M8 1.6v1.4M8 13v1.4M3.5 3.5l1 1M11.5 11.5l1 1'
+    + 'M1.6 8H3M13 8h1.4M3.5 12.5l1-1M11.5 4.5l1-1"/>',
+  dark: '<path d="M13.4 9.7A5.8 5.8 0 0 1 6.3 2.6a5.8 5.8 0 1 0 7.1 7.1Z"/>',
+};
+
+function icon(name, size = 15) {
+  return `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+    stroke-linecap="round" stroke-linejoin="round" class="size-[${size}px]"
+    aria-hidden="true">${ICONS[name]}</svg>`;
+}
+
 function initTheme() {
-  const select = $('theme-select');
+  const group = $('theme-switch');
   let stored = 'auto';
   try { stored = localStorage.getItem('spring-agent-theme') || 'auto'; } catch (e) { /* private mode */ }
-  select.value = stored;
 
   const apply = (choice) => {
     const dark = choice === 'dark'
       || (choice === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
     document.documentElement.classList.toggle('dark', dark);
   };
-  apply(stored);
 
-  select.addEventListener('change', () => {
-    try { localStorage.setItem('spring-agent-theme', select.value); } catch (e) { /* private mode */ }
-    apply(select.value);
+  const buttons = ['auto', 'light', 'dark'].map((choice) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.theme = choice;
+    button.className = 'seg';
+    button.innerHTML = icon(choice);
+    // Toggle buttons with aria-pressed rather than a radiogroup: a radiogroup promises arrow-key
+    // navigation, and three tab stops is both simpler and no worse to use.
+    button.addEventListener('click', () => {
+      try { localStorage.setItem('spring-agent-theme', choice); } catch (e) { /* private mode */ }
+      apply(choice);
+      select(choice);
+    });
+    group.append(button);
+    return button;
   });
+
+  const select = (choice) => {
+    buttons.forEach((button) => {
+      const on = button.dataset.theme === choice;
+      button.classList.toggle('seg-on', on);
+      button.setAttribute('aria-pressed', String(on));
+      button.title = t(`theme.${button.dataset.theme}`);
+      button.setAttribute('aria-label', t(`theme.${button.dataset.theme}`));
+    });
+    group.dataset.theme = choice;
+  };
+
+  apply(stored);
+  select(stored);
 
   // Following the system while set to auto, so a desktop that switches at sunset takes the page
   // with it without a reload.
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    if (select.value === 'auto') apply('auto');
+    if ((group.dataset.theme || 'auto') === 'auto') apply('auto');
   });
+
+  // Re-labelled when the language changes; the icons stay, their names do not.
+  themeRelabel = () => select(group.dataset.theme || 'auto');
 }
+
+/** Set by initTheme, so a language switch can relabel the theme buttons without rebuilding them. */
+let themeRelabel = () => {};
 
 function initLanguage(me) {
   // The server already resolved this from the cookie or Accept-Language. Following it rather than
   // deciding again keeps the page and the server's own messages in one language.
   setLocale(me.locale);
 
-  const select = $('language-select');
-  select.replaceChildren();
-  (me.locales || ['en']).forEach((tag) => {
-    const option = document.createElement('option');
-    option.value = tag;
-    option.textContent = LANGUAGE_NAMES[tag.split('-')[0]] || tag;
-    select.append(option);
-  });
-  select.value = (me.locales || []).find((tag) => tag.split('-')[0] === locale())
-    || me.locale || 'en';
+  const button = $('language-button');
+  const menu = $('language-menu');
+  const current = $('language-current');
+  const tags = me.locales && me.locales.length ? me.locales : ['en'];
 
-  select.addEventListener('change', () => {
+  const chosen = () => tags.find((tag) => tag.split('-')[0] === locale()) || me.locale || tags[0];
+
+  const close = () => {
+    menu.classList.add('hidden');
+    button.setAttribute('aria-expanded', 'false');
+  };
+  const open = () => {
+    menu.classList.remove('hidden');
+    button.setAttribute('aria-expanded', 'true');
+    menu.querySelector('button')?.focus();
+  };
+
+  const choose = (tag) => {
     // The same cookie Spring's CookieLocaleResolver reads, so the choice is what the *server* uses
     // for its own messages too — setting only a JavaScript variable would leave the page translated
     // and its error messages not.
     const oneYear = 365 * 24 * 60 * 60;
-    document.cookie = `SPRING_AGENT_LOCALE=${encodeURIComponent(select.value)};path=/;max-age=${oneYear};samesite=lax`;
-    setLocale(select.value);
+    document.cookie = `SPRING_AGENT_LOCALE=${encodeURIComponent(tag)};path=/;max-age=${oneYear};samesite=lax`;
+    setLocale(tag);
     applyTranslations();
+    themeRelabel();
+    draw();
     renderConversationList();
     renderStatus();
     attempt(loadTasks);
+    close();
+    button.focus();
+  };
+
+  const draw = () => {
+    current.textContent = locale().toUpperCase();
+    menu.replaceChildren();
+    tags.forEach((tag) => {
+      const item = document.createElement('li');
+      item.setAttribute('role', 'none');
+      const entry = document.createElement('button');
+      entry.type = 'button';
+      entry.setAttribute('role', 'menuitemradio');
+      const on = tag === chosen();
+      entry.setAttribute('aria-checked', String(on));
+      entry.className = 'menu-item';
+      const tick = document.createElement('span');
+      tick.className = 'menu-tick';
+      tick.textContent = on ? '✓' : '';
+      const label = document.createElement('span');
+      label.textContent = LANGUAGE_NAMES[tag.split('-')[0]] || tag;
+      const code = document.createElement('span');
+      code.className = 'menu-code';
+      code.textContent = tag;
+      entry.append(tick, label, code);
+      entry.addEventListener('click', () => choose(tag));
+      item.append(entry);
+      menu.append(item);
+    });
+  };
+
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (menu.classList.contains('hidden')) open(); else close();
+  });
+  // Dismissed the two ways every menu is expected to be.
+  document.addEventListener('click', (event) => {
+    if (!menu.classList.contains('hidden') && !menu.contains(event.target)) close();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !menu.classList.contains('hidden')) {
+      close();
+      button.focus();
+    }
   });
 
+  draw();
   applyTranslations();
+  themeRelabel();
 }
 
 // ──────────────────────────────────────── the status strip ────────────────────────────────────────
@@ -249,7 +347,11 @@ function renderConversationList() {
     title.className = 'min-w-0 flex-1 truncate';
     title.textContent = conversation.title || t('nav.untitled');
     open.append(dot, title);
-    open.addEventListener('click', () => attempt(() => openConversation(conversation.id)));
+    open.addEventListener('click', () => attempt(async () => {
+      await openConversation(conversation.id);
+      // Picking a conversation is what the drawer was opened for, so it gets out of the way.
+      if (onNarrowScreen()) sidebarOpen(false);
+    }));
 
     const remove = document.createElement('button');
     remove.className = 'absolute right-1 top-1/2 -translate-y-1/2 rounded px-1 text-[13px] '
@@ -284,6 +386,7 @@ async function newConversation() {
   const created = await api('/api/conversations', { method: 'POST' });
   await loadConversations();
   await openConversation(created.id);
+  if (onNarrowScreen()) sidebarOpen(false);
   $('composer').focus();
 }
 
@@ -369,11 +472,21 @@ function closeStream() {
 
 function setRunning(running) {
   state.running = running;
-  $('stop').classList.toggle('hidden', !running);
-  $('stop').classList.toggle('flex', running);
-  $('send').classList.toggle('hidden', running);
+  // Explicit display rather than toggling a `hidden` class: both buttons carry a display of their
+  // own from .composer-action, and which of the two utilities wins would depend on the order
+  // Tailwind happened to emit them in.
+  $('send').style.display = running ? 'none' : 'grid';
+  $('stop').style.display = running ? 'grid' : 'none';
   $('composer').placeholder = running
     ? t('composer.placeholder.running') : t('composer.placeholder');
+  refreshSendState();
+}
+
+/** Send is inert until there is something to send — a message, or a file to talk about. */
+function refreshSendState() {
+  const send = $('send');
+  if (!send) return;
+  send.disabled = !$('composer').value.trim() && !state.attachments.length;
 }
 
 /**
@@ -516,6 +629,7 @@ function renderAttachments() {
     chip.append(name, size, drop);
     list.append(chip);
   });
+  refreshSendState();
 }
 
 function humanSize(bytes) {
@@ -815,7 +929,10 @@ async function loadTasks() {
       const open = document.createElement('button');
       open.className = 'font-mono text-[10px] uppercase tracking-wider text-mist hover:text-signal';
       open.textContent = t('task.open');
-      open.addEventListener('click', () => attempt(() => openConversation(task.conversationId)));
+      open.addEventListener('click', () => attempt(async () => {
+        await openConversation(task.conversationId);
+        if (onNarrowScreen()) sidebarOpen(false);
+      }));
       actions.append(open);
     }
     const cancel = document.createElement('button');
@@ -894,6 +1011,46 @@ function renderDenied(me) {
   renderStatus('failed');
 }
 
+
+// ─────────────────────────────────────── the sidebar drawer ───────────────────────────────────────
+//
+// A drawer below md, a column at md and up. Opening it is easy to get right and closing it is what
+// gets forgotten: the header's own toggle is behind the drawer once it is open, so there has to be
+// a way out from inside it — a close button, the backdrop, and Escape.
+
+function sidebarOpen(open) {
+  const sidebar = $('sidebar');
+  const backdrop = $('sidebar-backdrop');
+  if (!sidebar) return; // removed on the no-access screen
+  sidebar.classList.toggle('sidebar-open', open);
+  backdrop.hidden = !open;
+  $('toggle-sidebar').setAttribute('aria-expanded', String(open));
+  // The page behind a modal drawer must not scroll under it.
+  document.body.classList.toggle('drawer-open', open);
+}
+
+function sidebarIsOpen() {
+  return $('sidebar')?.classList.contains('sidebar-open');
+}
+
+/** True only where the sidebar is a drawer; at md and up it is always on screen. */
+function onNarrowScreen() {
+  return window.matchMedia('(max-width: 767.98px)').matches;
+}
+
+function initSidebar() {
+  $('toggle-sidebar').addEventListener('click', () => sidebarOpen(!sidebarIsOpen()));
+  $('close-sidebar').addEventListener('click', () => sidebarOpen(false));
+  $('sidebar-backdrop').addEventListener('click', () => sidebarOpen(false));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && sidebarIsOpen()) sidebarOpen(false);
+  });
+  // Widening past md leaves the drawer state behind, or the backdrop would sit over the column.
+  window.matchMedia('(max-width: 767.98px)').addEventListener('change', (event) => {
+    if (!event.matches) sidebarOpen(false);
+  });
+}
+
 // ────────────────────────────────────────── wiring ──────────────────────────────────────────
 
 function scrollToEnd(force) {
@@ -909,6 +1066,7 @@ function initComposer() {
   composer.addEventListener('input', () => {
     composer.style.height = 'auto';
     composer.style.height = `${Math.min(composer.scrollHeight, 208)}px`;
+    refreshSendState();
   });
   composer.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -918,9 +1076,10 @@ function initComposer() {
   });
   $('send').addEventListener('click', send);
   $('stop').addEventListener('click', stop);
+  setRunning(false);
   $('new-conversation').addEventListener('click', () => attempt(newConversation));
   initAttachments();
-  $('toggle-sidebar').addEventListener('click', () => $('sidebar').classList.toggle('hidden'));
+  initSidebar();
 }
 
 async function start() {

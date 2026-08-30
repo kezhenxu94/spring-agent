@@ -24,6 +24,8 @@ const STRINGS = {
     'nav.empty': 'Nothing here yet.',
     'nav.signout': 'Sign out',
     'nav.delete': 'Delete conversation',
+    'nav.menu': 'Conversations',
+    'nav.close': 'Close',
 
     'empty.title': 'Ask the agent to do something.',
     'empty.body': 'It works on the server, so you can close this tab and come back. '
@@ -32,6 +34,7 @@ const STRINGS = {
     'composer.placeholder': 'Ask anything. Shift+Enter for a new line.',
     'composer.placeholder.running': 'Add something and it joins the run…',
     'composer.send': 'Send',
+    'composer.tools': 'Add to this message',
     'composer.attach': 'Attach files',
     'composer.attach.remove': 'Remove from this message',
     'composer.attach.done': 'Uploaded {0} file(s) to your artifacts.',
@@ -111,6 +114,8 @@ const STRINGS = {
     'nav.empty': '还没有内容。',
     'nav.signout': '退出登录',
     'nav.delete': '删除对话',
+    'nav.menu': '对话列表',
+    'nav.close': '关闭',
 
     'empty.title': '交给智能体一件事。',
     'empty.body': '它在服务端执行，可以随时关掉这个页面。回来时正在做的事仍然在。',
@@ -118,6 +123,7 @@ const STRINGS = {
     'composer.placeholder': '随便问点什么，Shift+Enter 换行。',
     'composer.placeholder.running': '继续输入会插入到当前这轮…',
     'composer.send': '发送',
+    'composer.tools': '为这条消息添加内容',
     'composer.attach': '上传文件',
     'composer.attach.remove': '不在这条消息中引用',
     'composer.attach.done': '已上传 {0} 个文件到你的 artifacts 目录。',
@@ -224,6 +230,10 @@ export function applyTranslations(root = document) {
   });
   root.querySelectorAll('[data-i18n-title]').forEach((element) => {
     element.title = t(element.dataset.i18nTitle);
+  });
+  // For a control whose visible content is an icon, so the only name it has is the accessible one.
+  root.querySelectorAll('[data-i18n-label]').forEach((element) => {
+    element.setAttribute('aria-label', t(element.dataset.i18nLabel));
   });
 }
 

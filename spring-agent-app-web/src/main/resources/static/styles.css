@@ -467,3 +467,194 @@ body.dropping::after {
   background: color-mix(in oklch, var(--signal) 6%, transparent);
   pointer-events: none;
 }
+
+/* ─────────────────────────────── the theme and language controls ───────────────────────────────
+ *
+ * Neither uses a state colour. Amber, teal, violet and coral say something specific about a run
+ * everywhere else on this page, and spending one on a settings row would make the chrome look like
+ * something the agent is doing. Selection here is carried by contrast and a raised surface instead.
+ */
+
+.seg {
+  display: grid;
+  place-items: center;
+  width: 1.65rem;
+  height: 1.5rem;
+  border-radius: 0.375rem;
+  color: var(--fg-dim);
+  transition: color 120ms ease, background 120ms ease;
+}
+.seg:hover { color: var(--fg); }
+.seg:focus-visible {
+  outline: 2px solid var(--mist);
+  outline-offset: 1px;
+}
+/* The selected segment has to read as raised at a glance, without borrowing a state colour. On
+   dark that means a surface clearly lighter than the sidebar it sits on — --code-bg is only a few
+   points off the panel and disappeared. On light it is white plus a hairline shadow, which is the
+   same idea the other way up. */
+.seg-on {
+  color: var(--paper);
+  background: var(--edge);
+}
+:root:not(.dark) .seg-on {
+  color: var(--fg);
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.07), inset 0 0 0 1px var(--line);
+}
+
+.menu {
+  z-index: 40;
+  padding: 0.25rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: 0 10px 28px -10px rgb(0 0 0 / 0.4);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.35rem 0.45rem;
+  border-radius: 0.4rem;
+  font-size: 13px;
+  color: var(--fg);
+  text-align: left;
+  transition: background 120ms ease;
+}
+.menu-item:hover { background: var(--code-bg); }
+.menu-item:focus-visible {
+  outline: 2px solid var(--mist);
+  outline-offset: -2px;
+}
+
+/* A fixed-width column for the tick, so the labels line up whether or not one is checked. */
+.menu-tick {
+  width: 0.8rem;
+  flex: none;
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+
+.menu-code {
+  margin-left: auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+}
+
+/* ─────────────────────────────────────── the composer ───────────────────────────────────────
+ *
+ * A toolbar of what can be added to a message, then the box the message is typed in with the one
+ * action that sends it in the corner of that same box. The frame is the box's, not the textarea's,
+ * so focus reads as belonging to the whole composer.
+ */
+
+.tool-button {
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 0.5rem;
+  color: var(--fg-dim);
+  transition: color 120ms ease, background 120ms ease;
+}
+.tool-button:hover { color: var(--fg); background: var(--code-bg); }
+.tool-button:focus-visible { outline: 2px solid var(--mist); outline-offset: 1px; }
+
+.composer-box {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--surface);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+:root:not(.dark) .composer-box { background: #fff; border-color: #D8DBE1; }
+
+/* Amber is the run's colour, and a focused composer is not a run — so focus is carried by contrast
+   and a neutral ring rather than by borrowing a state colour. */
+.composer-box:focus-within {
+  border-color: var(--mist);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--mist) 16%, transparent);
+}
+
+.composer-action {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.6rem;
+  background: var(--fg);
+  color: var(--surface);
+  transition: opacity 120ms ease, background 120ms ease;
+}
+/* Scoped away from the stop button: `:root:not(.dark) .composer-action` out-specifies
+   `.composer-action-stop`, so without the :not() the stop icon inherited the send button's white
+   and vanished into its own pale amber. */
+:root:not(.dark) .composer-action:not(.composer-action-stop) { color: #fff; }
+.composer-action:focus-visible { outline: 2px solid var(--mist); outline-offset: 2px; }
+
+/* Dimmed and inert while there is nothing to send, so the control says whether it will do anything
+   before it is pressed. */
+.composer-action[disabled] {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.composer-action-stop {
+  background: color-mix(in oklch, var(--signal) 16%, transparent);
+  color: var(--signal-fg);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--signal) 50%, transparent);
+}
+.composer-action-stop:hover { background: color-mix(in oklch, var(--signal) 26%, transparent); }
+
+/* ─────────────────────────────────────── the sidebar drawer ───────────────────────────────────────
+ *
+ * Below md the sidebar is a drawer over the run; at md and up it is a column beside it. The drawer
+ * slides on a transform rather than being hidden with `display`, because the sidebar is a flex
+ * column and toggling its display drops that layout — which is what left the footer following the
+ * conversation list instead of sitting at the bottom.
+ */
+@media (max-width: 767.98px) {
+  #sidebar {
+    transform: translateX(-100%);
+    transition: transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
+  #sidebar.sidebar-open {
+    transform: translateX(0);
+    box-shadow: 0 0 40px -8px rgb(0 0 0 / 0.5);
+  }
+}
+
+/* The column beside the run at md and up, where the backdrop must never appear. */
+@media (min-width: 768px) {
+  #sidebar-backdrop { display: none !important; }
+}
+
+/*
+ * Controls that exist only while the sidebar is a drawer: the button that opens it, and the one
+ * inside it that closes it again.
+ *
+ * `md:hidden` cannot do this job on them, and quietly failed to. Both also carry .tool-button,
+ * which sets a display of its own — and this stylesheet is linked after the one Tailwind's browser
+ * build injects, so at equal specificity the later rule wins and the buttons stayed on screen at
+ * every width. Keeping the responsive half here puts both rules in one file, where their order is
+ * something this file decides rather than something the page's load order does.
+ */
+.drawer-only { display: grid; }
+@media (min-width: 768px) {
+  .drawer-only { display: none; }
+}
+
+/* The run must not scroll under an open drawer. */
+body.drawer-open { overflow: hidden; }
+@media (min-width: 768px) {
+  body.drawer-open { overflow: visible; }
+}

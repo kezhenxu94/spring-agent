@@ -73,9 +73,18 @@
 <div id="app" class="flex h-full">
 
   <!-- ───────────────────────────── conversations and scheduled work ───────────────────────────── -->
+  <!-- Tapping away from the drawer closes it, which is what everyone tries first. -->
+  <div id="sidebar-backdrop" class="fixed inset-0 z-30 bg-black/40" hidden></div>
+
+  <!--
+    display:flex at every width, never toggled. Hiding this with `hidden` is what broke the drawer
+    on a phone: below md the aside fell back to display:block, so `flex-1` on the list stopped
+    growing and the footer simply followed the last conversation instead of sitting at the bottom.
+    Below md it slides on a transform instead, which leaves the column layout intact.
+  -->
   <aside id="sidebar"
-         class="fixed inset-y-0 left-0 z-30 hidden w-[270px] shrink-0 flex-col border-r border-zinc-200
-                bg-zinc-50 md:static md:flex dark:border-rail dark:bg-panel">
+         class="fixed inset-y-0 left-0 z-40 flex w-[270px] shrink-0 flex-col border-r border-zinc-200
+                bg-zinc-50 md:static dark:border-rail dark:bg-panel">
 
     <div class="flex items-center gap-2.5 px-4 pt-4 pb-3">
       <svg viewBox="0 0 32 32" class="size-6 shrink-0" aria-hidden="true">
@@ -83,7 +92,16 @@
         <circle cx="19" cy="11" r="2.5" class="fill-settled"/>
         <circle cx="19" cy="19" r="2.5" class="fill-signal"/>
       </svg>
-      <span class="font-display text-[15px] font-semibold tracking-tight">Spring Agent</span>
+      <span class="flex-1 font-display text-[15px] font-semibold tracking-tight">Spring Agent</span>
+      <!-- A way out of the drawer. The header's toggle is behind it once it is open. -->
+      <button id="close-sidebar" type="button" class="tool-button drawer-only -mr-1"
+              data-i18n-title="nav.close">
+        <svg viewBox="0 0 16 16" fill="none" class="size-[15px]" aria-hidden="true">
+          <path d="m4.5 4.5 7 7m0-7-7 7" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round"/>
+        </svg>
+        <span class="sr-only" data-i18n="nav.close">Close</span>
+      </button>
     </div>
 
     <div class="px-3 pb-3">
@@ -108,21 +126,45 @@
     </nav>
 
     <div class="space-y-2.5 border-t border-zinc-200 p-3 dark:border-rail">
-      <div class="flex items-center gap-1.5">
-        <label for="language-select" class="sr-only" data-i18n="language">Language</label>
-        <select id="language-select"
-                class="min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-2 py-1.5
-                       font-mono text-[11px] focus-visible:outline-2 focus-visible:outline-signal
-                       dark:border-edge dark:bg-rail"></select>
-        <label for="theme-select" class="sr-only" data-i18n="theme">Theme</label>
-        <select id="theme-select"
-                class="min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-2 py-1.5
-                       font-mono text-[11px] focus-visible:outline-2 focus-visible:outline-signal
-                       dark:border-edge dark:bg-rail">
-          <option value="auto" data-i18n="theme.auto">Match system</option>
-          <option value="light" data-i18n="theme.light">Light</option>
-          <option value="dark" data-i18n="theme.dark">Dark</option>
-        </select>
+      <!--
+        Neither control uses a state colour for "selected". Amber, teal, violet and coral mean
+        something specific about a run everywhere else in this page, and spending one on chrome
+        would make a settings row look like something the agent is doing.
+      -->
+      <div class="flex items-center justify-between gap-2">
+
+        <!-- Language: a menu rather than a segmented control, because the list is whatever the
+             server reports and adding a language is meant to be one file on each side. -->
+        <div class="relative">
+          <button id="language-button" type="button"
+                  class="flex items-center gap-1.5 rounded-lg border border-zinc-300 py-1.5 pl-2 pr-1.5
+                         text-mist transition hover:border-zinc-400 hover:text-ink
+                         focus-visible:outline-2 focus-visible:outline-offset-2
+                         focus-visible:outline-mist dark:border-edge dark:hover:border-mist
+                         dark:hover:text-paper"
+                  aria-haspopup="menu" aria-expanded="false" data-i18n-title="language">
+            <svg viewBox="0 0 16 16" fill="none" class="size-[15px]" aria-hidden="true">
+              <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/>
+              <path d="M2.3 6.2h11.4M2.3 9.8h11.4" stroke="currentColor" stroke-width="1.3"
+                    stroke-linecap="round"/>
+              <ellipse cx="8" cy="8" rx="2.9" ry="6" stroke="currentColor" stroke-width="1.3"/>
+            </svg>
+            <span id="language-current" class="font-mono text-[10px] uppercase tracking-wider"></span>
+            <svg viewBox="0 0 16 16" fill="none" class="size-3 opacity-60" aria-hidden="true">
+              <path d="M4.5 6.5 8 10l3.5-3.5" stroke="currentColor" stroke-width="1.4"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="sr-only" data-i18n="language">Language</span>
+          </button>
+          <ul id="language-menu" role="menu"
+              class="menu absolute bottom-full left-0 mb-1.5 hidden min-w-[9.5rem]"></ul>
+        </div>
+
+        <!-- Theme: a segmented control, because there are exactly three and "match system" is worth
+             seeing rather than finding. -->
+        <div id="theme-switch" role="group" data-i18n-label="theme"
+             class="flex items-center gap-0.5 rounded-lg border border-zinc-300 p-0.5
+                    dark:border-edge"></div>
       </div>
       <div class="flex items-center gap-2">
         <img id="me-avatar" alt=""
@@ -143,9 +185,14 @@
   <main class="flex min-w-0 flex-1 flex-col">
 
     <header class="flex h-12 shrink-0 items-center gap-3 border-b border-zinc-200 px-4 dark:border-rail">
-      <button id="toggle-sidebar"
-              class="-ml-1 rounded p-1.5 text-mist hover:bg-zinc-100 md:hidden dark:hover:bg-rail"
-              aria-label="Menu">☰</button>
+      <button id="toggle-sidebar" class="tool-button drawer-only -ml-1"
+              aria-expanded="false" aria-controls="sidebar" data-i18n-title="nav.menu">
+        <svg viewBox="0 0 16 16" fill="none" class="size-[15px]" aria-hidden="true">
+          <path d="M2.5 4h11M2.5 8h11M2.5 12h11" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round"/>
+        </svg>
+        <span class="sr-only" data-i18n="nav.menu">Menu</span>
+      </button>
       <h1 id="conversation-title" class="min-w-0 flex-1 truncate text-[13px] font-medium"
           data-i18n="app.title">Spring Agent</h1>
 
@@ -171,49 +218,48 @@
         <ul id="attachments" class="mb-2 hidden flex-wrap gap-1.5"></ul>
 
         <!--
-          items-stretch, not items-end: the textarea and the buttons are given the same height by
-          the row rather than each guessing at one, which is what had them sitting a pixel or two
-          apart. The textarea is `block` for the same reason — as an inline element it sits on the
-          text baseline and carries a descender gap under it that nothing else in the row has.
+          A toolbar of things you can add to a message, above the box you type it in. One button so
+          far; it is a strip rather than a lone button because the next one — a screenshot, a
+          reference to a file the agent already has — belongs beside it and not somewhere else.
         -->
-        <div class="flex items-stretch gap-2">
-          <button id="attach" type="button"
-                  class="flex w-11 shrink-0 items-center justify-center rounded-xl border
-                         border-zinc-300 text-mist transition hover:border-zinc-400 hover:text-ink
-                         focus-visible:outline-2 focus-visible:outline-offset-2
-                         focus-visible:outline-signal dark:border-edge dark:hover:border-mist
-                         dark:hover:text-paper"
-                  data-i18n-title="composer.attach">
-            <svg viewBox="0 0 20 20" fill="none" class="size-[18px]" aria-hidden="true">
+        <div class="mb-1.5 flex items-center gap-0.5" role="toolbar" data-i18n-label="composer.tools">
+          <button id="attach" type="button" class="tool-button" data-i18n-title="composer.attach">
+            <svg viewBox="0 0 20 20" fill="none" class="size-[17px]" aria-hidden="true">
               <path d="M13.5 6.5 8 12a2 2 0 1 0 2.8 2.8l5.7-5.7a4 4 0 1 0-5.7-5.7L5 9.3"
-                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                    stroke-linejoin="round"/>
             </svg>
             <span class="sr-only" data-i18n="composer.attach">Attach files</span>
           </button>
           <input id="file-input" type="file" multiple class="hidden">
+        </div>
 
+        <!--
+          The box owns the focus ring, through focus-within, so the textarea inside it can be
+          borderless and the action can sit in the same frame as the text it acts on. The textarea's
+          bottom padding is what reserves the button's corner, so a long message wraps above it
+          rather than underneath it.
+        -->
+        <div class="composer-box">
           <textarea id="composer" rows="1"
-                    class="block max-h-52 min-h-11 w-full flex-1 resize-none rounded-xl border
-                           border-zinc-300 bg-white px-3.5 py-[0.7rem] text-[14px] leading-[1.4]
-                           outline-none transition placeholder:text-mist focus:border-signal/70
-                           focus:ring-2 focus:ring-signal/15 dark:border-edge dark:bg-panel"
+                    class="block max-h-52 w-full resize-none border-0 bg-transparent px-3.5 pt-3
+                           pb-11 text-[14px] leading-[1.5] outline-none placeholder:text-mist"
                     data-i18n-placeholder="composer.placeholder"></textarea>
 
-          <button id="send"
-                  class="min-h-11 shrink-0 self-end rounded-xl bg-ink px-4 text-[13px] font-medium
-                         text-white transition hover:bg-zinc-700
-                         focus-visible:outline-2 focus-visible:outline-offset-2
-                         focus-visible:outline-signal disabled:opacity-40
-                         dark:bg-paper dark:text-ink dark:hover:bg-white"
-                  data-i18n="composer.send">Send</button>
-          <button id="stop"
-                  class="hidden min-h-11 shrink-0 self-end items-center gap-1.5 rounded-xl border
-                         border-signal/50 bg-signal/10 px-4 text-[13px] font-medium
-                         text-signal transition hover:bg-signal/20
-                         focus-visible:outline-2 focus-visible:outline-offset-2
-                         focus-visible:outline-signal">
-            <span class="block size-2 rounded-[2px] bg-signal"></span>
-            <span data-i18n="composer.stop">Stop run</span>
+          <button id="send" class="composer-action" data-i18n-title="composer.send">
+            <svg viewBox="0 0 16 16" fill="none" class="size-[15px]" aria-hidden="true">
+              <path d="M8 13V3.5M3.9 7.6 8 3.5l4.1 4.1" stroke="currentColor" stroke-width="1.6"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="sr-only" data-i18n="composer.send">Send</span>
+          </button>
+
+          <button id="stop" class="composer-action composer-action-stop"
+                  data-i18n-title="composer.stop">
+            <svg viewBox="0 0 16 16" class="size-[13px]" aria-hidden="true">
+              <rect x="3" y="3" width="10" height="10" rx="2" fill="currentColor"/>
+            </svg>
+            <span class="sr-only" data-i18n="composer.stop">Stop run</span>
           </button>
         </div>
       </div>
