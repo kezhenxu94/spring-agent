@@ -16,7 +16,7 @@
 # store — the two are independent choices, and the commonest one is `simple` plus `rag`:
 #
 #   COMPOSE_PROFILES=rag docker compose up -d          # Milvus only, app run separately
-#   RAG_ENABLED=true ./gradlew :spring-agent-app:bootRun
+#   RAG_ENABLED=true ./gradlew :spring-agent-app-feishu:bootRun
 #
 # RAG_ENABLED belongs to whichever process runs the agent, not to the profile: the profile starts
 # Milvus, the variable is what tells the application to use it. Set it on the compose command only
@@ -54,7 +54,7 @@
 #
 #   ./gradlew bootBuildImage
 #
-# Model credentials and Feishu settings are read from .env, which is gitignored and yours to fill
+# Model credentials and the chat surface's settings (Feishu or Slack) are read from .env, which is gitignored and yours to fill
 # in; see application.yaml for the full set. It is optional here, so `docker compose config` works
 # on a fresh clone, but the application will not start without at least OPENAI_BASE_URL,
 # OPENAI_API_KEY, OPENAI_MODEL and the EMBEDDING_* trio.

@@ -1,11 +1,11 @@
 # The browser surface's configuration.
 #
-# Derived from spring-agent-app/src/main/resources/application.yaml and deliberately kept close to
+# Derived from spring-agent-app-feishu/src/main/resources/application.yaml and deliberately kept close to
 # it, so that a setting means the same thing whichever application a deployment runs. What differs
 # is listed here rather than left to be discovered by diffing:
 #
-#   * app.events and app.feishu are absent — this module carries neither of those modules, and
-#     configuration for absent code is a lie about what the binary does.
+#   * app.events, app.feishu and app.slack are absent — this module carries none of those modules,
+#     and configuration for absent code is a lie about what the binary does.
 #   * app.web.* is this application's own: who may log in, how long a finished run stays replayable,
 #     and how long an unanswered question lives.
 #   * app.ai.tools.shell.type defaults to none rather than local. This surface is reachable by
@@ -364,15 +364,20 @@ app:
     # which win over this — see WebLocaleConfiguration.
     locale: ${WEB_LOCALE:en}
     auth:
-      # Whose people may use this deployment, as a Feishu tenant key. There is deliberately no
-      # permissive default: unset, WebAuthoritiesMapper refuses everyone rather than admitting
-      # anybody who can complete the OAuth flow, which for a public Feishu app is anybody at all.
-      # The agent acts with the logged-in person's credentials and files, so this is the line
-      # between a colleague and a stranger.
+      # Which identity provider the sign-in button goes to: `feishu` or `slack`, naming one of the
+      # registrations under spring.security.oauth2.client above. Defaults to feishu, which is what
+      # this application has always used — a deployment that installed the Slack app rather than the
+      # Feishu one sets this to slack and fills in the SLACK_* variables instead.
+      provider: ${WEB_AUTH_PROVIDER:feishu}
+      # Whose people may use this deployment: a Feishu tenant key, or a Slack team id where the
+      # provider above is slack. There is deliberately no permissive default: unset,
+      # WebAuthoritiesMapper refuses everyone rather than admitting anybody who can complete the
+      # OAuth flow, which for a public app is anybody at all. The agent acts with the logged-in
+      # person's credentials and files, so this is the line between a colleague and a stranger.
       #
-      # A refusal is not silent: the log says which tenant was refused and which was expected, and
-      # /api/me tells the person in the page rather than leaving them a wall of 403s.
-      tenant-id: ${FEISHU_TENANT_ID:}
+      # A refusal is not silent: the log says which workspace was refused and which was expected,
+      # and /api/me tells the person in the page rather than leaving them a wall of 403s.
+      tenant-id: ${WEB_AUTH_TENANT_ID:${FEISHU_TENANT_ID:${SLACK_TEAM_ID:}}}
     journal:
       # How long a finished run's detail — its tool calls, its subagents, its thinking — is kept for
       # a browser that comes back to it. The case it exists for is a reload seconds after an answer
@@ -807,3 +812,50 @@ app:
       api-key: ${DASHSCOPE_VISION_API_KEY}
       base-url: ${DASHSCOPE_VISION_BASE_URL:https://ws-x1m3p2roqbf7dij1.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
       model: ${DASHSCOPE_VISION_MODEL:qwen3-vl-plus}
+
+---
+# Signing in with Slack instead of Feishu.
+#
+# A profile rather than a second registration sitting alongside the first, because Spring Security
+# validates every registration it can see at startup and refuses one whose client-id is empty — so
+# two registrations with only one configured is a context that will not refresh. Activate it with
+# SPRING_PROFILES_ACTIVE=slack-login, and set SLACK_CLIENT_ID, SLACK_CLIENT_SECRET and
+# SLACK_TEAM_ID. It replaces the Feishu registration rather than adding to it: this application
+# admits people from one workspace, and which workspace is what app.web.auth.tenant-id names.
+spring:
+  config:
+    activate:
+      on-profile: slack-login
+  security:
+    oauth2:
+      client:
+        registration:
+          slack:
+            client-id: ${SLACK_CLIENT_ID}
+            client-secret: ${SLACK_CLIENT_SECRET}
+            authorization-grant-type: authorization_code
+            # openid gets a token at all; profile carries the display name and email the address.
+            # The workspace this person belongs to arrives as a claim either way, and it is what
+            # app.web.auth.tenant-id is compared against.
+            scope: openid,profile,email
+            redirect-uri: '{baseUrl}/{action}/oauth2/code/{registrationId}'
+            client-authentication-method: client_secret_basic
+            client-name: Slack
+        provider:
+          slack:
+            # Slack's OpenID Connect endpoints, which are a different family from the /oauth/v2/*
+            # ones used to install a bot — installing an app and identifying a person are separate
+            # flows there, and only this one returns an id token.
+            issuer-uri: https://slack.com
+            authorization-uri: https://slack.com/openid/connect/authorize
+            token-uri: https://slack.com/api/openid.connect.token
+            user-info-uri: https://slack.com/api/openid.connect.userInfo
+            jwk-set-uri: https://slack.com/openid/connect/keys
+            # `sub` is the Slack user id, which is what every other part of this application knows a
+            # person by. `name` would be their display name, which is neither unique nor stable.
+            user-name-attribute: sub
+app:
+  web:
+    auth:
+      provider: slack
+      tenant-id: ${SLACK_TEAM_ID}

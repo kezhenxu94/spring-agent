@@ -36,7 +36,7 @@ pattern passes silently rather than failing. Confirm the test actually ran.
 
 Tests need a running Docker daemon — `AbstractIntegrationTest` starts MongoDB and Redis via
 Testcontainers. Unit tests sit beside the class they cover; cross-cutting integration tests live in
-`spring-agent-app/src/test`. A behaviour that must hold for every persistence backend goes in
+`spring-agent-app-feishu/src/test`. A behaviour that must hold for every persistence backend goes in
 `AbstractPersistenceBackendTest`, which is run once per backend by
 `PersistenceJpaTest`/`PersistenceMongoTest`/`PersistenceRedisTest` — add the assertion there rather
 than to one backend's test.
@@ -50,23 +50,24 @@ local; run `make` before pushing.
 Other tasks:
 
 ```sh
-./gradlew :spring-agent-app:bootRun          # the server
+./gradlew :spring-agent-app-feishu:bootRun   # the Feishu server
+./gradlew :spring-agent-app-slack:bootRun    # the Slack server
 ./gradlew :spring-agent-app-cli:bootRun      # the command line (stdin/tty wired for JLine)
 ./gradlew :spring-agent-app-web:bootRun      # the browser UI, on :8080
-./gradlew :spring-agent-app:bootBuildImage   # container image (Paketo buildpack, no Dockerfile)
+./gradlew :spring-agent-app-feishu:bootBuildImage   # container image (Paketo buildpack, no Dockerfile)
 ./gradlew :spring-agent-app-cli:nativeCompile -Pnative
 ```
 
 `-Pnative` is required for any native task: the GraalVM plugin is applied conditionally so that a
 plain `bootBuildImage` does not silently turn into a native build.
 
-`spring-agent-app/src/main/resources/application-local.yaml` holds the switches for running the
+`spring-agent-app-feishu/src/main/resources/application-local.yaml` holds the switches for running the
 server against real services. It is loaded by the `local` profile and every block in it is gated on
 a second profile of its own, so `local` alone still changes nothing — keep that shape when adding a
 block, or the next person to add one turns on yours by accident:
 
 ```sh
-./gradlew :spring-agent-app:bootRun --args='--spring.profiles.active=local,integration-email'
+./gradlew :spring-agent-app-feishu:bootRun --args='--spring.profiles.active=local,integration-email'
 ```
 
 It exists for the features whose settings have to agree across several blocks before anything will
@@ -92,8 +93,10 @@ spring-agent-tools-shell-{kubernetes,docker}
 spring-agent-events                   observations -> situations -> a triage run
 spring-agent-integration-{github,gitlab,grafana}   webhook readers for spring-agent-events
 spring-agent-integration-feishu       Feishu/Lark chats and cards as a surface
+spring-agent-integration-slack        Slack channels and Block Kit messages as a surface
 spring-agent-rag-milvus               the knowledge base; the only KnowledgeBase implementation
-spring-agent-app                      deployable server; depends on every optional module
+spring-agent-app-feishu               deployable server, Feishu surface; depends on every optional module
+spring-agent-app-slack                the same server, Slack surface
 spring-agent-app-cli                  laptop command line; jpa + local shell only
 spring-agent-app-web                  browser surface; no integrations, Feishu OAuth for login only
 ```
@@ -131,17 +134,28 @@ Every new module looks the same from the build's point of view:
    not set up.
 6. Its own message bundle if it writes text a person reads, and its own `prompts/tools/` files if it
    ships tools whose descriptions should be translatable.
-7. A line in `spring-agent-app/build.gradle` if the server should carry it, with a comment saying
-   what taking it does and does not decide.
+7. A line in `spring-agent-app-feishu/build.gradle` and/or `spring-agent-app-slack/build.gradle` if
+   a server should carry it, with a comment saying what taking it does and does not decide.
 
 `spring-agent-integration-github` is the smallest complete example — two classes and a prompt file.
 
 ### A chat surface
 
 A surface is anything that turns messages into `AgentRequest`s and shows the answer.
-`spring-agent-integration-feishu` and `spring-agent-app-cli` are the two shipped examples, and they sit
-at opposite ends of the one axis that matters: whether the surface can answer a question within the
-run.
+`spring-agent-integration-feishu`, `spring-agent-integration-slack` and `spring-agent-app-cli` are the
+shipped examples. The first two are the same design against two products; the CLI sits at the other
+end of the one axis that matters: whether the surface can answer a question within the run.
+
+**Exactly one chat surface may be on an application's classpath**, which is why there is a server
+application per surface rather than one carrying both. Three singletons answer for *every* run
+rather than for one surface's: a `@Bean AgentResponseListener`, the `PromptVariablesContributor`s
+that `SpringAgent` merges with `putAll`, and the `Notifier` that `SituationSweeper` resolves with
+`getIfAvailable()`. With two surfaces installed the first two answer for each other's runs — a
+Feishu card replied onto a Slack timestamp, and the run aborted before it reaches the model — and
+the third throws. None of it fails at startup. The constraint holds for a *test* classpath too: an
+auto-configuration there is still an auto-configuration, so a `testImplementation` on a second
+surface is the same mistake. If you need a cross-surface assertion, put it in each application's own
+test rather than importing the other surface.
 
 What a surface owns:
 

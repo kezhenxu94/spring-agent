@@ -1,0 +1,54 @@
+plugins {
+  id 'springagent.java-library-conventions'
+}
+
+description = 'Slack integration for spring-agent-core: channels and Block Kit messages as an agent surface.'
+
+dependencies {
+  implementation project(':spring-agent-core')
+  implementation libs.slack.api.client
+  implementation libs.slack.api.model
+  // Bolt is the Slack SDK own application framework, and this module is written against it rather
+  // than against the raw Web API client. It owns the parts a hand-rolled receiver gets subtly
+  // wrong and then has to keep getting right as Slack changes: acknowledging inside the three
+  // seconds Slack allows, routing an event to a typed handler, reading the retry headers, and
+  // parsing an interactive payload. What is left for this module is what is actually ours — which
+  // messages are worth a run, and what the answer looks like.
+  implementation libs.slack.bolt
+  // Socket Mode rather than the Events API: it is the direct analogue of the long connection the
+  // Feishu integration uses, and needs no public URL, no request-signature check and no
+  // url_verification challenge. What it costs instead is a connection to hold open, and the
+  // redelivery-on-reconnect that ProcessedMessageRepo#claim already exists to absorb.
+  //
+  // Bolt keeps the transport apart from the handlers, so the App bean below is the same object a
+  // servlet deployment would register: moving to the Events API later is bolt-jakarta-servlet and
+  // a ServletRegistrationBean, and none of the handlers change.
+  implementation libs.slack.bolt.socket.mode
+  // The WebSocket client that connection actually runs on. Declared here because the SDK declares
+  // it `provided`: nothing brings it transitively, and a build without it compiles, starts, and
+  // then never receives an event — the failure is at runtime and looks like Slack being quiet.
+  // Tyrus is the only implementation the jakarta variant ships an adapter for.
+  implementation libs.tyrus.standalone.client
+
+  // Core's domain models carry `@Enumerated(EnumType.STRING)`, and core declares the JPA API
+  // compileOnly so no backend leaks to consumers. javac resolves an annotation's enum arguments
+  // when it reads those classes, so without the API here every module that touches a model
+  // compiles with `unknown enum constant EnumType.STRING`. compileOnly, not implementation: this
+  // is only to let javac read the annotation, nothing runs against it.
+  compileOnly 'jakarta.persistence:jakarta.persistence-api'
+
+  implementation 'org.springframework.boot:spring-boot-starter'
+  implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+  implementation 'org.springframework.boot:spring-boot-starter-restclient'
+  implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'
+  // The message updater reads com.openai.models.completions.CompletionUsage to tell reasoning
+  // tokens from the rest, the same way FeishuCardUpdater does.
+  implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+  implementation libs.spring.ai.agent.utils
+  implementation libs.guava
+
+  // The update notes are markdown files with a YAML frontmatter block, and this is what reads that
+  // block. Boot pulls it in anyway for application.yaml, but a module that parses YAML of its own
+  // should say so rather than compile against somebody else's transitive.
+  implementation 'org.yaml:snakeyaml'
+}

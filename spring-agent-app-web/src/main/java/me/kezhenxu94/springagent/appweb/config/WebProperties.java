@@ -19,7 +19,7 @@ public record WebProperties(Journal journal, Question question, Auth auth, Local
   public WebProperties {
     journal = journal == null ? new Journal(null, null) : journal;
     question = question == null ? new Question(null) : question;
-    auth = auth == null ? new Auth(null) : auth;
+    auth = auth == null ? new Auth(null, null) : auth;
   }
 
   /**
@@ -47,12 +47,17 @@ public record WebProperties(Journal journal, Question question, Auth auth, Local
   }
 
   /**
-   * @param tenantId the Feishu tenant whose people may use this deployment. Empty lets anybody who
-   *     can complete the OAuth flow in, which for a public Feishu app means anybody at all — so it
-   *     is deliberately a value a deployment has to set rather than one with a permissive default
+   * @param provider which OAuth2 registration the sign-in page redirects to — {@code feishu} or
+   *     {@code slack}, matching a registration under {@code spring.security.oauth2.client}.
+   *     Defaults to {@code feishu}, which is what this application has always used.
+   * @param tenantId the workspace whose people may use this deployment: a Feishu tenant key or a
+   *     Slack team id, depending on the provider above. Empty lets anybody who can complete the
+   *     OAuth flow in, which for a public Feishu app means anybody at all — so it is deliberately a
+   *     value a deployment has to set rather than one with a permissive default
    */
-  public record Auth(String tenantId) {
+  public record Auth(String provider, String tenantId) {
     public Auth {
+      provider = provider == null || provider.isBlank() ? "feishu" : provider.trim();
       tenantId = tenantId == null ? "" : tenantId.trim();
     }
   }
