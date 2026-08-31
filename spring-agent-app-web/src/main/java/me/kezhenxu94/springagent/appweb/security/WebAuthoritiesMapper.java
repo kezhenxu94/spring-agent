@@ -36,6 +36,16 @@ public class WebAuthoritiesMapper implements GrantedAuthoritiesMapper {
   /** What Feishu calls the enterprise a person belongs to. */
   public static final String TENANT_ATTRIBUTE = "tenant_key";
 
+  /**
+   * What Slack calls the same thing. Its OpenID Connect claims are namespaced by a URL, so this is
+   * the whole claim name and not a prefix.
+   *
+   * <p>Two attributes rather than one because the two providers name the same fact differently, and
+   * the fact is what this class admits people on: is this person in the workspace this deployment
+   * serves? Whichever of the two a profile carries is the one compared.
+   */
+  public static final String SLACK_TEAM_ATTRIBUTE = "https://slack.com/team_id";
+
   private final WebProperties properties;
 
   @Override
@@ -59,7 +69,10 @@ public class WebAuthoritiesMapper implements GrantedAuthoritiesMapper {
   private boolean admits(final OAuth2UserAuthority profile) {
     final var expected = properties.auth().tenantId();
     final var attributes = profile.getAttributes();
-    final var actual = attributes.get(TENANT_ATTRIBUTE);
+    final var actual =
+        attributes.containsKey(TENANT_ATTRIBUTE)
+            ? attributes.get(TENANT_ATTRIBUTE)
+            : attributes.get(SLACK_TEAM_ATTRIBUTE);
 
     if (expected.isEmpty()) {
       // Deliberately not a free pass. A deployment that has not said which tenant it serves cannot

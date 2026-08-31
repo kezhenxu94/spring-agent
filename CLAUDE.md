@@ -23,16 +23,17 @@ Formatting is Spotless with `googleJavaFormat().reflowLongStrings()`; `spotlessC
 Other tasks:
 
 ```sh
-./gradlew :spring-agent-app:bootRun          # the server
+./gradlew :spring-agent-app-feishu:bootRun   # the Feishu server
+./gradlew :spring-agent-app-slack:bootRun    # the Slack server
 ./gradlew :spring-agent-app-cli:bootRun      # the command line (stdin/tty wired for JLine)
 ./gradlew :spring-agent-app-web:bootRun      # the browser UI, on :8080
-./gradlew :spring-agent-app:bootBuildImage   # container image (Paketo buildpack, no Dockerfile)
+./gradlew :spring-agent-app-feishu:bootBuildImage   # container image (Paketo buildpack, no Dockerfile)
 ./gradlew :spring-agent-app-cli:nativeCompile -Pnative
 ```
 
-`-Pnative` is required for any native task: the GraalVM plugin is applied conditionally so that a plain `bootBuildImage` does not silently turn into a native build (see the comment in `spring-agent-app/build.gradle`).
+`-Pnative` is required for any native task: the GraalVM plugin is applied conditionally so that a plain `bootBuildImage` does not silently turn into a native build (see the comment in `spring-agent-app-feishu/build.gradle`).
 
-Tests need a running Docker daemon — `AbstractIntegrationTest` starts MongoDB and Redis containers via Testcontainers. Unit tests sit beside the class they cover; cross-cutting integration tests live in `spring-agent-app/src/test`. A behaviour that must hold for every persistence backend goes in `AbstractPersistenceBackendTest`, which is run once per backend by `PersistenceJpaTest`/`PersistenceMongoTest`/`PersistenceRedisTest` — add the assertion there rather than to one backend's test.
+Tests need a running Docker daemon — `AbstractIntegrationTest` starts MongoDB and Redis containers via Testcontainers. Unit tests sit beside the class they cover; cross-cutting integration tests live in `spring-agent-app-feishu/src/test`. A behaviour that must hold for every persistence backend goes in `AbstractPersistenceBackendTest`, which is run once per backend by `PersistenceJpaTest`/`PersistenceMongoTest`/`PersistenceRedisTest` — add the assertion there rather than to one backend's test.
 
 There is **no CI workflow that builds or tests**. The three workflows publish only. Verification is local; run `make build` before pushing.
 
@@ -53,7 +54,8 @@ spring-agent-events           observations -> situations -> a triage run; serves
 spring-agent-integration-{github,gitlab,grafana}   webhook readers for spring-agent-events
 spring-agent-rag-milvus       the knowledge base; the only implementation of core's KnowledgeBase
 spring-agent-integration-feishu
-spring-agent-app               deployable server; depends on every optional module
+spring-agent-app-feishu        deployable server whose surface is Feishu; depends on every optional module
+spring-agent-app-slack         the same server, with Slack as its surface instead
 spring-agent-app-cli           laptop command line; jpa + local shell only
 spring-agent-app-web           browser surface; no integrations, Feishu OAuth for login only
 ```
@@ -79,7 +81,7 @@ Both are evaluated during AOT, so in a **native image they are build-time decisi
 
 **One domain model serves every backend.** The records in `core/dao/models/` carry JPA, MongoDB *and* Redis mapping annotations at once (`@Entity` + `@Document` + `@RedisHash`, both `@Id` flavours). This works because an annotation whose type is absent at runtime is discarded on reflection — which is also why core declares those persistence APIs `compileOnly`. Repository *contracts* live in `core/dao/repo/`; each `spring-agent-persistence-*` module implements them. When adding a model or a query, update all three implementations, and note that Redis has no query planner: an `@Indexed` field is the definition of what can be filtered on, not a tuning knob.
 
-**Vector store** backs the tool-search index only, not retrieval over user data: `spring.ai.vectorstore.type` is `simple` (in-heap, mirrored to a JSON file) or `milvus`. Milvus is a dependency of `spring-agent-app` only, deliberately kept out of core.
+**Vector store** backs the tool-search index only, not retrieval over user data: `spring.ai.vectorstore.type` is `simple` (in-heap, mirrored to a JSON file) or `milvus`. Milvus is a dependency of the two server applications only, deliberately kept out of core.
 
 **The knowledge base is a separate thing from that vector store**, and confusing the two is the easy mistake here. Retrieval over user data — what a user, group or tenant has asked the agent to remember — lives behind the `KnowledgeBase` SPI in `core/knowledge/`, implemented by `spring-agent-rag-milvus`, in its own Milvus collection with its own connection under `app.ai.rag.milvus.*`. It deliberately does not read `spring.ai.vectorstore.type`, so a deployment can run the tool index in the heap and the knowledge base in Milvus.
 
@@ -127,13 +129,15 @@ Commit messages follow Conventional Commits with lowercase, prose-style subjects
 
 Comments in this codebase explain **why**, at length, and are load-bearing — build files, `application.yaml` and `docker-compose.yaml` carry paragraphs of rationale that are the closest thing to design documentation here. Match that: when a decision is non-obvious, write down the reason it was made and what breaks without it. Do not describe history in comments; git records that.
 
-Configuration is documented in place. `spring-agent-app/src/main/resources/application.yaml` is the reference for every property and environment variable, including the system prompt; read it before adding a knob.
+Configuration is documented in place. `spring-agent-app-feishu/src/main/resources/application.yaml` is the reference for every property and environment variable, including the system prompt; read it before adding a knob.
 
-**`spring-agent-app-web`'s `application.yaml` is derived from that file and has to stay in step with it.** The two applications run the same runtime, so a setting must mean the same thing in both — a deployment that moves from the server to the browser surface should not silently get different tool limits, a different subagent budget or a different sandbox. A knob added to the server's file belongs in the web one too, with the same default and the same rationale.
+**One chat surface per application, and this is a runtime constraint rather than a preference.** Three singletons in this runtime answer for every run rather than for one surface's runs: a `@Bean AgentResponseListener` claims every run, `PromptVariablesContributor`s are merged with `putAll` so the last one registered decides `{replyFormat}`, and `SituationSweeper` resolves its `Notifier` with `getIfAvailable()`, which throws when two exist. None of the three fails at startup, so a second surface on the classpath is a build that passes and a deployment that misbehaves — a Feishu card replied onto a Slack timestamp, the run aborted before it reaches the model. That is why `spring-agent-app-feishu` and `spring-agent-app-slack` are two applications rather than one server with both integrations, and why the constraint holds for a test classpath too: an auto-configuration is still an auto-configuration there. `OneChatSurfaceTest` in `spring-agent-app-slack` is the check that notices.
 
-Only four kinds of difference are legitimate, and each is stated in the header comment at the top of the web file rather than left to be found by diffing:
+**`spring-agent-app-slack`'s and `spring-agent-app-web`'s `application.yaml` are derived from `spring-agent-app-feishu`'s and have to stay in step with it.** The two applications run the same runtime, so a setting must mean the same thing in both — a deployment that moves between them should not silently get different tool limits, a different subagent budget or a different sandbox. A knob added to the Feishu server's file belongs in the other two as well, with the same default and the same rationale.
 
-- **absent modules** — `app.events` and `app.feishu` have no configuration there because the module carries neither, and configuring absent code is a lie about what the binary does;
+Only these kinds of difference are legitimate, and each is stated in the header comment at the top of the derived file rather than left to be found by diffing:
+
+- **absent modules** — `app.events` and `app.feishu` have no configuration in the web file because it carries neither, and `spring-agent-app-slack` has `app.slack` where the Feishu server has `app.feishu`; configuring absent code is a lie about what the binary does;
 - **`app.web.*`** — who may log in, how long a finished run stays replayable, how long an unanswered question lives;
 - **what the surface needs and the server does not** — `spring.threads.virtual`, `spring.mvc.async` for the SSE streams, `spring.servlet.multipart` for uploads;
 - **per-application storage** — its own SQLite file, its own vector-store file, its own published-file URLs.

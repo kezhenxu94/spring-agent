@@ -14,7 +14,7 @@ It is also a library. If you are building your own agent on Spring Boot 4 and Sp
 [docs/contributing.md](docs/contributing.md).
 
 Every property and environment variable is documented in place, with the reason for its default, in
-[`spring-agent-app/src/main/resources/application.yaml`](spring-agent-app/src/main/resources/application.yaml).
+[`spring-agent-app-feishu/src/main/resources/application.yaml`](spring-agent-app-feishu/src/main/resources/application.yaml).
 That file, not this README, is the configuration reference.
 
 ## (Nearly) everything is a tool
@@ -127,7 +127,7 @@ Feishu integration can — and is otherwise logged.
 docker run --env-file .env -p 8080:8080 ghcr.io/kezhenxu94/spring-agent:latest
 ```
 
-Or from a clone: `./gradlew :spring-agent-app:bootRun`.
+Or from a clone: `./gradlew :spring-agent-app-feishu:bootRun`.
 
 These have no defaults and the application will not start without them — `OPENAI_BASE_URL`,
 `OPENAI_API_KEY`, `OPENAI_MODEL`, `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`. Any
@@ -154,7 +154,7 @@ file per version, named `1.md`, `2.md` and so on; the greeting itself is
 agent records the number of the last note each person was shown, which is what lets it tell them
 only the new ones. To write your own, point `FEISHU_WELCOME` and `FEISHU_UPDATES` at files of your
 own — see `app.feishu` in
-[`application.yaml`](spring-agent-app/src/main/resources/application.yaml) for the rules, including
+[`application.yaml`](spring-agent-app-feishu/src/main/resources/application.yaml) for the rules, including
 what a gap in the numbering does.
 
 To receive any of this the app's event subscription needs **用户和机器人的会话首次被创建**
@@ -171,7 +171,7 @@ where it left off, as many times as the turn needs. A very long answer arrives a
 rather than stopping partway; the stop button is always on the one still being written.
 
 Everything else is optional and set in
-[`application.yaml`](spring-agent-app/src/main/resources/application.yaml). Two switches decide what
+[`application.yaml`](spring-agent-app-feishu/src/main/resources/application.yaml). Two switches decide what
 the deployment actually is:
 
 | Property (env var) | Values | Default |
@@ -243,6 +243,63 @@ Other things worth knowing before a real deployment:
   caching will quietly evict a stored credential or an unfired task.
 - `/actuator/health` and `/actuator/prometheus` are exposed for probes and metrics.
 
+### Run the Slack server
+
+The same runtime with Slack as its surface: `./gradlew :spring-agent-app-slack:bootRun`. It takes
+the same `OPENAI_*`/`EMBEDDING_*` variables as the Feishu server, plus four of its own.
+
+| Variable | Where it comes from |
+| --- | --- |
+| `SLACK_BOT_TOKEN` | **OAuth & Permissions** in your app's settings, after installing the app to the workspace. Starts `xoxb-`. |
+| `SLACK_APP_TOKEN` | **Basic Information → App-Level Tokens**, generate one with the `connections:write` scope. Starts `xapp-`. This is what opens the Socket Mode connection, and it is a different credential from the bot token. |
+| `SLACK_BOT_USER_ID` | **OAuth & Permissions**, or `curl -H "Authorization: Bearer $SLACK_BOT_TOKEN" https://slack.com/api/auth.test` and read `user_id`. Starts `U`. |
+| `SLACK_TEAM_ID` | The same `auth.test` call, field `team_id`. Starts `T`. |
+
+`.env` is read by `docker compose` and by `docker run --env-file`, but **not** by
+`./gradlew bootRun` — Gradle passes on the environment it was started with and nothing more. So
+export it into the shell first:
+
+```sh
+set -a; . ./.env; set +a
+./gradlew :spring-agent-app-slack:bootRun
+```
+
+One variable name to watch: **`SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET` belong to the browser
+surface's Sign in with Slack, not to the bot.** Bolt's own `AppConfig` reads those two from the
+environment and treats an app that has them as a multi-workspace OAuth app, which authorizes each
+event against an installation store the bot does not have — so exporting them alongside the bot's
+own settings used to refuse every event with `401 "a request for an unknown workspace detected"`
+while the bot token was perfectly valid. The Slack integration now pins itself to single-workspace
+mode regardless, so the two can share a `.env` safely.
+
+An empty `SLACK_BOT_TOKEN=` in `.env` is worse than a missing one, because it resolves: the
+application starts, and every event is then answered with `401 "a request for an unknown workspace
+detected"` — Bolt calling `auth.test` with an empty token, once per delivery. `SlackIdentity`
+refuses to start on that now and says which variable it is, but the shape of the mistake is worth
+recognising.
+
+Creating the app, once, at <https://api.slack.com/apps>:
+
+1. **Socket Mode → Enable Socket Mode.** No public URL is needed, and no request signing.
+2. **OAuth & Permissions → Bot Token Scopes**: `chat:write`, `im:history`, `channels:history`,
+   `groups:history`, `mpim:history`, `files:read`, `files:write`, `reactions:write`, `users:read`.
+3. **Event Subscriptions → Subscribe to bot events**: `message.im`, `message.channels`,
+   `message.groups`, `message.mpim`, `app_home_opened`. Deliberately **not** `app_mention` — Slack
+   delivers a message that mentions the bot under both events with different ids, so subscribing to
+   both means answering every mention twice.
+4. **Interactivity & Shortcuts → Enable.** With Socket Mode on there is no Request URL to fill in;
+   this is what makes the stop button and the question form work.
+5. **Install to Workspace**, then invite the bot to any channel you want it to answer in.
+
+Opening a direct message with the bot for the first time is answered with a welcome note, and
+afterwards with whatever has changed since — the same `welcome.md` and `updates/N.md` arrangement the
+Feishu server uses, under `slack/` and pointed at by `SLACK_WELCOME` and `SLACK_UPDATES`.
+
+A turn is answered in a message that is rewritten as the run goes: the answer as it is written, the
+tools it is calling, its task list, and what it cost. Slack allows a message 50 blocks, and a long
+turn outgrows that — so when one fills up the agent finishes it and posts another into the same
+thread, carrying on where it left off.
+
 ## Run the web UI
 
 A third application, `spring-agent-app-web`: the agent and a browser, and nothing else. No bot, no
@@ -255,7 +312,12 @@ what the turn cost, and the agent's own questions as a form you answer in the pa
 ./gradlew :spring-agent-app-web:bootRun     # the same OPENAI_*/EMBEDDING_* variables, plus the three below
 ```
 
-Then open <http://localhost:8080>. Sign-in is Feishu OAuth, so three more variables are needed:
+Then open <http://localhost:8080>. Sign-in is Feishu OAuth by default, so three more variables are needed. To sign in with Slack
+instead, run with `SPRING_PROFILES_ACTIVE=slack-login` and set `SLACK_CLIENT_ID`,
+`SLACK_CLIENT_SECRET` and `SLACK_TEAM_ID` — a profile rather than a second registration, because
+Spring Security refuses to start with a registration whose client id is empty, so the two cannot
+both sit there half-configured. The Slack app needs `openid`, `profile` and `email` user scopes and
+`http://localhost:8080/login/oauth2/code/slack` as a redirect URI.
 
 | Variable | What it is |
 | --- | --- |

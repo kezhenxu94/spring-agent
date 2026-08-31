@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!--
+      Only the selected appender is declared, rather than declaring both and referencing one: Logback
+      warns "Appender named [...] not referenced. Skipping further processing." for every appender no
+      appender-ref points at, so the unselected one always produced a warning on startup.
+    -->
+    <include resource="logback-appender-${LOG_APPENDER:-CONSOLE}.xml"/>
+
+    <root level="${LOG_LEVEL:-INFO}">
+        <appender-ref ref="${LOG_APPENDER:-CONSOLE}"/>
+    </root>
+</configuration>
