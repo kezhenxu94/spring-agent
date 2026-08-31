@@ -127,6 +127,13 @@ public record KubernetesShellProperties(
      * <p>The selector is the whole access rule, so it must never key on a label an untrusted party
      * can set: any Secret in the namespace that carries matching labels becomes readable by the
      * sandbox this resolves for.
+     *
+     * <p><b>Label keys have to be bracketed in configuration</b> — {@code "[springagent.io/name]":
+     * value}. Bound as a map key, an unbracketed name is canonicalised to {@code [a-z0-9-]}: split
+     * on its dots, every other character dropped, the pieces rejoined with dots. {@code
+     * springagent.io/shell-shared-user-id} therefore arrives as {@code
+     * springagent.ioshell-shared-user-id}, which is still a legal label key, so the API server
+     * answers with zero Secrets and the credential silently never reaches a sandbox.
      */
     public record SharedSecretSelector(Map<String, String> matchLabels) {
       /**

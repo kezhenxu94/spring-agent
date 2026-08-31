@@ -717,17 +717,25 @@ app:
             # set, and remember the Secrets are resolved when the Pod is created, so a label added
             # later reaches that user on their next sandbox rather than the one they are in.
             #
+            # Every label key has to be written in brackets, and this is not a style choice: a
+            # match-labels key binds into a Map, and an unbracketed one is canonicalised to
+            # [a-z0-9-] — split on the dots, every other character dropped, the pieces rejoined
+            # with dots. So `springagent.io/shell-shared-user-id` arrives as
+            # `springagent.ioshell-shared-user-id`, which is still a legal label key, so the API
+            # server answers the selector with zero Secrets and the credential silently never
+            # reaches the sandbox. Brackets are what makes the key bind verbatim.
+            #
             # Commented out because sharing credentials is a deliberate act, not a default. Labels
             # here are examples: use whatever the Secrets in your namespace already carry.
             # shared:
             #   - match-labels:
-            #       springagent.io/shell-shared: "everyone"
+            #       "[springagent.io/shell-shared]": "everyone"
             #   - match-labels:
-            #       springagent.io/shell-shared-tenant-id: "{tenantId}"
+            #       "[springagent.io/shell-shared-tenant-id]": "{tenantId}"
             #   - match-labels:
-            #       springagent.io/shell-shared-group-id: "{groupId}"
+            #       "[springagent.io/shell-shared-group-id]": "{groupId}"
             #   - match-labels:
-            #       springagent.io/shell-shared-user-id: "{userId}"
+            #       "[springagent.io/shell-shared-user-id]": "{userId}"
         docker:
           # The same sandbox image the kubernetes block above defaults to. An image substituted here
           # needs bash, GNU coreutils for the `stat -c` and `dd` the background-shell bookkeeping

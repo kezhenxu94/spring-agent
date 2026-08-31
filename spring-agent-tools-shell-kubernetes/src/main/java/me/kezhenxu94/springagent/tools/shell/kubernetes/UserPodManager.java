@@ -260,16 +260,32 @@ public class UserPodManager {
         continue;
       }
       try {
-        kubernetesClient
-            .secrets()
-            .inNamespace(ns)
-            .withLabels(labels.get())
-            .list()
-            .getItems()
-            .stream()
-            .map(secret -> secret.getMetadata().getName())
-            .sorted()
-            .forEach(names::add);
+        final var matched =
+            kubernetesClient
+                .secrets()
+                .inNamespace(ns)
+                .withLabels(labels.get())
+                .list()
+                .getItems()
+                .stream()
+                .map(secret -> secret.getMetadata().getName())
+                .sorted()
+                .toList();
+        if (matched.isEmpty()) {
+          // A selector nothing matches is the only failure this feature has that the API server
+          // reports as success, and it is where a mistyped label key lands: any legal key answers
+          // with an empty list, so without this the operator sees a sandbox with no credential in
+          // it and nothing at all in the log. The keys as queried are the point of the message —
+          // an unbracketed label key in YAML reaches here with its slash dropped
+          // (springagent.ioshell-shared-user-id), which is visible only if it is printed.
+          log.warn(
+              "Shared credentials selector {} matched no Secret in namespace {}; nothing is shared"
+                  + " through it. Check the labels as queried here against the Secret's own, and"
+                  + " that every label key in YAML is bracketed: \"[prefix/name]\": value",
+              labels.get(),
+              ns);
+        }
+        names.addAll(matched);
       } catch (final KubernetesClientException e) {
         // One unreadable selector must not cost the user their sandbox: they still get their own
         // credentials, and the missing ones show up as an absent environment variable.
