@@ -87,7 +87,8 @@ public class FeishuConfigForm {
    * and empty fields for adding another.
    *
    * @param configured every endpoint they have registered, in the order to show them
-   * @param activeName the one their runs go through, or null for the application's own model
+   * @param active the row their runs go through, or null for the application's own model as
+   *     configured
    * @param builtinModels what the application's own endpoint reports it can serve, empty where it
    *     would not say — which is an ordinary answer, not a failure, and shows as the single
    *     built-in entry
