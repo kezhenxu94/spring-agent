@@ -100,7 +100,8 @@ public class SlackConfigForm {
    * The form, as the blocks of a message.
    *
    * @param configured every endpoint the user has registered
-   * @param activeName the row their runs go through, or null for the application's own model
+   * @param active the row their runs go through, or null for the application's own model as
+   *     configured
    * @param builtinModels what the application's endpoint reports it can serve, empty where it would
    *     not say — an ordinary answer rather than a failure
    * @param defaultModel the model the application is configured with
