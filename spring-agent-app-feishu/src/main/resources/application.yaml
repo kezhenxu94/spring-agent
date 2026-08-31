@@ -307,6 +307,47 @@ app:
     # This selects which repositories exist, so it is a build-time decision in a native image: see
     # -PnativeBackends in springagent.native.gradle. Changing it does not migrate existing data.
     type: ${PERSISTENCE_TYPE:jpa}
+  scheduling:
+    # The timers behind scheduled tasks and, where spring-agent-events is carried, situation triage.
+    # Nothing here is a model setting, which is why it sits beside app.ai rather than inside it.
+
+    # How often to look for scheduled tasks that have come due, and so the worst case by which a
+    # task fires late.
+    #
+    # Longer than app.events.sweep-interval, and deliberately: the tightest schedule anybody can
+    # create is five minutes, because ScheduledTaskTool raises anything shorter, so thirty seconds
+    # is at worst a tenth of the shortest cadence in play and the tasks people actually write are
+    # hourly and daily. Firing was never to the second in any case — a run is handed to a Reactor
+    # scheduler and its first token is seconds away. Against that, a sweep reads the whole active
+    # set, which on the Redis backend is a set read plus a hash read per member.
+    #
+    # Lower this only alongside that five-minute floor in ScheduledTaskTool#enforceMinimumInterval;
+    # the two are what make each other reasonable.
+    #
+    # Two consequences of the schedule living in the database rather than in a timer, both worth
+    # knowing before an outage rather than after one. A task whose moment passed while the process
+    # was down is not skipped, as it used to be — it fires when the process comes back. And however
+    # many occurrences were missed, it fires *once*: a periodic task is a standing instruction, not
+    # a debt, and replaying three days of a five-minutely task would be eight hundred model calls at
+    # the worst possible moment. See ScheduledTaskService#nextFireAtFor.
+    #
+    # One deployment constraint follows from it too: replicas sharing a database must agree on TZ.
+    # A cron expression is resolved against the JVM's default zone, so two replicas set differently
+    # would each keep advancing the schedule to its own idea of the next occurrence.
+    sweep-interval: ${SCHEDULING_SWEEP_INTERVAL:PT30S}
+
+    # How many threads the shared scheduler has.
+    #
+    # Shared by more than the name suggests: the scheduled-task sweeper, the situation sweeper, and
+    # every @Scheduled method in the application. Neither sweep holds its thread for the length of
+    # an agent run — firing a run returns immediately — so four is ample for the sweeps themselves.
+    # The knob is here for a deployment that adds blocking scheduled work of its own, which would
+    # otherwise starve them.
+    #
+    # Note that spring.task.scheduling.pool.size does *not* reach this. The bean is built by hand in
+    # SpringAgentCoreAutoConfiguration and named taskScheduler, which displaces Boot's own, so
+    # Boot's settings for it are read by nothing. This is the property that works.
+    pool-size: ${SCHEDULING_POOL_SIZE:4}
   ai:
     # The agent's system prompt lives in core, as core/prompts/system-prompt.md and its per-locale
     # siblings, and PromptDefaults supplies it in the app.locale language. It is not stated here

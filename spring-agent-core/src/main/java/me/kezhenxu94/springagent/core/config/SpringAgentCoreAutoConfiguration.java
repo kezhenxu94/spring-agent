@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.core.config;
 
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -277,12 +278,37 @@ public class SpringAgentCoreAutoConfiguration {
     return ChatClient.builder(chatModel).build();
   }
 
+  /**
+   * The one scheduler every timer in this runtime shares — the scheduled-task sweeper, {@code
+   * SituationSweeper}, and every {@code @Scheduled} method in the application, since this bean is
+   * named {@code taskScheduler} and so is the one Boot's scheduling annotations resolve to.
+   *
+   * <p>That name is also why {@code spring.task.scheduling.*} does nothing here: building the bean
+   * by hand displaces Boot's own, and Boot's settings configure only the one that was not created.
+   * {@code app.scheduling.pool-size} is the knob that works.
+   *
+   * <p>The thread name prefix still says {@code scheduled-task-} although more than scheduled tasks
+   * run here now. Left alone deliberately — it is what log filters and thread dumps are grepped
+   * for, and renaming it would break those to describe the pool slightly better.
+   */
   @Bean
   @ConditionalOnMissingBean
-  ThreadPoolTaskScheduler taskScheduler() {
+  ThreadPoolTaskScheduler taskScheduler(final SpringAgentProperties properties) {
     final var scheduler = new ThreadPoolTaskScheduler();
-    scheduler.setPoolSize(4);
+    scheduler.setPoolSize(properties.scheduling().poolSize());
     scheduler.setThreadNamePrefix("scheduled-task-");
     return scheduler;
+  }
+
+  /**
+   * So that anything reading the time can be handed a fixed one in a test. {@code
+   * ScheduledTaskSweeper} is the first in core to need it; {@code spring-agent-events} declares the
+   * same bean {@code @ConditionalOnMissingBean} and will now defer to this one, which is the same
+   * clock either way.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  Clock clock() {
+    return Clock.systemUTC();
   }
 }

@@ -124,6 +124,7 @@ class AgentToolsProviderGlobalMcpServersTest {
             null,
             null),
         Locale.ENGLISH,
+        null,
         null);
   }
 }

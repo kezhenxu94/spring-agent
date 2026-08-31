@@ -143,6 +143,7 @@ class InterceptingToolCallbackTest {
                 null,
                 null),
             Locale.ENGLISH,
+            null,
             null),
         new UserWorkspaceFactory(
             FileSystemStorageProperties.builder().location(storage.toString()).build()),
@@ -155,6 +156,7 @@ class InterceptingToolCallbackTest {
     source.setBasename(CoreMessages.BASENAME);
     source.setDefaultEncoding("UTF-8");
     source.setFallbackToSystemLocale(false);
-    return new CoreMessages(source, new SpringAgentProperties(null, null, Locale.ENGLISH, null));
+    return new CoreMessages(
+        source, new SpringAgentProperties(null, null, Locale.ENGLISH, null, null));
   }
 }

@@ -1080,7 +1080,7 @@ class SpringAgentTest {
     final var source = new ResourceBundleMessageSource();
     source.setBasename(CoreMessages.BASENAME);
     source.setDefaultEncoding("UTF-8");
-    return new CoreMessages(source, new SpringAgentProperties(null, null, locale, null));
+    return new CoreMessages(source, new SpringAgentProperties(null, null, locale, null, null));
   }
 
   private static SpringAgentProperties properties() {
@@ -1097,6 +1097,7 @@ class SpringAgentTest {
             null,
             null),
         Locale.ENGLISH,
+        null,
         null);
   }
 

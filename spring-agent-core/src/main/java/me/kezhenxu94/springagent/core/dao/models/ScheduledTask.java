@@ -65,6 +65,24 @@ public class ScheduledTask {
   private Instant scheduledAt;
   private Instant expiresAt;
 
+  // When this task next fires, and the whole of what makes a firing survive a restart: the schedule
+  // lives here rather than in a timer held in one replica's heap, so an occurrence that fell while
+  // the process was down is not skipped, it is simply overdue. ScheduledTaskSweeper reads it, and
+  // advancing it is how a replica wins the right to fire that occurrence — see
+  // ScheduledTaskRepo#claimNextFireAt.
+  //
+  // Deliberately not @Indexed. On Redis @Indexed is exact-match only, so it could never serve the
+  // `nextFireAt <= now` this is read with; it would be a set maintained on every write in exchange
+  // for nothing. The sweeper selects on the indexed `status` and filters this in memory, which is
+  // what SituationSweeper does with `evaluateAfter` and for the same reason.
+  //
+  // Nullable, and null means two different things the sweeper has to tell apart: a row that
+  // predates this column (ddl-auto with no migrations, so it arrives null on every existing task,
+  // and is simply absent on MongoDB and Redis) has never had one computed and is backfilled; a
+  // one-off that has already run has no next occurrence and is retired. See
+  // ScheduledTaskSweeper#needsFirstFireAt.
+  private Instant nextFireAt;
+
   // Whether a firing runs unattended, out of sight of the thread the task was created in. A
   // background firing posts no answer of its own: what it did is in the log, and the user hears
   // about it only if the task itself sends a message. A foreground one, the default, streams into a

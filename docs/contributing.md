@@ -41,6 +41,14 @@ Testcontainers. Unit tests sit beside the class they cover; cross-cutting integr
 `PersistenceJpaTest`/`PersistenceMongoTest`/`PersistenceRedisTest` — add the assertion there rather
 than to one backend's test.
 
+There is one `ThreadPoolTaskScheduler` in the runtime, defined in `SpringAgentCoreAutoConfiguration`
+and named `taskScheduler`, and everything timed shares it: `ScheduledTaskSweeper`,
+`SituationSweeper`, and every `@Scheduled` method — that name is the one Boot's scheduling
+annotations resolve to. Because it is built by hand it also displaces Boot's own, so
+`spring.task.scheduling.*` is read by nothing; `app.scheduling.pool-size` is the knob. Neither sweep
+holds its thread for the length of a run, so anything *blocking* added here needs the pool raised
+with it.
+
 Formatting is Spotless with `googleJavaFormat().reflowLongStrings()`, and `spotlessCheck` runs as
 part of `build`. Run `make lint` before committing.
 
@@ -340,6 +348,15 @@ When adding a model or a query, update **all three** implementations. The domain
 annotation whose type is absent at runtime is discarded on reflection — that is also why core
 declares those persistence APIs `compileOnly`. Redis has no query planner: an `@Indexed` field is the
 definition of what can be filtered on, not a tuning knob.
+
+Not every method on those contracts is a query. `ProcessedMessageRepo.claim` and
+`ScheduledTaskRepo.claimNextFireAt`/`initNextFireAt` are **conditional writes**, and their boolean
+return is the concurrency control rather than a convenience: an implementation that reads and then
+writes lets two replicas both take the same piece of work, which is the case they exist for. Each
+backend has to express the predicate as part of the write — an insert `on conflict do nothing`, a
+`where` clause on an `@Modifying` update, the expected value in a Mongo update's filter, a Redis
+`SET NX`. A related trap on Redis: a hash cannot hold a null, so writing an absent value is a
+`PartialUpdate.del`, not a `set(..., null)`, which writes nothing at all.
 
 New behaviour is asserted once, in `AbstractPersistenceBackendTest`.
 

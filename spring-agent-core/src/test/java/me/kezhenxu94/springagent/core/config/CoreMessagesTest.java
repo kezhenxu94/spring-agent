@@ -30,7 +30,7 @@ class CoreMessagesTest {
     source.setBasename(CoreMessages.BASENAME);
     source.setDefaultEncoding("UTF-8");
     source.setFallbackToSystemLocale(fallbackToSystemLocale);
-    return new CoreMessages(source, new SpringAgentProperties(null, null, locale, null));
+    return new CoreMessages(source, new SpringAgentProperties(null, null, locale, null, null));
   }
 
   @Test
@@ -78,7 +78,7 @@ class CoreMessagesTest {
     withoutTheBundle.setBasename("some/other/bundle");
     final var unreachable =
         new CoreMessages(
-            withoutTheBundle, new SpringAgentProperties(null, null, Locale.ENGLISH, null));
+            withoutTheBundle, new SpringAgentProperties(null, null, Locale.ENGLISH, null, null));
 
     assertThat(unreachable.get("question-already-asked")).isEqualTo("question-already-asked");
   }

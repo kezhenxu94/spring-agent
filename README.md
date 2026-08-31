@@ -29,7 +29,7 @@ conversation:
 | learn a procedure | `WriteSkillFile` | a skill, loaded on demand |
 | remember something about you | the memory tools | notes it reads back before replying |
 | hold a token for later | `SetCredential` | the secret in its sandbox, never in a prompt |
-| do this every Monday | `CreateScheduledTask` | a run that fires on its own |
+| do this every Monday | `CreateScheduledTask` | a run that fires on its own, within `app.scheduling.sweep-interval` of the moment, and still fired if the agent was down when it came round |
 | every 10 minutes until it is fixed, or 10 times | `CreateScheduledTask` with `maxRuns`, `StopThisScheduledTask` | a task that counts its own runs, and ends itself when what it watched for happens |
 | take on something long | `StartSubagent` | a second run doing the work, reporting back |
 | write this down for the team | `IndexKnowledge` | an answer that consults it from then on |
@@ -215,6 +215,10 @@ Two notes for a deployment running more than one replica. These files live under
 `app.storage.location`, so unless that is shared storage a follow-up turn served by another replica
 cannot see them; and a path the agent noted in an earlier conversation may since have been cleaned
 up, in which case it is told so and re-runs the tool.
+
+Scheduled tasks are safe across replicas: the schedule is a column on the task rather than a timer
+in one process, and each occurrence is won by exactly one replica before it fires. The one thing
+they must agree on is `TZ`, since a cron expression is resolved against the JVM's default zone.
 
 The default pair needs nothing running alongside it. For the others, `docker-compose.yaml` has a
 profile per value so the containers cannot drift from the application's own choice:

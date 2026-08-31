@@ -34,7 +34,7 @@ class TriagePromptsPerSourceTest {
           new String[] {"slack-chat", "Slack channel that you were not addressed in", "Slack 频道"});
 
   private static TriagePrompts prompts(final Locale locale) {
-    return new TriagePrompts(new SpringAgentProperties(null, null, locale, null));
+    return new TriagePrompts(new SpringAgentProperties(null, null, locale, null, null));
   }
 
   @Test

@@ -107,6 +107,7 @@ class MilvusKnowledgeBaseTest {
             null,
             null),
         Locale.ENGLISH,
+        null,
         null);
   }
 

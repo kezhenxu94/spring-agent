@@ -129,6 +129,7 @@ class AgentToolsProviderAskTest {
             null,
             null),
         Locale.ENGLISH,
+        null,
         null);
   }
 

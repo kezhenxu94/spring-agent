@@ -190,6 +190,41 @@ app:
     # The only backend this module depends on. Left explicit rather than inferred so the value is
     # visible next to the datasource it uses.
     type: jpa
+  scheduling:
+    # The timer behind scheduled tasks. Nothing here is a model setting, which is why it sits beside
+    # app.ai rather than inside it. Two differences from the server files this is derived from: no
+    # situation triage, since this module does not carry spring-agent-events, and nothing about
+    # replicas — a command line is one process on one machine.
+
+    # How often to look for scheduled tasks that have come due, and so the worst case by which a
+    # task fires late.
+    #
+    # The tightest schedule anybody can create is five minutes, because ScheduledTaskTool raises
+    # anything shorter, so thirty seconds is at worst a tenth of the shortest cadence in play and
+    # the tasks people actually write are hourly and daily. Firing was never to the second in any
+    # case — a run is handed to a Reactor scheduler and its first token is seconds away. Against
+    # that, a sweep reads the whole active set.
+    #
+    # Lower this only alongside that five-minute floor in ScheduledTaskTool#enforceMinimumInterval;
+    # the two are what make each other reasonable.
+    #
+    # Two consequences of the schedule living in the database rather than in a timer, and they
+    # matter more here than on a server: a laptop is closed far more often than a deployment is
+    # restarted. A task whose moment passed while the process was not running is not skipped, as it
+    # used to be — it fires the next time the command line is started. And however many occurrences
+    # were missed, it fires *once*: a periodic task is a standing instruction, not a debt, and
+    # replaying a weekend of a five-minutely task would be hundreds of model calls the moment you
+    # sat down. See ScheduledTaskService#nextFireAtFor.
+    sweep-interval: ${SCHEDULING_SWEEP_INTERVAL:PT30S}
+
+    # How many threads the shared scheduler has: the scheduled-task sweeper and every @Scheduled
+    # method. The sweep does not hold its thread for the length of an agent run — firing a run
+    # returns immediately — so four is ample.
+    #
+    # Note that spring.task.scheduling.pool.size does *not* reach this. The bean is built by hand in
+    # SpringAgentCoreAutoConfiguration and named taskScheduler, which displaces Boot's own, so
+    # Boot's settings for it are read by nothing. This is the property that works.
+    pool-size: ${SCHEDULING_POOL_SIZE:4}
   ai:
     # Not set, which takes core/prompts/system-prompt.md in the app.locale language, supplied by
     # PromptDefaults. Stating it blank here would be worse than saying nothing: blank is config data
