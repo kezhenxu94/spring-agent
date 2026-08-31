@@ -25,6 +25,7 @@ import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentComposition;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.McpTools;
 import me.kezhenxu94.springagent.core.tools.SubagentTools;
+import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -109,6 +110,8 @@ class SubagentSchedulerStarvationTest {
     agent =
         new SpringAgent(
             ChatClient.builder(chatModel).defaultOptions(ToolCallingChatOptions.builder()).build(),
+            // No per-user models in these tests: every run goes through the client above.
+            providerOf((UserChatClients) null),
             chatMemory,
             properties,
             new Admins(properties),

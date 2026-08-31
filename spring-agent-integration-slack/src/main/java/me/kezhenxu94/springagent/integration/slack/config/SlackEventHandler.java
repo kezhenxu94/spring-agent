@@ -16,6 +16,9 @@ import me.kezhenxu94.springagent.integration.slack.handler.SlackQuestionAnswerHa
 import me.kezhenxu94.springagent.integration.slack.handler.SlackQuestionForm;
 import me.kezhenxu94.springagent.integration.slack.handler.SlackStopButton;
 import me.kezhenxu94.springagent.integration.slack.handler.SlackStopHandler;
+import me.kezhenxu94.springagent.integration.slack.usermodels.SlackConfigForm;
+import me.kezhenxu94.springagent.integration.slack.usermodels.SlackConfigHandler;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -38,6 +41,9 @@ import org.springframework.context.annotation.Configuration;
 @RequiredArgsConstructor
 public class SlackEventHandler {
 
+  /** The slash command that opens the model settings, as it must be declared on the Slack app. */
+  public static final String CONFIG_COMMAND = "/config";
+
   /**
    * Every button this application puts on a message. Bolt selects a handler by the pressed
    * element's {@code action_id}, and one pattern is what lets a question form name its inputs after
@@ -52,6 +58,13 @@ public class SlackEventHandler {
   private final SlackQuestionAnswerHandler answers;
   private final SlackGreetings greetings;
   private final SlackSuggestions suggestions;
+
+  /**
+   * Absent unless {@code app.ai.user-models.encryption-key} is configured, which is the default —
+   * so a form that asks for an API token can only be drawn where there is somewhere safe to keep
+   * one.
+   */
+  private final ObjectProvider<SlackConfigHandler> configHandler;
 
   /**
    * Forces single-workspace mode, whatever the ambient environment says.
@@ -120,11 +133,30 @@ public class SlackEventHandler {
           return ctx.ack();
         });
 
-    // The two buttons this application draws. Bolt selects by action_id, so these two lines are the
-    // whole of the coupling between what the updater renders and what answers a press.
+    // The buttons this application draws. Bolt selects by action_id, so these lines are the whole
+    // of the coupling between what the updater renders and what answers a press.
     app.blockAction(SlackStopButton.ACTION_ID, stops::handle);
     app.blockAction(SlackQuestionForm.ACTION_ID, answers::handle);
     app.blockAction(SlackSuggestions.ACTION_ID, suggestions::handle);
+    // Only where users may choose a model at all: with no encryption key configured there is no
+    // handler and no /config command, and Slack answers the slash command with its own "command
+    // not found" rather than this application having to explain itself.
+    //
+    // A real slash command rather than a message this application reads, because that is what
+    // carries a trigger_id — and a trigger_id is what lets the settings open as a modal instead of
+    // as blocks in the channel. It matters for this form in particular: it takes an API token, and
+    // a modal is private to whoever opened it.
+    //
+    // The command still has to be declared on the Slack app itself; Bolt only routes what Slack
+    // sends. See the Slack section of the README.
+    final var models = configHandler.getIfAvailable();
+    if (models != null) {
+      app.command(CONFIG_COMMAND, models::handle);
+      app.viewSubmission(SlackConfigForm.CALLBACK_ID, models::handle);
+      // The fallback's submit button, for a workspace where the command above was never created:
+      // see SlackMessageReceiveHandler, which posts that form in answer to a plain " /config".
+      app.blockAction(SlackConfigForm.ACTION_ID, models::handle);
+    }
 
     return app;
   }

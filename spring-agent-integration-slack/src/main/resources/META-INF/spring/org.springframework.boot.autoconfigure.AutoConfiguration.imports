@@ -1,1 +1,2 @@
 me.kezhenxu94.springagent.integration.slack.config.SlackAutoConfiguration
+me.kezhenxu94.springagent.integration.slack.config.SlackUserModelsConfiguration

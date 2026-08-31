@@ -68,11 +68,58 @@ another's files. The same line runs through everything else:
   when idle and rebuilt on the next command.
 - **The knowledge base** is scoped to a person, a group chat or the whole tenant, and a run only
   ever searches what its own identity may read.
+- **The chat model itself**, where the deployment allows it: a user can register their own
+  OpenAI-compatible endpoints and have their conversations answered by one of them, leaving
+  everybody else on the application's. See [Bring your own model](#bring-your-own-model).
 
 A message from a group chat also reaches the group's home and the group's knowledge, which is how a
 team shares skills and notes without sharing anything private. Nobody needs an administrator to set
 any of this up — they ask the agent, and it registers it for them. On the command line the same
 machinery serves the one person at the keyboard, out of `~/.spring-agent`.
+
+## Bring your own model
+
+Every run goes through the application's model unless the person asking has chosen another. Off
+unless `USER_MODELS_ENCRYPTION_KEY` is set — the tokens people register are bearer credentials for
+somebody else's paid endpoint, and the only alternative to storing them sealed is storing them in
+the clear, so a deployment that cannot do the first does not offer the feature at all:
+
+```sh
+export USER_MODELS_ENCRYPTION_KEY=$(openssl rand -base64 32)
+```
+
+Keep it out of the database and out of version control. Rotating it does not re-seal what is
+already stored: those rows stop being readable and say so, rather than quietly behaving as though
+nobody had registered anything.
+
+With it set, a user can ask the agent — `add my Kimi endpoint`, `what models do I have`, `switch me
+back to the default` — through the `AddChatModel`, `ListChatModels`, `UseChatModel` and
+`DeleteChatModel` tools. An endpoint is connection-tested before it is stored: if it cannot be
+reached, the token is refused or the model name is unknown, nothing is saved and the reason comes
+back. Tokens are never shown again, to anyone, including the person who set them.
+
+There is also a way in that does not involve the agent, and it is the important one. A model that
+stops answering would otherwise break the very run needed to undo it, so **`/config` never touches
+the LLM**:
+
+| Surface | How |
+| --- | --- |
+| Feishu | Send `/config`. A card opens with a dropdown of what you could be on and fields for adding an endpoint. |
+| Slack | Type `/config`. A modal opens, private to you, so the API token never enters channel history. The command has to be declared on the Slack app — see below. If nobody did, send ` /config` with a leading space instead: Slack sends that verbatim rather than looking for a command, and the same form arrives as a message. |
+| Command line | `/config` lists your models, `/config <name>` switches, `/config default` returns to the built-in one. |
+
+The dropdown also lists what the application's own endpoint reports it can serve, so choosing among
+the models the deployment already pays for needs no token of your own. That listing is best-effort:
+an endpoint that does not answer `GET /models` simply shows the one built-in entry. Where it serves
+more models than a card can hold the list is cut short — fill in the **Model** field alone, leaving
+name, base URL and token empty, to name any of them directly.
+
+The **embedding** model is deliberately not configurable this way. The knowledge base is shared
+between users and its collections are built with one embedding model, so letting one person change
+theirs would invalidate vectors that are not theirs.
+
+Other knobs, all optional: `USER_MODELS_MAX_PER_USER` (default 10), `USER_MODELS_CACHE_SIZE`
+(default 50 live endpoints) and `USER_MODELS_PROBE_TIMEOUT` (default 30s).
 
 ## It can also speak first
 
@@ -305,7 +352,14 @@ Creating the app, once, at <https://api.slack.com/apps>:
    both means answering every mention twice.
 4. **Interactivity & Shortcuts → Enable.** With Socket Mode on there is no Request URL to fill in;
    this is what makes the stop button and the question form work.
-5. **Install to Workspace**, then invite the bot to any channel you want it to answer in.
+5. **Slash Commands → Create New Command**, `/config`, description "Choose which chat model answers
+   you". Only needed where `USER_MODELS_ENCRYPTION_KEY` is set, and again no Request URL under
+   Socket Mode. This one is not plumbing the application can do for itself: Bolt only routes
+   commands Slack decides to send, and Slack sends none it has not been told about. Creating it
+   adds the `commands` scope, so the app has to be reinstalled afterwards. Skipping this step
+   costs the modal but not the feature — a message reading ` /config`, with a leading space, opens
+   the same form in the channel.
+6. **Install to Workspace**, then invite the bot to any channel you want it to answer in.
 
 Opening a direct message with the bot for the first time is answered with a welcome note, and
 afterwards with whatever has changed since — the same `welcome.md` and `updates/N.md` arrangement the

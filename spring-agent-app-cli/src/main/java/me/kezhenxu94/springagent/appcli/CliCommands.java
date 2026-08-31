@@ -2,9 +2,12 @@ package me.kezhenxu94.springagent.appcli;
 
 import java.util.Comparator;
 import java.util.stream.Collectors;
+import me.kezhenxu94.springagent.appcli.config.CliProperties;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
+import me.kezhenxu94.springagent.core.config.ConditionalOnUserModels;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
+import me.kezhenxu94.springagent.core.usermodels.UserModelCommand;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiCommonProperties;
 import org.springframework.context.annotation.Bean;
@@ -120,6 +123,34 @@ public class CliCommands {
                       .sorted()
                       .collect(Collectors.joining("\n  "));
               context.outputWriter().println("  " + names);
+            });
+  }
+
+  /**
+   * The command line has no card to open, so {@code /config} is the list plus a name to switch to —
+   * arguments being the natural thing at a terminal, where on a chat surface the same command opens
+   * a form instead.
+   *
+   * <p>Registered only where users may choose a model at all, which is why it takes the command
+   * through an {@link ObjectProvider}: with no encryption key configured there is nothing to
+   * configure, and a command that could only report that is worse than no command.
+   */
+  @Bean
+  @ConditionalOnUserModels
+  Command cliConfigCommand(
+      final UserModelCommand userModelCommand,
+      final CliProperties properties,
+      final CliMessages messages) {
+    return Command.builder()
+        .name("config")
+        .group(messages.get("command-group"))
+        .description(messages.get("command-config"))
+        .execute(
+            context -> {
+              final var argument = String.join(" ", context.parsedInput().subCommands()).trim();
+              context
+                  .outputWriter()
+                  .println(userModelCommand.handle(properties.userId(), argument));
             });
   }
 

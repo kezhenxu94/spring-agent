@@ -1,1 +1,2 @@
 me.kezhenxu94.springagent.integration.feishu.config.FeishuAutoConfiguration
+me.kezhenxu94.springagent.integration.feishu.config.FeishuUserModelsConfiguration

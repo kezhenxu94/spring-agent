@@ -16,9 +16,11 @@ import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
 import me.kezhenxu94.springagent.integration.slack.config.SlackIdentity;
+import me.kezhenxu94.springagent.integration.slack.usermodels.SlackConfigHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 /**
  * The decisions this handler makes before anything else happens, and the order it makes them in.
@@ -57,7 +59,15 @@ class SlackMessageReceiveHandlerTest {
           observations,
           messageText,
           userNames,
-          reactions);
+          reactions,
+          // No model settings form in these tests: /config is not a command without one, which is
+          // also the default for a deployment that has not configured an encryption key.
+          new ObjectProvider<>() {
+            @Override
+            public SlackConfigHandler getObject() {
+              return null;
+            }
+          });
 
   @BeforeEach
   void accepting() {

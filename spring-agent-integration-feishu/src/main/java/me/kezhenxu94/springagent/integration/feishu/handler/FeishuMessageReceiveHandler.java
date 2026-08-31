@@ -33,7 +33,9 @@ import me.kezhenxu94.springagent.integration.feishu.model.MessageContent;
 import me.kezhenxu94.springagent.integration.feishu.model.PostMessageContent;
 import me.kezhenxu94.springagent.integration.feishu.model.TextMessageContent;
 import me.kezhenxu94.springagent.integration.feishu.tools.FeishuTools;
+import me.kezhenxu94.springagent.integration.feishu.usermodels.FeishuConfigHandler;
 import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -52,6 +54,36 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
   final ProcessedMessageRepo processedMessageRepo;
   final FeishuQuestionFormCloser questionFormCloser;
   final FeishuChatObservations chatObservations;
+
+  /**
+   * Absent unless {@code app.ai.user-models.encryption-key} is configured, which is the default.
+   * Where it is absent {@code /config} is not a command at all and the message goes to the agent
+   * like any other, which is the right answer: there is nothing to configure.
+   */
+  final ObjectProvider<FeishuConfigHandler> configHandler;
+
+  /** The command word that opens the model settings card. */
+  private static final String CONFIG_COMMAND = "/config";
+
+  /**
+   * Whether this message is the {@code /config} command and nothing else.
+   *
+   * <p>Exact match rather than a prefix, deliberately. The command carries no arguments, so a
+   * message that merely begins with the word is somebody talking about it — and swallowing that
+   * would be the agent going silent on a question it should have answered.
+   */
+  private boolean isConfigCommand(final EventMessage message) {
+    if (!"text".equals(message.getMessageType())) {
+      return false;
+    }
+    try {
+      final var text = om.readTree(message.getContent()).path("text").asString("");
+      return CONFIG_COMMAND.equalsIgnoreCase(text.trim());
+    } catch (Exception e) {
+      // Not something we can read is not the command; the agent gets it, as it would have anyway.
+      return false;
+    }
+  }
 
   /**
    * Marks anything the agent was still waiting to hear back on in this conversation as overtaken by
@@ -93,7 +125,7 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
     final var groupId =
         "group".equalsIgnoreCase(message.getChatType()) ? message.getChatId() : null;
 
-    log.info(
+    log.debug(
         "Received message: rootId={}, messageId={}, chatId={}, chatType={}, parentId={},"
             + " userOpenId={}, content={}",
         rootId,
@@ -109,7 +141,7 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
     }
 
     if ("group".equalsIgnoreCase(message.getChatType()) && !isBotMentioned(message)) {
-      log.info(
+      log.debug(
           "Ignoring group message {} in chat {}: bot not mentioned",
           messageId,
           message.getChatId());
@@ -134,6 +166,17 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
     // superseding the outstanding questions changes the conversation, and firing answers it.
     if (!processedMessageRepo.claim(messageId)) {
       log.info("Ignoring message {}: it has already been taken up", messageId);
+      return;
+    }
+
+    // Before anything that changes the conversation, and before the agent is involved at all: this
+    // is the command a user reaches for when the model they chose has stopped answering, so it
+    // must not depend on a run succeeding. It deliberately takes no arguments — the card it opens
+    // is where the choosing happens, so there is no spelling of it to get wrong.
+    final var config = configHandler.getIfAvailable();
+    if (config != null && isConfigCommand(message)) {
+      log.info("Opening the model settings for {} in {}", userOpenId, message.getChatId());
+      config.open(message.getChatId(), userOpenId);
       return;
     }
 

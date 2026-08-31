@@ -34,6 +34,7 @@ import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentComposition;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.McpTools;
 import me.kezhenxu94.springagent.core.tools.QuestionNotAnsweredException;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
@@ -84,7 +85,19 @@ public class SpringAgent {
   /** How often a run waiting on its subagents says so, so that a long wait is not silence. */
   private static final Duration WAIT_PROGRESS_INTERVAL = Duration.ofSeconds(30);
 
+  /**
+   * The application's own, and the fallback for every run that has no reason to use another. Reach
+   * for it through {@link #clientFor} rather than directly: a user may have registered a model of
+   * their own, and this one is then not the client their run belongs on.
+   */
   final ChatClient chatClient;
+
+  /**
+   * Where a user's own choice of chat model is resolved, absent unless {@code
+   * app.ai.user-models.encryption-key} is configured. Through an {@link ObjectProvider} because
+   * that is the default, and a deployment that never lets users choose must still run.
+   */
+  final ObjectProvider<UserChatClients> userChatClients;
 
   /**
    * Spring AI's own, deliberately: a {@link ChatMemory} bean declared by the application is what
@@ -943,7 +956,7 @@ public class SpringAgent {
     }
     advisors.add(SimpleLoggerAdvisor.builder().build());
 
-    return chatClient
+    return clientFor(request)
         .prompt()
         .system(renderedSystemPrompt)
         .user(request.userMessage())
@@ -954,6 +967,20 @@ public class SpringAgent {
         .advisors(advisors.toArray(new Advisor[0]))
         .stream()
         .chatResponse();
+  }
+
+  /**
+   * The client this run goes through: the user's own where they have registered one, the
+   * application's otherwise.
+   *
+   * <p>Never fails the run over it. A user's endpoint that cannot be resolved is a fallback and a
+   * warning, not an error, because the run being failed would be the one they would use to put it
+   * right — {@link UserChatClients#forUser} makes the same promise, and this is the second half of
+   * it for the case where the whole component is missing.
+   */
+  private ChatClient clientFor(final AgentRequest request) {
+    final var clients = userChatClients.getIfAvailable();
+    return clients == null ? chatClient : clients.forUser(request.userId());
   }
 
   /** The shared tool advisor, or null where no tool advisor builder is configured. */

@@ -82,6 +82,24 @@ public class FeishuMessages {
         .replace("{submitText}", jsonEscaped(get("question-submit")));
   }
 
+  /** Fills the config form template's label placeholders. */
+  public String renderConfigForm(final String formJson) {
+    return formJson
+        .replace("{title}", jsonEscaped(get("config-title")))
+        .replace("{activeLabel}", jsonEscaped(get("config-active-label")))
+        .replace("{activeHint}", jsonEscaped(get("config-active-hint")))
+        .replace("{addHint}", jsonEscaped(get("config-add-hint")))
+        .replace("{nameLabel}", jsonEscaped(get("config-name-label")))
+        .replace("{namePlaceholder}", jsonEscaped(get("config-name-placeholder")))
+        .replace("{baseUrlLabel}", jsonEscaped(get("config-baseurl-label")))
+        .replace("{baseUrlPlaceholder}", jsonEscaped(get("config-baseurl-placeholder")))
+        .replace("{modelLabel}", jsonEscaped(get("config-model-label")))
+        .replace("{modelPlaceholder}", jsonEscaped(get("config-model-placeholder")))
+        .replace("{tokenLabel}", jsonEscaped(get("config-token-label")))
+        .replace("{tokenPlaceholder}", jsonEscaped(get("config-token-placeholder")))
+        .replace("{submitText}", jsonEscaped(get("config-submit")));
+  }
+
   /**
    * Substitution happens in a template's text rather than its parsed form, so a label carrying a
    * quote or a newline would otherwise produce a card that no longer parses.

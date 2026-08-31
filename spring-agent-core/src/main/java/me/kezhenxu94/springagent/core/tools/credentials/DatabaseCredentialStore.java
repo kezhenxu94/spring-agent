@@ -1,19 +1,13 @@
 package me.kezhenxu94.springagent.core.tools.credentials;
 
-import java.nio.charset.StandardCharsets;
-import java.security.GeneralSecurityException;
-import java.security.SecureRandom;
 import java.time.Instant;
-import java.util.Arrays;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import javax.crypto.Cipher;
-import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
 import me.kezhenxu94.springagent.core.dao.models.ShellCredential;
 import me.kezhenxu94.springagent.core.dao.repo.ShellCredentialRepo;
+import me.kezhenxu94.springagent.core.security.AesGcmSealer;
+import me.kezhenxu94.springagent.core.security.AesGcmSealer.SealingException;
 
 /**
  * Keeps credentials in the application's own database, encrypted.
@@ -28,37 +22,19 @@ import me.kezhenxu94.springagent.core.dao.repo.ShellCredentialRepo;
  */
 public class DatabaseCredentialStore implements ShellCredentialStore {
 
-  private static final String TRANSFORMATION = "AES/GCM/NoPadding";
-  private static final int NONCE_BYTES = 12;
-  private static final int TAG_BITS = 128;
+  /** Names this key in the message when it is missing or unusable. */
+  private static final String WHAT = "shell credentials";
 
   private final ShellCredentialRepo repo;
-  private final SecretKeySpec key;
-  private final SecureRandom random = new SecureRandom();
+  private final AesGcmSealer sealer;
 
   /**
    * @param base64Key a base64-encoded AES key of 128, 192 or 256 bits. Rejected outright when
    *     absent, because the alternative is storing secrets in the clear.
    */
   public DatabaseCredentialStore(final ShellCredentialRepo repo, final String base64Key) {
-    if (base64Key == null || base64Key.isBlank()) {
-      throw new IllegalArgumentException(
-          "A base64-encoded AES encryption key is required to store shell credentials");
-    }
-    final byte[] bytes;
-    try {
-      bytes = Base64.getDecoder().decode(base64Key.trim());
-    } catch (final IllegalArgumentException e) {
-      throw new IllegalArgumentException(
-          "The shell credential encryption key is not valid base64", e);
-    }
-    if (bytes.length != 16 && bytes.length != 24 && bytes.length != 32) {
-      throw new IllegalArgumentException(
-          "The shell credential encryption key must decode to 16, 24 or 32 bytes, but was "
-              + bytes.length);
-    }
     this.repo = repo;
-    this.key = new SecretKeySpec(bytes, "AES");
+    this.sealer = new AesGcmSealer(base64Key, WHAT);
   }
 
   @Override
@@ -68,7 +44,7 @@ public class DatabaseCredentialStore implements ShellCredentialStore {
             .id(ShellCredential.idFor(userId, name))
             .ownerId(userId)
             .name(name)
-            .value(encrypt(value))
+            .value(seal(value))
             .updatedAt(Instant.now())
             .build());
   }
@@ -93,45 +69,27 @@ public class DatabaseCredentialStore implements ShellCredentialStore {
   public Map<String, String> resolve(final String userId) {
     final var resolved = new LinkedHashMap<String, String>();
     for (final var credential : repo.findByOwnerId(userId)) {
-      resolved.put(credential.name(), decrypt(credential.name(), credential.value()));
+      resolved.put(credential.name(), open(credential.name(), credential.value()));
     }
     return resolved;
   }
 
-  private String encrypt(final String plaintext) {
-    try {
-      final var nonce = new byte[NONCE_BYTES];
-      random.nextBytes(nonce);
-      final var cipher = Cipher.getInstance(TRANSFORMATION);
-      cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, nonce));
-      final var sealed = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
+  // The two below translate the sealer's failures into this store's own exception type, which is
+  // what CredentialTools catches and turns into something the model can read.
 
-      // Nonce first: it is not secret, and it has to come back with the ciphertext to decrypt it.
-      final var out = new byte[nonce.length + sealed.length];
-      System.arraycopy(nonce, 0, out, 0, nonce.length);
-      System.arraycopy(sealed, 0, out, nonce.length, sealed.length);
-      return Base64.getEncoder().encodeToString(out);
-    } catch (final GeneralSecurityException e) {
+  private String seal(final String plaintext) {
+    try {
+      return sealer.seal(plaintext);
+    } catch (final SealingException e) {
       throw new CredentialStoreException("Failed to encrypt the credential", e);
     }
   }
 
-  private String decrypt(final String name, final String stored) {
+  private String open(final String name, final String stored) {
     try {
-      final var raw = Base64.getDecoder().decode(stored);
-      if (raw.length <= NONCE_BYTES) {
-        throw new CredentialStoreException("Stored credential " + name + " is truncated");
-      }
-      final var nonce = Arrays.copyOfRange(raw, 0, NONCE_BYTES);
-      final var sealed = Arrays.copyOfRange(raw, NONCE_BYTES, raw.length);
-      final var cipher = Cipher.getInstance(TRANSFORMATION);
-      cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, nonce));
-      return new String(cipher.doFinal(sealed), StandardCharsets.UTF_8);
-    } catch (final GeneralSecurityException | IllegalArgumentException e) {
-      // Loudly rather than by dropping the entry: a rotated or mistyped key would otherwise show
-      // up as a sandbox that quietly has no credentials in it.
-      throw new CredentialStoreException(
-          "Failed to decrypt credential " + name + "; the encryption key may have changed", e);
+      return sealer.open("credential " + name, stored);
+    } catch (final SealingException e) {
+      throw new CredentialStoreException(e.getMessage(), e);
     }
   }
 }
