@@ -655,6 +655,38 @@ app:
             memory-limit: 1Gi
           credentials:
             mount-path: /run/secrets/credentials
+            # Secrets an operator pre-provisions in the sandbox namespace and shares with a group, a
+            # tenant or a named user — the SetCredential tool only ever writes a user's own Secret,
+            # so this is the only way a credential arrives without somebody typing it into a chat.
+            #
+            # Each entry is a label selector over the Secrets in the namespace; every Secret it
+            # matches is attached to the Pod as an envFrom source, so its keys arrive as environment
+            # variables. Values may carry {userId}, {groupId} and {tenantId}, which is what lets one
+            # mechanism cover all three kinds of sharing.
+            #
+            # Order is precedence, weakest first, and all of them sit below the per-scope Secrets
+            # this application manages itself — envFrom lets a later source win a key, so the user's
+            # own credential is always the last word on a name they set for themselves.
+            #
+            # A selector whose placeholder has nothing to fill it is dropped rather than matched on
+            # a blank, which would select every Secret storing a blank there — every other group's.
+            # So is an id that is not a legal label value (63 chars, alphanumeric at both ends).
+            #
+            # The selector is the whole access rule: never key on a label an untrusted party can
+            # set, and remember the Secrets are resolved when the Pod is created, so a label added
+            # later reaches that user on their next sandbox rather than the one they are in.
+            #
+            # Commented out because sharing credentials is a deliberate act, not a default. Labels
+            # here are examples: use whatever the Secrets in your namespace already carry.
+            # shared:
+            #   - match-labels:
+            #       springagent.io/shell-shared: "everyone"
+            #   - match-labels:
+            #       springagent.io/shell-shared-tenant-id: "{tenantId}"
+            #   - match-labels:
+            #       springagent.io/shell-shared-group-id: "{groupId}"
+            #   - match-labels:
+            #       springagent.io/shell-shared-user-id: "{userId}"
         docker:
           # The same sandbox image the kubernetes block above defaults to. An image substituted here
           # needs bash, GNU coreutils for the `stat -c` and `dd` the background-shell bookkeeping

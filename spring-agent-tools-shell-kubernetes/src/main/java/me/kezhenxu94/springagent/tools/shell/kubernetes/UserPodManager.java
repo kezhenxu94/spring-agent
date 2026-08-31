@@ -14,8 +14,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -59,7 +62,14 @@ public class UserPodManager {
     }
 
     final var jobName = jobName(scopeKey);
-    createJob(ns, jobName, userId, groupId, tenantId, scopeKey);
+    createJob(
+        ns,
+        jobName,
+        userId,
+        groupId,
+        tenantId,
+        scopeKey,
+        sharedSecretNames(ns, userId, groupId, tenantId));
     return waitForRunningPod(ns, userId, scopeKey, jobName);
   }
 
@@ -69,14 +79,15 @@ public class UserPodManager {
       final String userId,
       final String groupId,
       final String tenantId,
-      final String scopeKey) {
+      final String scopeKey,
+      final List<String> sharedSecretNames) {
     try {
       kubernetesClient
           .batch()
           .v1()
           .jobs()
           .inNamespace(ns)
-          .resource(buildJob(jobName, userId, groupId, tenantId, scopeKey))
+          .resource(buildJob(jobName, userId, groupId, tenantId, scopeKey, sharedSecretNames))
           .create();
       log.info("Created shell sandbox Job {} for user {}", jobName, userId);
       return;
@@ -95,7 +106,7 @@ public class UserPodManager {
           .v1()
           .jobs()
           .inNamespace(ns)
-          .resource(buildJob(jobName, userId, groupId, tenantId, scopeKey))
+          .resource(buildJob(jobName, userId, groupId, tenantId, scopeKey, sharedSecretNames))
           .create();
       return;
     }
@@ -126,7 +137,7 @@ public class UserPodManager {
           .v1()
           .jobs()
           .inNamespace(ns)
-          .resource(buildJob(jobName, userId, groupId, tenantId, scopeKey))
+          .resource(buildJob(jobName, userId, groupId, tenantId, scopeKey, sharedSecretNames))
           .create();
       log.info("Recreated shell sandbox Job {} for user {}", jobName, userId);
     } else {
@@ -216,6 +227,68 @@ public class UserPodManager {
   }
 
   /**
+   * The Secrets an operator has pre-provisioned for this scope, weakest first, ready to be attached
+   * to the sandbox Pod as {@code envFrom} sources.
+   *
+   * <p>Each configured selector is resolved against this (user, group, tenant) and the ones that
+   * apply are listed; a selector that does not apply — a placeholder with nothing to fill it, or an
+   * id that is not a legal label value — contributes nothing rather than a wider match. Matches
+   * within one selector are sorted by name so a Pod built twice for the same scope is
+   * byte-identical, and a Secret picked up by more than one selector keeps only its strongest
+   * position.
+   *
+   * <p>Resolved once, when the Pod is created: labelling a Secret afterwards reaches that user on
+   * their next sandbox, not the one they are already in. Same as the per-scope Secrets named by
+   * convention, whose contents the kubelet also reads only at container start.
+   */
+  List<String> sharedSecretNames(
+      final String ns, final String userId, final String groupId, final String tenantId) {
+    final var selectors = properties.credentials().shared();
+    if (selectors.isEmpty()) {
+      return List.of();
+    }
+    final var names = new ArrayList<String>();
+    for (final var selector : selectors) {
+      final var labels = selector.resolve(userId, groupId, tenantId);
+      if (labels.isEmpty()) {
+        log.debug(
+            "Shared credentials selector {} does not apply to user {} (group={}, tenant={})",
+            selector.matchLabels(),
+            userId,
+            groupId,
+            tenantId);
+        continue;
+      }
+      try {
+        kubernetesClient
+            .secrets()
+            .inNamespace(ns)
+            .withLabels(labels.get())
+            .list()
+            .getItems()
+            .stream()
+            .map(secret -> secret.getMetadata().getName())
+            .sorted()
+            .forEach(names::add);
+      } catch (final KubernetesClientException e) {
+        // One unreadable selector must not cost the user their sandbox: they still get their own
+        // credentials, and the missing ones show up as an absent environment variable.
+        log.warn(
+            "Failed to list shared credentials Secrets matching {} in namespace {}; skipping",
+            labels.get(),
+            ns,
+            e);
+      }
+    }
+    // Deduplicated from the strong end, so a Secret two selectors both matched keeps only its
+    // strongest position, then turned back into the weakest-first order envFrom wants.
+    Collections.reverse(names);
+    final var deduped = new ArrayList<>(new LinkedHashSet<>(names));
+    Collections.reverse(deduped);
+    return List.copyOf(deduped);
+  }
+
+  /**
    * Delete the user's shell Job (and its Pod) if one exists. Returns true if anything was deleted.
    */
   public boolean deletePodFor(final String userId) {
@@ -253,12 +326,13 @@ public class UserPodManager {
     return HexFormat.of().formatHex(digest).substring(0, 16);
   }
 
-  private Job buildJob(
+  Job buildJob(
       final String jobName,
       final String userId,
       final String groupId,
       final String tenantId,
-      final String scopeKey) {
+      final String scopeKey,
+      final List<String> sharedSecretNames) {
     final var labels = new HashMap<String, String>();
     labels.put(LABEL_APP, LABEL_APP_VALUE);
     labels.put(LABEL_SHELL_POD, "true");
@@ -383,9 +457,22 @@ public class UserPodManager {
       }
     }
 
-    // Credentials: one optional envFrom Secret per in-scope id, added least-specific-first (tenant,
-    // then group, then the personal one last) so a key present in more than one Secret resolves to
-    // the most specific one — Kubernetes envFrom lets a later source's key win over an earlier one.
+    // Credentials: one optional envFrom Secret per in-scope id, added least-specific-first (the
+    // operator's pre-provisioned ones, then tenant, then group, then the personal one last) so a
+    // key present in more than one Secret resolves to the most specific one — Kubernetes envFrom
+    // lets a later source's key win over an earlier one. The user's own Secret is therefore always
+    // the last word on a key they set for themselves.
+    for (final var sharedSecretName : sharedSecretNames) {
+      builder
+          .editFirstContainer()
+          .addNewEnvFrom()
+          .withNewSecretRef()
+          .withName(sharedSecretName)
+          .withOptional(true)
+          .endSecretRef()
+          .endEnvFrom()
+          .endContainer();
+    }
     if (tenantId != null && !tenantId.isBlank()) {
       builder
           .editFirstContainer()
