@@ -313,31 +313,6 @@ class FeishuCardContinuationTest {
                     && insert[2].contains(FeishuCardElements.REASONING_BODY));
   }
 
-  @Test
-  @DisplayName("the pane folded away at the end holds that card's share of the thinking")
-  void theFoldedPaneHoldsOnlyThisCardsThinking() {
-    final var run =
-        FeishuCardUpdater.forRun(card, new JsonMapper(), null, messages, elements(), null);
-
-    run.onReasoning("what the model thought on the card it filled");
-    run.onContent("an answer");
-    full.add("card-1");
-    run.onContent("an answer, and a little more");
-    run.onReasoning("what the model thought on the card it filled, and then thought some more");
-    run.onFinished(AgentOutcome.COMPLETED);
-
-    // Folding the pane away rewrites the element whole, so it has to be cut the same way the
-    // stream into it was: handed the turn's thinking entire, it puts all of it back on the card.
-    final var folded =
-        replaced.stream()
-            .filter(change -> change[1].equals(FeishuCardElements.REASONING))
-            .reduce((first, second) -> second)
-            .orElseThrow();
-    assertThat(folded[0]).isEqualTo("card-2");
-    assertThat(folded[2]).doesNotContain("what the model thought on the card it filled");
-    assertThat(folded[2]).contains(", and then thought some more");
-  }
-
   private String[] lastStreamed() {
     assertThat(streamed).isNotEmpty();
     return streamed.get(streamed.size() - 1);

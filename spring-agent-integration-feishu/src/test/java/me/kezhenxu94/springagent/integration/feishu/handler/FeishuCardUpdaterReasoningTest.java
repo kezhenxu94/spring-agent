@@ -90,33 +90,27 @@ class FeishuCardUpdaterReasoningTest {
     assertThat(write.getContentCardElementReqBody().getContent())
         .isEqualTo("The user asked for the repository, so I should look it up.");
 
-    // The panel the run streams into, open — the thinking is happening as it arrives — and titled
-    // in the workspace's language.
+    // The panel the run streams into, closed — working-out is behind a chevron rather than in
+    // front of the answer — and titled in the workspace's language.
     final var panel = insertOf("reasoning");
-    assertThat(panel).contains("\"tag\":\"collapsible_panel\"").contains("\"expanded\":true");
+    assertThat(panel).contains("\"tag\":\"collapsible_panel\"").contains("\"expanded\":false");
     assertThat(panel).contains("\"element_id\":\"reasoning_body\"");
     assertThat(panel).contains(messages.get("card-reasoning"));
   }
 
   @Test
-  @DisplayName("the pane is folded away when the run ends, with the thinking still in it")
-  void thePaneIsClosedAtTheEnd() throws Exception {
+  @DisplayName("the pane is left as the reader had it, all the way to the end of the run")
+  void thePaneIsNeverRewritten() throws Exception {
+    // It is born closed, so there is nothing to fold away — and a run that rewrote it to close it
+    // would snap it shut under a reader who had opened it, which Feishu gives no way to notice.
     final var updater =
         FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), null);
 
     updater.onReasoning("Thinking about it.");
     updater.onContent("Here you go.");
-
-    // Open for the length of the run: nothing rewrites it while the run is going.
-    assertThat(replacements()).isEmpty();
-
     updater.onFinished(AgentOutcome.COMPLETED);
 
-    assertThat(replacements()).hasSize(1);
-    assertThat(replacements().get(0))
-        .contains("\"expanded\":false")
-        .contains("Thinking about it.")
-        .contains("\"element_id\":\"reasoning_body\"");
+    assertThat(replacements()).isEmpty();
   }
 
   @Test
@@ -134,10 +128,6 @@ class FeishuCardUpdaterReasoningTest {
     // black bracket.
     assertThat(insertOf("reasoning"))
         .contains("<font color='grey'>" + messages.get("card-reasoning") + "(xhigh)</font>");
-
-    // And still there when the pane is folded away, which rewrites the element whole.
-    updater.onFinished(AgentOutcome.COMPLETED);
-    assertThat(replacements().get(0)).contains(messages.get("card-reasoning") + "(xhigh)");
   }
 
   @Test
@@ -150,18 +140,6 @@ class FeishuCardUpdaterReasoningTest {
 
     assertThat(insertOf("reasoning"))
         .contains("<font color='grey'>" + messages.get("card-reasoning") + "</font>");
-  }
-
-  @Test
-  @DisplayName("a run that never thought has no pane to fold away")
-  void nothingToCloseWithoutAPane() throws Exception {
-    final var updater =
-        FeishuCardUpdater.forRun(card, om, null, messages, cardElements(messages), null);
-
-    updater.onContent("Here you go.");
-    updater.onFinished(AgentOutcome.COMPLETED);
-
-    assertThat(replacements()).isEmpty();
   }
 
   @Test

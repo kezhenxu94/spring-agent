@@ -227,12 +227,6 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   private int todoRevision;
 
   /**
-   * Everything the model has thought, kept because closing the pane at the end of the run replaces
-   * the element whole and a replacement without it would empty the pane it is closing.
-   */
-  private String reasoning = "";
-
-  /**
    * Every document the run has been given, keyed by id so the same one retrieved again is the same
    * reference. Retrieval runs once per tool round, so a turn making several tool calls reports the
    * same passages repeatedly; without this the list would grow a duplicate on each of them.
@@ -645,7 +639,13 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     return null;
   }
 
-  /** Folds the pane away as the run ends, for the reason the reasoning pane is folded away. */
+  /**
+   * Folds the pane away as the run ends, leaving the trail on the card for whoever wants it: while
+   * the run is calling tools the calls are the only thing happening, and once there is an answer
+   * above them they are an aside behind a chevron. This is the only time it is closed on purpose —
+   * Feishu reports a panel's chevron to nobody, so anything more often would be overruling a
+   * reader's own choice rather than setting a default.
+   */
   private void closeToolsPane() {
     showToolCalls(false);
   }
@@ -1185,7 +1185,10 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    *
    * <p>Not folded into the answer: it is not what the run is saying, it is how the run got there,
    * and most readers want the one without the other. The panel is added the first time there is
-   * thinking to put in it, so a turn on an endpoint that reports none never carries it.
+   * thinking to put in it, so a turn on an endpoint that reports none never carries it, and it
+   * arrives closed — see the element in {@code card-elements.json}. Nothing here ever opens or
+   * closes it: the reader who opens the pane mid-run keeps it open, because Feishu reports a
+   * chevron to nobody and a run that moved it would be overruling a choice it cannot see.
    *
    * <p>What arrives is the turn's thinking in full, so the pane carries on across cards the way the
    * answer does rather than starting again: on a card the run has moved onto it holds what has been
@@ -1204,7 +1207,6 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     // Before the new thinking lands, so that a card the run has just moved onto carries on from
     // what was on the card it left rather than from the first thought of the turn.
     sync();
-    reasoning = reasoningSoFar;
     if (card.continued(FeishuCardElements.REASONING_BODY, reasoningSoFar).isEmpty()) {
       // Every thought there is to show is on the card above, so there is nothing here to put a
       // pane on the card for — see the answer, added when there is an answer.
@@ -1290,7 +1292,6 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       // no card — the card drops a write that would not change what an element holds.
       sendContent(withFailure(lastBaseContent));
       showSpend();
-      closeReasoningPane();
       closeToolsPane();
       countReferences();
       card.finish();
@@ -1318,26 +1319,16 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   }
 
   /**
-   * Folds the thinking away as the run ends, leaving it on the card for whoever wants it.
-   *
-   * <p>The pane is open for the length of the run because while the model is thinking that is the
-   * only thing happening and a reader watching an otherwise still card is owed it. Once there is an
-   * answer above it, it is an aside behind one, and a finished card that is mostly working-out is a
-   * finished card nobody reads. This is the only time it is closed — Feishu reports a panel's
-   * chevron to nobody, so anything more often would be overruling a reader's own choice over and
-   * over rather than once, at the moment the thing they were watching stopped.
-   */
-  /**
    * Puts the number of sources into the panel's title, once, as the run ends.
    *
    * <p>The count belongs in the title because that is the only part of a closed panel anyone reads:
    * it is what tells them whether the chevron is worth opening. A title cannot be streamed into, so
    * this replaces the element whole.
    *
-   * <p>Once, and at the end, for the reason the reasoning pane closes itself only then: replacing
-   * the element resets whether it is open, Feishu reports a reader's chevron to nobody, and
-   * references accumulate over a turn — so updating the count as each one arrived would snap the
-   * panel shut under anyone who had opened it, once per tool round.
+   * <p>Once, and at the end, because replacing the element resets whether it is open, Feishu
+   * reports a reader's chevron to nobody, and references accumulate over a turn — so updating the
+   * count as each one arrived would snap the panel shut under anyone who had opened it, once per
+   * tool round.
    */
   private void countReferences() {
     if (elements == null || referencesElementId == null || references.isEmpty()) {
@@ -1353,20 +1344,6 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         referencesElementId,
         elements.referencesPanel(references.size(), renderReferences()),
         card.cardId() + ":references:end");
-  }
-
-  private void closeReasoningPane() {
-    if (elements == null || !onCard(FeishuCardElements.REASONING)) {
-      return;
-    }
-    card.replace(
-        FeishuCardElements.REASONING,
-        // Cut to this card's share, since the element is being written whole rather than streamed
-        // into: the pane a reader is looking at holds what was thought since the card above, and
-        // handing it the turn's thinking entire is what put the whole of it back on the card.
-        elements.reasoningPanel(
-            false, card.continued(FeishuCardElements.REASONING_BODY, reasoning)),
-        card.cardId() + ":reasoning:end");
   }
 
   /**
