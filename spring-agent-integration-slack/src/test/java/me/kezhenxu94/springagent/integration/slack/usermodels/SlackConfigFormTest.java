@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
+import me.kezhenxu94.springagent.core.usermodels.ReasoningEfforts;
 import me.kezhenxu94.springagent.integration.slack.config.SlackMessages;
 import me.kezhenxu94.springagent.integration.slack.config.SlackProperties;
 import me.kezhenxu94.springagent.integration.slack.handler.SlackQuestionForm.ViewValue;
@@ -62,7 +63,7 @@ class SlackConfigFormTest {
       many.add("model-%03d".formatted(i));
     }
 
-    final var options = options(form.blocks(List.of(), "@model-240", many, "model-200"));
+    final var options = options(form.blocks(List.of(), builtin("model-240"), many, "model-200"));
 
     // Slack refuses a static select with more than 100 options, so the cap is what stands between
     // a large gateway and no settings form at all.
@@ -77,7 +78,7 @@ class SlackConfigFormTest {
   @DisplayName("the user's own endpoints come after the built-in ones")
   void userModelsLast() {
     final var options =
-        options(form.blocks(List.of(config("kimi")), "kimi", List.of("gpt-4o"), "gpt-4o"));
+        options(form.blocks(List.of(config("kimi")), config("kimi"), List.of("gpt-4o"), "gpt-4o"));
 
     assertThat(options).hasSize(2);
     assertThat(options.get(1).getValue()).isEqualTo("kimi");
@@ -181,6 +182,57 @@ class SlackConfigFormTest {
 
     assertThat(submission.name()).isNull();
     assertThat(submission.adding()).isFalse();
+  }
+
+  @Test
+  @DisplayName("how hard to think is a list, and the whole list")
+  void effortIsAList() {
+    final var values =
+        effortOptions(form.blocks(List.of(), null, List.of(), "gpt-4o")).stream()
+            .map(OptionObject::getValue)
+            .toList();
+
+    // Every effort the SDK knows, plus the two ways of choosing none of them. A user must never
+    // have to type one: Spring AI takes it as a bare string and an endpoint fails on a typo.
+    assertThat(values).containsAll(ReasoningEfforts.VALUES);
+    assertThat(values).contains(SlackConfigForm.EFFORT_INHERIT_OPTION, ReasoningEfforts.NOT_SENT);
+  }
+
+  @Test
+  @DisplayName("the effort in force is the one preselected")
+  void preselectsEffort() {
+    final var active = config("kimi").toBuilder().reasoningEffort("high").build();
+
+    final var blocks = form.blocks(List.of(active), active, List.of(), "gpt-4o");
+
+    assertThat(effortElement(blocks).getInitialOption().getValue()).isEqualTo("high");
+  }
+
+  @Test
+  @DisplayName("a model with no effort of its own shows the application's setting")
+  void preselectsInherit() {
+    final var blocks = form.blocks(List.of(), null, List.of(), "gpt-4o");
+
+    assertThat(effortElement(blocks).getInitialOption().getValue())
+        .isEqualTo(SlackConfigForm.EFFORT_INHERIT_OPTION);
+  }
+
+  private static UserModelConfig builtin(final String model) {
+    return UserModelConfig.builder().name("@" + model).model(model).build();
+  }
+
+  private static StaticSelectElement effortElement(final List<LayoutBlock> blocks) {
+    return blocks.stream()
+        .filter(InputBlock.class::isInstance)
+        .map(InputBlock.class::cast)
+        .filter(block -> SlackConfigForm.EFFORT_BLOCK.equals(block.getBlockId()))
+        .map(block -> (StaticSelectElement) block.getElement())
+        .findFirst()
+        .orElseThrow();
+  }
+
+  private static List<OptionObject> effortOptions(final List<LayoutBlock> blocks) {
+    return effortElement(blocks).getOptions();
   }
 
   private static String tokenHint(final List<LayoutBlock> blocks) {

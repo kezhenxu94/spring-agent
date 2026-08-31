@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
+import me.kezhenxu94.springagent.core.usermodels.ReasoningEfforts;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.junit.jupiter.api.DisplayName;
@@ -53,7 +54,8 @@ class FeishuConfigFormTest {
   @DisplayName("the endpoint in use is the one preselected")
   void preselectsActive() throws Exception {
     final var card =
-        om.readTree(form.card(List.of(config("kimi"), config("glm")), "glm", List.of(), "gpt-4o"));
+        om.readTree(
+            form.card(List.of(config("kimi"), config("glm")), config("glm"), List.of(), "gpt-4o"));
 
     // 1-based, and the built-in model occupies the first slot, so the second endpoint is third.
     assertThat(select(card).path("initial_index").asInt()).isEqualTo(3);
@@ -113,7 +115,8 @@ class FeishuConfigFormTest {
   @Test
   @DisplayName("a built-in model in use is the one preselected")
   void preselectsBuiltin() throws Exception {
-    final var card = om.readTree(form.card(List.of(), "@o3", List.of("gpt-4o", "o3"), "gpt-4o"));
+    final var card =
+        om.readTree(form.card(List.of(), builtin("o3"), List.of("gpt-4o", "o3"), "gpt-4o"));
 
     assertThat(select(card).path("initial_index").asInt()).isEqualTo(2);
   }
@@ -122,7 +125,8 @@ class FeishuConfigFormTest {
   @DisplayName("the user's own endpoints come after the built-in ones")
   void userModelsAfterBuiltins() throws Exception {
     final var card =
-        om.readTree(form.card(List.of(config("kimi")), "kimi", List.of("gpt-4o"), "gpt-4o"));
+        om.readTree(
+            form.card(List.of(config("kimi")), config("kimi"), List.of("gpt-4o"), "gpt-4o"));
 
     final var options = select(card).path("options");
     assertThat(options).hasSize(2);
@@ -154,7 +158,7 @@ class FeishuConfigFormTest {
       many.add("model-%03d".formatted(i));
     }
 
-    final var card = om.readTree(form.card(List.of(), "@model-240", many, "model-200"));
+    final var card = om.readTree(form.card(List.of(), builtin("model-240"), many, "model-200"));
 
     final var values =
         select(card).path("options").valueStream().map(o -> o.path("value").asString()).toList();
@@ -222,6 +226,110 @@ class FeishuConfigFormTest {
     assertThat(submission.active()).isEqualTo(FeishuConfigForm.DEFAULT_OPTION);
   }
 
+  @Test
+  @DisplayName("how hard to think is a list, and the whole list")
+  void effortIsAList() throws Exception {
+    final var card = om.readTree(form.card(List.of(), null, List.of(), "gpt-4o"));
+
+    final var values =
+        effortSelect(card)
+            .path("options")
+            .valueStream()
+            .map(option -> option.path("value").asString())
+            .toList();
+    // Every effort the SDK knows, plus the two ways of choosing none of them. A user must never
+    // have to type one: Spring AI takes it as a bare string and an endpoint fails on a typo.
+    assertThat(values).containsAll(ReasoningEfforts.VALUES);
+    assertThat(values).contains(FeishuConfigForm.EFFORT_INHERIT_OPTION, ReasoningEfforts.NOT_SENT);
+  }
+
+  @Test
+  @DisplayName("the effort in force is the one preselected")
+  void preselectsEffort() throws Exception {
+    final var active = config("kimi").toBuilder().reasoningEffort("high").build();
+
+    final var card = om.readTree(form.card(List.of(active), active, List.of(), "gpt-4o"));
+
+    final var index = effortSelect(card).path("initial_index").asInt();
+    // 1-based, and the application's own setting is the first option, so the values follow it.
+    assertThat(effortSelect(card).path("options").get(index - 1).path("value").asString())
+        .isEqualTo("high");
+  }
+
+  @Test
+  @DisplayName("a model with no effort of its own shows the application's setting")
+  void preselectsInherit() throws Exception {
+    final var card = om.readTree(form.card(List.of(), null, List.of(), "gpt-4o"));
+
+    assertThat(effortSelect(card).path("initial_index").asInt()).isEqualTo(1);
+    assertThat(effortSelect(card).path("options").get(0).path("value").asString())
+        .isEqualTo(FeishuConfigForm.EFFORT_INHERIT_OPTION);
+  }
+
+  @Test
+  @DisplayName("the row that means the application's model preselects the built-in option")
+  void preselectsDefaultRow() throws Exception {
+    // The row names no model, so no built-in option matches it by name — and the configured model
+    // need not be the first option, a gateway that lists it having it among the others.
+    final var defaultRow =
+        UserModelConfig.builder().name("@").reasoningEffort("max").activated(true).build();
+
+    final var card =
+        om.readTree(form.card(List.of(), defaultRow, List.of("a-model", "gpt-4o"), "gpt-4o"));
+
+    final var index = select(card).path("initial_index").asInt();
+    assertThat(select(card).path("options").get(index - 1).path("value").asString())
+        .isEqualTo(FeishuConfigForm.DEFAULT_OPTION);
+  }
+
+  @Test
+  @DisplayName("the effort caption is the size of the field labels it sits between")
+  void effortCaptionMatchesTheLabels() throws Exception {
+    final var card = om.readTree(form.card(List.of(), null, List.of(), "gpt-4o"));
+
+    // It stands in for an input's label, select_static having none of its own, so it has to read as
+    // one rather than as the smaller section captions.
+    final var captions =
+        elements(card)
+            .valueStream()
+            .filter(node -> "markdown".equals(node.path("tag").asString("")))
+            .map(node -> node.path("text_size").asString(""))
+            .toList();
+    assertThat(captions).contains("normal_v2");
+  }
+
+  @Test
+  @DisplayName("a press leaves a summary rather than a form, and never the token")
+  void summaryReplacesTheForm() throws Exception {
+    final var active =
+        config("kimi").toBuilder().reasoningEffort("high").apiKeyCipher("sealed-secret").build();
+
+    final var summary = form.summary("Saved kimi.", active, "gpt-4o");
+    final var card = om.readTree(summary);
+
+    assertThat(card.path("body").path("elements").valueStream())
+        .noneMatch(node -> "form".equals(node.path("tag").asString("")));
+    assertThat(summary)
+        .contains("Saved kimi.")
+        .contains("kimi")
+        .contains("kimi-model")
+        .contains("https://x/v1")
+        .contains("high")
+        .doesNotContain("sealed-secret");
+  }
+
+  @Test
+  @DisplayName("the summary of the application's model names it without a URL of anybody's")
+  void summaryOfTheDefault() throws Exception {
+    final var summary = form.summary("Now on the built-in model.", null, "gpt-4o");
+
+    assertThat(summary).contains("gpt-4o").doesNotContain("null");
+  }
+
+  private static UserModelConfig builtin(final String model) {
+    return UserModelConfig.builder().name("@" + model).model(model).build();
+  }
+
   private static UserModelConfig config(final String name) {
     return UserModelConfig.builder()
         .name(name)
@@ -243,10 +351,20 @@ class FeishuConfigFormTest {
 
   private static tools.jackson.databind.JsonNode select(
       final tools.jackson.databind.JsonNode card) {
+    return selects(card).getFirst();
+  }
+
+  /** The effort dropdown is the second, the model one being added first. */
+  private static tools.jackson.databind.JsonNode effortSelect(
+      final tools.jackson.databind.JsonNode card) {
+    return selects(card).get(1);
+  }
+
+  private static List<tools.jackson.databind.JsonNode> selects(
+      final tools.jackson.databind.JsonNode card) {
     return elements(card)
         .valueStream()
         .filter(node -> "select_static".equals(node.path("tag").asString("")))
-        .findFirst()
-        .orElseThrow();
+        .toList();
   }
 }

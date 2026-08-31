@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
+import me.kezhenxu94.springagent.core.usermodels.ReasoningEfforts;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import me.kezhenxu94.springagent.integration.slack.config.SlackMessages;
 import me.kezhenxu94.springagent.integration.slack.handler.SlackBlockKit;
@@ -74,10 +75,21 @@ public class SlackConfigForm {
    */
   static final int MAX_BUILTIN_OPTIONS = 50;
 
+  /**
+   * The reasoning-effort option standing for the application's own setting.
+   *
+   * <p>An option of its own, distinct from leaving the select alone: untouched means "change
+   * nothing about the effort", which is what a press that only switches model has to mean, while
+   * this means "go back to the application's setting" and is the way out of an effort already
+   * stored.
+   */
+  public static final String EFFORT_INHERIT_OPTION = "__inherit__";
+
   static final String ACTIVE_BLOCK = "sa_cfg_active";
   static final String NAME_BLOCK = "sa_cfg_name";
   static final String BASE_URL_BLOCK = "sa_cfg_baseurl";
   static final String MODEL_BLOCK = "sa_cfg_model";
+  static final String EFFORT_BLOCK = "sa_cfg_effort";
   static final String TOKEN_BLOCK = "sa_cfg_token";
 
   private static final String ACTION_SUFFIX = "_a";
@@ -95,10 +107,10 @@ public class SlackConfigForm {
    */
   public List<LayoutBlock> blocks(
       final List<UserModelConfig> configured,
-      final String activeName,
+      final UserModelConfig active,
       final List<String> builtinModels,
       final String defaultModel) {
-    return blocks(configured, activeName, builtinModels, defaultModel, false);
+    return blocks(configured, active, builtinModels, defaultModel, false);
   }
 
   /**
@@ -113,18 +125,19 @@ public class SlackConfigForm {
    */
   public List<LayoutBlock> messageBlocks(
       final List<UserModelConfig> configured,
-      final String activeName,
+      final UserModelConfig active,
       final List<String> builtinModels,
       final String defaultModel) {
-    return blocks(configured, activeName, builtinModels, defaultModel, true);
+    return blocks(configured, active, builtinModels, defaultModel, true);
   }
 
   private List<LayoutBlock> blocks(
       final List<UserModelConfig> configured,
-      final String activeName,
+      final UserModelConfig active,
       final List<String> builtinModels,
       final String defaultModel,
       final boolean inMessage) {
+    final var activeName = active == null ? null : active.name();
     final var blocks = new ArrayList<LayoutBlock>();
     if (inMessage) {
       // A modal carries its title in its frame; a message has to say what it is itself.
@@ -155,6 +168,7 @@ public class SlackConfigForm {
     blocks.add(input(NAME_BLOCK, "config-name-label", "config-name-placeholder", false));
     blocks.add(input(BASE_URL_BLOCK, "config-baseurl-label", "config-baseurl-placeholder", false));
     blocks.add(input(MODEL_BLOCK, "config-model-label", "config-model-placeholder", false));
+    blocks.add(effortInput(active == null ? null : active.reasoningEffort()));
     blocks.add(input(TOKEN_BLOCK, "config-token-label", "config-token-placeholder", inMessage));
 
     if (inMessage) {
@@ -175,7 +189,7 @@ public class SlackConfigForm {
    */
   public View view(
       final List<UserModelConfig> configured,
-      final String activeName,
+      final UserModelConfig active,
       final List<String> builtinModels,
       final String defaultModel) {
     return View.builder()
@@ -184,13 +198,52 @@ public class SlackConfigForm {
         .title(viewTitle(messages.get("config-title")))
         .submit(ViewSubmit.builder().type("plain_text").text(messages.get("config-submit")).build())
         .close(ViewClose.builder().type("plain_text").text(messages.get("config-close")).build())
-        .blocks(blocks(configured, activeName, builtinModels, defaultModel))
+        .blocks(blocks(configured, active, builtinModels, defaultModel))
         .build();
   }
 
   private static ViewTitle viewTitle(final String text) {
     // Slack caps a modal title at 24 characters and refuses the whole view over a longer one.
     return ViewTitle.builder().type("plain_text").text(SlackBlockKit.clamp(text, 24)).build();
+  }
+
+  /**
+   * How hard the model should think, as a list rather than a field to type into: Spring AI takes
+   * {@code reasoning_effort} as a bare string, so a typo would be an endpoint that fails on every
+   * message rather than a validation error.
+   *
+   * <p>Preselected with what the model in use is set to, so the form reads as a statement of the
+   * configuration rather than a question. The consequence is worth knowing: a submission applies
+   * the effort shown to whatever model it leaves the user on, so switching model and leaving this
+   * alone carries the shown effort across. A value already in force is treated as nothing to do,
+   * which is what keeps an untouched form from rewriting anything.
+   *
+   * @param current what the model in use is set to, or null for the application's own setting
+   */
+  private InputBlock effortInput(final String current) {
+    final var options = new ArrayList<OptionObject>();
+    options.add(option(messages.get("config-effort-inherit"), EFFORT_INHERIT_OPTION));
+    ReasoningEfforts.VALUES.forEach(effort -> options.add(option(effort, effort)));
+    options.add(option(messages.get("config-effort-not-sent"), ReasoningEfforts.NOT_SENT));
+    final var initial =
+        options.stream()
+            .filter(
+                option ->
+                    option.getValue().equals(current == null ? EFFORT_INHERIT_OPTION : current))
+            .findFirst()
+            .orElse(options.get(0));
+    return InputBlock.builder()
+        .blockId(EFFORT_BLOCK)
+        .optional(true)
+        .label(label(messages.get("config-effort-label")))
+        .element(
+            StaticSelectElement.builder()
+                .actionId(EFFORT_BLOCK + ACTION_SUFFIX)
+                .placeholder(label(messages.get("config-effort-hint")))
+                .options(options)
+                .initialOption(initial)
+                .build())
+        .build();
   }
 
   /**
@@ -223,8 +276,14 @@ public class SlackConfigForm {
       }
     }
     for (final var config : configured) {
-      options.add(
-          option(messages.get("config-option", config.name(), config.model()), config.name()));
+      // The effort goes in the label so the select is also where you see what is set: it is stored
+      // per model and nothing else on this form would show it.
+      final var label =
+          config.reasoningEffort() == null
+              ? messages.get("config-option", config.name(), config.model())
+              : messages.get(
+                  "config-option-effort", config.name(), config.model(), config.reasoningEffort());
+      options.add(option(label, config.name()));
     }
     return options;
   }
@@ -306,6 +365,7 @@ public class SlackConfigForm {
         value(state, NAME_BLOCK),
         value(state, BASE_URL_BLOCK),
         value(state, MODEL_BLOCK),
+        value(state, EFFORT_BLOCK),
         value(state, TOKEN_BLOCK));
   }
 
@@ -337,11 +397,26 @@ public class SlackConfigForm {
    * switching, or do both — which is what lets somebody locked out by a bad endpoint switch away
    * from it in the same press that they correct it.
    */
-  public record Submission(String active, String name, String baseUrl, String model, String token) {
+  public record Submission(
+      String active, String name, String baseUrl, String model, String effort, String token) {
 
-    /** Whether the add fields were filled in at all. */
+    /**
+     * Whether the add fields were filled in at all.
+     *
+     * <p>The effort is not one of them: it is not part of what identifies an endpoint, and a
+     * submission carrying only an effort is a change to the model already in use rather than an
+     * incomplete attempt to register one.
+     */
     public boolean adding() {
       return name != null || baseUrl != null || model != null || token != null;
+    }
+
+    /**
+     * The effort as it should be stored: null both for an untouched select and for the option
+     * standing for the application's setting, the two being told apart by {@link #effort()} itself.
+     */
+    public String storedEffort() {
+      return effort == null || SlackConfigForm.EFFORT_INHERIT_OPTION.equals(effort) ? null : effort;
     }
 
     /** Whether they were filled in completely enough to register an endpoint. */
@@ -353,6 +428,9 @@ public class SlackConfigForm {
      * Whether this names one of the application's own models rather than an endpoint: the model
      * alone, with no URL and no token, because none is needed to reach it. This is how any built-in
      * model stays reachable on a gateway serving more than the dropdown can hold.
+     *
+     * <p>Says nothing about the effort: one chosen alongside is applied to that built-in model once
+     * it is the one in use, the same as it would be to an endpoint of the user's own.
      */
     public boolean builtinByName() {
       return model != null && baseUrl == null && token == null && name == null;

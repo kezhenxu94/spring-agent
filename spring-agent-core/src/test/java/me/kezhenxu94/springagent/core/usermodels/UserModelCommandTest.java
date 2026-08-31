@@ -48,7 +48,7 @@ class UserModelCommandTest {
   @Test
   @DisplayName("naming a model switches to it")
   void switches() {
-    registry.save("u1", "kimi", "https://kimi/v1", "kimi-k2", "t");
+    registry.save("u1", "kimi", "https://kimi/v1", "kimi-k2", "t", null);
 
     assertThat(command.handle("u1", "kimi")).contains("kimi");
     assertThat(registry.active("u1")).map(UserModelConfig::name).contains("kimi");
@@ -57,7 +57,7 @@ class UserModelCommandTest {
   @Test
   @DisplayName("default goes back to the built-in model")
   void toDefault() {
-    registry.save("u1", "kimi", "https://kimi/v1", "kimi-k2", "t");
+    registry.save("u1", "kimi", "https://kimi/v1", "kimi-k2", "t", null);
     registry.activate("u1", "kimi");
 
     assertThat(command.handle("u1", "default")).isNotBlank();
@@ -67,7 +67,7 @@ class UserModelCommandTest {
   @Test
   @DisplayName("a name nobody registered changes nothing and lists what there is")
   void unknown() {
-    registry.save("u1", "kimi", "https://kimi/v1", "kimi-k2", "t");
+    registry.save("u1", "kimi", "https://kimi/v1", "kimi-k2", "t", null);
     registry.activate("u1", "kimi");
 
     final var reply = command.handle("u1", "typo");
@@ -79,12 +79,90 @@ class UserModelCommandTest {
   @Test
   @DisplayName("the argument is trimmed and case-insensitive for default")
   void tolerantParsing() {
-    registry.save("u1", "kimi", "https://kimi/v1", "kimi-k2", "t");
+    registry.save("u1", "kimi", "https://kimi/v1", "kimi-k2", "t", null);
     registry.activate("u1", "kimi");
 
     command.handle("u1", "  DEFAULT  ");
 
     assertThat(registry.active("u1")).isEmpty();
+  }
+
+  @Test
+  @DisplayName("a name and an effort set how hard that model thinks, without switching onto it")
+  void setsEffort() {
+    registry.save("u1", "kimi", "https://kimi/v1", "kimi-k2", "t", null);
+
+    assertThat(command.handle("u1", "kimi high")).contains("kimi").contains("high");
+
+    assertThat(registry.find("u1", "kimi")).map(UserModelConfig::reasoningEffort).contains("high");
+    assertThat(registry.active("u1")).isEmpty();
+  }
+
+  @Test
+  @DisplayName("an effort that is not one of the values changes nothing and says what they are")
+  void rejectsUnknownEffort() {
+    registry.save("u1", "kimi", "https://kimi/v1", "kimi-k2", "t", "low");
+
+    final var reply = command.handle("u1", "kimi highest");
+
+    assertThat(reply).contains("highest").contains("xhigh");
+    assertThat(registry.find("u1", "kimi")).map(UserModelConfig::reasoningEffort).contains("low");
+  }
+
+  @Test
+  @DisplayName("an effort for a model nobody registered lists what there is")
+  void effortOnUnknownModel() {
+    registry.save("u1", "kimi", "https://kimi/v1", "kimi-k2", "t", null);
+
+    assertThat(command.handle("u1", "typo high")).contains("typo").contains("kimi");
+  }
+
+  @Test
+  @DisplayName("the parameter can be turned off, which is not the same as leaving it alone")
+  void notSent() {
+    registry.save("u1", "kimi", "https://kimi/v1", "kimi-k2", "t", "high");
+
+    command.handle("u1", "kimi not-sent");
+
+    assertThat(registry.find("u1", "kimi"))
+        .map(UserModelConfig::reasoningEffort)
+        .contains(ReasoningEfforts.NOT_SENT);
+  }
+
+  @Test
+  @DisplayName("default and an effort asks the built-in model to think that hard")
+  void builtinEffort() {
+    assertThat(command.handle("u1", "default high")).contains("high");
+
+    final var row = registry.active("u1").orElseThrow();
+    // No model named, so the user follows the deployment's own however that is reconfigured; see
+    // UserModelRegistry.DEFAULT_ROW.
+    assertThat(row.model()).isNull();
+    assertThat(row.baseUrl()).isNull();
+    assertThat(row.reasoningEffort()).isEqualTo("high");
+  }
+
+  @Test
+  @DisplayName("the built-in model keeps the effort set on it across a switch away and back")
+  void builtinEffortSurvivesSwitching() {
+    registry.save("u1", "kimi", "https://kimi/v1", "kimi-k2", "t", null);
+    command.handle("u1", "default high");
+
+    command.handle("u1", "kimi");
+    command.handle("u1", "default");
+
+    assertThat(registry.active("u1")).map(UserModelConfig::reasoningEffort).contains("high");
+  }
+
+  @Test
+  @DisplayName("what is in use is named as the user knows it, effort and all")
+  void statusNamesTheBuiltin() {
+    command.handle("u1", "default max");
+
+    assertThat(command.handle("u1", ""))
+        .contains("the default model")
+        .contains("max")
+        .doesNotContain("@");
   }
 
   /** Enough of the contract to exercise the command. */

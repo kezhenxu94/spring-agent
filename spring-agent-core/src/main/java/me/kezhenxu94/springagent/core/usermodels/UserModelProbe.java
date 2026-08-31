@@ -30,11 +30,23 @@ public class UserModelProbe {
   private final Duration timeout;
 
   /**
+   * The reasoning effort is part of what is tested, not a detail applied afterwards: a gateway that
+   * rejects {@code reasoning_effort} outright rejects it on the very first call, so probing without
+   * it would store an endpoint that then fails on every real message.
+   *
+   * @param reasoningEffort as {@link ReasoningEfforts} spells it, or null for the application's own
+   *     setting
    * @return null when the endpoint answered, otherwise why it did not, in words fit to show a user
    */
-  public String check(final String baseUrl, final String model, final String token) {
+  public String check(
+      final String baseUrl, final String model, final String token, final String reasoningEffort) {
     final var config =
-        UserModelConfig.builder().name("probe").baseUrl(baseUrl).model(model).build();
+        UserModelConfig.builder()
+            .name("probe")
+            .baseUrl(baseUrl)
+            .model(model)
+            .reasoningEffort(ReasoningEfforts.normalize(reasoningEffort))
+            .build();
     // A thread of its own with a deadline, because the configured request timeout is measured in
     // minutes — right for a reasoning turn, far too long to leave somebody waiting to be told they
     // mistyped a URL.

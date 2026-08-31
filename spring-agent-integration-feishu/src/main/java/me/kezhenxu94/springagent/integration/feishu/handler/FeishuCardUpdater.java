@@ -55,6 +55,14 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   private static final String DESCRIPTION_FIELD = "description";
 
   /**
+   * Who this run is for, and the only thing it is used for: the thinking panel's title says how
+   * hard the model was asked to think, and with users able to choose a model that is a per-run fact
+   * rather than a deployment-wide one. Null on the paths that do not know, which report the
+   * deployment's own.
+   */
+  private String userId;
+
+  /**
    * What labels the result half of a call's pane. Not localized, and lowercase, because it reads as
    * one more of the {@code name: value} lines the input above it is made of rather than as the card
    * talking — the names in those come from the tool's own schema and are not translated either.
@@ -241,6 +249,22 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       final FeishuMessages messages,
       final FeishuCardElements elements,
       final FeishuMessageReactions reactions) {
+    return forRun(card, om, modelPricing, messages, elements, reactions, null);
+  }
+
+  /**
+   * @param userId whose run this is, so that the thinking panel reports the effort <i>their</i>
+   *     model was asked for rather than the deployment's — see {@link
+   *     FeishuCardElements#element(String, String)}
+   */
+  public static FeishuCardUpdater forRun(
+      final FeishuCard card,
+      final JsonMapper om,
+      final Map<String, SpringAgentProperties.Ai.ModelPricing> modelPricing,
+      final FeishuMessages messages,
+      final FeishuCardElements elements,
+      final FeishuMessageReactions reactions,
+      final String userId) {
     final var updater =
         new FeishuCardUpdater(
             card,
@@ -259,6 +283,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
             null,
             null,
             null);
+    updater.userId = userId;
     return updater;
   }
 
@@ -895,7 +920,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       return true;
     }
     final var generationBefore = generation;
-    final var inserted = insertAbove(elementId, elements.forInsert(elementId), elementId);
+    final var inserted = insertAbove(elementId, elements.forInsert(elementId, userId), elementId);
     if (inserted) {
       added.add(elementId);
       // The sources go in above the spend row, so from here on they are the top of the footer, and

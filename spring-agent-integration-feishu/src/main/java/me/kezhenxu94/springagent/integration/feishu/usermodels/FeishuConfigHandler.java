@@ -1,10 +1,14 @@
 package me.kezhenxu94.springagent.integration.feishu.usermodels;
 
 import com.lark.oapi.Client;
+import com.lark.oapi.event.cardcallback.model.CallBackCard;
 import com.lark.oapi.event.cardcallback.model.P2CardActionTrigger;
 import com.lark.oapi.event.cardcallback.model.P2CardActionTriggerResponse;
 import com.lark.oapi.service.im.v1.model.CreateMessageReq;
 import com.lark.oapi.service.im.v1.model.CreateMessageReqBody;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
@@ -54,7 +58,7 @@ public class FeishuConfigHandler {
         () -> {
           try {
             final var configured = registry.list(userId);
-            final var active = registry.active(userId).map(UserModelConfig::name).orElse(null);
+            final var active = registry.active(userId).orElse(null);
             // Best-effort, and never on the critical path: an endpoint that will not list its
             // models leaves this empty and the card offers the single built-in entry instead.
             send(chatId, form.card(configured, active, builtins.list(), builtins.defaultModel()));
@@ -65,7 +69,11 @@ public class FeishuConfigHandler {
         });
   }
 
-  /** Acts on a press of the card's save button. */
+  /**
+   * Acts on a press of the card's save button, and leaves the summary in place of the form.
+   *
+   * <p>The form is never left standing: see {@code FeishuConfigForm#summary}.
+   */
   public P2CardActionTriggerResponse handle(final P2CardActionTrigger event) {
     final var context = event.getEvent().getContext();
     final var chatId = context.getOpenChatId();
@@ -80,17 +88,89 @@ public class FeishuConfigHandler {
       // it is the endpoint this application is already talking to.
       if (submission.builtinByName()) {
         registry.activateBuiltin(userId, submission.model());
-        return FeishuToasts.toast(
-            "success", messages.get("config-switched-builtin", submission.model()));
+        return respond(
+            userId,
+            "success",
+            join(
+                messages.get("config-switched-builtin", submission.model()),
+                effortFor(userId, submission)));
       }
       if (!submission.complete()) {
-        return FeishuToasts.toast("warning", messages.get("config-incomplete"));
+        return respond(userId, "warning", messages.get("config-incomplete"));
       }
       taskExecutor.execute(() -> add(chatId, userId, submission));
-      return FeishuToasts.toast("info", messages.get("config-testing", submission.name()));
+      return respond(userId, "info", messages.get("config-testing", submission.name()));
     }
 
-    return FeishuToasts.toast("success", switchTo(userId, submission.active()));
+    // Nothing to register, so this is a switch, a change of effort, or both — and the effort is
+    // applied after the switch so that it lands on the model the press leaves the user on.
+    final var switched = submission.active() == null ? null : switchTo(userId, submission.active());
+    final var efforted = effortFor(userId, submission);
+    return respond(
+        userId,
+        "success",
+        switched == null && efforted == null
+            ? messages.get("config-nothing")
+            : join(switched, efforted));
+  }
+
+  /**
+   * Says what happened, and replaces the form with what the configuration now is.
+   *
+   * <p>Falls back to the toast alone if the summary cannot be built: having acted, saying so badly
+   * is better than answering the press with an error.
+   */
+  private P2CardActionTriggerResponse respond(
+      final String userId, final String type, final String text) {
+    final var response = FeishuToasts.toast(type, text);
+    try {
+      final var active = registry.active(userId).orElse(null);
+      final var summary = form.summary(text, active, builtins.defaultModel());
+      final var card = new CallBackCard();
+      card.setType("raw");
+      // A Map rather than the parsed tree: the SDK serializes this response with its own mapper,
+      // and a foreign JSON node would go out as that library's internal shape.
+      card.setData(objectMapper.readValue(summary, Map.class));
+      response.setCard(card);
+    } catch (Exception e) {
+      log.error("Could not replace the model settings form for {}", userId, e);
+    }
+    return response;
+  }
+
+  /**
+   * Applies the effort chosen on this press, if one was, to the model the user is now on — their
+   * own endpoint or one of the application's, since neither is any harder to reach than the other.
+   *
+   * @return what happened, or null if the dropdown was left alone
+   */
+  private String effortFor(final String userId, final FeishuConfigForm.Submission submission) {
+    if (submission.effort() == null) {
+      return null;
+    }
+    final var effort = submission.storedEffort();
+    // What the form was showing is not a change: with the select preselected, an untouched press
+    // carries the effort already in force, and rewriting the row for it would report a change that
+    // did not happen.
+    final var current = registry.active(userId).map(UserModelConfig::reasoningEffort).orElse(null);
+    if (Objects.equals(effort, current)) {
+      return null;
+    }
+    final var row = registry.setActiveEffort(userId, effort);
+    final var name =
+        Optional.ofNullable(UserModelRegistry.displayName(row))
+            .orElse(messages.get("config-default-option"));
+    return effort == null
+        ? messages.get("config-effort-inherited", name)
+        : messages.get("config-effort-set", name, effort);
+  }
+
+  /** Two sentences about one press, or whichever of them there is. */
+  private static String join(final String first, final String second) {
+    if (first == null) {
+      return second;
+    }
+    return second == null ? first : first + " " + second;
   }
 
   /** Applies the dropdown, and says what it did. */
@@ -130,13 +210,20 @@ public class FeishuConfigHandler {
       sendText(chatId, messages.get("config-too-many", registry.maxPerUser()));
       return;
     }
-    final var failure = probe.check(submission.baseUrl(), submission.model(), submission.token());
+    final var effort = submission.storedEffort();
+    final var failure =
+        probe.check(submission.baseUrl(), submission.model(), submission.token(), effort);
     if (failure != null) {
       sendText(chatId, messages.get("config-add-failed", submission.name(), failure));
       return;
     }
     registry.save(
-        userId, submission.name(), submission.baseUrl(), submission.model(), submission.token());
+        userId,
+        submission.name(),
+        submission.baseUrl(),
+        submission.model(),
+        submission.token(),
+        effort);
     registry.activate(userId, submission.name());
     sendText(chatId, messages.get("config-added", submission.name()));
   }

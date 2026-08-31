@@ -7,8 +7,10 @@ import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
+import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
@@ -157,6 +159,21 @@ public class FeishuCardElements {
   private final OpenAiChatProperties chatProperties;
 
   /**
+   * Present only where users may choose a model of their own, which is where the deployment's
+   * configured effort stops being the answer for every run: a user on a model of theirs, or on the
+   * application's model with an effort of their own, is asked to think as hard as <i>they</i>
+   * chose.
+   *
+   * <p>Injected into the field rather than taken on the constructor, and not final, for two reasons
+   * that point the same way: the bean exists only where {@code app.ai.user-models.encryption-key}
+   * is set, and this class is built by hand in a great many tests that have nothing to do with
+   * which model a run went through. Null is an ordinary state, and means the deployment's own
+   * setting.
+   */
+  @Autowired(required = false)
+  UserChatClients userChatClients;
+
+  /**
    * The element {@code elementId} is added above: the first element below it in {@link #ORDER} that
    * the card already has, which is what puts it in its place whatever order the run built the card
    * in.
@@ -185,8 +202,17 @@ public class FeishuCardElements {
    * are filled in here as well, so an element carrying one — the stop button — reads in the
    * workspace's language whoever puts it on the card.
    */
-  @SneakyThrows
   public ObjectNode element(final String elementId) {
+    return element(elementId, null);
+  }
+
+  /**
+   * @param userId whose run this is, so that the thinking panel can say how hard <i>their</i> model
+   *     was asked to think rather than what the deployment configured; null where that is unknown,
+   *     which falls back to the deployment's own
+   */
+  @SneakyThrows
+  public ObjectNode element(final String elementId, final String userId) {
     final var template =
         (ObjectNode)
             om.readTree(
@@ -202,7 +228,7 @@ public class FeishuCardElements {
     // is on. Done here, on the element itself, so that the panel says it whether it is being put on
     // the card or replaced as the run ends — the two go through different callers.
     if (REASONING.equals(elementId)) {
-      final var effort = reasoningEffort();
+      final var effort = reasoningEffort(userId);
       if (effort != null && !effort.isBlank()) {
         final var title = (ObjectNode) element.path("header").path("title");
         title.put("content", titleWithSuffix(title.path("content").asString(), effort));
@@ -429,19 +455,35 @@ public class FeishuCardElements {
 
   /**
    * How hard the model was asked to think, or null where nothing was asked: a deployment that
-   * states no effort, or a chat model that is not OpenAI-shaped. Never read back from an answer,
-   * because it is not in one — a chat completion reports the reasoning tokens it produced but never
-   * the effort it was asked for, so the request side is the only side that knows.
+   * states no effort, a user who turned the parameter off, or a chat model that is not
+   * OpenAI-shaped. Never read back from an answer, because it is not in one — a chat completion
+   * reports the reasoning tokens it produced but never the effort it was asked for, so the request
+   * side is the only side that knows.
+   *
+   * <p>Which is why it has to be asked of the same code that builds the request. Reading the
+   * deployment's property alone was right while every run went through one model; with a user able
+   * to choose, it is a label reporting somebody else's setting.
    */
-  private String reasoningEffort() {
-    return chatProperties == null ? null : chatProperties.getReasoningEffort();
+  private String reasoningEffort(final String userId) {
+    if (userChatClients == null || userId == null) {
+      return chatProperties == null ? null : chatProperties.getReasoningEffort();
+    }
+    return userChatClients.effortInForce(userId);
   }
 
   /** One element as the JSON array the card element API takes for an insert. */
   @SneakyThrows
   public String forInsert(final String elementId) {
+    return forInsert(elementId, null);
+  }
+
+  /**
+   * @param userId whose run this is; see {@link #element(String, String)}
+   */
+  @SneakyThrows
+  public String forInsert(final String elementId, final String userId) {
     final var array = om.createArrayNode();
-    array.add(element(elementId));
+    array.add(element(elementId, userId));
     return om.writeValueAsString(array);
   }
 }

@@ -106,13 +106,33 @@ the LLM**:
 | --- | --- |
 | Feishu | Send `/config`. A card opens with a dropdown of what you could be on and fields for adding an endpoint. |
 | Slack | Type `/config`. A modal opens, private to you, so the API token never enters channel history. The command has to be declared on the Slack app — see below. If nobody did, send ` /config` with a leading space instead: Slack sends that verbatim rather than looking for a command, and the same form arrives as a message. |
-| Command line | `/config` lists your models, `/config <name>` switches, `/config default` returns to the built-in one. |
+| Command line | `/config` lists your models, `/config <name>` switches, `/config default` returns to the built-in one, and `/config <name> <effort>` or `/config default <effort>` sets how hard it thinks. |
 
 The dropdown also lists what the application's own endpoint reports it can serve, so choosing among
 the models the deployment already pays for needs no token of your own. That listing is best-effort:
 an endpoint that does not answer `GET /models` simply shows the one built-in entry. Where it serves
 more models than a card can hold the list is cut short — fill in the **Model** field alone, leaving
 name, base URL and token empty, to name any of them directly.
+
+### How hard it thinks
+
+The same form carries the reasoning effort, chosen from a list rather than typed — `none`, `minimal`,
+`low`, `medium`, `high`, `xhigh`, `max`, as the OpenAI API spells them — plus two entries that are
+not values:
+
+- **whatever this deployment is set to**, which is `OPENAI_REASONING_EFFORT` and what every model
+  answers with until somebody chooses otherwise;
+- **not sent at all**, for a gateway that rejects `reasoning_effort` outright rather than ignoring
+  it. `none` is a real value the newer models act on, so it is not a way of leaving the parameter
+  out.
+
+It applies to whichever model the form leaves you on, the built-in ones included, and is remembered
+per model: switching away and back keeps it. The effort shown on the form is the one in force, and
+the thinking panel on a Feishu reply reports the effort that run was actually made with rather than
+the deployment's.
+
+An effort is part of what gets connection-tested when an endpoint is registered, so a gateway that
+refuses one says so before anything is stored.
 
 The **embedding** model is deliberately not configurable this way. The knowledge base is shared
 between users and its collections are built with one embedding model, so letting one person change

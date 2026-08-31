@@ -71,6 +71,18 @@ public class UserModelConfig {
   private String apiKeyCipher;
 
   /**
+   * How hard the model should think, as {@code ReasoningEfforts} spells it — one of its values, its
+   * {@code not-sent} sentinel, or null to leave whatever the application configured in place, which
+   * is what every row written before this field existed means.
+   *
+   * <p>Set on any row, including one standing for a model of the application's own: that row exists
+   * precisely to hold a choice about a shared endpoint, and how hard to think is such a choice.
+   * Nothing about it is a credential, so it does not carry the reasons the base URL and the token
+   * are absent there.
+   */
+  private String reasoningEffort;
+
+  /**
    * Whether this is the endpoint the owner's runs go to. At most one row per owner has it, and none
    * having it means the application's own model — see the class javadoc for why that is the failure
    * mode worth having.

@@ -182,7 +182,13 @@ public class FeishuCardListener implements AgentResponseListener {
               cardWrites);
       final var cardUpdater =
           FeishuCardUpdater.forRun(
-              card, om, appConfiguration.ai().modelPricing(), messages, cardElements, reactions);
+              card,
+              om,
+              appConfiguration.ai().modelPricing(),
+              messages,
+              cardElements,
+              reactions,
+              request.userId());
       registry.addResponseListener(cardUpdater);
       registry.addTodoEventHandler(cardUpdater);
       registry.addToolContext(FeishuCardUpdater.TOOL_CONTEXT_KEY.key(), cardUpdater);
