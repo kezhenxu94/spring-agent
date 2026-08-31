@@ -1186,6 +1186,13 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    * <p>Not folded into the answer: it is not what the run is saying, it is how the run got there,
    * and most readers want the one without the other. The panel is added the first time there is
    * thinking to put in it, so a turn on an endpoint that reports none never carries it.
+   *
+   * <p>What arrives is the turn's thinking in full, so the pane carries on across cards the way the
+   * answer does rather than starting again: on a card the run has moved onto it holds what has been
+   * thought since, and nothing at all while every thought so far is on the card above. That is not
+   * only tidiness. Thinking is the longest thing on most cards, so a pane that wrote it out again
+   * filled the card it had just moved onto with it — and the card after that, a card per round for
+   * the rest of the turn.
    */
   @Override
   public synchronized void onReasoning(final String reasoningSoFar) {
@@ -1194,13 +1201,22 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     if (elements == null || Strings.isNullOrEmpty(reasoningSoFar)) {
       return;
     }
+    // Before the new thinking lands, so that a card the run has just moved onto carries on from
+    // what was on the card it left rather than from the first thought of the turn.
+    sync();
+    reasoning = reasoningSoFar;
+    if (card.continued(FeishuCardElements.REASONING_BODY, reasoningSoFar).isEmpty()) {
+      // Every thought there is to show is on the card above, so there is nothing here to put a
+      // pane on the card for — see the answer, added when there is an answer.
+      return;
+    }
     if (!added(FeishuCardElements.REASONING)) {
       return;
     }
-    reasoning = reasoningSoFar;
     // Plain, like a subagent's report in its own panel: the panel and its smaller type already say
-    // this is secondary, and quoting it on top of that only narrows it.
-    card.stream(FeishuCardElements.REASONING_BODY, reasoningSoFar);
+    // this is secondary, and quoting it on top of that only narrows it. The whole of it is handed
+    // over and the card cuts it, since only the card knows how much of it the card above took.
+    card.streamContinuing(FeishuCardElements.REASONING_BODY, reasoningSoFar);
   }
 
   @Override
@@ -1345,7 +1361,11 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     }
     card.replace(
         FeishuCardElements.REASONING,
-        elements.reasoningPanel(false, reasoning),
+        // Cut to this card's share, since the element is being written whole rather than streamed
+        // into: the pane a reader is looking at holds what was thought since the card above, and
+        // handing it the turn's thinking entire is what put the whole of it back on the card.
+        elements.reasoningPanel(
+            false, card.continued(FeishuCardElements.REASONING_BODY, reasoning)),
         card.cardId() + ":reasoning:end");
   }
 
