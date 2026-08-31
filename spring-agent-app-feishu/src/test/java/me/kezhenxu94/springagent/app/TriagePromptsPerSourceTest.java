@@ -34,7 +34,7 @@ class TriagePromptsPerSourceTest {
           new String[] {"feishu-chat", "group chat that you were not addressed in", "没有人 @ 你"});
 
   private static TriagePrompts prompts(final Locale locale) {
-    return new TriagePrompts(new SpringAgentProperties(null, null, locale, null));
+    return new TriagePrompts(new SpringAgentProperties(null, null, locale, null, null));
   }
 
   @Test

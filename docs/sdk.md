@@ -520,6 +520,15 @@ Adding a model or a query means updating all three implementations in
 `spring-agent-persistence-*`, and on Redis an `@Indexed` field is the *definition* of what can be
 filtered on rather than a tuning knob — it has no query planner.
 
+Two methods on those contracts are not queries at all but *conditional writes*, and a fourth backend
+has to implement them as such. `ProcessedMessageRepo.claim` takes a unit of work for the caller, and
+`ScheduledTaskRepo.claimNextFireAt`/`initNextFireAt` move a scheduled task on from one occurrence to
+the next. In each the boolean return **is** the concurrency control: an implementation that reads
+and then writes lets two replicas both through, which is the case they exist for. What each backend
+uses is an insert `on conflict do nothing`, an `@Modifying` update with the predicate in its `where`
+clause, a Mongo update carrying the expected value in its filter, or a Redis `SET NX`.
+`AbstractPersistenceBackendTest` is where that contract is asserted, once per backend.
+
 `ChatSessionRepo` is the one contract a surface is likely to want for itself. It records which
 `conversationId`s belong to which user, and nothing else: chat memory can enumerate conversation ids
 but knows nothing about who owns them, so a "your conversations" listing built on it would show

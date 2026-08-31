@@ -30,6 +30,6 @@ public final class TestI18n {
   }
 
   private static SpringAgentProperties properties(final Locale locale) {
-    return new SpringAgentProperties(null, null, locale, null);
+    return new SpringAgentProperties(null, null, locale, null, null);
   }
 }

@@ -121,6 +121,7 @@ class AgentToolsProviderGlobalToolsTest {
             null,
             null),
         Locale.ENGLISH,
+        null,
         null);
   }
 }
