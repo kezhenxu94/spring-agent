@@ -24,6 +24,14 @@ jobs:
         project:
           - spring-agent-app-feishu
           - spring-agent-app-slack
+        # Both axes are declared as matrix keys, not left to `include`. An `include` entry cannot
+        # multiply combinations - it only adds keys to the ones already there, and a later entry
+        # overwrites what an earlier one added - so two arches listed only under `include` collapse
+        # to whichever comes last, and the manifest job below then has no second image to point at.
+        # The `include` entries exist purely to derive a value from a key declared here.
+        arch:
+          - amd64
+          - arm64
         include:
           - arch: amd64
             runner: ubuntu-latest
