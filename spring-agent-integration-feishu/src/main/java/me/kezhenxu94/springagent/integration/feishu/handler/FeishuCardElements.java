@@ -304,8 +304,7 @@ public class FeishuCardElements {
    * The knowledge-sources panel as a whole element, its title carrying how many documents it holds
    * and its body carrying them.
    *
-   * <p>Whole, because the count is in the title and a title is not something a stream can reach —
-   * the same reason the reasoning pane is replaced rather than written into when it closes.
+   * <p>Whole, because the count is in the title and a title is not something a stream can reach.
    *
    * <p>Stays closed: the count is what a closed panel is for, telling a reader how much is behind
    * the chevron so they can decide whether to open it.
@@ -426,22 +425,6 @@ public class FeishuCardElements {
     element.put(
         "content",
         element.path("content").asString().replace("{title}", Strings.nullToEmpty(title)));
-  }
-
-  /**
-   * The reasoning pane as a whole element, open or closed, holding {@code reasoning}.
-   *
-   * <p>Whole, because whether a panel is open is not something a stream can express — the run
-   * replaces the element, and a replacement that left out the thinking would take it off the card
-   * along with the chevron that was the point of the replacement.
-   */
-  @SneakyThrows
-  public String reasoningPanel(final boolean expanded, final String reasoning) {
-    final var element = element(REASONING);
-    element.put("expanded", expanded);
-    ((ObjectNode) element.path("elements").get(0))
-        .put("content", reasoning == null ? "" : reasoning);
-    return om.writeValueAsString(element);
   }
 
   /**
