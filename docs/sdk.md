@@ -555,8 +555,18 @@ binary breaks at runtime while the JVM build passes.
 | `spring-agent-integration-grafana` | The same for Grafana alert notifications |
 | `spring-agent-integration-email` | A watched IMAP mailbox as observations. Not a webhook: it dials out and holds the connection, so it carries its own `app.email.enabled` on top of `app.events.enabled`. Accepts only senders DKIM authenticated, and refuses to start without a `trusted-actors` list |
 | `spring-agent-integration-feishu` | Feishu/Lark chats and cards as an agent surface, plus its docs, sheets, base and wiki tools, and drive import/export |
+| `spring-agent-integration-slack` | Slack channels and Block Kit messages as an agent surface: streaming replies, a stop button, an asynchronous question form, greetings, chat observation and the message/channel/file tools. Written against Bolt, the Slack SDK's own application framework, over a Socket Mode connection |
 | `spring-agent-rag-milvus` | The knowledge base, and the only implementation of core's `KnowledgeBase` |
 | `spring-agent-app-web` | A browser surface over the runtime and nothing else; not published, it ships as an image |
+
+**Only one chat surface may be on a classpath at a time.** `spring-agent-integration-feishu` and
+`spring-agent-integration-slack` each register a `@Bean AgentResponseListener` that claims every
+run, a `PromptVariablesContributor` that fills `{replyFormat}` for every request, and a `Notifier`.
+Core merges contributors with `putAll` and `spring-agent-events` resolves the notifier with
+`getIfAvailable()`, so with both installed the listeners answer for each other's runs, the reply
+format is whichever registered last, and the notifier lookup throws. None of that fails at startup.
+Pick the surface your application has; if you need both, run two applications, which is what
+`spring-agent-app-feishu` and `spring-agent-app-slack` are.
 
 Adding a module decides nothing on its own. `app.ai.tools.shell.type` decides the shell and defaults
 to `none`; `app.events.enabled` decides the events receiver and defaults to false; `app.ai.rag.enabled`

@@ -13,16 +13,26 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
-    name: Build ${{ matrix.arch }} image
+    name: Build ${{ matrix.project }} ${{ matrix.arch }} image
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
+        # One image per surface. The Feishu server keeps the repository's own name, which is what it
+        # has always published under and what existing deployments pull; a second application
+        # applying springagent.docker has to name its own, so the Slack one is suffixed.
+        project:
+          - spring-agent-app-feishu
+          - spring-agent-app-slack
         include:
           - arch: amd64
             runner: ubuntu-latest
           - arch: arm64
             runner: ubuntu-24.04-arm
+          - project: spring-agent-app-feishu
+            image-suffix: ''
+          - project: spring-agent-app-slack
+            image-suffix: '-slack'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v5
@@ -35,16 +45,25 @@ jobs:
           DOCKER_USERNAME: ${{ github.actor }}
           DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ./gradlew :spring-agent-app:bootBuildImage --publishImage -PimageRefs=ghcr.io/${{ github.repository }}:${{ github.sha }}-${{ matrix.arch }}
+          ./gradlew :${{ matrix.project }}:bootBuildImage --publishImage \
+            -PimageRefs=ghcr.io/${{ github.repository }}${{ matrix.image-suffix }}:${{ github.sha }}-${{ matrix.arch }}
   manifest:
-    name: Publish multi-arch manifest
+    name: Publish ${{ matrix.project }} multi-arch manifest
     needs: build
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: spring-agent-app-feishu
+            image-suffix: ''
+          - project: spring-agent-app-slack
+            image-suffix: '-slack'
     steps:
       - uses: docker/metadata-action@v6
         id: meta
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/${{ github.repository }}${{ matrix.image-suffix }}
           sep-tags: ','
           flavor: latest=false
           tags: |
@@ -58,7 +77,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Create and push manifest list
         run: |
-          image=ghcr.io/${{ github.repository }}
+          image=ghcr.io/${{ github.repository }}${{ matrix.image-suffix }}
           args=()
           IFS=',' read -ra tags <<< '${{ steps.meta.outputs.tags }}'
           for tag in "${tags[@]}"; do

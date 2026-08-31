@@ -33,6 +33,14 @@ import org.springframework.security.web.servlet.util.matcher.PathPatternRequestM
 @RequiredArgsConstructor
 public class WebSecurityConfigurer {
 
+  /**
+   * The OAuth2 registration id the sign-in page redirects to. Not final: {@code @Value} on a field
+   * is an injection point in its own right, and AOT generates a plain field assignment for it,
+   * which cannot target a final field the way reflective injection can.
+   */
+  @org.springframework.beans.factory.annotation.Value("${app.web.auth.provider:feishu}")
+  String loginProvider;
+
   private final WebAuthoritiesMapper authoritiesMapper;
 
   @Bean
@@ -87,7 +95,12 @@ public class WebSecurityConfigurer {
         .logout(it -> it.logoutSuccessUrl("/").permitAll())
         .oauth2Login(
             it ->
-                it.loginPage("/oauth2/authorization/feishu")
+                // Which provider the sign-in button goes to. Configurable rather than fixed
+                // because this application can be pointed at either identity provider the
+                // repository ships a surface for, and a deployment that installed the Slack app
+                // rather than the Feishu one has no Feishu registration to redirect to. Left
+                // unset it stays feishu, which is what it has always been.
+                it.loginPage("/oauth2/authorization/" + loginProvider)
                     .defaultSuccessUrl("/", true)
                     .userInfoEndpoint(config -> config.userAuthoritiesMapper(authoritiesMapper)))
         .build();

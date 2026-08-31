@@ -1,0 +1,135 @@
+plugins {
+  alias(libs.plugins.spring.boot)
+  alias(libs.plugins.spring.dependency.management)
+  id 'springagent.java-common-conventions'
+  id 'springagent.docker'
+  id 'springagent.native'
+  id 'application'
+  // Applied below instead of here, see the conditional. Note `apply false` still makes the plugin
+  // resolvable by id, which is what pluginManager.apply needs.
+  alias(libs.plugins.graalvm) apply false
+}
+
+// Gated rather than applied unconditionally: Spring Boot's NativeImagePluginAction stamps
+// `Spring-Boot-Native-Processed: true` into the bootJar manifest as soon as the GraalVM plugin is
+// applied, and the Paketo spring-boot buildpack switches to a native build on that attribute. There
+// is only one bootJar, so this cannot be scoped per task — applying it unconditionally would turn a
+// plain `./gradlew bootBuildImage` native as a side effect. The cost of the gate is that native
+// tasks are invisible to `./gradlew tasks` and to the IDE unless -Pnative is passed.
+
+// The image this application publishes under. Leaving it unset would mean "spring-agent", which is
+// the name spring-agent-app-feishu has always published under and must keep publishing under — so
+// a second application applying springagent.docker has to name its own. See that convention file.
+ext.imageBaseName = "spring-agent-slack"
+
+if (providers.gradleProperty('native').present) {
+  pluginManager.apply('org.graalvm.buildtools.native')
+}
+
+// spring-boot-dependencies manages jedis at 7.0.0, below the 7.4.1 Spring AI's Redis chat memory
+// asks for. That module's auto-configuration is @ConditionalOnClass(redis.clients.jedis.RedisClient),
+// a class 7.0.0 does not ship, so the managed version turns Redis chat memory off without logging
+// anything — the context quietly falls back to the in-memory repository, and ChatMemoryRedisTest is
+// what catches it.
+//
+// Overriding the BOM property rather than forcing the version in a resolutionStrategy: this is the
+// only module that applies io.spring.dependency-management, and that plugin re-applies its managed
+// versions after Gradle's own rules, so a `force` here has no effect. The library modules resolve
+// 7.4.1 on their own, from the platform constraint.
+ext['jedis.version'] = libs.versions.jedis.get()
+
+def patchJvmArgs = [
+  // No --sun-misc-unsafe-memory-access=allow here, unlike spring-agent-app-feishu: that flag is
+  // there for the shaded protobuf the Lark SDK carries, and the Slack SDK has no such call. It is
+  // also fatal on a JVM older than 24, so an application that does not need it should not carry it.
+
+  // sqlite-jdbc loads its bundled native library through System::load.
+  "--enable-native-access=ALL-UNNAMED",
+  "--add-opens=java.base/java.io=ALL-UNNAMED",
+  "--add-opens=java.base/java.lang=ALL-UNNAMED",
+  "--add-opens=java.base/java.time=ALL-UNNAMED",
+  "--add-opens=java.base/java.util=ALL-UNNAMED",
+  "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED"
+]
+
+dependencies {
+  implementation project(':spring-agent-core')
+  // All of them, deliberately. An SDK consumer picks one and configures nothing; this application is
+  // the runtime-switchable case app.persistence.type exists for, and PersistenceJpaTest,
+  // PersistenceMongoTest and PersistenceRedisTest assert each backend from a single JVM classpath.
+  implementation project(':spring-agent-persistence-jpa')
+  implementation project(':spring-agent-persistence-mongodb')
+  implementation project(':spring-agent-persistence-redis')
+  // Optional for an SDK consumer. Depending on it decides nothing: app.ai.tools.shell.type does,
+  // and it defaults to none.
+  implementation project(':spring-agent-tools-shell-kubernetes')
+  implementation project(':spring-agent-tools-shell-docker')
+  // The chat surface. Exactly one of these belongs on an application's classpath: this module and
+  // spring-agent-integration-feishu each register a bean AgentResponseListener that claims every
+  // run and a PromptVariablesContributor that answers for every request, so two of them answer for
+  // each other's runs. That is why this application exists beside spring-agent-app-feishu instead
+  // of both surfaces being added to one server.
+  implementation project(':spring-agent-integration-slack')
+  // Watching what other systems do. Optional for an SDK consumer, and taking it decides nothing:
+  // app.events.enabled does, and it defaults to false. Turning it on opens an unauthenticated
+  // webhook path — permitted in SecurityConfigurer — and lets the agent speak without being spoken
+  // to, so it is a deployment's decision rather than the classpath's.
+  implementation project(':spring-agent-events')
+  // The sources it can watch. One module per system, like the Feishu integration, so a deployment
+  // takes only what it has: each contributes a reader for that system's deliveries and nothing else.
+  // Taking them decides nothing either — app.events.enabled gates them along with the receiver.
+  implementation project(':spring-agent-integration-github')
+  implementation project(':spring-agent-integration-gitlab')
+  implementation project(':spring-agent-integration-grafana')
+  // The one source that is not a webhook, and the one whose presence is not free: it dials out and
+  // holds a connection to a mailbox. So unlike the three above it carries a switch of its own,
+  // app.email.enabled, which defaults to false — taking it still decides nothing.
+  implementation project(':spring-agent-integration-email')
+  // The knowledge base. Optional for an SDK consumer, and the only implementation of core's
+  // KnowledgeBase contract, so taking it is what decides a deployment has one at all — there is no
+  // property that turns a knowledge base on without it. app.ai.rag.enabled turns it back off.
+  implementation project(':spring-agent-rag-milvus')
+
+  implementation 'org.springframework.boot:spring-boot-starter-actuator'
+  implementation 'org.springframework.boot:spring-boot-starter-security'
+  implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'
+  implementation 'io.micrometer:micrometer-registry-prometheus'
+
+  implementation platform(libs.spring.ai.bom)
+
+  // Moved down from spring-agent-core, which used to carry it for every consumer: this starter
+  // brings milvus-sdk-java, grpc, protobuf, okhttp and kotlin-stdlib. Spring AI's own
+  // auto-configuration backs off unless spring.ai.vectorstore.type is milvus, so having it here
+  // costs a deployment that runs the simple store nothing but disk.
+  //
+  // This is the *tool search index*, not the knowledge base, and the two are separate on purpose —
+  // spring-agent-rag-milvus above holds its own client and its own collection under app.ai.rag.
+  // Removing this line in the belief that the module replaces it would leave the tool index with
+  // nowhere to go whenever spring.ai.vectorstore.type is milvus.
+  implementation 'org.springframework.ai:spring-ai-starter-vector-store-milvus'
+
+  // Internals of the library modules; the assembly test mocks these beans.
+  testImplementation platform(libs.fabric8.kubernetes.client.bom)
+  testImplementation libs.slack.api.client
+  testImplementation libs.slack.bolt
+  testImplementation libs.slack.bolt.socket.mode
+  testImplementation libs.fabric8.kubernetes.client
+
+  // The chat memory tests assert which backend got wired; they reach both repository types through
+  // the two spring-agent-persistence-* modules, which expose them as api. These used to be
+  // re-declared here because spring-agent-core hid them behind implementation.
+  testImplementation libs.testcontainers.core
+  testImplementation libs.testcontainers.mongodb
+  testImplementation libs.testcontainers.milvus
+  testImplementation libs.testcontainers.junit.jupiter
+
+  testImplementation 'org.springframework.boot:spring-boot-starter-test'
+  testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+  testImplementation 'org.springframework.ai:spring-ai-spring-boot-testcontainers'
+}
+
+application { applicationDefaultJvmArgs += patchJvmArgs }
+
+bootJar {
+  from('Aptfile')
+}

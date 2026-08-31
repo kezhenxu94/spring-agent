@@ -3,6 +3,18 @@ guava = "33.6.0-jre"
 jakarta-annotation = "2.1.1"
 logback-json = "0.1.5"
 larksuite-oapi = "2.6.1"
+# Not BOM-managed: spring-boot-dependencies knows nothing about the Slack SDK. Every artifact of it
+# is released off one version, so they share this one reference and must never be pinned apart.
+#
+# The `bolt-jakarta-*` variants, not the plain ones: the originals compile against
+# `javax.websocket` and `javax.servlet`, which Spring Boot 4 does not ship and does not see. The
+# plain artifact resolves and builds, and then finds no websocket provider at runtime.
+slack-sdk = "1.45.3"
+# The WebSocket client Socket Mode runs on. The Slack SDK declares both this and the
+# jakarta.websocket API `provided`, so nothing arrives transitively and a build without this line
+# compiles, starts, and then fails to open the connection at runtime. 2.2.0 is what
+# slack-jakarta-socket-mode-client pins its own `provided` entry to; keep the two in step.
+tyrus = "2.2.0"
 spring-ai-agent-utils = "0.10.0"
 # A released version, never a -SNAPSHOT: Maven Central rejects a deployment whose POM manages or
 # depends on one, and this BOM is imported into the POM of every published module (see
@@ -52,6 +64,11 @@ jedis = { module = "redis.clients:jedis", version.ref = "jedis" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
 okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver", version.ref = "okhttp" }
 larksuite-oapi = { module = "com.larksuite.oapi:oapi-sdk", version.ref = "larksuite-oapi" }
+slack-api-client = { module = "com.slack.api:slack-api-client", version.ref = "slack-sdk" }
+slack-api-model = { module = "com.slack.api:slack-api-model", version.ref = "slack-sdk" }
+slack-bolt = { module = "com.slack.api:bolt", version.ref = "slack-sdk" }
+slack-bolt-socket-mode = { module = "com.slack.api:bolt-jakarta-socket-mode", version.ref = "slack-sdk" }
+tyrus-standalone-client = { module = "org.glassfish.tyrus.bundles:tyrus-standalone-client", version.ref = "tyrus" }
 testcontainers-core = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }
 testcontainers-milvus = { module = "org.testcontainers:testcontainers-milvus", version.ref = "testcontainers" }
