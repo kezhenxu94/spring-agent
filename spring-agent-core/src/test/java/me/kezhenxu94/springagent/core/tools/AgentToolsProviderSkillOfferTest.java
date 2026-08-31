@@ -105,6 +105,7 @@ class AgentToolsProviderSkillOfferTest {
             null,
             null),
         Locale.ENGLISH,
+        null,
         null);
   }
 }

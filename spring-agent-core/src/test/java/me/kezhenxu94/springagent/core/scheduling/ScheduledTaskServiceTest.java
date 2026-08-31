@@ -6,6 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -18,7 +19,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 /** What a firing says to the model, which {@code app.ai.scheduled-task-prompt} decides. */
 class ScheduledTaskServiceTest {
@@ -93,8 +93,7 @@ class ScheduledTaskServiceTest {
     final var agent = mock(SpringAgent.class);
     when(agent.accepting()).thenReturn(true);
     when(repo.findById("task-1")).thenReturn(Optional.of(spent));
-    new ScheduledTaskService(agent, repo, properties(null), mock(ThreadPoolTaskScheduler.class))
-        .fire(spent);
+    new ScheduledTaskService(agent, repo, properties(null)).fire(spent);
 
     verify(agent, never()).fire(org.mockito.ArgumentMatchers.any());
     verify(repo).updateStatus("task-1", ScheduledTask.Status.COMPLETED);
@@ -108,8 +107,7 @@ class ScheduledTaskServiceTest {
     when(agent.accepting()).thenReturn(true);
     when(repo.findById("task-1")).thenReturn(Optional.of(cancelled));
 
-    new ScheduledTaskService(agent, repo, properties(null), mock(ThreadPoolTaskScheduler.class))
-        .fire(cancelled);
+    new ScheduledTaskService(agent, repo, properties(null)).fire(cancelled);
 
     verify(agent, never()).fire(org.mockito.ArgumentMatchers.any());
     verify(repo, never()).incrementRunCount(org.mockito.ArgumentMatchers.anyString());
@@ -118,9 +116,7 @@ class ScheduledTaskServiceTest {
   @Test
   @DisplayName("a task stopping itself does not cancel the run that is stopping it")
   void stoppingDoesNotCancelTheFiringRun() {
-    final var service =
-        new ScheduledTaskService(
-            springAgent, repo, properties(null), mock(ThreadPoolTaskScheduler.class));
+    final var service = new ScheduledTaskService(springAgent, repo, properties(null));
 
     service.stopFiringTask("task-1");
 
@@ -134,8 +130,7 @@ class ScheduledTaskServiceTest {
     when(agent.accepting()).thenReturn(true);
     // A firing reads the task back before it runs, so the repository has to hold it.
     when(repo.findById(task.id())).thenReturn(Optional.of(task));
-    new ScheduledTaskService(agent, repo, properties(null), mock(ThreadPoolTaskScheduler.class))
-        .fire(task);
+    new ScheduledTaskService(agent, repo, properties(null)).fire(task);
 
     final var captor = ArgumentCaptor.forClass(AgentRequest.class);
     verify(agent).fire(captor.capture());
@@ -145,9 +140,7 @@ class ScheduledTaskServiceTest {
   private String fireAndCaptureUserMessage(final String template) {
     when(springAgent.accepting()).thenReturn(true);
     when(repo.findById(task.id())).thenReturn(Optional.of(task));
-    final var service =
-        new ScheduledTaskService(
-            springAgent, repo, properties(template), mock(ThreadPoolTaskScheduler.class));
+    final var service = new ScheduledTaskService(springAgent, repo, properties(template));
 
     service.fire(task);
 
@@ -160,11 +153,35 @@ class ScheduledTaskServiceTest {
     return text.getValue();
   }
 
+  @Test
+  @DisplayName("a firing that gives itself a new time is due again at it")
+  void rearmingAFiringTaskMakesItDueAgain() {
+    final var repo = new InMemoryScheduledTaskRepo();
+    final var service = new ScheduledTaskService(mock(SpringAgent.class), repo, properties(null));
+    final var fireAt = Instant.parse("2026-09-01T09:00:00Z");
+    // Run count already one, because the firing asking for this counted itself before it started.
+    // The task is still a one-off, and it must come back — the count is not what decides that.
+    repo.save(
+        ScheduledTask.builder()
+            .id("t1")
+            .userId("u1")
+            .taskText("check again later")
+            .scheduledAt(fireAt)
+            .runCount(1)
+            .status(ScheduledTask.Status.ACTIVE)
+            .build());
+
+    service.rearmFiringTask(repo.findById("t1").orElseThrow());
+
+    assertThat(repo.findById("t1").orElseThrow().nextFireAt()).isEqualTo(fireAt);
+  }
+
   private static SpringAgentProperties properties(final String scheduledTaskPrompt) {
     return new SpringAgentProperties(
         null,
         new SpringAgentProperties.Ai(
             Set.of(), Map.of(), null, null, null, "you are an agent", scheduledTaskPrompt, null),
+        null,
         null,
         null);
   }

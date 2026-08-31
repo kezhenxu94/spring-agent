@@ -206,6 +206,91 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
   }
 
   @Test
+  @DisplayName("only the first caller moves a task on from an occurrence")
+  void claimNextFireAtIsAtomic() {
+    final var id = owner() + "-task-3";
+    // Truncated to milliseconds because that is the coarsest of the three stores, and the value
+    // written has to be the value read back — the claim below compares them for equality.
+    final var due = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+    final var after = due.plus(Duration.ofMinutes(5));
+    scheduledTaskRepo.save(
+        ScheduledTask.builder()
+            .id(id)
+            .userId(owner())
+            .taskText("remind me")
+            .cronExpression("0 */5 * * * *")
+            .nextFireAt(due)
+            .status(ScheduledTask.Status.ACTIVE)
+            .build());
+
+    // The value has to survive the round trip exactly, or every claim would be refused and the
+    // backend would look like a scheduler that is simply asleep.
+    final var stored = scheduledTaskRepo.findById(id).orElseThrow();
+    assertThat(stored.nextFireAt()).isEqualTo(due);
+
+    // Two replicas, one occurrence. This is the whole contract.
+    assertThat(scheduledTaskRepo.claimNextFireAt(id, stored.nextFireAt(), after)).isTrue();
+    assertThat(scheduledTaskRepo.claimNextFireAt(id, stored.nextFireAt(), after)).isFalse();
+
+    assertThat(scheduledTaskRepo.findById(id))
+        .get()
+        .extracting(ScheduledTask::nextFireAt)
+        .isEqualTo(after);
+    // And the next occurrence is claimable in its turn, so a task is not stopped by having fired.
+    assertThat(scheduledTaskRepo.claimNextFireAt(id, after, after.plus(Duration.ofMinutes(5))))
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("claiming a task to no next occurrence leaves it readable as none")
+  void claimNextFireAtWritesAnAbsentValue() {
+    final var id = owner() + "-task-4";
+    final var due = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+    scheduledTaskRepo.save(
+        ScheduledTask.builder()
+            .id(id)
+            .userId(owner())
+            .taskText("remind me once")
+            .scheduledAt(due)
+            .nextFireAt(due)
+            .status(ScheduledTask.Status.ACTIVE)
+            .build());
+
+    // A one-off has no next occurrence once it has been taken. A backend that skipped this write
+    // rather than clearing the field would leave the task due for ever — on Redis in particular a
+    // hash cannot hold a null, so it has to be a removal.
+    assertThat(scheduledTaskRepo.claimNextFireAt(id, due, null)).isTrue();
+    assertThat(scheduledTaskRepo.findById(id)).get().extracting(ScheduledTask::nextFireAt).isNull();
+  }
+
+  @Test
+  @DisplayName("a task written before nextFireAt existed can be given one, exactly once")
+  void initNextFireAtBackfillsOnlyOnce() {
+    final var id = owner() + "-task-5";
+    // No nextFireAt at all, which is what a row written before the field existed looks like: a null
+    // column on JPA, and simply an absent field on MongoDB and Redis.
+    scheduledTaskRepo.save(
+        ScheduledTask.builder()
+            .id(id)
+            .userId(owner())
+            .taskText("an old task")
+            .cronExpression("0 */5 * * * *")
+            .status(ScheduledTask.Status.ACTIVE)
+            .build());
+    assertThat(scheduledTaskRepo.findById(id)).get().extracting(ScheduledTask::nextFireAt).isNull();
+
+    final var first = Instant.now().plus(Duration.ofMinutes(5)).truncatedTo(ChronoUnit.MILLIS);
+    assertThat(scheduledTaskRepo.initNextFireAt(id, first)).isTrue();
+    // Two replicas meeting the same legacy row must not both back it up.
+    assertThat(scheduledTaskRepo.initNextFireAt(id, first.plus(Duration.ofMinutes(5)))).isFalse();
+
+    assertThat(scheduledTaskRepo.findById(id))
+        .get()
+        .extracting(ScheduledTask::nextFireAt)
+        .isEqualTo(first);
+  }
+
+  @Test
   @DisplayName("a pending question round trips, and answering it takes it out of the conversation")
   void pendingQuestionRoundTripsAndLeavesPending() {
     final var conversation = owner() + "-om_root";

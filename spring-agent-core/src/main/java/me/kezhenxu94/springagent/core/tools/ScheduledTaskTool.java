@@ -360,11 +360,11 @@ Usage:
     }
 
     final var saved = scheduledTaskRepo.save(updated.build());
-    // Rescheduled even when only the text changed. The timer holds a runnable closed over the task
-    // as it was when it was scheduled, so a firing reads that copy and not the stored one — without
-    // this the new text would first be used after a restart. Re-arming an unchanged schedule costs
-    // nothing: a cron trigger computes its next firing from the expression, and a one-off is
-    // re-armed for the same absolute instant.
+    // Called even when only the text changed, and harmless then: the sweeper reads the stored task
+    // at every firing, so the new text is already in effect. What this is for is a changed
+    // cronExpression or scheduledAt, where the next occurrence has to be worked out again — and
+    // recomputing an unchanged schedule costs nothing, since a cron's next firing comes from the
+    // expression and a one-off's is the same absolute instant.
     scheduledTaskService.reschedule(saved);
     return "Updated task " + taskId + ": " + String.join(", ", changes) + "." + overrideNote;
   }

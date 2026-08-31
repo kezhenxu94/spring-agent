@@ -57,6 +57,11 @@ public class EventsAutoConfiguration {
    *
    * <p>{@code @ConditionalOnMissingBean} so an application that already has a {@code Clock} keeps
    * it — and so a test can put a fixed one in without excluding this configuration.
+   *
+   * <p>In an application carrying core's auto-configuration that is now always the case: core
+   * declares a {@code Clock} of its own for {@code ScheduledTaskSweeper}, and this one backs off.
+   * Both are {@code systemUTC()}, so which wins changes nothing; it is kept so this module still
+   * works on its own.
    */
   @Bean
   @ConditionalOnMissingBean

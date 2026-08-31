@@ -20,7 +20,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     since {@link CoreMessages} reads through the application's own message source.
  */
 @ConfigurationProperties(prefix = "app")
-public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale, Shutdown shutdown) {
+public record SpringAgentProperties(
+    Dashscope dashscope, Ai ai, Locale locale, Shutdown shutdown, Scheduling scheduling) {
 
   public SpringAgentProperties {
     // An application that configures no DashScope at all is a legitimate one — spring-agent-app-cli
@@ -29,6 +30,7 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale, S
     // NullPointerException at startup rather than the image tools simply not working.
     dashscope = dashscope == null ? Dashscope.NONE : dashscope;
     shutdown = shutdown == null ? new Shutdown(null) : shutdown;
+    scheduling = scheduling == null ? new Scheduling(null, null) : scheduling;
   }
 
   /**
@@ -45,6 +47,48 @@ public record SpringAgentProperties(Dashscope dashscope, Ai ai, Locale locale, S
           || inFlightWaitTimeout.isZero()
           || inFlightWaitTimeout.isNegative()) {
         inFlightWaitTimeout = DEFAULT_IN_FLIGHT_WAIT_TIMEOUT;
+      }
+    }
+  }
+
+  /**
+   * How the timers behind scheduled tasks and situation triage are run. Under {@code app} rather
+   * than {@code app.ai}: nothing here is a model setting.
+   *
+   * @param sweepInterval how often {@code ScheduledTaskSweeper} looks for tasks that have come due,
+   *     and so the worst case by which a task fires late. Defaults to {@link
+   *     #DEFAULT_SWEEP_INTERVAL}.
+   *     <p>Thirty seconds rather than the five {@code app.events.sweep-interval} uses, because the
+   *     tightest schedule anybody can create is five minutes — {@code
+   *     ScheduledTaskTool#enforceMinimumInterval} raises anything shorter — so this is at worst a
+   *     tenth of the shortest cadence in play, and the tasks people actually write are hourly and
+   *     daily. Firing was never to the second in any case: {@code SpringAgent#fire} hands the run
+   *     to a Reactor scheduler and the first token is seconds away. Against that, a sweep reads the
+   *     whole active set, which on the Redis backend is a set read plus a hash read per member.
+   *     Lower this only alongside that five-minute floor; the two are what make each other
+   *     reasonable.
+   * @param poolSize how many threads the shared {@code taskScheduler} has. Defaults to {@link
+   *     #DEFAULT_POOL_SIZE}.
+   *     <p>It is shared, and by more than it looks: the scheduled-task sweeper, {@code
+   *     SituationSweeper}, every {@code @Scheduled} method in the application, and whatever an SDK
+   *     consumer adds. Neither sweep holds its thread for the length of an agent run — {@code
+   *     SpringAgent#fire} returns immediately — so four is ample for the sweeps themselves; the
+   *     knob is here for a deployment that adds blocking scheduled work of its own, which would
+   *     otherwise starve them.
+   *     <p>Note that {@code spring.task.scheduling.pool.size} does <em>not</em> reach this. The
+   *     bean is built by hand in {@code SpringAgentCoreAutoConfiguration} and named {@code
+   *     taskScheduler}, which displaces Boot's own, so Boot's settings for it are read by nothing.
+   */
+  public record Scheduling(Duration sweepInterval, Integer poolSize) {
+    public static final Duration DEFAULT_SWEEP_INTERVAL = Duration.ofSeconds(30);
+    public static final int DEFAULT_POOL_SIZE = 4;
+
+    public Scheduling {
+      if (sweepInterval == null || sweepInterval.isZero() || sweepInterval.isNegative()) {
+        sweepInterval = DEFAULT_SWEEP_INTERVAL;
+      }
+      if (poolSize == null || poolSize < 1) {
+        poolSize = DEFAULT_POOL_SIZE;
       }
     }
   }
