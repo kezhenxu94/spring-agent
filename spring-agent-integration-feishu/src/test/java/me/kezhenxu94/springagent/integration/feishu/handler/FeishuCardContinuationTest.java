@@ -9,6 +9,8 @@ import com.lark.oapi.service.cardkit.v1.model.ContentCardElementReq;
 import com.lark.oapi.service.cardkit.v1.model.ContentCardElementResp;
 import com.lark.oapi.service.cardkit.v1.model.CreateCardElementReq;
 import com.lark.oapi.service.cardkit.v1.model.CreateCardElementResp;
+import com.lark.oapi.service.cardkit.v1.model.UpdateCardElementReq;
+import com.lark.oapi.service.cardkit.v1.model.UpdateCardElementResp;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -64,6 +66,9 @@ class FeishuCardContinuationTest {
   /** Every element that was put on a card, and which card it went on. */
   private final List<String[]> inserted = Collections.synchronizedList(new ArrayList<>());
 
+  /** Every element rewritten whole: which card, which element, and what it was rewritten to. */
+  private final List<String[]> replaced = Collections.synchronizedList(new ArrayList<>());
+
   private FeishuMessages messages;
 
   @BeforeEach
@@ -103,9 +108,26 @@ class FeishuCardContinuationTest {
               }
               inserted.add(
                   new String[] {
-                    request.getCardId(), request.getCreateCardElementReqBody().getTargetElementId()
+                    request.getCardId(),
+                    request.getCreateCardElementReqBody().getTargetElementId(),
+                    request.getCreateCardElementReqBody().getElements()
                   });
               return insertedOk;
+            });
+
+    final var replacedOk = new UpdateCardElementResp();
+    replacedOk.setCode(0);
+    when(feishu.cardkit().v1().cardElement().update(any(UpdateCardElementReq.class)))
+        .thenAnswer(
+            invocation -> {
+              final UpdateCardElementReq request = invocation.getArgument(0);
+              replaced.add(
+                  new String[] {
+                    request.getCardId(),
+                    request.getElementId(),
+                    request.getUpdateCardElementReqBody().getElement()
+                  });
+              return replacedOk;
             });
 
     messages =
@@ -241,6 +263,79 @@ class FeishuCardContinuationTest {
     assertThat(lastStreamed()[0]).isEqualTo("card-2");
     assertThat(lastStreamed()[1]).isEqualTo(FeishuSubagentPanel.bodyElementId("sub_1"));
     assertThat(lastStreamed()[2]).contains("and the subagent reports");
+  }
+
+  @Test
+  @DisplayName("the thinking continues on the new card rather than being written out again")
+  void continuesTheThinkingRatherThanRepeatingIt() {
+    final var run =
+        FeishuCardUpdater.forRun(card, new JsonMapper(), null, messages, elements(), null);
+
+    run.onReasoning("what the model thought on the card it filled");
+    run.onContent("an answer");
+    full.add("card-1");
+    run.onContent("an answer, and a little more");
+    // The turn's thinking in full, as the endpoint reports it, on a run that has moved on.
+    run.onReasoning("what the model thought on the card it filled, and then thought some more");
+
+    final var thinking = lastStreamed();
+    assertThat(thinking[0]).isEqualTo("card-2");
+    assertThat(thinking[1]).isEqualTo(FeishuCardElements.REASONING_BODY);
+    // Thinking is the longest thing on most cards. Written out again it would fill the card the
+    // run has just moved onto with what the reader has above, and the card after that as well.
+    assertThat(thinking[2]).doesNotContain("what the model thought on the card it filled");
+    assertThat(thinking[2]).contains(", and then thought some more");
+    assertThat(thinking[2]).contains(messages.get("card-continued").strip());
+  }
+
+  @Test
+  @DisplayName("thinking that is all on the card above puts no pane on the card moved onto")
+  void noPaneForThinkingThatIsAllOnTheCardAbove() {
+    final var run =
+        FeishuCardUpdater.forRun(card, new JsonMapper(), null, messages, elements(), null);
+
+    run.onReasoning("all of the thinking this turn did");
+    run.onContent("an answer");
+    full.add("card-1");
+    run.onContent("an answer, and a little more");
+    // The same thinking again — a model that has stopped thinking goes on reporting what it
+    // thought. There is nothing new in it, so there is nothing for a pane here to hold.
+    run.onReasoning("all of the thinking this turn did");
+
+    assertThat(streamed)
+        .noneMatch(
+            write ->
+                write[0].equals("card-2") && write[1].equals(FeishuCardElements.REASONING_BODY));
+    assertThat(inserted)
+        .noneMatch(
+            insert ->
+                insert[0].equals("card-2")
+                    && insert[2].contains(FeishuCardElements.REASONING_BODY));
+  }
+
+  @Test
+  @DisplayName("the pane folded away at the end holds that card's share of the thinking")
+  void theFoldedPaneHoldsOnlyThisCardsThinking() {
+    final var run =
+        FeishuCardUpdater.forRun(card, new JsonMapper(), null, messages, elements(), null);
+
+    run.onReasoning("what the model thought on the card it filled");
+    run.onContent("an answer");
+    full.add("card-1");
+    run.onContent("an answer, and a little more");
+    run.onReasoning("what the model thought on the card it filled, and then thought some more");
+    run.onFinished(AgentOutcome.COMPLETED);
+
+    // Folding the pane away rewrites the element whole, so it has to be cut the same way the
+    // stream into it was: handed the turn's thinking entire, it puts all of it back on the card.
+    final var folded =
+        replaced.stream()
+            .filter(change -> change[1].equals(FeishuCardElements.REASONING))
+            .reduce((first, second) -> second)
+            .orElseThrow();
+    assertThat(folded[0]).isEqualTo("card-2");
+    assertThat(folded[2]).doesNotContain("what the model thought on the card it filled");
+    assertThat(folded[2]).contains(", and then thought some more");
   }
 
   private String[] lastStreamed() {
