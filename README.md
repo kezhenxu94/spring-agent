@@ -59,7 +59,11 @@ another's files. The same line runs through everything else:
 - **Memories** are files in the user's memories directory, written and read back by the agent
   itself.
 - **Credentials** are per-user: a Kubernetes Secret mounted into that user's sandbox, or an
-  encrypted row, so a token reaches a shell as an environment variable and never a prompt.
+  encrypted row, so a token reaches a shell as an environment variable and never a prompt. On
+  Kubernetes an operator can also share Secrets they provisioned themselves — with a group, a
+  tenant, or one named person — by labelling them to match a selector under
+  `app.ai.tools.shell.kubernetes.credentials.shared`; a credential the user set for themselves
+  still wins the name.
 - **The sandbox shell** is a Pod or container per user, with its own slice of the volume, torn down
   when idle and rebuilt on the next command.
 - **The knowledge base** is scoped to a person, a group chat or the whole tenant, and a run only
