@@ -314,7 +314,7 @@ app:
   # @ToolParam say is English, an annotation value being a compile-time constant, so a translation is
   # an override applied on the way to the model: core/prompts/tools/<ToolName>_<locale>.md for a
   # tool's own description, and a <ToolName>.<parameterName> key in core/tools_<locale>.properties for
-  # each of its parameters. A module with tools of its own ships the same pair — see feishu/tools.
+  # each of its parameters. A module with tools of its own ships the same pair — see slack/tools.
   # Anything untranslated keeps the English it declares, so this can be filled in a tool at a time,
   # and the tools whose names nothing here can know, every MCP server's, are left alone.
   storage:
@@ -355,8 +355,9 @@ app:
     # (HomeDirsPromptVariables, which localizes its own lines through CoreMessages).
     #
     # {replyFormat} is filled by whichever surface the answer lands on, with how it wants one written
-    # — for Feishu, the card markdown and the difference between mentioning somebody and merely
-    # naming them (FeishuReplyFormat, still English; see its class comment).
+    # — for Slack, that mrkdwn is not CommonMark (bold is one asterisk, there are no headings and
+    # no tables) and the difference between mentioning somebody and merely naming them
+    # (SlackReplyFormat; see its class comment).
     #
     # Set `system-prompt:` here to override it — a persona, house rules, domain knowledge. What you
     # write wins over the file in every locale, this being config data and that a lowest-precedence
@@ -375,13 +376,13 @@ app:
     # reports that it could not.
 
     # Who this deployment trusts with everybody else's work: a comma-separated list of user ids, as
-    # the surface writes them — a Feishu open id, not a name or an email. Empty, and the emptiness
-    # is the feature being off.
+    # the surface writes them — a Slack user id (U…), not a name, a handle or an email. Empty, and
+    # the emptiness is the feature being off.
     #
     # What being one grants, in full:
-    #   - Reading and posting in Feishu chats they are not a member of, so their agent can act on a
-    #     group it was never added to (FeishuChatAccess).
-    #   - Answering a question the agent put to somebody else, on the card everyone in the group
+    #   - Reading and posting in Slack channels they are not a member of, so their agent can act on
+    #     a channel it was never added to (SlackChatAccess).
+    #   - Answering a question the agent put to somebody else, on the message everyone in the channel
     #     can already see. The run stays the asked person's; the answer says who gave it.
     #   - Speaking into a run that is already going for somebody else, instead of starting a second
     #     one beside it. Their message is read at the next gap between tool calls, marked as theirs
@@ -503,15 +504,16 @@ app:
         # Whether the agent may stop and ask the user a multiple-choice question when a request is
         # ambiguous, rather than guessing.
         #
-        # It never waits for the reply. The questions go onto the reply card as a form, the run
+        # It never waits for the reply. The questions go onto the reply as a form, the run
         # ends, and submitting the form starts a fresh run on the same conversation with the
         # answers — so an answer given an hour later, or after a restart, works exactly like an
         # answer given at once. The tool is only offered on runs that have somewhere to put the
-        # questions, which today means a Feishu chat; a scheduled task is told there is nobody
-        # to ask.
+        # questions, which here means a Slack conversation; a scheduled task is told there is
+        # nobody to ask.
         enabled: ${ASK_USER_QUESTION_ENABLED:true}
-        # How long the questions stay answerable. Capped from above by Feishu regardless of what is
-        # set here: the card the form lives on expires 14 days after it is created.
+        # How long the questions stay answerable. Unlike some surfaces this is the only limit
+        # there is — a Slack message does not expire, so a form left standing stays pressable until
+        # this says otherwise, and a value of years would genuinely mean years.
         ttl: ${ASK_USER_QUESTION_TTL:24h}
       subagent:
         # How many subagents one run may have going at once.
@@ -759,7 +761,7 @@ app:
   events:
     # Watching what other systems do, and deciding for itself whether to say anything about it.
     # Alerts and code-hosting webhooks arrive at /events/webhooks/<source>; group chat messages the
-    # bot was not addressed in arrive through the Feishu integration. Both are recorded, correlated
+    # bot was not addressed in arrive through the Slack integration. Both are recorded, correlated
     # into situations, and left to settle before the agent is woken for them at all.
     #
     # Off by default, and deliberately: turning this on opens an HTTP path that no login protects
@@ -818,7 +820,7 @@ app:
 
     # Whether one evaluation ends the situation. False suits a condition that persists and wants
     # watching, which is why it is the default; true suits a window over a stream, where the next
-    # batch is a new question rather than more of the old one. The feishu-chat source overrides this
+    # batch is a new question rather than more of the old one. The slack-chat source overrides this
     # to true in EventsProperties.BUILT_IN for exactly that reason.
     resolve-after-evaluation: ${EVENTS_RESOLVE_AFTER_EVALUATION:false}
 
@@ -911,7 +913,7 @@ app:
     #    # playbook says to; this is for the case where there was no run, because it is a background
     #    # run and nothing else would ever mention it. Sent by the application rather than by the
     #    # agent, deliberately: the failure most worth hearing about is the one where the model is
-    #    # what broke. Needs a surface implementing core's Notifier — the Feishu integration does;
+    #    # what broke. Needs a surface implementing core's Notifier — the Slack integration does;
     #    # without one this is only logged.
     #    route:
     #      chat-id: ${EVENTS_GITHUB_ERROR_CHAT_ID:}

@@ -20,10 +20,9 @@ import org.springframework.stereotype.Component;
 /**
  * Turns a Slack message into an agent run.
  *
- * <p>The order of what happens here is load-bearing and is the same order {@code
- * FeishuMessageReceiveHandler} arrived at; the comments below say why each step sits where it does.
- * What is genuinely different about Slack is at the top: it delivers the bot's own messages back to
- * the bot.
+ * <p><b>The order of what happens here is load-bearing</b>, and the comments below say why each
+ * step sits where it does rather than anywhere else. The first of them is the one with no analogue
+ * anywhere else in this codebase: Slack delivers the bot's own messages back to the bot.
  */
 @Slf4j
 @Component
@@ -106,10 +105,10 @@ public class SlackMessageReceiveHandler {
   private void handle(
       final com.slack.api.app_backend.events.payload.EventsApiPayload<MessageEvent> payload,
       final MessageEvent event) {
-    // Slack delivers what this bot posts back to this bot, which Feishu does not do and which
-    // nothing downstream would notice: the agent would read its own answer as a new question and
-    // answer that, for ever. Checked before anything else, including the delivery claim, because a
-    // message that is never going to be answered has nothing to claim.
+    // Slack delivers what this bot posts back to this bot, and nothing downstream would notice:
+    // the agent would read its own answer as a new question and answer that, for ever. Checked
+    // before anything else, including the delivery claim, because a message that is never going to
+    // be answered has nothing to claim.
     //
     // Two tests rather than one, because a message can be the bot's in two ways that do not always
     // coincide: posted through an app or integration, which stamps bot_id and may leave user unset,

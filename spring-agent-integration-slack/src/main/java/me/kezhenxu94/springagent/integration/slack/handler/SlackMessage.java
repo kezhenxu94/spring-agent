@@ -38,10 +38,11 @@ import lombok.extern.slf4j.Slf4j;
  * posted into the same thread, as many times as the turn needs, and the run carries on writing into
  * this same object: see {@link #continueInNewMessage()}.
  *
- * <p>Unlike its Feishu counterpart there is no sequence counter and no per-element addressing.
- * {@code chat.update} replaces the whole message, so a write is the complete block list rendered
- * from the updater's state — which is why ordering between writers needs nothing but the queue, and
- * why a write that loses a race costs nothing: the next one carries everything anyway.
+ * <p><b>There is no sequence counter and no per-element addressing here, and that is
+ * deliberate.</b> {@code chat.update} replaces the whole message, so a write is the complete block
+ * list rendered from the updater's state — which is why ordering between writers needs nothing but
+ * the queue, and why a write that loses a race costs nothing: the next one carries everything
+ * anyway. Anything that tried to update part of a message would have to reintroduce both.
  */
 @Slf4j
 public class SlackMessage {

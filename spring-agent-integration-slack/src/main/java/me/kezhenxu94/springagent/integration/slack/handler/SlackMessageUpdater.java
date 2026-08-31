@@ -40,12 +40,11 @@ import tools.jackson.databind.json.JsonMapper;
  * work behind an answer, shown beside the answer, without a second message and a second stop button
  * for something nobody started directly.
  *
- * <p><b>The whole message is rendered from this state on every write.</b> That is the one real
- * simplification over the Feishu card, where an update names an element and the card refuses a
- * write that arrives out of order — hence its sequence counter and the split between card and
- * writer. {@code chat.update} replaces the message wholesale, so there is nothing to order and
- * nothing to address: a write that loses a race costs nothing, because the next one carries
- * everything anyway. Keep it that way; a partial update would bring the whole problem back.
+ * <p><b>The whole message is rendered from this state on every write.</b> {@code chat.update}
+ * replaces the message wholesale, so there is nothing to order and nothing to address: a write that
+ * loses a race costs nothing, because the next one carries everything anyway. Keep it that way — a
+ * partial update would need a way to name an element and a way to refuse a write that arrived out
+ * of turn, and both are problems this design does not have.
  */
 @Slf4j
 public class SlackMessageUpdater implements AgentResponseListener, TodoEventHandler {

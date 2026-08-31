@@ -43,9 +43,8 @@ public class SlackChatObservations {
    * {@code EventsProperties.SLACK_CHAT} in {@code spring-agent-events}.
    *
    * <p>Textually coupled rather than shared, because the dependency may only point from a transport
-   * to core and this is not core's business to name — the same arrangement as {@code
-   * FeishuChatObservations.SOURCE}. Change one and the other stops selecting the settings it was
-   * written for, silently, so change both.
+   * to core and this is not core's business to name. Change one and the other stops selecting the
+   * settings it was written for, silently, so change both.
    */
   public static final String SOURCE = "slack-chat";
 

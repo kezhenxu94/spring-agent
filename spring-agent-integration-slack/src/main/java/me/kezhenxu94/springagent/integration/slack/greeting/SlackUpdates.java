@@ -29,7 +29,7 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  * escaped as one.
  *
  * <p><b>A note's version is its filename, and the notes are found by counting up from 1 until one
- * is missing.</b> Both halves matter. Scanning the directory — {@code classpath*:/feishu/updates/
+ * is missing.</b> Both halves matter. Scanning the directory — {@code classpath*:/slack/updates/
  * *.md} — needs classpath directory listing, which a native image does not have: the binary would
  * find no notes and tell every user they were up to date, while the JVM build worked, which is the
  * worst shape a bug can have. Reading each file by the name it must have works the same in both.

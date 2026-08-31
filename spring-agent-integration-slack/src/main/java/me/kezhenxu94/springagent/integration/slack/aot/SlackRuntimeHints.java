@@ -37,8 +37,8 @@ public class SlackRuntimeHints implements RuntimeHintsRegistrar {
     hints.resources().registerPattern("slack/welcome*.md");
     hints.resources().registerPattern("slack/updates/*.md");
 
-    // No Block Kit templates: unlike the Feishu card, every block this module writes is built in
-    // Java from the run's state, because chat.update replaces a message wholesale and there is no
-    // template to fill in. What a deployment rewrites is the prose above, not a layout.
+    // No Block Kit templates to register: every block this module writes is built in Java from the
+    // run's state, because chat.update replaces a message wholesale and there is no template to
+    // fill in. What a deployment rewrites is the prose above, not a layout.
   }
 }

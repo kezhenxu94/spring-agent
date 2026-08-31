@@ -60,8 +60,9 @@ public class SlackQuestionHandler implements QuestionHandler {
             .chatType(request.chatType())
             .conversationId(request.conversationId())
             .rootMessageId(request.rootMessageId())
-            // Named for Feishu's card, but opaque to core: on Slack it is the timestamp of the
-            // message the form is on, which is what chat.update needs to take the form away again.
+            // The field is named for a card and is opaque to core, which never reads it: here it
+            // holds the timestamp of the message the form is on, which is what chat.update needs to
+            // take the form away again.
             .cardId(message.ts())
             .questionsJson(om.writeValueAsString(questions))
             .status(PendingQuestion.Status.PENDING)

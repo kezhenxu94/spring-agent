@@ -12,11 +12,11 @@ import org.springframework.stereotype.Component;
 /**
  * The welcome and the update notes as Block Kit.
  *
- * <p>Built in code rather than poured into a JSON template, which is the one place this module
- * departs from its Feishu counterpart. A Feishu card is a document with named slots; Block Kit is a
- * list, and a list assembled in Java from the notes is both shorter and harder to get wrong than a
- * template with placeholders that have to survive being substituted into JSON. The words are still
- * a deployment's to rewrite — they live in {@code welcome.md} and {@code updates/N.md}.
+ * <p>Built in code rather than poured into a JSON template. Block Kit is a list of blocks, and a
+ * list assembled in Java from the notes is both shorter and harder to get wrong than a template
+ * with placeholders that have to survive being substituted into JSON — a label carrying a quote
+ * would break the template and not this. The words are still a deployment's to rewrite: they live
+ * in {@code welcome.md} and {@code updates/N.md}.
  */
 @Component
 @RequiredArgsConstructor

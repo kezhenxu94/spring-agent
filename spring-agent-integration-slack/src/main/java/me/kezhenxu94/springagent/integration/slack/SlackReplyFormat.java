@@ -16,8 +16,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>The other half is who gets notified. {@code <@U123>} pings the person named; their plain name
  * does not. Without being told, a model listing the twenty members of a channel writes twenty
- * mentions and notifies all of them — the same mistake {@code FeishuReplyFormat} exists to prevent,
- * in the same shape.
+ * mentions and notifies all of them, interrupting twenty people to answer one.
  *
  * <p>Contributed as a {@link PromptVariablesContributor} rather than written into the application's
  * system prompt, so the rules travel with the integration that needs them: a deployment that swaps

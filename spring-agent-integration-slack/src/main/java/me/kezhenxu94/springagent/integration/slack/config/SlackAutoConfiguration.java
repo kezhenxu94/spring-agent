@@ -109,8 +109,7 @@ public class SlackAutoConfiguration {
    *
    * <p>What an unbounded call costs is not a missed message update but a stuck turn: a subagent
    * tells its parent's message it has finished before the run waiting on it is released, so one
-   * call Slack never answers hangs the whole turn, silently. The same lesson {@code
-   * FeishuAutoConfiguration} records for the Lark SDK.
+   * call Slack never answers hangs the whole turn, silently.
    */
   @Bean
   @ConditionalOnMissingBean

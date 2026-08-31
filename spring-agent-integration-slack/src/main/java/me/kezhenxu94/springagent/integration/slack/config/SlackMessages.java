@@ -12,8 +12,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>A message source of its own rather than the application's, because the bundle ships inside
  * this module and an application embedding it has its own {@code messages.properties} to think
- * about; two modules claiming one basename would be a fight over which one wins. The same
- * arrangement {@code FeishuMessages} has, for the same reason.
+ * about; two modules claiming one basename would be a fight over which one wins.
  */
 @Component
 public class SlackMessages {

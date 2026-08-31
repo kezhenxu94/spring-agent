@@ -18,8 +18,8 @@ import org.springframework.stereotype.Component;
  * <p><b>Having no record is what makes somebody new, not which event arrived.</b> Slack's {@code
  * app_home_opened} fires every time the conversation is opened, including the first — there is no
  * separate first-contact event to read. Reading first contact off the absent row rather than off an
- * event makes that one event enough on its own, which is the same arrangement the Feishu
- * integration arrived at from the opposite direction.
+ * event makes that one event enough on its own, and makes a greeting survive a delivery nobody here
+ * controls going missing.
  *
  * <p>What a person is shown follows from that one number:
  *
