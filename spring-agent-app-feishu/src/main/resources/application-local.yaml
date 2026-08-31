@@ -98,7 +98,8 @@ app:
       email:
         # An identity of the agent's own and never a person's, as everywhere else — a triage run
         # assumes it, along with that identity's file sandbox and its personal MCP servers.
-        owner-user-id: ${EVENTS_OWNER_USER_ID:ou_local_agent}
+        owner:
+          user-id: ${EVENTS_OWNER_USER_ID:ou_local_agent}
         # Whose mail is read at all. Required for this source and for no other: elsewhere an absent
         # list means everybody and is merely complained about, which cannot be right for an address
         # anybody can write to. Left to resolve to nothing on purpose — the application then refuses

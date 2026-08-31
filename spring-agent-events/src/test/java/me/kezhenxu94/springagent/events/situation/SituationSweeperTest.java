@@ -84,7 +84,7 @@ class SituationSweeperTest {
             Map.of(
                 "grafana",
                 EventsProperties.Source.builder()
-                    .ownerUserId("ou_agent")
+                    .owner(EventsProperties.Owner.builder().userId("ou_agent").build())
                     .resolveAfterEvaluation(resolveAfterEvaluation)
                     .route(Route.builder().chatId("oc_alerts").chatType("group").build())
                     .build()))
@@ -136,6 +136,12 @@ class SituationSweeperTest {
 
   /** Puts a real situation in the store the way the intake would, so nothing is hand-built. */
   private Situation observed(final EventsProperties properties, final String deliveryId) {
+    return observed(properties, deliveryId, null);
+  }
+
+  /** The same, for an observation that knows where it came from — which a chat one does. */
+  private Situation observed(
+      final EventsProperties properties, final String deliveryId, final Route route) {
     final var intake =
         new SituationEventIntake(
             properties,
@@ -152,6 +158,7 @@ class SituationSweeperTest {
             .correlationKey("grafana:abc")
             .title("api latency")
             .summary("p99 over 2s")
+            .route(route)
             .build());
     return repos.situations.only();
   }
@@ -193,6 +200,61 @@ class SituationSweeperTest {
   }
 
   @Test
+  @DisplayName("the owner's group and tenant reach the run, and beat the ones an event named")
+  void shouldRunAsTheConfiguredOwner() {
+    final var properties = properties(false, 2);
+    final var owned =
+        EventsProperties.builder()
+            .enabled(true)
+            .debounce(properties.debounce())
+            .maxDebounce(properties.maxDebounce())
+            .cooldown(properties.cooldown())
+            .resolveAfterQuiet(properties.resolveAfterQuiet())
+            .sources(
+                Map.of(
+                    "grafana",
+                    EventsProperties.Source.builder()
+                        .owner(
+                            EventsProperties.Owner.builder()
+                                .userId("ou_agent")
+                                .groupId("g_agent")
+                                .tenantId("t_agent")
+                                .build())
+                        .build()))
+            .build();
+    // A group and a tenant on the way in, which the configured ones must win over: they came from
+    // the observation, and what they would otherwise decide is the shared workspace this run reads
+    // and writes.
+    observed(owned, "d1", Route.builder().groupId("g_event").tenantId("t_event").build());
+    clock.advance(Duration.ofSeconds(31));
+
+    sweeper(owned).sweep();
+
+    final var request = fired();
+    assertThat(request.userId()).isEqualTo("ou_agent");
+    assertThat(request.groupId()).isEqualTo("g_agent");
+    assertThat(request.tenantId()).isEqualTo("t_agent");
+    // And still not what the playbook is read from — see EventsProperties.Owner.
+    assertThat(request.knowledgeRetrieval()).isNull();
+  }
+
+  @Test
+  @DisplayName("a source that named only a user keeps the group and tenant the situation carries")
+  void shouldFallBackToTheSituationsScope() {
+    final var properties = properties(false, 2);
+    observed(properties, "d1", Route.builder().groupId("g_event").tenantId("t_event").build());
+    clock.advance(Duration.ofSeconds(31));
+
+    sweeper(properties).sweep();
+
+    // The chat case: a message's own chat is as real an identity as anything configured, and this
+    // is what a deployment had before an owner could name a group and a tenant of its own.
+    final var request = fired();
+    assertThat(request.groupId()).isEqualTo("g_event");
+    assertThat(request.tenantId()).isEqualTo("t_event");
+  }
+
+  @Test
   @DisplayName("the run retrieves the source's playbook, from the owner's base and nowhere else")
   void shouldRetrieveThePlaybook() {
     final var properties =
@@ -206,7 +268,7 @@ class SituationSweeperTest {
                 Map.of(
                     "grafana",
                     EventsProperties.Source.builder()
-                        .ownerUserId("ou_agent")
+                        .owner(EventsProperties.Owner.builder().userId("ou_agent").build())
                         .playbook(
                             EventsProperties.Playbook.builder()
                                 .query("how to deal with alerts")

@@ -26,7 +26,7 @@ import org.springframework.stereotype.Component;
  * on the timer, inside a triage run nobody is watching, and a malformed one that failed there would
  * look exactly like a knowledge base with nothing relevant in it: no error anybody sees, no
  * playbook, and a run that quietly triages on the prompt alone. The same reasoning as {@code
- * SituationSweeper} complaining about a missing {@code owner-user-id} at startup rather than at
+ * SituationSweeper} complaining about a missing {@code owner.user-id} at startup rather than at
  * three in the morning.
  *
  * <p><b>Why a filter is worth configuring at all, rather than reading the whole knowledge base.</b>

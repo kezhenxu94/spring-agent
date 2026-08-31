@@ -67,7 +67,7 @@ class SituationEventIntakeTest {
             Map.of(
                 "grafana",
                 EventsProperties.Source.builder()
-                    .ownerUserId("ou_bot")
+                    .owner(EventsProperties.Owner.builder().userId("ou_bot").build())
                     .route(Route.builder().chatId("oc_alerts").chatType("group").build())
                     .build()))
         .build();
@@ -242,9 +242,13 @@ class SituationEventIntakeTest {
             .sources(
                 Map.of(
                     "grafana",
-                    EventsProperties.Source.builder().ownerUserId("ou_bot").build(),
+                    EventsProperties.Source.builder()
+                        .owner(EventsProperties.Owner.builder().userId("ou_bot").build())
+                        .build(),
                     "github",
-                    EventsProperties.Source.builder().ownerUserId("ou_bot").build()))
+                    EventsProperties.Source.builder()
+                        .owner(EventsProperties.Owner.builder().userId("ou_bot").build())
+                        .build()))
             .build();
     final var intake = intake(properties);
 
@@ -340,7 +344,7 @@ class SituationEventIntakeTest {
             Map.of(
                 "grafana",
                 EventsProperties.Source.builder()
-                    .ownerUserId("ou_bot")
+                    .owner(EventsProperties.Owner.builder().userId("ou_bot").build())
                     .trustedActors(List.of(actors))
                     .build()))
         .build();

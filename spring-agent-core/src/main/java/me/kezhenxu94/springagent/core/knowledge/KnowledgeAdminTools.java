@@ -11,7 +11,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
  *
  * <p>{@link KnowledgeBaseTools} is scoped to the run — {@link KnowledgeScope#forRequest} — which is
  * right for everybody and leaves one thing unreachable: the knowledge base of an identity nobody
- * ever logs in as. An event source's {@code owner-user-id} is exactly that, and {@code
+ * ever logs in as. An event source's {@code owner.user-id} is exactly that, and {@code
  * PlaybookTools} writes the playbooks steering every unattended triage into it. Without these tools
  * a playbook could be written and never read back: not by its author, who is not that identity, and
  * not by that identity, which is not a person. Verifying what a triage will actually be shown is

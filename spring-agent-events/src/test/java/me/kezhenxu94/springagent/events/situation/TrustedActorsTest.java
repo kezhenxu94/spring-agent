@@ -28,7 +28,7 @@ class TrustedActorsTest {
             Map.of(
                 "github",
                 EventsProperties.Source.builder()
-                    .ownerUserId("ou_agent")
+                    .owner(EventsProperties.Owner.builder().userId("ou_agent").build())
                     .trustedActors(actors)
                     .build()))
         .build();

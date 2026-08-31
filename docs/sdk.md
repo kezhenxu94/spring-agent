@@ -246,7 +246,7 @@ tasks and subagents too — both act on a brief that same administrator wrote.
 Which makes the **identity** the boundary, and the thing to be careful with. A run assumes a user id
 and holds whatever that id holds; no scenario can narrow it afterwards. So an identity that reads
 text written by strangers must never be an administrator — `spring-agent-events` refuses to start
-when a source's `owner-user-id` is listed in `app.ai.admins`, because at that point nothing could
+when a source's `owner.user-id` is listed in `app.ai.admins`, because at that point nothing could
 tell a triage run from an ordinary run by the same owner.
 
 Two things follow from `offers` taking the tool object rather than a name. Your scenario can rule on
@@ -256,7 +256,7 @@ that would have confined gating to the built-in enum.
 
 What a scenario **cannot** do is withhold the identity a run acts as. A run that assumes a user id
 gets that user's file sandbox, credentials and personal MCP servers whatever its scenario says; that
-is why the events module insists on an `owner-user-id` of the agent's own for runs woken by
+is why the events module insists on an `owner.user-id` of the agent's own for runs woken by
 attacker-authored text.
 
 ## Tools

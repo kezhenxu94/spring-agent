@@ -241,7 +241,7 @@ public class SituationEventIntake implements EventIntake {
                 .awaitingSince(now)
                 .generation(0)
                 .eventCount(0)
-                .ownerUserId(policy.ownerUserId())
+                .ownerUserId(policy.owner().userId())
                 .chatId(route.chatId())
                 .chatType(route.chatType())
                 .groupId(route.groupId())

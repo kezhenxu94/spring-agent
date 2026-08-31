@@ -33,7 +33,11 @@ class EventsPropertiesTest {
     final var off =
         EventsProperties.builder()
             .sources(
-                Map.of("github", EventsProperties.Source.builder().ownerUserId("ou_bot").build()))
+                Map.of(
+                    "github",
+                    EventsProperties.Source.builder()
+                        .owner(EventsProperties.Owner.builder().userId("ou_bot").build())
+                        .build()))
             .build();
 
     assertThat(off.policyFor("github")).isEmpty();
@@ -82,7 +86,7 @@ class EventsPropertiesTest {
                 "github",
                 EventsProperties.Source.builder()
                     .secret("s")
-                    .ownerUserId("ou_bot")
+                    .owner(EventsProperties.Owner.builder().userId("ou_bot").build())
                     .debounce(Duration.ofSeconds(1))
                     .cooldown(Duration.ofSeconds(2))
                     .triagePrompt("look at {situation}")
@@ -94,7 +98,7 @@ class EventsPropertiesTest {
     assertThat(policy.debounce()).isEqualTo(Duration.ofSeconds(1));
     assertThat(policy.cooldown()).isEqualTo(Duration.ofSeconds(2));
     assertThat(policy.triagePrompt()).isEqualTo("look at {situation}");
-    assertThat(policy.ownerUserId()).isEqualTo("ou_bot");
+    assertThat(policy.owner().userId()).isEqualTo("ou_bot");
     assertThat(policy.route().chatId()).isEqualTo("oc_alerts");
     // Untouched settings still come from the top level rather than being lost with the ones set.
     assertThat(policy.maxDebounce()).isEqualTo(EventsProperties.DEFAULT_MAX_DEBOUNCE);
@@ -112,7 +116,9 @@ class EventsPropertiesTest {
         properties(
             Map.of(
                 EventsProperties.FEISHU_CHAT,
-                EventsProperties.Source.builder().ownerUserId("ou_bot").build()));
+                EventsProperties.Source.builder()
+                    .owner(EventsProperties.Owner.builder().userId("ou_bot").build())
+                    .build()));
 
     final var policy = properties.policyFor(EventsProperties.FEISHU_CHAT).orElseThrow();
 
@@ -133,7 +139,7 @@ class EventsPropertiesTest {
             Map.of(
                 EventsProperties.FEISHU_CHAT,
                 EventsProperties.Source.builder()
-                    .ownerUserId("ou_bot")
+                    .owner(EventsProperties.Owner.builder().userId("ou_bot").build())
                     .cooldown(Duration.ofMinutes(5))
                     .build()));
 

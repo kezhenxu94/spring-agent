@@ -108,11 +108,11 @@ public class SituationSweeper {
             source ->
                 properties
                     .policyFor(source)
-                    .filter(policy -> isBlank(policy.ownerUserId()))
+                    .filter(policy -> isBlank(policy.owner().userId()))
                     .ifPresent(
                         policy ->
                             log.error(
-                                "app.events.sources.{}.owner-user-id is not set, so situations from"
+                                "app.events.sources.{}.owner.user-id is not set, so situations from"
                                     + " {} can never be evaluated. It must name an identity of the"
                                     + " agent's own, never a person's.",
                                 source,
@@ -155,13 +155,13 @@ public class SituationSweeper {
     final var adminOwners =
         properties.sources().keySet().stream()
             .flatMap(source -> properties.policyFor(source).stream())
-            .filter(policy -> admins.isAdmin(policy.ownerUserId()))
+            .filter(policy -> admins.isAdmin(policy.owner().userId()))
             .map(EventsProperties.Policy::source)
             .sorted()
             .toList();
     if (!adminOwners.isEmpty()) {
       throw new IllegalStateException(
-          "The owner-user-id of these event sources is listed in app.ai.admins: "
+          "The owner.user-id of these event sources is listed in app.ai.admins: "
               + String.join(", ", adminOwners)
               + ". A triage run assumes that identity and reads text whoever caused the event"
               + " wrote, so it would hand them the admin tools. Give the source an identity of its"
@@ -247,9 +247,9 @@ public class SituationSweeper {
           situation.source());
       return;
     }
-    if (isBlank(policy.ownerUserId())) {
+    if (isBlank(policy.owner().userId())) {
       log.debug(
-          "Leaving situation {} alone: {} has no owner-user-id",
+          "Leaving situation {} alone: {} has no owner.user-id",
           situation.id(),
           situation.source());
       return;
@@ -287,11 +287,17 @@ public class SituationSweeper {
               // is what makes the id honest even so.
               .requestId(attempt)
               .scenario(SCENARIO)
-              .userId(policy.ownerUserId())
+              .userId(policy.owner().userId())
               .chatId(claimed.chatId())
               .chatType(claimed.chatType())
-              .groupId(claimed.groupId())
-              .tenantId(claimed.tenantId())
+              // The owner's own group and tenant where the source named them, and only failing
+              // that the ones the situation carries. Both orders are defensible for a chat source,
+              // where the situation's ids come from the surface and are as real as any; the
+              // configured one wins because for every other source they come from an observation,
+              // and an identity the deployment wrote down should not be widened by something a
+              // webhook said. What they decide is the shared workspace the run may read and write.
+              .groupId(orElse(policy.owner().groupId(), claimed.groupId()))
+              .tenantId(orElse(policy.owner().tenantId(), claimed.tenantId()))
               // No chat memory is read or written in this scenario, so this only names the run;
               // the situation's own id is the most useful thing to name it after.
               .conversationId(claimed.id())
@@ -381,12 +387,15 @@ public class SituationSweeper {
    * The knowledge this run's automatic retrieval should look at: the source's playbook, or nothing
    * stated at all where the source configured none.
    *
-   * <p>The scope is the source's owner and only the owner — never the group or the tenant the
-   * situation carries. That is the point of stating it here rather than letting the run derive it
-   * from its own identity, and it is worth being exact about what it prevents: the group and tenant
-   * on a situation come from the observation, so a surface that reported a tenant would otherwise
-   * decide which knowledge base an unattended run reasons from, and the documents in it are the
-   * ones that say what the agent does about text somebody else wrote.
+   * <p>The scope is the owner's user and only that — never a group or a tenant, neither the ones
+   * the situation carries nor the ones the owner was configured with. That is the point of stating
+   * it here rather than letting the run derive it from its own identity, and it is worth being
+   * exact about what it prevents: the group and tenant on a situation come from the observation, so
+   * a surface that reported a tenant would otherwise decide which knowledge base an unattended run
+   * reasons from, and the documents in it are the ones that say what the agent does about text
+   * somebody else wrote. A configured {@code owner.group-id} is narrower than that but is left out
+   * for the second reason in {@code EventsProperties.Owner}: {@code WritePlaybook} writes into this
+   * scope, and a shared one is a playbook anybody in the group can author.
    *
    * <p>Returning null where there is no query, rather than a scope with nothing to look up, so that
    * a deployment which has not written a playbook gets the retrieval it had before this existed.
@@ -396,7 +405,7 @@ public class SituationSweeper {
       return null;
     }
     return new KnowledgeRetrieval(
-        new KnowledgeScope(policy.ownerUserId(), "", ""),
+        new KnowledgeScope(policy.owner().userId(), "", ""),
         playbookFilters.forSource(policy.source()),
         policy.playbook().query());
   }
@@ -448,6 +457,10 @@ public class SituationSweeper {
 
   private static boolean isBlank(final String value) {
     return value == null || value.isBlank();
+  }
+
+  private static String orElse(final String configured, final String observed) {
+    return isBlank(configured) ? observed : configured;
   }
 
   private static String describe(final Throwable error) {

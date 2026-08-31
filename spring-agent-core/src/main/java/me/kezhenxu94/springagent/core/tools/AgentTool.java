@@ -33,7 +33,7 @@ public @interface AgentTool {
    * <p><b>The identity is therefore the whole of the boundary.</b> A run that assumes an identity
    * holds whatever that identity holds, and nothing about the run can narrow it afterwards. So an
    * identity that reads text written by strangers must never be an administrator: a situation
-   * triage assumes {@code app.events.sources.<name>.owner-user-id}, and were that an admin, an
+   * triage assumes {@code app.events.sources.<name>.owner.user-id}, and were that an admin, an
    * issue body could reach {@code WritePlaybook} and rewrite the playbook the next triage is
    * steered by. {@code SituationSweeper} refuses to start on exactly that pairing, which is the
    * earliest point anyone can tell those runs apart from an administrator's own.

@@ -52,7 +52,7 @@ class EmailSourceCheckTest {
                     email(),
                     events(
                         EventsProperties.Source.builder()
-                            .ownerUserId("ou_agent")
+                            .owner(EventsProperties.Owner.builder().userId("ou_agent").build())
                             .trustedActors(List.of(".+@apache\\.org"))
                             .build())))
         .doesNotThrowAnyException();
@@ -65,7 +65,10 @@ class EmailSourceCheckTest {
             () ->
                 check(
                     email(),
-                    events(EventsProperties.Source.builder().ownerUserId("ou_agent").build())))
+                    events(
+                        EventsProperties.Source.builder()
+                            .owner(EventsProperties.Owner.builder().userId("ou_agent").build())
+                            .build())))
         .isInstanceOf(IllegalStateException.class)
         // Named in full, with an example: whoever hits this is configuring the feature for the
         // first time and the message is the only documentation in front of them.
@@ -84,7 +87,7 @@ class EmailSourceCheckTest {
                     EmailProperties.builder().enabled(true).host("imap.example.com").build(),
                     events(
                         EventsProperties.Source.builder()
-                            .ownerUserId("ou_agent")
+                            .owner(EventsProperties.Owner.builder().userId("ou_agent").build())
                             .trustedActors(List.of(".*"))
                             .build())))
         .isInstanceOf(IllegalStateException.class)
@@ -108,7 +111,7 @@ class EmailSourceCheckTest {
                     EmailProperties.builder().enabled(true).authservId("mx.example.com").build(),
                     events(
                         EventsProperties.Source.builder()
-                            .ownerUserId("ou_agent")
+                            .owner(EventsProperties.Owner.builder().userId("ou_agent").build())
                             .trustedActors(List.of(".*"))
                             .build())))
         .isInstanceOf(IllegalStateException.class)

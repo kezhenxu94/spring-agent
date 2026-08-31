@@ -64,7 +64,7 @@ import reactor.core.publisher.Flux;
       "app.events.cooldown=PT0S",
       "app.events.sweep-interval=PT1S",
       "app.events.sources.github.secret=" + EventsEndToEndTest.SECRET,
-      "app.events.sources.github.owner-user-id=ou_agent",
+      "app.events.sources.github.owner.user-id=ou_agent",
       "app.events.sources.github.route.chat-id=oc_alerts",
       "app.events.sources.github.route.chat-type=group",
       // Whose events this deployment accepts. Set here rather than left out so that the whole of
