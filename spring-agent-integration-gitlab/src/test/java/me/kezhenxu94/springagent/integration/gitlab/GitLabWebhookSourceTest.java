@@ -87,7 +87,7 @@ class GitLabWebhookSourceTest {
     assertThat(observation.summary()).contains("Disk is full").contains("tanuki");
     // Authenticated only as far as GitLab's static token goes, which is not far — see the note on
     // GitLabWebhookSource about what a trusted-actors list here is and is not worth.
-    assertThat(observation.actor()).isEqualTo("tanuki");
+    assertThat(observation.actor().authenticatedName()).isEqualTo("tanuki");
     assertThat(observation.payloadJson()).contains("\"iid\": 7");
     assertThat(observation.route().isEmpty()).isTrue();
   }
@@ -246,7 +246,7 @@ class GitLabWebhookSourceTest {
                  "user_username": "tanuki"}
                 """));
 
-    assertThat(push.orElseThrow().actor()).isEqualTo("tanuki");
+    assertThat(push.orElseThrow().actor().authenticatedName()).isEqualTo("tanuki");
   }
 
   @Test

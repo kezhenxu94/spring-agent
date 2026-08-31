@@ -395,17 +395,24 @@ for the other case, and core ships no implementation of it:
   whole definition of what counts as a redelivery), a `kind`, a `correlationKey` (what groups
   observations into one situation, computed in code and never by the model), a title, a summary, the
   raw payload, a `Route`, and an `actor`.
-- **`Observation.actor`** — who caused it, as an identity the transport can *vouch for*, for the one
-  purpose of deciding whether to admit the observation at all. `spring-agent-events` matches it
-  against `app.events.sources.<name>.trusted-actors` and drops what does not match, before anything
-  is recorded. Authenticated is the whole of the word: GitHub names the actor inside a body its HMAC
-  has already covered, so it is one; an email `From:` header is a string anybody can type, so it is
-  not. A source with no better evidence than that must report nothing here rather than something
-  plausible — reporting a name lifted from an unauthenticated part of a payload turns the allow-list
-  into a bypass, since the attacker then writes both sides of the comparison. Leave it unset where
-  the transport cannot authenticate anyone, which is the honest answer for anything
-  machine-generated. It is never routing, never the identity a run assumes, and never rendered into
-  a prompt — who caused an event is *also* still evidence, and that half belongs in `summary`.
+- **`Observation.actor`** — an `Actor`: who caused the event, and whether the transport could vouch
+  for it being them. Build it with `Actor.authenticated(name)` where the delivery's authentication
+  covers the name, `Actor.claimed(name)` where you could read a name but not check it, and leave the
+  field null where the event names nobody at all. Both factories return null for a blank name, so a
+  source can pass whatever it found.
+
+  `spring-agent-events` matches `actor.authenticatedName()` — never `actor.name()` — against
+  `app.events.sources.<name>.trusted-actors`, and drops what does not match before anything is
+  recorded. A claim therefore admits nobody: it costs nothing to report and gains an intake of your
+  own the ability to say *who* was at the door rather than only that somebody was, which is what a
+  source like email exists to tell you. What must never happen is a name you merely read being
+  passed to `Actor.authenticated` — that turns every allow-list in the deployment into a bypass,
+  since the attacker then writes both sides of the comparison. GitHub names the actor inside a body
+  its HMAC has already covered, so that one is authenticated; an email `From:` header is a string
+  anybody can type, so that one is a claim whatever it says.
+
+  An actor is never routing, never the identity a run assumes, and never rendered into a prompt as a
+  fact — who caused an event is *also* still evidence, and that half belongs in `summary`.
 - **`Route`** — where a run about this may talk, and in whose scope. An observation's route is its
   own and is never filled in from configuration: a chat message knows the chat it came from, an alert
   knows nowhere, and a run about the latter reaches people through what it was told to do rather than
@@ -433,8 +440,8 @@ eventIntakes.observe(
         .kind("incident.opened")
         .correlationKey("incident:" + incidentId)
         .title(incident.title())
-        .summary(oneLine(incident))   // who caused it goes here, as evidence
-        .actor(authenticatedCaller)   // and here only if you can vouch for the name; else omit
+        .summary(oneLine(incident))              // who caused it goes here, as evidence
+        .actor(Actor.authenticated(caller))      // Actor.claimed(caller) if you cannot vouch for it
         .payloadJson(raw)
         .route(Route.builder().chatId(chatId).chatType("group").build())
         .build());
@@ -553,7 +560,7 @@ binary breaks at runtime while the JVM build passes.
 | `spring-agent-integration-github` | Reads GitHub webhook deliveries as observations |
 | `spring-agent-integration-gitlab` | The same for GitLab |
 | `spring-agent-integration-grafana` | The same for Grafana alert notifications |
-| `spring-agent-integration-email` | A watched IMAP mailbox as observations. Not a webhook: it dials out and holds the connection, so it carries its own `app.email.enabled` on top of `app.events.enabled`. Accepts only senders DKIM authenticated, and refuses to start without a `trusted-actors` list |
+| `spring-agent-integration-email` | A watched IMAP mailbox as observations. Not a webhook: it dials out and holds the connection, so it carries its own `app.email.enabled` on top of `app.events.enabled`. Reports every message it reads, with an `actor` only where DKIM vouched for the sender, so an intake of your own can hear about mail from a stranger; refuses to start without a `trusted-actors` list, which is what keeps such a message out of a triage run |
 | `spring-agent-integration-feishu` | Feishu/Lark chats and cards as an agent surface, plus its docs, sheets, base and wiki tools, and drive import/export |
 | `spring-agent-integration-slack` | Slack channels and Block Kit messages as an agent surface: streaming replies, a stop button, an asynchronous question form, greetings, chat observation and the message/channel/file tools. Written against Bolt, the Slack SDK's own application framework, over a Socket Mode connection |
 | `spring-agent-rag-milvus` | The knowledge base, and the only implementation of core's `KnowledgeBase` |

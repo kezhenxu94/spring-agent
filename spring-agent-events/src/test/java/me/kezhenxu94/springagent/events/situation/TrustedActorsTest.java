@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
+import me.kezhenxu94.springagent.core.observing.Actor;
 import me.kezhenxu94.springagent.events.config.EventsProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -46,13 +47,13 @@ class TrustedActorsTest {
   @Test
   @DisplayName("an actor the deployment named is let through")
   void shouldTrustANamedActor() {
-    assertThat(trusting("octocat").trusts("github", "octocat")).isTrue();
+    assertThat(trusting("octocat").trusts("github", Actor.authenticated("octocat"))).isTrue();
   }
 
   @Test
   @DisplayName("anybody else is not")
   void shouldNotTrustAnyoneElse() {
-    assertThat(trusting("octocat").trusts("github", "mallory")).isFalse();
+    assertThat(trusting("octocat").trusts("github", Actor.authenticated("mallory"))).isFalse();
   }
 
   @Test
@@ -63,9 +64,9 @@ class TrustedActorsTest {
     // The case this exists for. Under find() every one of these would be admitted, because the
     // trusted name appears somewhere inside them — and registering such a name costs an attacker
     // nothing.
-    assertThat(actors.trusts("github", "evil-octocat")).isFalse();
-    assertThat(actors.trusts("github", "octocat-evil")).isFalse();
-    assertThat(actors.trusts("github", "notoctocatreally")).isFalse();
+    assertThat(actors.trusts("github", Actor.authenticated("evil-octocat"))).isFalse();
+    assertThat(actors.trusts("github", Actor.authenticated("octocat-evil"))).isFalse();
+    assertThat(actors.trusts("github", Actor.authenticated("notoctocatreally"))).isFalse();
   }
 
   @Test
@@ -73,16 +74,18 @@ class TrustedActorsTest {
   void shouldTrustAnyOfSeveral() {
     final var actors = trusting("octocat", "dependabot\\[bot\\]");
 
-    assertThat(actors.trusts("github", "octocat")).isTrue();
-    assertThat(actors.trusts("github", "dependabot[bot]")).isTrue();
-    assertThat(actors.trusts("github", "mallory")).isFalse();
+    assertThat(actors.trusts("github", Actor.authenticated("octocat"))).isTrue();
+    assertThat(actors.trusts("github", Actor.authenticated("dependabot[bot]"))).isTrue();
+    assertThat(actors.trusts("github", Actor.authenticated("mallory"))).isFalse();
   }
 
   @Test
   @DisplayName("case is ignored, since the identities being matched ignore it too")
   void shouldIgnoreCase() {
-    assertThat(trusting("octocat").trusts("github", "OctoCat")).isTrue();
-    assertThat(trusting(".+@apache\\.org").trusts("github", "Someone@Apache.ORG")).isTrue();
+    assertThat(trusting("octocat").trusts("github", Actor.authenticated("OctoCat"))).isTrue();
+    assertThat(
+            trusting(".+@apache\\.org").trusts("github", Actor.authenticated("Someone@Apache.ORG")))
+        .isTrue();
   }
 
   @Test
@@ -90,8 +93,8 @@ class TrustedActorsTest {
   void shouldTrustEveryoneWhenAsked() {
     final var actors = trusting(".*");
 
-    assertThat(actors.trusts("github", "octocat")).isTrue();
-    assertThat(actors.trusts("github", "anybody-at-all")).isTrue();
+    assertThat(actors.trusts("github", Actor.authenticated("octocat"))).isTrue();
+    assertThat(actors.trusts("github", Actor.authenticated("anybody-at-all"))).isTrue();
   }
 
   @Test
@@ -102,7 +105,7 @@ class TrustedActorsTest {
     // exist to avoid; SituationSweeper is what says so out loud instead.
     final var actors = compiled(withActors(null));
 
-    assertThat(actors.trusts("github", "anybody")).isTrue();
+    assertThat(actors.trusts("github", Actor.authenticated("anybody"))).isTrue();
     assertThat(actors.trusts("github", null)).isTrue();
   }
 
@@ -111,7 +114,8 @@ class TrustedActorsTest {
   void shouldTreatAnEmptyListAsUnset() {
     // The binder hands back an empty list for a key written with nothing under it. Meaning "trust
     // nobody" there would turn a typo into a source that silently receives nothing at all.
-    assertThat(compiled(withActors(List.of())).trusts("github", "anybody")).isTrue();
+    assertThat(compiled(withActors(List.of())).trusts("github", Actor.authenticated("anybody")))
+        .isTrue();
   }
 
   @Test
@@ -122,7 +126,10 @@ class TrustedActorsTest {
     // Grafana's case: machine-generated, no actor to report. Even '.*' does not admit it, because
     // the question is not whether the name matches but whether there is a name anybody vouched for.
     assertThat(actors.trusts("github", null)).isFalse();
-    assertThat(actors.trusts("github", "   ")).isFalse();
+    // And email's case: a name the source could read but not check. It matches '.*' as readily as
+    // any other string, which is exactly why what is matched is the authenticated name and not the
+    // claimed one — an allow-list fed a claim admits whoever writes the claim.
+    assertThat(actors.trusts("github", Actor.claimed("octocat"))).isFalse();
   }
 
   @Test
@@ -131,8 +138,8 @@ class TrustedActorsTest {
     // The patterns are the operator's and trusted; what they are run over is the payload's. A
     // pattern nobody thought was dangerous can take time exponential in the subject's length, so
     // the subject is bounded before it is ever offered to one.
-    assertThat(trusting(".*").trusts("github", "a".repeat(321))).isFalse();
-    assertThat(trusting(".*").trusts("github", "a".repeat(320))).isTrue();
+    assertThat(trusting(".*").trusts("github", Actor.authenticated("a".repeat(321)))).isFalse();
+    assertThat(trusting(".*").trusts("github", Actor.authenticated("a".repeat(320)))).isTrue();
   }
 
   @Test
@@ -152,6 +159,6 @@ class TrustedActorsTest {
     // There is no global list, and this is why: 'octocat' is a GitHub login and means nothing as an
     // email address. A source with no rule of its own is unfiltered rather than filtered by
     // somebody else's vocabulary.
-    assertThat(trusting("octocat").trusts("grafana", "whoever")).isTrue();
+    assertThat(trusting("octocat").trusts("grafana", Actor.authenticated("whoever"))).isTrue();
   }
 }

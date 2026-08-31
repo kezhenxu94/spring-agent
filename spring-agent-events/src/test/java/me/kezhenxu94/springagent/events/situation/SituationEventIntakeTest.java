@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.dao.models.Situation;
+import me.kezhenxu94.springagent.core.observing.Actor;
 import me.kezhenxu94.springagent.core.observing.Observation;
 import me.kezhenxu94.springagent.core.observing.Route;
 import me.kezhenxu94.springagent.events.config.EventsProperties;
@@ -303,7 +304,7 @@ class SituationEventIntakeTest {
     final var strict = trusted("octocat");
     final var intake = intake(strict);
 
-    intake.observe(alert("d1").actor("mallory").build());
+    intake.observe(alert("d1").actor(Actor.authenticated("mallory")).build());
 
     assertThat(repos.situations.all()).isEmpty();
     // The same reasoning as the unconfigured source above, and it bites harder here. A claim never
@@ -312,7 +313,8 @@ class SituationEventIntakeTest {
     // something already seen.
     assertThat(repos.claims.size()).isZero();
 
-    intake(trusted("octocat", "mallory")).observe(alert("d1").actor("mallory").build());
+    intake(trusted("octocat", "mallory"))
+        .observe(alert("d1").actor(Actor.authenticated("mallory")).build());
 
     assertThat(repos.situations.all()).hasSize(1);
   }
@@ -320,7 +322,7 @@ class SituationEventIntakeTest {
   @Test
   @DisplayName("a trusted actor is recorded as any other observation is")
   void shouldRecordATrustedActor() {
-    intake(trusted("octocat")).observe(alert("d1").actor("octocat").build());
+    intake(trusted("octocat")).observe(alert("d1").actor(Actor.authenticated("octocat")).build());
 
     assertThat(repos.situations.all()).hasSize(1);
     assertThat(repos.events.size()).isEqualTo(1);

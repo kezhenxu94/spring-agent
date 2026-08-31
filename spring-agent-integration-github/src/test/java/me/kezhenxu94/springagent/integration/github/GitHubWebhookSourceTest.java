@@ -136,7 +136,7 @@ class GitHubWebhookSourceTest {
     // The same name twice over, and not a duplication: the summary is evidence a reader wants
     // first, while the actor is the fact admission is decided on. GitHub's HMAC has covered the
     // body by the time this runs, which is what makes the second one worth anything.
-    assertThat(observation.actor()).isEqualTo("octocat");
+    assertThat(observation.actor().authenticatedName()).isEqualTo("octocat");
     assertThat(observation.payloadJson()).contains("\"number\": 7");
     // A webhook knows nowhere to talk; the route comes from configuration.
     assertThat(observation.route().isEmpty()).isTrue();

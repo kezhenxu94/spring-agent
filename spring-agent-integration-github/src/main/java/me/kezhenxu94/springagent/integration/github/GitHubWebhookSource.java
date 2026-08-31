@@ -9,6 +9,7 @@ import java.util.Optional;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.observing.Actor;
 import me.kezhenxu94.springagent.core.observing.Observation;
 import me.kezhenxu94.springagent.events.source.WebhookDelivery;
 import me.kezhenxu94.springagent.events.source.WebhookSource;
@@ -158,12 +159,12 @@ public class GitHubWebhookSource implements WebhookSource {
             .correlationKey(correlationKey(repository, number, workflow, event))
             .title(title(repository, number, workflow, kind))
             .summary(summary(root, kind, repository, number))
-            // Reported as an identity, not only as evidence, because here it is one: verify() has
-            // covered the whole body with GitHub's HMAC by the time this runs, so sender.login is a
-            // name GitHub attests to rather than one the payload merely contains. That is the
-            // difference Observation#actor turns on, and it is what makes a trusted-actors list for
-            // this source a real check rather than a formality.
-            .actor(actor(root))
+            // Authenticated, not merely claimed, because here it is: verify() has covered the whole
+            // body with GitHub's HMAC by the time this runs, so sender.login is a name GitHub
+            // attests to rather than one the payload merely contains. That is the difference
+            // Actor.authenticated turns on, and it is what makes a trusted-actors list for this
+            // source a real check rather than a formality.
+            .actor(Actor.authenticated(actor(root)))
             .payloadJson(body)
             // observedAt is left to default to now on purpose. The payload's timestamps
             // (created_at, updated_at) belong to the object the event is about, not to the event: a

@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import lombok.extern.slf4j.Slf4j;
-import me.kezhenxu94.springagent.core.observing.Observation;
+import me.kezhenxu94.springagent.core.observing.Actor;
 import me.kezhenxu94.springagent.events.config.EventsProperties;
 import org.springframework.stereotype.Component;
 
@@ -36,11 +36,11 @@ import org.springframework.stereotype.Component;
  * morning.
  *
  * <p><b>Only as strong as the authentication under it.</b> This compares against {@link
- * Observation#actor()}, which a source reports only where it can vouch for the name — inside a body
- * GitHub's HMAC has already covered, say. Where a source reports a name it merely read, the
- * attacker writes both sides of the comparison and this is worse than nothing, having converted
- * "obviously untrusted" into "trusted". That obligation is on the source, and is written down on
- * {@code Observation#actor()} where a source author will meet it.
+ * Actor#authenticatedName()} and never against {@link Actor#name()}: a name a source merely read
+ * off a payload would let the attacker write both sides of the comparison, which is worse than
+ * nothing, having converted "obviously untrusted" into "trusted". Whether a name is one or the
+ * other is the source's to say honestly, and is written down on {@link Actor} where a source author
+ * will meet it.
  */
 @Slf4j
 @Component
@@ -102,9 +102,11 @@ public class TrustedActors {
    * <p>Answered for every observation before it is recorded, so it must be cheap and must not
    * throw.
    *
-   * @param actor an identity the transport authenticated, or null where it could not
+   * @param actor who the observation says caused it, or null where it names nobody. An actor
+   *     nothing vouched for is refused as surely as a name that matched no pattern — {@link
+   *     Actor#authenticatedName()} is the only thing this compares against.
    */
-  public boolean trusts(final String source, final String actor) {
+  public boolean trusts(final String source, final Actor actor) {
     final var configured = source == null ? null : patterns.get(source);
     if (configured == null) {
       // Everyone, and deliberately. See EventsProperties.Source#trustedActors for why the
@@ -112,7 +114,7 @@ public class TrustedActors {
       // startup.
       return true;
     }
-    if (actor == null || actor.isBlank()) {
+    if (actor == null) {
       // A source that authenticates nobody, asked to admit only certain people, can admit none of
       // them — the honest answer, and a total silence that has to announce itself. Grafana is the
       // case: it is machine-generated and has no actor to report, so a list configured for it drops
@@ -120,22 +122,31 @@ public class TrustedActors {
       // knowable from configuration; said once here instead, where it is.
       if (warned.add(source)) {
         log.warn(
-            "{} reports no authenticated actor, so app.events.sources.{}.trusted-actors rejects"
-                + " everything it sends. Remove the setting if this source is trusted whole.",
+            "{} reports no actor at all, so app.events.sources.{}.trusted-actors rejects everything"
+                + " it sends. Remove the setting if this source is trusted whole.",
             source,
             source);
       }
       return false;
     }
-    if (actor.length() > MAX_ACTOR_LENGTH) {
-      log.warn("Ignoring an implausibly long actor from {}: {} characters", source, actor.length());
+    final var name = actor.authenticatedName();
+    if (name == null) {
+      // Not warned about once per source, unlike the case above: a source that can authenticate
+      // reports plenty of both, and this one is a fact about the event rather than about the
+      // deployment's configuration. What was claimed is on the line because it is the whole of what
+      // a reader wants — mail from a stranger is the case this exists for.
+      log.debug("{} vouches for nobody as the sender of this one, which claims {}", source, actor);
+      return false;
+    }
+    if (name.length() > MAX_ACTOR_LENGTH) {
+      log.warn("Ignoring an implausibly long actor from {}: {} characters", source, name.length());
       return false;
     }
     // matches() and never find(): a pattern has to account for the whole name. Under find() the
     // obvious way to write an allow-list — the colleague's login, unanchored — would also admit
     // anybody who registered a name with it somewhere inside, which is an allow-list that admits
     // whoever thinks to ask.
-    return configured.stream().anyMatch(pattern -> pattern.matcher(actor).matches());
+    return configured.stream().anyMatch(pattern -> pattern.matcher(name).matches());
   }
 
   private List<Pattern> compile(final String source, final List<String> actors) {

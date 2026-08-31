@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.observing.Actor;
 import me.kezhenxu94.springagent.core.observing.Observation;
 import me.kezhenxu94.springagent.events.source.WebhookDelivery;
 import me.kezhenxu94.springagent.events.source.WebhookSource;
@@ -124,7 +125,7 @@ public class GitLabWebhookSource implements WebhookSource {
             .summary(summary(root, kind, project, iid))
             // As authenticated as anything else GitLab sends, which is to say by a static token
             // rather than by a signature — see the note on this class about what that is worth.
-            .actor(actor(root))
+            .actor(Actor.authenticated(actor(root)))
             .payloadJson(body)
             // Left to default to now, as with GitHub: the payload's created_at belongs to the issue
             // or merge request, not to this event about it.

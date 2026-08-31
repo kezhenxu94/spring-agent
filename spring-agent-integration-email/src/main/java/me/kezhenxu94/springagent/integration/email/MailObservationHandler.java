@@ -18,12 +18,17 @@ import org.springframework.messaging.MessageHandler;
  * plain {@link MessageHandler} on a direct channel rather than a flow, so the seam between the two
  * is one method.
  *
- * <p><b>This is where the sender has to be somebody.</b> {@link MailObservations} reads every
- * message and says who vouched for it, and this is what refuses to pass on a message nobody did.
- * The two are separate so that reading a mailbox stays usable on its own — an application embedding
- * this module may want an observation for every message that arrives, to log or count or warn on —
- * while the rule about whose mail may reach the agent is applied in one place, on the path that
- * leads to a run.
+ * <p><b>Reports every message, and decides about none of them.</b> {@link MailObservations} says
+ * whether anybody vouched for the sender by reporting an authenticated actor or a merely claimed
+ * one, and this passes on what it made either way, as every other source in this runtime does.
+ * Whose mail may wake the agent is one question answered in one place — {@code TrustedActors},
+ * against {@code app.events.sources.email.trusted-actors}, which refuses an actor nothing vouched
+ * for and which {@code EmailAutoConfiguration.EmailSourceCheck} refuses to start without. Dropping
+ * here as well would put a second silencer on the path, and in the one spot that silences it for
+ * every intake at once: an application reading this mailbox for a purpose of its own — counting
+ * what arrives, warning about mail from a stranger — would never see the messages it exists to warn
+ * about. An intake that wants the deployment's own answer rather than its own asks {@code
+ * TrustedActors}, which is a bean.
  *
  * <p>Never throws. An exception here would travel back up the adapter's dispatch and, depending on
  * how the adapter is feeling about it, either be logged as an error event or leave the message
@@ -58,16 +63,14 @@ public class MailObservationHandler implements MessageHandler {
       }
       final var uid = uids.getUID(mail);
       final var observation = observations.of(mail, uids.getUIDValidity(), uid);
-      if (observation.actor() == null) {
-        // Why is said by SenderIdentity, which has the detail. This says that a message was here
-        // at all, so that "nothing happened" can be told apart from "nothing arrived" — the two
-        // look identical from outside and want entirely different things looked at.
-        log.info("Read message {} in {}, and reported nothing", uid, properties.folder());
-        return;
-      }
       // At info because the whole point of the source is that this happened, and because it is one
       // line per message rather than per poll: a mailbox busy enough for this to be noise is one
       // busy enough that the situations it opens are the noise instead.
+      //
+      // The actor prints the address either way and marks it unverified where nothing vouched for
+      // it, which is what makes the line useful for the case it is usually read in: mail that
+      // arrived and went no further, where the question is who was trying. Why nobody vouched for
+      // it is said by SenderIdentity, which has the detail.
       log.info("Reporting message {} in {} from {}", uid, properties.folder(), observation.actor());
       intakes.observe(observation);
     } catch (Exception e) {

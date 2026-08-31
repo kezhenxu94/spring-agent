@@ -26,11 +26,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.messaging.support.GenericMessage;
 
 /**
- * The gate: which of the messages read here may go on to become a situation.
+ * What reaches the intakes, which is everything read here.
  *
- * <p>Worth a test of its own rather than left to {@code MailObservationsTest}, because an
- * observation existing and an observation being reported are now two different things, and it is
- * the second one that decides whether a stranger can put work in front of the agent.
+ * <p>Worth a test of its own rather than left to {@code MailObservationsTest}, because the handler
+ * is where a gate would be if there were one, and the case below saying an unvouched message is
+ * still reported is what keeps one from growing back. The rule about whose mail wakes the agent
+ * lives in {@code TrustedActorsTest}, and dropping here too would take the message away from every
+ * other intake as well.
  */
 class MailObservationHandlerTest {
 
@@ -74,19 +76,27 @@ class MailObservationHandlerTest {
 
     assertThat(reported)
         .singleElement()
-        .satisfies(o -> assertThat(o.actor()).isEqualTo("someone@apache.org"));
+        .satisfies(o -> assertThat(o.actor().authenticatedName()).isEqualTo("someone@apache.org"));
   }
 
   @Test
-  @DisplayName("a message nobody vouched for reaches no intake")
-  void shouldNotReportAnUnvouchedMessage() throws Exception {
-    // The observation for it is made all the same — see MailObservationsTest — and stops here.
-    // A mailbox is reachable by anybody who learns the address, so this is the whole of what
-    // stands between the internet and a triage run.
+  @DisplayName("a message nobody vouched for is reported too, as a claim")
+  void shouldReportAnUnvouchedMessageAsAClaim() throws Exception {
+    // An intake that watches this mailbox for its own reasons is entitled to hear about mail from a
+    // stranger — that is often the whole of what it is watching for, and it wants the address. What
+    // keeps such a message away from a triage run is TrustedActors refusing an actor with no
+    // authenticated name, one layer on.
     final var mail = mail("From: mallory@attacker.example\nSubject: x\n\nbody\n");
 
     handler.handleMessage(new GenericMessage<>(mail));
 
-    assertThat(reported).isEmpty();
+    assertThat(reported)
+        .singleElement()
+        .satisfies(
+            o -> {
+              assertThat(o.actor().name()).isEqualTo("mallory@attacker.example");
+              assertThat(o.actor().authenticated()).isFalse();
+              assertThat(o.actor().authenticatedName()).isNull();
+            });
   }
 }
