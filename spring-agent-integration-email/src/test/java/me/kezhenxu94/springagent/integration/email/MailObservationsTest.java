@@ -7,6 +7,7 @@ import jakarta.mail.internet.MimeMessage;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Properties;
+import me.kezhenxu94.springagent.core.observing.Actor;
 import me.kezhenxu94.springagent.integration.email.config.EmailProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,7 +39,10 @@ class MailObservationsTest {
 
     assertThat(observation.source()).isEqualTo("email");
     assertThat(observation.kind()).isEqualTo("mail.received");
-    assertThat(observation.actor()).isEqualTo("someone@apache.org");
+    assertThat(observation.actor())
+        .isEqualTo(Actor.authenticated("someone@apache.org"))
+        .extracting(Actor::authenticatedName)
+        .isEqualTo("someone@apache.org");
     assertThat(observation.title()).isEqualTo("the build is red");
     assertThat(observation.summary()).contains("someone@apache.org").contains("the build is red");
     // A webhook knows nowhere to talk, and neither does a mailbox. Nothing replies to a sender.
@@ -46,16 +50,18 @@ class MailObservationsTest {
   }
 
   @Test
-  @DisplayName("a message nobody vouched for is read, and has no actor")
-  void shouldReadAnUnvouchedMessageWithoutAnActor() throws Exception {
+  @DisplayName("a message nobody vouched for is read, and its sender is claimed rather than known")
+  void shouldReadAnUnvouchedMessageWithAClaimedActor() throws Exception {
     // Mapping is not policy: the observation is made so that somebody embedding this module can
-    // log or count what arrives, and the actor is null so that MailObservationHandler — and
-    // TrustedActors after it — can tell "nobody vouched for this" from "somebody we don't want".
+    // log or count or warn on what arrives, and it names the sender so they can say who was at the
+    // door — while authenticatedName() staying null is what lets TrustedActors tell "nobody
+    // vouched for this" from "somebody we don't want".
     final var unsigned = message("From: mallory@attacker.example\nSubject: hello\n\nbody\n");
 
     final var observation = observations.of(unsigned, 42L, 7L);
 
-    assertThat(observation.actor()).isNull();
+    assertThat(observation.actor()).isEqualTo(Actor.claimed("mallory@attacker.example"));
+    assertThat(observation.actor().authenticatedName()).isNull();
     // Keyed on the uid alone: the address it claims is nobody's fact but its author's.
     assertThat(observation.correlationKey()).isEqualTo("email:42/7");
     // And still carried as evidence, which is all an unauthenticated From has ever been.

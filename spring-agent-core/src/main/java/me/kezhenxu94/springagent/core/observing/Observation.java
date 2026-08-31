@@ -35,24 +35,13 @@ import lombok.Builder;
  * @param route where a run about this may talk, where the observation itself knows — a chat
  *     observation does, a webhook does not and takes it from configuration. Null means it knows
  *     nowhere.
- * @param actor who caused it, as an identity the transport can <em>vouch for</em>, for the one
- *     purpose of deciding whether to admit this observation at all. Blank where the transport
- *     cannot authenticate one, which is the honest answer for an alerting webhook and for anything
- *     machine-generated.
- *     <p>Authenticated is the whole of the word. GitHub names the actor inside a body an HMAC has
- *     already covered, so it is one; an email {@code From:} header is a string anybody can type, so
- *     it is not, and a source with no better evidence than that must report nothing here rather
- *     than something plausible. Reporting a name lifted from an unauthenticated part of a payload
- *     turns the allow-list this feeds into a bypass, since the attacker writes both sides of the
- *     comparison.
- *     <p>Read by {@code TrustedActors} against {@code app.events.sources.<source>.trusted-actors}
- *     and by nothing else. It is never routing, never the identity a run assumes, and never
- *     rendered into a prompt.
- *     <p>Which is why who caused the event is <em>also</em> still in {@link #summary}, and why that
- *     is not a duplication to tidy away. The two say different things: this one is a fact we
- *     established and act on, that one is the display name whoever caused the event chose for
- *     themselves — evidence like the rest of the payload, shown to the model as such. The identity
- *     a triage run assumes is neither of them, for the reasons in {@code SituationTriageScenario}.
+ * @param actor who caused it, and whether the transport could vouch for it being them — see {@link
+ *     Actor}, which is where the difference between the two is kept and why a decision may only be
+ *     made on one of them. Null where the event names nobody at all, which is the honest answer for
+ *     an alerting webhook and for anything machine-generated.
+ *     <p>Read for a decision by {@code TrustedActors}, against {@code
+ *     app.events.sources.<source>.trusted-actors}, and by nothing else. Read as evidence by
+ *     whatever intake an application wrote for reasons of its own.
  */
 @Builder
 public record Observation(
@@ -65,7 +54,7 @@ public record Observation(
     String payloadJson,
     Instant observedAt,
     Route route,
-    String actor) {
+    Actor actor) {
 
   public Observation {
     source = requireText(source, "source");
@@ -76,9 +65,10 @@ public record Observation(
     // every observation becomes a situation of its own and the debounce protects nothing.
     observedAt = observedAt == null ? Instant.now() : observedAt;
     route = route == null ? Route.NONE : route;
-    // Not defaulted and not required: absent is a real answer, and it means the opposite of the
-    // empty string meaning "nobody". It means this transport cannot tell us, which is what
-    // TrustedActors has to be able to distinguish from an actor it was given and did not like.
+    // actor is not defaulted and not required: absent is a real answer and means the event names
+    // nobody, which TrustedActors has to be able to tell apart from an actor it was given and did
+    // not like. An actor that is there but unverified is a third answer again, and is Actor's to
+    // carry rather than this record's to encode in a null.
   }
 
   private static String requireText(final String value, final String name) {

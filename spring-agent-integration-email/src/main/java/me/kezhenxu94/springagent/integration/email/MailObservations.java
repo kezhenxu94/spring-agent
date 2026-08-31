@@ -9,6 +9,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.observing.Actor;
 import me.kezhenxu94.springagent.core.observing.Observation;
 import me.kezhenxu94.springagent.integration.email.config.EmailProperties;
 import tools.jackson.databind.json.JsonMapper;
@@ -49,13 +50,12 @@ public class MailObservations {
   /**
    * The observation for {@code message} — every message, whether anybody vouched for it or not.
    *
-   * <p>Authentication is reported here rather than acted on: {@link Observation#actor()} is the
-   * sender where DKIM vouched for one and null where nothing did, which is the difference {@code
-   * TrustedActors} needs between an actor it was given and did not like and no actor at all. What
-   * to do about it belongs to the caller — {@link MailObservationHandler} drops an unvouched
-   * message before any intake sees it, and a consumer embedding this module gets an observation for
-   * every message read, which is what makes logging or alerting on the mailbox possible without
-   * involving the agent at all.
+   * <p>Authentication is reported here rather than acted on: {@link Observation#actor()} is an
+   * {@link Actor#authenticated} sender where DKIM vouched for one and an {@link Actor#claimed} one
+   * — the address in {@code From}, which anybody may write — where nothing did. Both are reported,
+   * because an intake watching this mailbox for reasons of its own usually wants to know who was at
+   * the door rather than only that somebody was. What keeps an unvouched message away from the
+   * agent is {@code TrustedActors} refusing an actor with no authenticated name, one layer on.
    *
    * <p>What that costs is that mail nobody vouched for is parsed and its body reduced before it is
    * thrown away. Bounded rather than open-ended: {@code app.email.max-body-length} caps the text
@@ -70,8 +70,9 @@ public class MailObservations {
     // What the message says about itself, for the parts of an observation that are evidence. On the
     // authenticated path it is the same string as the sender above, since a DKIM verdict vouches
     // for the address as written; on any other it is a name nobody checked, and it stays out of the
-    // actor and out of the correlation key for exactly that reason.
-    final var from = SenderIdentity.claimedFrom(message).orElse(UNKNOWN_SENDER);
+    // correlation key for exactly that reason.
+    final var claimed = SenderIdentity.claimedFrom(message).orElse(null);
+    final var from = claimed == null ? UNKNOWN_SENDER : claimed;
     final var subject = subjectOf(message);
     final var body = MessageText.bodyOf(message, properties.maxBodyLength());
 
@@ -83,7 +84,10 @@ public class MailObservations {
         .correlationKey(correlationKey(sender, message, uidValidity, uid))
         .title(subject.isBlank() ? "Mail from " + from : subject)
         .summary(summary(from, subject, body))
-        .actor(sender)
+        // Authenticated where DKIM vouched, claimed where it did not, and absent only for a message
+        // naming no single sender at all. The stand-in used for display above is deliberately not
+        // reported here: "(unknown sender)" is a phrase of ours, and an actor is the event's.
+        .actor(sender == null ? Actor.claimed(claimed) : Actor.authenticated(sender))
         .payloadJson(payload(from, subject, body))
         // Left to default to now, not the Date header. Date is written by the sender, and a
         // backdated one would land an observation already older than the quiet period that
