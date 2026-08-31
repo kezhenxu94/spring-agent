@@ -29,7 +29,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>For the same reason the reverse pairing is refused outright: an identity that reads text
  * written by strangers must never be listed here, because a run assuming it holds whatever it
- * holds. {@code SituationSweeper} will not start when an event source's {@code owner-user-id} is
+ * holds. {@code SituationSweeper} will not start when an event source's {@code owner.user-id} is
  * one of these.
  *
  * <p>Membership is by the surface's own user id, which is whatever that surface puts on a request:

@@ -199,7 +199,7 @@ public record EventsProperties(
         new Policy(
             source,
             pick(configured.secret(), builtIn.secret(), null),
-            configured.ownerUserId(),
+            pick(configured.owner(), builtIn.owner(), Owner.NONE),
             pick(configured.route(), builtIn.route(), Route.NONE),
             pick(configured.playbook(), builtIn.playbook(), playbook),
             // No global layer, unlike every line around it. See Source#trustedActors.
@@ -245,14 +245,14 @@ public record EventsProperties(
    * @param enabled set false to keep a configured source's settings while turning it off
    * @param secret the shared secret or token the source authenticates with. What it means is the
    *     source's business: an HMAC key for GitHub, a token compared whole for GitLab and Grafana.
-   * @param ownerUserId the identity a triage run for this source assumes, and the knowledge base
-   *     its playbook is read from. Must be an identity of its own and not a person's — see {@code
-   *     SituationTriageScenario} for what a run inherits from it.
+   * @param owner the identity a triage run for this source assumes. Must be an identity of the
+   *     agent's own and not a person's — see {@code SituationTriageScenario} for what a run
+   *     inherits from it, and {@link Owner} for what the three ids each buy.
    * @param route where to report that a triage run for this source *failed*, and nothing else. Not
    *     where the agent talks: a run that works reaches people the way its playbook says to, and an
    *     observation's own route — the chat a message came from — is never filled in from here.
-   * @param playbook which of {@code ownerUserId}'s documents say how to deal with this source's
-   *     events, and what to look them up with
+   * @param playbook which of the owner's documents say how to deal with this source's events, and
+   *     what to look them up with
    * @param trustedActors whose events this source is willing to be told about, as regular
    *     expressions matched against {@link
    *     me.kezhenxu94.springagent.core.observing.Observation#actor()}. Compiled at startup by
@@ -277,7 +277,7 @@ public record EventsProperties(
   public record Source(
       Boolean enabled,
       String secret,
-      String ownerUserId,
+      Owner owner,
       Route route,
       Playbook playbook,
       List<String> trustedActors,
@@ -289,6 +289,55 @@ public record EventsProperties(
       String triagePrompt) {}
 
   /**
+   * Who a triage run for a source is, which is the whole of its identity rather than only its
+   * account: the agent's own user, and the group and tenant that user acts within where the
+   * deployment has them.
+   *
+   * <p>A record rather than three fields on {@link Source} because the three are one answer, and
+   * because it is the same answer {@code AgentRequest} wants — a run is given a user, a group and a
+   * tenant together, and what each buys is decided elsewhere from all three: the workspace it can
+   * read and write ({@code UserWorkspaceFactory#forRequest}), and what {@code SearchKnowledge}
+   * reaches. A source that names only {@code user-id} therefore gets exactly what it got before
+   * this record existed — the agent's personal home and nothing shared.
+   *
+   * <p>Overridden whole, like {@code route} and {@code playbook}: an identity is not something to
+   * assemble from layers, and a group inherited from somewhere else while the user came from here
+   * would be a run acting as a pairing nobody wrote down.
+   *
+   * <p><b>Not what the playbook is read from.</b> That stays {@code userId} alone, in {@code
+   * SituationSweeper#playbookFor} and in {@code PlaybookTools} — see {@link Playbook}. These
+   * documents say what the agent does about text an attacker can write, and {@code WritePlaybook}
+   * writes them, so widening the base to a group would let anyone who can write into that group's
+   * knowledge base author what every later unattended run is steered by. What the group and tenant
+   * do reach is the {@code SearchKnowledge} tool, which is a lookup the agent chooses to make
+   * rather than one it is handed.
+   *
+   * @param userId the account the run logs in as. Its personal workspace, its MCP servers, its
+   *     knowledge base. The one id with no sane default; {@code SituationSweeper} says at startup
+   *     when a configured source has none, because the symptom otherwise is a situation that
+   *     quietly never gets evaluated.
+   * @param groupId the group that identity acts within, or blank where it belongs to none. Opaque,
+   *     and meaningful only to whatever surface issues such ids — a Feishu chat id, a Slack
+   *     channel.
+   * @param tenantId the tenant/enterprise it belongs to, or blank where the deployment has no
+   *     tenant concept. Stated here rather than taken from the situation on purpose: a situation's
+   *     tenant comes from the observation, so a surface that reported one would otherwise choose
+   *     which shared workspace an unattended run reads and writes. See {@code Route}.
+   */
+  @lombok.Builder
+  public record Owner(String userId, String groupId, String tenantId) {
+
+    public Owner {
+      userId = blankToNull(userId);
+      groupId = blankToNull(groupId);
+      tenantId = blankToNull(tenantId);
+    }
+
+    /** What a source that named nobody has, so that nothing downstream has to check for null. */
+    public static final Owner NONE = new Owner(null, null, null);
+  }
+
+  /**
    * How a triage run finds what this deployment has written down about dealing with a source's
    * events.
    *
@@ -296,9 +345,10 @@ public record EventsProperties(
    * matters, what to check first, who to tell, when to stay silent — is prose, and because it is
    * then editable by the people who know it without a deployment. This record is only the lookup.
    *
-   * <p>The base looked in is always the one owned by the source's {@code ownerUserId} alone, never
-   * the group or tenant an incoming event happens to name. That is not configurable, and the reason
-   * is that these documents decide what the agent does about text an attacker can write.
+   * <p>The base looked in is always the one owned by the source's {@code owner.user-id} alone,
+   * never a group or tenant — neither the ones an incoming event happens to name nor the ones the
+   * owner itself was configured with. That is not configurable, and the reason is that these
+   * documents decide what the agent does about text an attacker can write.
    *
    * <p>Both fields are stated by a deployment and neither is guessed, so a source with no {@code
    * query} simply has no playbook and triages on the prompt alone.
@@ -342,7 +392,7 @@ public record EventsProperties(
   public record Policy(
       String source,
       String secret,
-      String ownerUserId,
+      Owner owner,
       Route route,
       Playbook playbook,
       List<String> trustedActors,

@@ -105,7 +105,10 @@ class WebhookControllerTest {
         .sources(
             Map.of(
                 sourceName,
-                EventsProperties.Source.builder().secret(secret).ownerUserId("ou_bot").build()))
+                EventsProperties.Source.builder()
+                    .secret(secret)
+                    .owner(EventsProperties.Owner.builder().userId("ou_bot").build())
+                    .build()))
         .build();
   }
 

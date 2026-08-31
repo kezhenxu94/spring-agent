@@ -455,7 +455,7 @@ app:
     # scheduled tasks and subagents as well — both act on a brief they wrote themselves.
     #
     # Which makes the identity the boundary, and there is one pairing to avoid: never list an
-    # app.events.sources.<name>.owner-user-id here. A triage run assumes that identity and reads
+    # app.events.sources.<name>.owner.user-id here. A triage run assumes that identity and reads
     # whatever the event's author wrote, so it would put WritePlaybook in a stranger's reach. The
     # application refuses to start on that pairing rather than leaving it to be noticed. If such an
     # identity needs to reach chats it is not in, give that source an identity of its own.

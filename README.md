@@ -84,6 +84,13 @@ until somebody sets it up. Timings — how long to wait, how often at most, when
 — are per source, because an alert and a chat want very different manners. See the `app.events`
 block in `application.yaml`.
 
+Who a source *runs as* is `app.events.sources.<name>.owner`. Its `user-id` must be an identity of
+the agent's own and never a person's, since a triage run assumes it along with that identity's files,
+credentials and MCP servers. `group-id` and `tenant-id` beside it are optional and say what else that
+identity belongs to, which is what gives the run the group's and the tenant's shared workspaces as
+well as its own — configured rather than taken from whatever the event named, so a surface that
+reports a tenant cannot pick the shared workspace an unattended run writes into.
+
 Who a source will listen to is `app.events.sources.<name>.trusted-actors`: a list of regular
 expressions, matched whole and without regard to case against an identity the source authenticated —
 a GitHub login inside a body the signature already covered, say. Anything else is dropped before it
@@ -111,7 +118,8 @@ to tell and where — is not a setting. It is a **playbook**: documents you writ
 base and then edit like any other document, without a deployment. Each source names which of them
 are its playbook and what to look them up with (`playbook.query` and `playbook.filter`), and a
 triage run is given them before it decides anything. The base is always the one owned by that
-source's `owner-user-id` — never a group or tenant an incoming event named — so what the agent is
+source's `owner.user-id` — never a group or tenant, whether an incoming event named it or the owner
+was configured with it — so what the agent is
 told to do can never be chosen by whoever sent the event. A source with no playbook triages on the
 shipped prompt alone, as before.
 
@@ -231,7 +239,7 @@ Other things worth knowing before a real deployment:
   into a source owner's knowledge base and never read again. A run keeps the identity it started
   with, so an admin causes things to happen *as* the person being helped — grant it only to people
   you would trust with those files and credentials directly. Never list an events source's
-  `owner-user-id` among them — the application refuses to start on that pairing, since a triage run
+  `owner.user-id` among them — the application refuses to start on that pairing, since a triage run
   assuming an admin identity would hand the admin-only tools to whoever wrote the event it is
   triaging.
 - `SPRING_AGENT_LOCALE` chooses the language the agent's own text — and the tool descriptions the

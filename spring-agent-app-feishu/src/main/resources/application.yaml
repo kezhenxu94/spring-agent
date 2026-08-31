@@ -368,7 +368,7 @@ app:
     # scheduled tasks and subagents as well — both act on a brief they wrote themselves.
     #
     # Which makes the identity the boundary, and there is one pairing to avoid: never list an
-    # app.events.sources.<name>.owner-user-id here. A triage run assumes that identity and reads
+    # app.events.sources.<name>.owner.user-id here. A triage run assumes that identity and reads
     # whatever the event's author wrote, so it would put WritePlaybook in a stranger's reach. The
     # application refuses to start on that pairing rather than leaving it to be noticed. If such an
     # identity needs to reach chats it is not in, give that source an identity of its own.
@@ -810,7 +810,7 @@ app:
     # GitHub event and a page at three in the morning are dealt with differently or the playbook is
     # not saying anything.
     #
-    # The base looked in is always the one owned by that source's owner-user-id alone, never a group
+    # The base looked in is always the one owned by that source's owner.user-id alone, never a group
     # or a tenant the incoming event named. That is not configurable, and it is the point: these
     # documents decide what the agent does about text an attacker can write, so what they are must
     # not itself be decided by whoever sent the event.
@@ -832,11 +832,18 @@ app:
     # observations from it are dropped — including the ones the shipped webhook paths would accept,
     # so an endpoint nobody set a secret for is an endpoint that refuses everything.
     #
-    # owner-user-id is the one setting with no sane default, and it must be an identity of the
-    # agent's own rather than a person's. A triage run assumes it, and with it that identity's file
-    # sandbox and its personal MCP servers — so pointing these runs at a real user hands
+    # owner is the one setting with no sane default: the user-id under it must name an identity of
+    # the agent's own rather than a person's. A triage run assumes it, and with it that identity's
+    # file sandbox and its personal MCP servers — so pointing these runs at a real user hands
     # attacker-authored text their workspace and their credentials. See SituationTriageScenario,
     # which also explains what a scenario cannot withhold.
+    #
+    # group-id and tenant-id under it are optional and say what else that identity belongs to, which
+    # is what gives a run the group's and the tenant's shared workspaces alongside its own. Stated
+    # here rather than taken from whatever the event named: a situation's group and tenant come from
+    # the observation, so a surface that reported one would otherwise decide which shared workspace
+    # an unattended run reads and writes. They deliberately do not widen where the playbook is read
+    # from — that stays user-id alone, and EventsProperties.Owner says why.
     #
     # Every timing above can be overridden per source, since the sources genuinely differ: an alert
     # should settle for half a minute, while a chat wants long enough for the people in it to answer
@@ -868,7 +875,12 @@ app:
     #  github:
     #    # The webhook secret configured on the GitHub side; verified as an HMAC over the raw body.
     #    secret: ${EVENTS_GITHUB_SECRET:}
-    #    owner-user-id: ${EVENTS_OWNER_USER_ID:}
+    #    owner:
+    #      user-id: ${EVENTS_OWNER_USER_ID:}
+    #      # Optional, and only worth setting where the agent's identity really belongs to a group
+    #      # or a tenant: what the run gets from them is their shared workspaces.
+    #      group-id: ${EVENTS_OWNER_GROUP_ID:}
+    #      tenant-id: ${EVENTS_OWNER_TENANT_ID:}
     #    # Whose events this deployment is willing to be told about. Omit for a private repository
     #    # where everybody who can open an issue is already trusted, or say ['.*'] to write that
     #    # down; name them where the repository is public and anybody can.
@@ -908,7 +920,8 @@ app:
     #      query: How to handle GitHub issue, pull request and workflow events
     #      filter: docId in ['runbook-github']
     #  email:
-    #    owner-user-id: ${EVENTS_OWNER_USER_ID:}
+    #    owner:
+    #      user-id: ${EVENTS_OWNER_USER_ID:}
     #    # Required for this source, unlike every other one, and the application refuses to start
     #    # without it. Elsewhere an absent list means everybody and is merely complained about,
     #    # because a deployment upgrading into the feature should not silently stop triaging a
@@ -926,7 +939,8 @@ app:
     #  grafana:
     #    # Sent by the contact point as a bearer token or as the basic-auth password.
     #    secret: ${EVENTS_GRAFANA_SECRET:}
-    #    owner-user-id: ${EVENTS_OWNER_USER_ID:}
+    #    owner:
+    #      user-id: ${EVENTS_OWNER_USER_ID:}
     #    route:
     #      chat-id: ${EVENTS_GRAFANA_ERROR_CHAT_ID:}
     #    playbook:
@@ -936,7 +950,8 @@ app:
     #    # Which chats are watched is a Feishu setting, under app.feishu, since that is the
     #    # integration doing the watching. This entry is what decides whether anything is made of
     #    # what it sees, and the timings it is made with.
-    #    owner-user-id: ${EVENTS_OWNER_USER_ID:}
+    #    owner:
+    #      user-id: ${EVENTS_OWNER_USER_ID:}
   # The watched mailbox: the one event source that is not a webhook, and the only one that dials
   # out rather than being dialled. It holds an IMAP connection open and reads what arrives.
   #

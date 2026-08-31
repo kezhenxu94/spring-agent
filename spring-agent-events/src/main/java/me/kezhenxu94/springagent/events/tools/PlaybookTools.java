@@ -22,7 +22,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
  * <p>A playbook is an ordinary knowledge base document that happens to be the one {@code
  * SituationSweeper} retrieves before it triages a source's events — see {@code
  * EventsProperties.Playbook}. Which document that is, is settled by three things a deployment
- * configures and nothing else: the source's {@code owner-user-id}, whose knowledge base it is read
+ * configures and nothing else: the source's {@code owner.user-id}, whose knowledge base it is read
  * from; {@code playbook.query}, a fixed question that never contains the event's own text; and
  * {@code playbook.filter}, which names the document ids that count.
  *
@@ -38,7 +38,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
  * app.ai.admins} is offered them at all.
  *
  * <p>Which puts the weight on the identity a run assumes rather than on anything checked here. A
- * situation triage assumes the source's {@code owner-user-id} and reads text whoever caused the
+ * situation triage assumes the source's {@code owner.user-id} and reads text whoever caused the
  * event wrote, so were that identity an administrator these tools would be in a stranger's reach —
  * and the playbook they wrote would steer every triage after it. {@code SituationSweeper} refuses
  * to start on that pairing; nothing in this class could detect it.
@@ -86,7 +86,7 @@ public class PlaybookTools {
               messages.get(
                   "playbook-source",
                   source,
-                  Strings.nullToEmpty(policy.ownerUserId()),
+                  Strings.nullToEmpty(policy.owner().userId()),
                   Strings.nullToEmpty(policy.playbook().query()),
                   Strings.nullToEmpty(policy.playbook().filter()),
                   describeAcceptedIds(source)))
@@ -137,7 +137,7 @@ public class PlaybookTools {
     if (policy == null) {
       return messages.get("playbook-source-unknown", source);
     }
-    if (Strings.isNullOrEmpty(policy.ownerUserId())) {
+    if (Strings.isNullOrEmpty(policy.owner().userId())) {
       // The owner is the whole address of the knowledge base being written to. Without one there is
       // nowhere to put this, and guessing an owner would write a document into somebody's base that
       // nothing will ever read.
@@ -161,7 +161,7 @@ public class PlaybookTools {
                   // The scope the sweeper retrieves as, stated rather than derived: the owner
                   // alone, no group and no tenant. See SituationSweeper#playbookFor, which builds
                   // the same scope on the reading side.
-                  new KnowledgeScope(policy.ownerUserId(), "", ""),
+                  new KnowledgeScope(policy.owner().userId(), "", ""),
                   KnowledgeScope.Target.OWN,
                   title,
                   text,
@@ -171,11 +171,11 @@ public class PlaybookTools {
           "Playbook {} for source {} written into {}'s knowledge base",
           storedId,
           source,
-          policy.ownerUserId());
+          policy.owner().userId());
       return accepted.isEmpty()
           ? messages.get(
-              "playbook-written-unverified", storedId, source, policy.ownerUserId(), source)
-          : messages.get("playbook-written", storedId, source, policy.ownerUserId());
+              "playbook-written-unverified", storedId, source, policy.owner().userId(), source)
+          : messages.get("playbook-written", storedId, source, policy.owner().userId());
     } catch (RuntimeException e) {
       return messages.get("playbook-write-failed", e.getMessage());
     }

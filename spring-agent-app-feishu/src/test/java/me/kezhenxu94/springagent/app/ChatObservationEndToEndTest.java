@@ -47,7 +47,7 @@ import reactor.core.publisher.Flux;
       // Named, one chat at a time. Nothing is observed until a deployment does this.
       "app.feishu.observed-chat-ids[0]=" + ChatObservationEndToEndTest.CHAT,
       "app.feishu.observed-chat-ids[1]=" + ChatObservationEndToEndTest.OTHER_CHAT,
-      "app.events.sources.feishu-chat.owner-user-id=ou_agent",
+      "app.events.sources.feishu-chat.owner.user-id=ou_agent",
       // Per-source, and it has to be: the top-level app.events.debounce does not reach this source,
       // because EventsProperties.BUILT_IN gives a chat forty-five seconds of its own so that the
       // people in it get to answer each other first. Overriding it globally here would leave the

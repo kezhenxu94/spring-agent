@@ -17,15 +17,16 @@ import me.kezhenxu94.springagent.core.tools.ScheduledTaskTool;
  * what protects the deployment, because it is not this class:
  *
  * <ul>
- *   <li>{@code app.events.sources.<name>.owner-user-id}, which must name an identity of the agent's
- *       own and never a person's. A run assumes it, and with it that identity's file sandbox and
- *       personal MCP servers. {@code SituationSweeper} refuses to evaluate a source without one and
- *       says so at startup.
+ *   <li>{@code app.events.sources.<name>.owner}, whose {@code user-id} must name an identity of the
+ *       agent's own and never a person's. A run assumes it — and with it that identity's file
+ *       sandbox, its personal MCP servers, and the shared workspaces of whatever {@code group-id}
+ *       and {@code tenant-id} the source named alongside it. {@code SituationSweeper} refuses to
+ *       evaluate a source without one and says so at startup.
  *   <li>the prompt, which says at length that the observed text is data to be assessed and never
  *       instructions to follow, and the fence {@code SituationBrief} puts around it.
  *   <li>whatever the deployment chose to give the agent at all. A shell exists only where {@code
  *       app.ai.tools.shell.type} says so, and it defaults to {@code none}.
- *   <li>that {@code owner-user-id} is not an administrator, which {@code SituationSweeper} refuses
+ *   <li>that {@code owner.user-id} is not an administrator, which {@code SituationSweeper} refuses
  *       to start without. It follows from the first item rather than adding to it: this run holds
  *       whatever that identity holds, so an admin owner would put {@code WritePlaybook} in reach of
  *       whoever wrote the event, and let them author the playbook the next triage reads — undoing
@@ -72,7 +73,7 @@ public final class SituationTriageScenario implements AgentScenario {
    *
    * <p>That is a narrower thing than the retrieval a chat run gets, and narrowed on purpose. {@code
    * SituationSweeper} states the scope and the query on the request rather than letting them be
-   * derived — the base is the source's {@code owner-user-id} alone, and the query is a fixed
+   * derived — the base is the source's {@code owner.user-id} alone, and the query is a fixed
    * question about the source rather than the event's own text, so that whoever wrote the event
    * cannot choose which of the deployment's documents the model is shown. See {@code
    * EventsProperties.Playbook}.

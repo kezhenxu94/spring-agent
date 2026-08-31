@@ -25,7 +25,7 @@ class PlaybookFiltersTest {
             Map.of(
                 "github",
                 EventsProperties.Source.builder()
-                    .ownerUserId("ou_agent")
+                    .owner(EventsProperties.Owner.builder().userId("ou_agent").build())
                     .playbook(
                         EventsProperties.Playbook.builder().query("how to").filter(filter).build())
                     .build()))
