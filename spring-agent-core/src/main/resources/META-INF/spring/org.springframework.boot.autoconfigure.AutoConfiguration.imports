@@ -3,3 +3,4 @@ me.kezhenxu94.springagent.core.config.VectorStoreConfiguration
 me.kezhenxu94.springagent.core.config.ToolSearchIndexConfiguration
 me.kezhenxu94.springagent.core.config.LocalShellToolsConfiguration
 me.kezhenxu94.springagent.core.config.KnowledgeToolsConfiguration
+me.kezhenxu94.springagent.core.config.UserModelsConfiguration

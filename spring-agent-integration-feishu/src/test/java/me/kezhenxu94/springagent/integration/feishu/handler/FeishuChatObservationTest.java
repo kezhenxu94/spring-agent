@@ -29,10 +29,12 @@ import me.kezhenxu94.springagent.core.observing.EventIntakes;
 import me.kezhenxu94.springagent.core.observing.Observation;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
+import me.kezhenxu94.springagent.integration.feishu.usermodels.FeishuConfigHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -97,7 +99,15 @@ class FeishuChatObservationTest {
         mock(PendingQuestionRepo.class),
         processedMessageRepo,
         null,
-        observations);
+        observations,
+        // No model settings card in these tests: /config is not a command without one, which is
+        // also the default for a deployment that has not configured an encryption key.
+        new ObjectProvider<>() {
+          @Override
+          public FeishuConfigHandler getObject() {
+            return null;
+          }
+        });
   }
 
   private FeishuMessageReceiveHandler handler(final String... observedChatIds) {

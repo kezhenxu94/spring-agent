@@ -1,0 +1,170 @@
+{
+  "_comment": [
+    "The card /config opens: a user's own chat models, and which one their conversations go",
+    "through. Sent as a finished interactive message, not a card-kit card — nothing streams into",
+    "it and there is nothing to stop.",
+    "",
+    "This card is the way out of a model that does not work. Nothing on this path reaches an LLM,",
+    "so it answers whatever state the user's endpoint is in — which is the whole reason it is a",
+    "card and not something the agent does when asked.",
+    "",
+    "A template rather than JSON built in code, so the wording and the layout can be changed",
+    "without a rebuild. The {} placeholders are label text, substituted by FeishuConfigForm; the",
+    "option lists and the selected index are set on the parsed tree instead, since a model name is",
+    "written by the user and must not be able to break the card.",
+    "",
+    "Names must be unique across the whole card, start with a letter, hold only letters, digits",
+    "and underscores, and stay within 20 characters.",
+    "",
+    "select_static carries no label of its own — unlike input, it has neither label nor",
+    "label_position, and sending one is rejected outright with a 200621 parse error rather than",
+    "ignored. Its caption is the markdown row above it instead."
+  ],
+  "card": {
+    "schema": "2.0",
+    "header": {
+      "template": "blue",
+      "title": {
+        "tag": "plain_text",
+        "content": "{title}"
+      }
+    },
+    "body": {
+      "direction": "vertical",
+      "padding": "12px 12px 12px 12px",
+      "elements": []
+    }
+  },
+  "intro": {
+    "tag": "markdown",
+    "content": "",
+    "text_align": "left",
+    "text_size": "normal_v2"
+  },
+  "form": {
+    "tag": "form",
+    "name": "cfgform",
+    "element_id": "cfgform",
+    "direction": "vertical",
+    "vertical_spacing": "8px",
+    "padding": "4px 0px 4px 0px",
+    "elements": []
+  },
+  "activeSelect": {
+    "tag": "select_static",
+    "name": "cfg_active",
+    "type": "default",
+    "width": "fill",
+    "required": false,
+    "placeholder": {
+      "tag": "plain_text",
+      "content": "{activeHint}"
+    },
+    "options": []
+  },
+  "selectOption": {
+    "text": {
+      "tag": "plain_text",
+      "content": ""
+    },
+    "value": ""
+  },
+  "activeLabel": {
+    "tag": "markdown",
+    "content": "{activeLabel}",
+    "text_align": "left",
+    "text_size": "notation"
+  },
+  "addHint": {
+    "tag": "markdown",
+    "content": "{addHint}",
+    "text_align": "left",
+    "text_size": "notation"
+  },
+  "nameInput": {
+    "tag": "input",
+    "name": "cfg_name",
+    "required": false,
+    "width": "fill",
+    "max_length": 40,
+    "label": {
+      "tag": "plain_text",
+      "content": "{nameLabel}"
+    },
+    "label_position": "top",
+    "placeholder": {
+      "tag": "plain_text",
+      "content": "{namePlaceholder}"
+    }
+  },
+  "baseUrlInput": {
+    "tag": "input",
+    "name": "cfg_baseurl",
+    "required": false,
+    "width": "fill",
+    "max_length": 500,
+    "label": {
+      "tag": "plain_text",
+      "content": "{baseUrlLabel}"
+    },
+    "label_position": "top",
+    "placeholder": {
+      "tag": "plain_text",
+      "content": "{baseUrlPlaceholder}"
+    }
+  },
+  "modelInput": {
+    "tag": "input",
+    "name": "cfg_model",
+    "required": false,
+    "width": "fill",
+    "max_length": 200,
+    "label": {
+      "tag": "plain_text",
+      "content": "{modelLabel}"
+    },
+    "label_position": "top",
+    "placeholder": {
+      "tag": "plain_text",
+      "content": "{modelPlaceholder}"
+    }
+  },
+  "tokenInput": {
+    "tag": "input",
+    "name": "cfg_token",
+    "input_type": "password",
+    "show_icon": true,
+    "required": false,
+    "width": "fill",
+    "max_length": 1000,
+    "label": {
+      "tag": "plain_text",
+      "content": "{tokenLabel}"
+    },
+    "label_position": "top",
+    "placeholder": {
+      "tag": "plain_text",
+      "content": "{tokenPlaceholder}"
+    }
+  },
+  "submit": {
+    "tag": "button",
+    "name": "cfg_submit",
+    "type": "primary_filled",
+    "size": "small",
+    "width": "default",
+    "form_action_type": "submit",
+    "text": {
+      "tag": "plain_text",
+      "content": "{submitText}"
+    },
+    "behaviors": [
+      {
+        "type": "callback",
+        "value": {
+          "button": "config"
+        }
+      }
+    ]
+  }
+}

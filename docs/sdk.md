@@ -547,6 +547,55 @@ Redis needs Redis 8 or Redis Stack, and a server configured to *keep* what it is
 Redis provisioned the usual way for caching will evict a stored credential or an unfired scheduled
 task and say nothing.
 
+## A user's own chat model
+
+Every run goes through the one `ChatClient` bean unless the person asking has registered another,
+and that indirection is `core/usermodels/UserChatClients#forUser`, which `SpringAgent` asks on the
+way into each run. Absent unless `app.ai.user-models.encryption-key` is set — the feature is gated
+on being able to store an API token sealed rather than on a flag of its own — so `SpringAgent`
+takes it through an `ObjectProvider` and falls back to the application's client when nothing is
+there.
+
+Three facts about Spring AI shape this, and any consumer building a `ChatClient` of their own runs
+into the same ones:
+
+- `OpenAiChatModel` resolves `baseUrl`, `apiKey` and `timeout` once, in `build()`, into an
+  `OpenAIClient` it then holds final. Runtime options carrying a base URL are **ignored**; only the
+  model name is read per request. A different endpoint is therefore a different `ChatModel`, and
+  cannot be expressed as different options.
+- Runtime options **replace** a model's defaults rather than merging with them —
+  `buildRequestPrompt` takes the supplied ones whole when there are any. Anything built from
+  scratch silently drops everything under `spring.ai.openai.chat`, including
+  `stream-options.include-usage`, whose absence shows up not as an error but as runs that report no
+  token usage and so no cost. `UserChatClients` starts from `defaultChatModel.getOptions().mutate()`
+  and overrides only the three fields that make the endpoint different.
+- Tools are called by the `ToolCallingAdvisor` `SpringAgent` registers on the prompt, not by the
+  model, so a hand-built `ChatModel` needs no `ToolCallingManager`. It does need the context's
+  `OpenAiHttpClientBuilderCustomizer` beans, or its provider rejections stay unreadable.
+
+Clients are cached per resolved endpoint rather than per user — two users on the same gateway share
+one connection pool, and an edited endpoint is simply a key that is not in the cache. The cache is
+bounded, because the table behind it is one users can write to.
+
+The pieces a consumer would extend or reuse:
+
+| Type | What it is for |
+| --- | --- |
+| `UserModelRegistry` | The rows, and the one place a token is sealed or opened. `activate` clears every other row of that owner *before* setting the new one, so an interrupted switch leaves none activated rather than two — and none means the application's own model. |
+| `UserChatClients` | Resolving and caching the client, as above. Never throws: an endpoint that cannot be read is a fallback and a log line, because failing here would fail the run the user needs to fix it. |
+| `UserModelProbe` | The pre-save connection test — one tiny completion, since that exercises URL, token and model name together where `GET /models` does not. |
+| `BuiltinModels` | What the application's own endpoint reports it can serve, cached and best-effort; an empty list is an ordinary answer. |
+| `AesGcmSealer` (`core/security/`) | AES-GCM with a fresh nonce per write, shared with the shell credential store. Each caller brings its own key so a leak is contained to one feature. |
+| `UserModelConfig` (`core/dao/models/`) | The row. A **blank `baseUrl` means the application's own endpoint** — that is how choosing one of its models records itself without copying the application's key per user. Such rows are named with a `@` prefix, which user-supplied names may not contain. |
+
+A surface that wants to offer this needs no agent run for it: `spring-agent-integration-feishu`'s
+`/config` card and `spring-agent-integration-slack`'s `/config` modal both go straight to
+`UserModelRegistry`. That is deliberate rather than incidental — a model that has stopped answering
+would otherwise break the only route to changing it.
+
+The **embedding** model is not configurable this way, and should not be made so: the knowledge base
+is shared and its collections are built with one embedding model.
+
 ## Native image
 
 Both runtime switches are `@Conditional` and are evaluated during AOT, so in a native image they

@@ -15,6 +15,8 @@ import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
 import me.kezhenxu94.springagent.integration.slack.config.SlackIdentity;
+import me.kezhenxu94.springagent.integration.slack.usermodels.SlackConfigHandler;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -54,6 +56,13 @@ public class SlackMessageReceiveHandler {
   private final SlackMessageReactions reactions;
 
   /**
+   * Absent unless {@code app.ai.user-models.encryption-key} is configured, which is the default.
+   * Where it is absent {@code /config} is not a command at all and the message goes to the agent
+   * like any other, which is the right answer: there is nothing to configure.
+   */
+  private final ObjectProvider<SlackConfigHandler> configHandler;
+
+  /**
    * Marks anything the agent was still waiting to hear back on in this conversation as overtaken by
    * what just arrived, and takes its form off the message that carries it — a form the row behind
    * it no longer backs is a control that can only be pressed to be refused.
@@ -61,6 +70,26 @@ public class SlackMessageReceiveHandler {
    * <p>Best effort: a failure here costs a stale form the chance to be refused, not this message
    * the chance to be answered.
    */
+  /** The command word that opens the model settings, as a message rather than a slash command. */
+  private static final String CONFIG_COMMAND = "/config";
+
+  /**
+   * Whether this message is the {@code /config} command and nothing else.
+   *
+   * <p>Trimmed, which is the point: a real slash command never reaches this method, so what does is
+   * somebody who typed a space first to get past Slack. Exact match rather than a prefix because
+   * the command carries no arguments — a message that merely begins with the word is somebody
+   * talking about it, and swallowing that would be the agent going silent on a question it should
+   * have answered. The bot mention is stripped too, since in a channel the message arrives as
+   * {@code <@U123> /config}.
+   */
+  private boolean isConfigCommand(final String text) {
+    if (text == null) {
+      return false;
+    }
+    return CONFIG_COMMAND.equalsIgnoreCase(text.replaceAll("<@[^>]+>", "").trim());
+  }
+
   private void supersedePendingQuestions(final String conversationId) {
     try {
       pendingQuestionRepo
@@ -181,6 +210,21 @@ public class SlackMessageReceiveHandler {
     // superseding the outstanding questions changes the conversation, and firing answers it.
     if (!processedMessageRepo.claim(CLAIM_PREFIX + deliveryId)) {
       log.info("Ignoring message {}: it has already been taken up", deliveryId);
+      return;
+    }
+
+    // Before anything that changes the conversation, and before the agent is involved at all: this
+    // is what a user reaches for when the model they chose has stopped answering, so it must not
+    // depend on a run succeeding.
+    //
+    // Reached as a message rather than as the slash command only when the command was never
+    // declared on the Slack app — Slack keeps a real /config for itself and never delivers it here.
+    // A message beginning with a space is sent verbatim, which is why " /config" arrives at all,
+    // and it is the escape hatch for a workspace where the setup step was missed.
+    final var config = configHandler.getIfAvailable();
+    if (config != null && isConfigCommand(event.getText())) {
+      log.info("Opening the model settings for {} in {}", userId, channelId);
+      config.open(channelId, userId);
       return;
     }
 

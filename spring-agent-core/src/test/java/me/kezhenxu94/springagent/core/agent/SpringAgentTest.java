@@ -44,6 +44,7 @@ import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallbac
 import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallingManager;
 import me.kezhenxu94.springagent.core.tools.interceptors.ToolCallInterceptor;
 import me.kezhenxu94.springagent.core.tools.interceptors.ToolInputFileRefs;
+import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -119,6 +120,8 @@ class SpringAgentTest {
             // Real model options (OpenAI's) are ToolCallingChatOptions, which is the only kind
             // that carries a tool context; the plain default ones would silently drop it.
             ChatClient.builder(chatModel).defaultOptions(ToolCallingChatOptions.builder()).build(),
+            // No per-user models in these tests: every run goes through the client above.
+            providerOf((UserChatClients) null),
             chatMemory,
             properties(),
             new Admins(properties()),
@@ -1285,6 +1288,8 @@ class SpringAgentTest {
     agent =
         new SpringAgent(
             ChatClient.builder(chatModel).defaultOptions(ToolCallingChatOptions.builder()).build(),
+            // No per-user models in these tests: every run goes through the client above.
+            providerOf((UserChatClients) null),
             chatMemory,
             properties(),
             new Admins(properties()),
@@ -1316,6 +1321,8 @@ class SpringAgentTest {
     agent =
         new SpringAgent(
             ChatClient.builder(chatModel).defaultOptions(ToolCallingChatOptions.builder()).build(),
+            // No per-user models in these tests: every run goes through the client above.
+            providerOf((UserChatClients) null),
             chatMemory,
             properties(),
             new Admins(properties()),

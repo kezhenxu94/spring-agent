@@ -529,6 +529,41 @@ app:
         # reloaded on startup; if it is missing or unreadable the index is simply rebuilt, at the
         # cost of re-embedding the tool descriptions.
         file: ${VECTORSTORE_FILE:data/spring-agent-web-vectorstore.json}
+    user-models:
+      # Lets a user run their own chat model instead of the one configured above, for their own
+      # conversations only. They register an OpenAI-compatible endpoint with AddChatModel or on the
+      # card that /config opens, and every run of theirs from then on goes to it; everyone who has
+      # not chosen one keeps the application's model, which is also the fallback whenever a chosen
+      # one cannot be reached.
+      #
+      # Off unless a key is set, and off by *having no key* rather than by a flag of its own. The
+      # tokens users register are bearer credentials for somebody else's paid endpoint, and the
+      # only alternative to sealing them is a column holding them in the clear — so the same
+      # reasoning as app.ai.tools.shell.type defaulting to none: a feature that cannot be run
+      # safely is not run. With this unset the tools are not registered at all, /config is not a
+      # command, and nothing about the runtime changes.
+      #
+      # A base64-encoded AES key of 128, 192 or 256 bits:
+      #   openssl rand -base64 32
+      # Keep it out of the database and out of this file. Rotating it does not re-seal what is
+      # already stored: those rows stop being readable and say so loudly rather than silently
+      # behaving as though the user had registered nothing.
+      #
+      # The embedding model is deliberately not configurable this way. The knowledge base is shared
+      # between users and its collections are built with one embedding model, so letting a user
+      # change theirs would invalidate vectors that are not theirs.
+      encryption-key: ${USER_MODELS_ENCRYPTION_KEY:}
+      # How many endpoints one user may register, so that a table anyone can write to has a ceiling.
+      max-per-user: ${USER_MODELS_MAX_PER_USER:10}
+      # How many distinct endpoints are held as live clients at once. Each is an HTTP client with a
+      # connection pool, so this bounds sockets rather than memory; the least recently used is
+      # dropped when a new one does not fit. Endpoints are shared, so this counts endpoints and not
+      # users: everyone pointing at the same gateway with the same token uses one client.
+      cache-size: ${USER_MODELS_CACHE_SIZE:50}
+      # How long the connection test before saving waits. Short on purpose: it is a single tiny
+      # completion, and somebody who mistyped a URL should be told so rather than left watching
+      # spring.ai.openai.chat.timeout, which is measured in minutes because a reasoning turn is.
+      probe-timeout: ${USER_MODELS_PROBE_TIMEOUT:30s}
     rag:
       # The knowledge base: what a user, a group or the whole company has told the agent to write
       # down, searched before every answer and managed with the ListKnowledgeBase, IndexKnowledge,

@@ -19,6 +19,9 @@ import me.kezhenxu94.springagent.integration.feishu.handler.FeishuCardListener;
 import me.kezhenxu94.springagent.integration.feishu.handler.FeishuMessageReceiveHandler;
 import me.kezhenxu94.springagent.integration.feishu.handler.FeishuQuestionAnswerHandler;
 import me.kezhenxu94.springagent.integration.feishu.handler.FeishuToasts;
+import me.kezhenxu94.springagent.integration.feishu.usermodels.FeishuConfigForm;
+import me.kezhenxu94.springagent.integration.feishu.usermodels.FeishuConfigHandler;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -34,6 +37,13 @@ public class FeishuEventHandler {
   final FeishuQuestionAnswerHandler feishuQuestionAnswerHandler;
   final FeishuGreetings feishuGreetings;
   final FeishuSuggestions feishuSuggestions;
+
+  /**
+   * Absent unless {@code app.ai.user-models.encryption-key} is configured, which is the default —
+   * so a card that offers to change the model can only arrive where there is somewhere safe to keep
+   * the token that comes with it.
+   */
+  final ObjectProvider<FeishuConfigHandler> feishuConfigHandler;
 
   /**
    * Every event this application does something with. Everything else Feishu pushes is dropped by
@@ -117,6 +127,14 @@ public class FeishuEventHandler {
                       return feishuQuestionAnswerHandler.handle(event);
                     } else if (FeishuSuggestions.ACTION.equals(button)) {
                       return feishuSuggestions.handle(event);
+                    } else if (FeishuConfigForm.ACTION.equals(button)) {
+                      final var config = feishuConfigHandler.getIfAvailable();
+                      // The card cannot outlive the feature being turned off in a redeploy, but a
+                      // card already on somebody's screen can, and a press of it must not fail.
+                      if (config == null) {
+                        return FeishuToasts.toast("warning", messages.get("config-disabled"));
+                      }
+                      return config.handle(event);
                     }
                     return new P2CardActionTriggerResponse();
                   }
