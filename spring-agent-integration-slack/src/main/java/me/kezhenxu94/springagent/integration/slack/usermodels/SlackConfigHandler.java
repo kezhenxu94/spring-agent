@@ -11,6 +11,8 @@ import com.slack.api.methods.MethodsClient;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
@@ -63,7 +65,7 @@ public class SlackConfigHandler {
     }
     try {
       final var configured = registry.list(userId);
-      final var active = registry.active(userId).map(UserModelConfig::name).orElse(null);
+      final var active = registry.active(userId).orElse(null);
       // Best-effort, and never on the critical path: an endpoint that will not list its models
       // leaves this empty and the modal offers the single built-in entry instead.
       final var view = form.view(configured, active, builtins.list(), builtins.defaultModel());
@@ -131,21 +133,70 @@ public class SlackConfigHandler {
    */
   private String apply(final String userId, final SlackConfigForm.Submission submission) {
     if (!submission.adding()) {
-      return switchTo(userId, submission.active());
+      // Nothing to register, so this is a switch, a change of effort, or both — and the effort is
+      // applied after the switch so that it lands on the model the submission leaves the user on.
+      final var switched =
+          submission.active() == null ? null : switchTo(userId, submission.active());
+      final var efforted = effortFor(userId, submission);
+      if (switched == null && efforted == null) {
+        return messages.get("config-nothing");
+      }
+      return join(switched, efforted);
     }
     // A model on its own, with no endpoint and no token, is one of the application's own named
     // directly — the way to reach a model the dropdown was too small to list. Nothing to probe: it
     // is the endpoint this application is already talking to.
     if (submission.builtinByName()) {
       registry.activateBuiltin(userId, submission.model());
-      return messages.get("config-switched-builtin", submission.model());
+      return join(
+          messages.get("config-switched-builtin", submission.model()),
+          effortFor(userId, submission));
     }
+    // A model of their own already registered, and only a new effort for it: no endpoint to test,
+    // and the token it was saved with is kept. One repository write, so it stays on this thread.
     if (!submission.complete()) {
       return messages.get("config-incomplete");
     }
     // Off this thread: the probe can take seconds and both callers are on a clock.
     taskExecutor.execute(() -> add(userId, userId, submission));
     return messages.get("config-testing", submission.name());
+  }
+
+  /**
+   * Applies the effort chosen on this submission, if one was, to the model the user is now on —
+   * their own endpoint or one of the application's, since neither is harder to reach than the
+   * other.
+   *
+   * @return what happened, or null if the select was left alone
+   */
+  private String effortFor(final String userId, final SlackConfigForm.Submission submission) {
+    if (submission.effort() == null) {
+      return null;
+    }
+    final var effort = submission.storedEffort();
+    // What the form was showing is not a change: with the select preselected, an untouched
+    // submission
+    // carries the effort already in force, and rewriting the row for it would report a change that
+    // did not happen.
+    final var current = registry.active(userId).map(UserModelConfig::reasoningEffort).orElse(null);
+    if (Objects.equals(effort, current)) {
+      return null;
+    }
+    final var row = registry.setActiveEffort(userId, effort);
+    final var name =
+        Optional.ofNullable(UserModelRegistry.displayName(row))
+            .orElse(messages.get("config-default-option"));
+    return effort == null
+        ? messages.get("config-effort-inherited", name)
+        : messages.get("config-effort-set", name, effort);
+  }
+
+  /** Two sentences about one submission, or whichever of them there is. */
+  private static String join(final String first, final String second) {
+    if (first == null) {
+      return second;
+    }
+    return second == null ? first : first + " " + second;
   }
 
   /**
@@ -162,7 +213,7 @@ public class SlackConfigHandler {
         () -> {
           try {
             final var configured = registry.list(userId);
-            final var active = registry.active(userId).map(UserModelConfig::name).orElse(null);
+            final var active = registry.active(userId).orElse(null);
             final var blocks =
                 form.messageBlocks(configured, active, builtins.list(), builtins.defaultModel());
             final var response =
@@ -217,13 +268,20 @@ public class SlackConfigHandler {
       say(channelId, messages.get("config-bad-name", submission.name()));
       return;
     }
-    final var failure = probe.check(submission.baseUrl(), submission.model(), submission.token());
+    final var effort = submission.storedEffort();
+    final var failure =
+        probe.check(submission.baseUrl(), submission.model(), submission.token(), effort);
     if (failure != null) {
       say(channelId, messages.get("config-add-failed", submission.name(), failure));
       return;
     }
     registry.save(
-        userId, submission.name(), submission.baseUrl(), submission.model(), submission.token());
+        userId,
+        submission.name(),
+        submission.baseUrl(),
+        submission.model(),
+        submission.token(),
+        effort);
     registry.activate(userId, submission.name());
     say(channelId, messages.get("config-added", submission.name()));
   }

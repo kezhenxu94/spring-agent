@@ -8,6 +8,11 @@
     "so it answers whatever state the user's endpoint is in — which is the whole reason it is a",
     "card and not something the agent does when asked.",
     "",
+    "A press replaces the whole form with the summary node: a card left standing is a card that",
+    "can be submitted again, hours later, against a configuration that has moved on — and the",
+    "token field would keep whatever was typed into it sitting in the chat history. The summary",
+    "never repeats the token, which is write-only everywhere else too.",
+    "",
     "A template rather than JSON built in code, so the wording and the layout can be changed",
     "without a rebuild. The {} placeholders are label text, substituted by FeishuConfigForm; the",
     "option lists and the selected index are set on the parsed tree instead, since a model name is",
@@ -18,7 +23,11 @@
     "",
     "select_static carries no label of its own — unlike input, it has neither label nor",
     "label_position, and sending one is rejected outright with a 200621 parse error rather than",
-    "ignored. Its caption is the markdown row above it instead."
+    "ignored. Its caption is the markdown row above it instead.",
+    "",
+    "Which is why effortLabel is normal_v2 rather than the notation the section captions use: it",
+    "stands in for an input's label and sits between two real ones, so it has to be the size they",
+    "are. activeLabel is a section caption above the whole selection and stays notation."
   ],
   "card": {
     "schema": "2.0",
@@ -34,6 +43,12 @@
       "padding": "12px 12px 12px 12px",
       "elements": []
     }
+  },
+  "summary": {
+    "tag": "markdown",
+    "content": "",
+    "text_align": "left",
+    "text_size": "normal_v2"
   },
   "intro": {
     "tag": "markdown",
@@ -128,6 +143,24 @@
       "tag": "plain_text",
       "content": "{modelPlaceholder}"
     }
+  },
+  "effortLabel": {
+    "tag": "markdown",
+    "content": "{effortLabel}",
+    "text_align": "left",
+    "text_size": "normal_v2"
+  },
+  "effortSelect": {
+    "tag": "select_static",
+    "name": "cfg_effort",
+    "type": "default",
+    "width": "fill",
+    "required": false,
+    "placeholder": {
+      "tag": "plain_text",
+      "content": "{effortHint}"
+    },
+    "options": []
   },
   "tokenInput": {
     "tag": "input",

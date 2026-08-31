@@ -17,7 +17,13 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
+import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
+import me.kezhenxu94.springagent.core.dao.repo.UserModelConfigRepo;
+import me.kezhenxu94.springagent.core.security.AesGcmSealer;
 import me.kezhenxu94.springagent.core.tools.UserHome;
+import me.kezhenxu94.springagent.core.usermodels.ReasoningEfforts;
+import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
+import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,7 +38,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springaicommunity.agent.tools.TodoWriteTool.Todos;
 import org.springaicommunity.agent.tools.TodoWriteTool.Todos.Status;
 import org.springaicommunity.agent.tools.TodoWriteTool.Todos.TodoItem;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.client.RestTemplate;
 import tools.jackson.databind.json.JsonMapper;
@@ -128,6 +137,70 @@ class FeishuCardUpdaterReasoningTest {
     // black bracket.
     assertThat(insertOf("reasoning"))
         .contains("<font color='grey'>" + messages.get("card-reasoning") + "(xhigh)</font>");
+  }
+
+  @Test
+  @DisplayName(
+      "the title says how hard the user's own model was asked to think, not the deployment")
+  void theTitleCarriesTheUsersEffort() throws Exception {
+    // The label would otherwise report a process-wide property at a run that had nothing to do with
+    // it: a user who chose minimal would watch a card claim the deployment's xhigh.
+    final var elements = cardElements(messages, "xhigh");
+    elements.userChatClients = chatClientsWhere("u1", "minimal");
+
+    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, elements, null, "u1");
+
+    updater.onReasoning("Thinking about it.");
+
+    assertThat(insertOf("reasoning"))
+        .contains("<font color='grey'>" + messages.get("card-reasoning") + "(minimal)</font>");
+  }
+
+  @Test
+  @DisplayName("a user who turned the parameter off gets no brackets, not the deployment's effort")
+  void theTitleHonoursNotSent() throws Exception {
+    final var elements = cardElements(messages, "xhigh");
+    elements.userChatClients = chatClientsWhere("u1", ReasoningEfforts.NOT_SENT);
+
+    final var updater = FeishuCardUpdater.forRun(card, om, null, messages, elements, null, "u1");
+
+    updater.onReasoning("Thinking about it.");
+
+    assertThat(insertOf("reasoning"))
+        .contains("<font color='grey'>" + messages.get("card-reasoning") + "</font>");
+  }
+
+  /** A resolver that says this user is on the application's model with an effort of their own. */
+  private static UserChatClients chatClientsWhere(final String userId, final String effort) {
+    final var row =
+        UserModelConfig.builder()
+            .id(UserModelConfig.idFor(userId, "@"))
+            .ownerId(userId)
+            .name("@")
+            .reasoningEffort(effort)
+            .activated(true)
+            .build();
+    final var repo = org.mockito.Mockito.mock(UserModelConfigRepo.class);
+    org.mockito.Mockito.when(repo.findByOwnerId(userId)).thenReturn(List.of(row));
+    final var appModel =
+        OpenAiChatModel.builder()
+            .options(
+                OpenAiChatOptions.builder()
+                    .baseUrl("https://app/v1")
+                    .apiKey("k")
+                    .model("app-model")
+                    .reasoningEffort("xhigh")
+                    .build())
+            .build();
+    return new UserChatClients(
+        ChatClient.builder(appModel).build(),
+        new UserModelRegistry(
+            repo,
+            new AesGcmSealer(java.util.Base64.getEncoder().encodeToString(new byte[32]), "test"),
+            3),
+        appModel,
+        List.of(),
+        4);
   }
 
   @Test

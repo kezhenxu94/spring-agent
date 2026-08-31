@@ -127,9 +127,9 @@ public class CliCommands {
   }
 
   /**
-   * The command line has no card to open, so {@code /config} is the list plus a name to switch to —
-   * arguments being the natural thing at a terminal, where on a chat surface the same command opens
-   * a form instead.
+   * The command line has no card to open, so {@code /config} is the list, a name to switch to, and
+   * a name and a reasoning effort to set one — arguments being the natural thing at a terminal,
+   * where on a chat surface the same command opens a form instead.
    *
    * <p>Registered only where users may choose a model at all, which is why it takes the command
    * through an {@link ObjectProvider}: with no encryption key configured there is nothing to

@@ -45,6 +45,10 @@ model name is unknown, nothing is saved and the error is returned. Registering d
 onto it — call UseChatModel for that, or tell them to type /model <name>. Re-registering an existing
 name updates it in place.
 
+How hard the model should think is optional and must be one of the listed values; leave it out to use
+whatever the application is configured with. Changing it later, without the token, is done on the
+/config form or by typing /config <name> <effort>.
+
 The token is stored encrypted and is never shown again, not even to the user who set it.
 """)
   public String addChatModel(
@@ -54,11 +58,24 @@ The token is stored encrypted and is never shown again, not even to the user who
           final String baseUrl,
       @ToolParam(description = "The model name as the endpoint spells it") final String model,
       @ToolParam(description = "The API token for this endpoint") final String apiToken,
+      @ToolParam(
+              required = false,
+              description =
+                  "How hard the model should think: one of none, minimal, low, medium, high, xhigh,"
+                      + " max, or not-sent to send no reasoning effort at all. Omit to use the"
+                      + " application's own setting")
+          final String reasoningEffort,
       final ToolContext context) {
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
 
     if (isBlank(name) || isBlank(baseUrl) || isBlank(model) || isBlank(apiToken)) {
       return messages.get("user-model-add-incomplete");
+    }
+    // Rejected rather than dropped: an effort the endpoint will not understand is a model that
+    // answers nothing, and silently ignoring what was asked for would leave the agent telling the
+    // user it had set something it had not.
+    if (!isBlank(reasoningEffort) && !ReasoningEfforts.valid(reasoningEffort)) {
+      return messages.get("user-model-bad-effort", reasoningEffort, ReasoningEfforts.listed());
     }
     final var modelName = name.trim();
     if (!UserModelRegistry.validName(modelName)) {
@@ -68,12 +85,13 @@ The token is stored encrypted and is never shown again, not even to the user who
       return messages.get("user-model-too-many", registry.maxPerUser());
     }
 
-    final var failure = probe.check(baseUrl.trim(), model.trim(), apiToken.trim());
+    final var effort = ReasoningEfforts.normalize(reasoningEffort);
+    final var failure = probe.check(baseUrl.trim(), model.trim(), apiToken.trim(), effort);
     if (failure != null) {
       return messages.get("user-model-unreachable", modelName, failure);
     }
 
-    registry.save(userId, modelName, baseUrl.trim(), model.trim(), apiToken.trim());
+    registry.save(userId, modelName, baseUrl.trim(), model.trim(), apiToken.trim(), effort);
     return messages.get("user-model-added", modelName, model.trim());
   }
 
@@ -99,7 +117,8 @@ API tokens are never included. A user with none registered is using the applicat
                         config.name().equals(active) ? "user-model-line-active" : "user-model-line",
                         config.name(),
                         config.model(),
-                        config.baseUrl()))
+                        config.baseUrl(),
+                        effortOf(config)))
             .collect(Collectors.joining("\n"));
     return active == null
         ? messages.get("user-model-list-on-default", lines)
@@ -112,23 +131,57 @@ API tokens are never included. A user with none registered is using the applicat
 """
 Switch this user's conversations to one of the chat models they have registered. Pass the name they gave
 it, or "default" to go back to the application's own model. Takes effect from their next message.
+
+How hard that model should think can be set at the same time, and works for the application's own models
+too. Pass it on its own, with no name, to change it for whichever model they are already on.
 """)
   public String useChatModel(
-      @ToolParam(description = "The registered model name, or \"default\"") final String name,
+      @ToolParam(
+              required = false,
+              description =
+                  "The registered model name, or \"default\"; omit to stay on the current one")
+          final String name,
+      @ToolParam(
+              required = false,
+              description =
+                  "How hard the model should think: one of none, minimal, low, medium, high, xhigh,"
+                      + " max, or not-sent to send no reasoning effort at all. Omit to leave it as"
+                      + " it is")
+          final String reasoningEffort,
       final ToolContext context) {
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
-    if (isBlank(name)) {
+    if (isBlank(name) && isBlank(reasoningEffort)) {
       return messages.get("user-model-add-incomplete");
     }
-    final var wanted = name.trim();
-    if ("default".equalsIgnoreCase(wanted)) {
-      registry.useDefault(userId);
-      return messages.get("user-model-now-default");
+    if (!isBlank(reasoningEffort) && !ReasoningEfforts.valid(reasoningEffort)) {
+      return messages.get("user-model-bad-effort", reasoningEffort, ReasoningEfforts.listed());
     }
-    if (!registry.activate(userId, wanted)) {
-      return messages.get("user-model-unknown", wanted, names(userId));
+    final var wanted = isBlank(name) ? null : name.trim();
+    // Switching first, so that an effort given alongside a name lands on the model just chosen
+    // rather than on the one being left behind.
+    var switched = "";
+    if (wanted != null) {
+      if ("default".equalsIgnoreCase(wanted)) {
+        registry.useDefault(userId);
+        switched = messages.get("user-model-now-default");
+      } else if (!registry.activate(userId, wanted)) {
+        return messages.get("user-model-unknown", wanted, names(userId));
+      } else {
+        switched = messages.get("user-model-switched", wanted);
+      }
     }
-    return messages.get("user-model-switched", wanted);
+    if (isBlank(reasoningEffort)) {
+      return switched;
+    }
+    final var effort = ReasoningEfforts.normalize(reasoningEffort);
+    final var row = registry.setActiveEffort(userId, effort);
+    final var on = UserModelRegistry.displayName(row);
+    final var set =
+        messages.get(
+            "user-model-effort-set",
+            on == null ? messages.get("user-model-default-name") : on,
+            effort);
+    return switched.isEmpty() ? set : switched + " " + set;
   }
 
   @Tool(
@@ -154,6 +207,16 @@ conversations go back to the application's own model.
     return wasActive
         ? messages.get("user-model-deleted-active", wanted)
         : messages.get("user-model-deleted", wanted);
+  }
+
+  /**
+   * How the listing says what effort a model is set to, and says nothing where it is set to none:
+   * an endpoint on the application's own setting has nothing of its own to report.
+   */
+  private String effortOf(final UserModelConfig config) {
+    return config.reasoningEffort() == null
+        ? ""
+        : messages.get("user-model-line-effort", config.reasoningEffort());
   }
 
   private String names(final String userId) {

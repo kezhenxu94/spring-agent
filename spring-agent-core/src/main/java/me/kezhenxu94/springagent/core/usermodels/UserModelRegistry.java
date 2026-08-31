@@ -39,6 +39,20 @@ public class UserModelRegistry {
    */
   public static final String BUILTIN_PREFIX = "@";
 
+  /**
+   * The row standing for the application's own model, whatever that is configured to be.
+   *
+   * <p>{@link #BUILTIN_PREFIX} with no model after it, and the difference from a row naming a model
+   * is the whole point: a user who asks the application's model to think harder has not asked to be
+   * pinned to the model it happens to be pointed at today, so this row carries an effort and no
+   * model at all. {@code UserChatClients} reads a blank model the way it reads a blank base URL —
+   * as the application's.
+   *
+   * <p>It is also why {@link #useDefault} activates this row rather than leaving none: without it,
+   * choosing the built-in model would silently throw away the effort chosen for the built-in model.
+   */
+  public static final String DEFAULT_ROW = BUILTIN_PREFIX;
+
   private final UserModelConfigRepo repo;
   private final AesGcmSealer sealer;
   private final int maxPerUser;
@@ -110,9 +124,14 @@ public class UserModelRegistry {
    * <p>Recorded as a row so that the choice survives a restart, but a row with nothing secret in
    * it: no base URL, so the client is built on the application's endpoint, and no token, so the
    * application's key is not copied per user into a table.
+   *
+   * <p>Keeps the reasoning effort already recorded against that model. Switching onto something is
+   * not a statement about how hard it should think, and a user who set an effort on a built-in
+   * model and then switched away and back would otherwise find it silently gone.
    */
   public void activateBuiltin(final String userId, final String model) {
     final var name = BUILTIN_PREFIX + model;
+    final var existing = repo.findByOwnerIdAndName(userId, name);
     deactivateAll(userId, name);
     repo.save(
         UserModelConfig.builder()
@@ -120,14 +139,39 @@ public class UserModelRegistry {
             .ownerId(userId)
             .name(name)
             .model(model)
+            .reasoningEffort(existing.map(UserModelConfig::reasoningEffort).orElse(null))
             .activated(true)
             .updatedAt(Instant.now())
             .build());
   }
 
-  /** Whether the user is already at the ceiling, counting only names they do not already have. */
+  /**
+   * How a row should be spoken about: the model itself for one of the application's own, the name
+   * the user gave it for one of theirs. The {@code @} prefix is bookkeeping and means nothing to
+   * whoever chose the model.
+   *
+   * @return null for {@link #DEFAULT_ROW}, which has no name of its own — every surface has its own
+   *     word for the application's model, and a localized one, which core has no business choosing
+   */
+  public static String displayName(final UserModelConfig config) {
+    if (!isBuiltin(config)) {
+      return config.name();
+    }
+    final var model = config.name().substring(BUILTIN_PREFIX.length());
+    return model.isEmpty() ? null : model;
+  }
+
+  /**
+   * Whether the user is already at the ceiling, counting only names they do not already have.
+   *
+   * <p>Counts endpoints only. The ceiling is there to bound how many of somebody else's credentials
+   * one user can have the application hold; a row recording which of the application's own models
+   * they chose holds none, and letting those fill the allowance would mean picking models off a
+   * menu could stop you registering an endpoint.
+   */
   public boolean full(final String userId, final String name) {
-    final var existing = repo.findByOwnerId(userId);
+    final var existing =
+        repo.findByOwnerId(userId).stream().filter(config -> !isBuiltin(config)).toList();
     return existing.size() >= maxPerUser
         && existing.stream().noneMatch(config -> config.name().equals(name));
   }
@@ -140,13 +184,17 @@ public class UserModelRegistry {
    * Stores an endpoint, sealing its token, and leaves it deactivated. Re-registering a name
    * replaces it, keeping whether it was the one in use — editing the token of the model you are
    * talking through should not silently move you off it.
+   *
+   * @param reasoningEffort as {@link ReasoningEfforts} spells it, or null to leave the
+   *     application's own setting in place
    */
   public UserModelConfig save(
       final String userId,
       final String name,
       final String baseUrl,
       final String model,
-      final String token) {
+      final String token,
+      final String reasoningEffort) {
     final var wasActive = repo.findByOwnerIdAndName(userId, name).map(UserModelConfig::activated);
     return repo.save(
         UserModelConfig.builder()
@@ -156,7 +204,66 @@ public class UserModelRegistry {
             .baseUrl(baseUrl)
             .model(model)
             .apiKeyCipher(sealer.seal(token))
+            .reasoningEffort(ReasoningEfforts.normalize(reasoningEffort))
             .activated(wasActive.orElse(false))
+            .updatedAt(Instant.now())
+            .build());
+  }
+
+  /**
+   * Changes how hard one endpoint should think, and nothing else about it.
+   *
+   * <p>A write of its own rather than a re-registration, because the token is sealed and never
+   * shown again: turning reasoning up would otherwise mean finding a credential the user was told
+   * they cannot read back. Nothing is probed either — the endpoint is the one that was already
+   * tested, and an effort it rejects is a wrong answer from a model rather than a lockout, since
+   * the row it is set on is not necessarily the one in use.
+   *
+   * @param reasoningEffort one of {@link ReasoningEfforts#CHOICES}, or null to go back to the
+   *     application's own setting
+   * @return whether the user has an endpoint by that name
+   */
+  public boolean setEffort(final String userId, final String name, final String reasoningEffort) {
+    final var target = repo.findByOwnerIdAndName(userId, name);
+    if (target.isEmpty()) {
+      return false;
+    }
+    repo.save(
+        target.get().toBuilder()
+            .reasoningEffort(ReasoningEfforts.normalize(reasoningEffort))
+            .updatedAt(Instant.now())
+            .build());
+    return true;
+  }
+
+  /**
+   * Changes how hard the model the user is actually on should think, whatever kind of model that
+   * is, and hands back the row it was applied to.
+   *
+   * <p>The one place that knows what to do when they are on nothing at all — the application's own
+   * model, recorded as no row: {@link #DEFAULT_ROW} is written, which is what makes "the built-in
+   * model, thinking harder" something a user can ask for without pinning them to the model the
+   * deployment happens to be pointed at today.
+   *
+   * @param reasoningEffort one of {@link ReasoningEfforts#CHOICES}, or null to go back to the
+   *     application's own setting
+   */
+  public UserModelConfig setActiveEffort(final String userId, final String reasoningEffort) {
+    final var active = active(userId);
+    if (active.isPresent()) {
+      setEffort(userId, active.get().name(), reasoningEffort);
+      return repo.findByOwnerIdAndName(userId, active.get().name()).orElseThrow();
+    }
+    // On the application's model, so the effort goes on the row that means exactly that, created
+    // here on first use. See DEFAULT_ROW for why it names no model.
+    deactivateAll(userId, DEFAULT_ROW);
+    return repo.save(
+        UserModelConfig.builder()
+            .id(UserModelConfig.idFor(userId, DEFAULT_ROW))
+            .ownerId(userId)
+            .name(DEFAULT_ROW)
+            .reasoningEffort(ReasoningEfforts.normalize(reasoningEffort))
+            .activated(true)
             .updatedAt(Instant.now())
             .build());
   }
@@ -179,9 +286,19 @@ public class UserModelRegistry {
     return true;
   }
 
-  /** Puts the user back on the application's own model. Always safe, even with nothing stored. */
+  /**
+   * Puts the user back on the application's own model, keeping how hard they asked it to think.
+   *
+   * <p>Always safe, even with nothing stored: with no {@link #DEFAULT_ROW} to activate this leaves
+   * no activated row at all, which reads as the application's model with the application's own
+   * settings — the state the whole feature falls back to.
+   */
   public void useDefault(final String userId) {
-    deactivateAll(userId, null);
+    deactivateAll(userId, DEFAULT_ROW);
+    repo.findByOwnerIdAndName(userId, DEFAULT_ROW)
+        .filter(row -> !row.activated())
+        .ifPresent(
+            row -> repo.save(row.toBuilder().activated(true).updatedAt(Instant.now()).build()));
   }
 
   /** Removes an endpoint. Returns whether there was one to remove. */

@@ -2,11 +2,14 @@ package me.kezhenxu94.springagent.integration.feishu.usermodels;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
+import me.kezhenxu94.springagent.core.usermodels.ReasoningEfforts;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springframework.core.io.Resource;
@@ -56,10 +59,21 @@ public class FeishuConfigForm {
    */
   static final int MAX_BUILTIN_OPTIONS = 50;
 
+  /**
+   * The reasoning-effort option standing for the application's own setting.
+   *
+   * <p>Needed as an option of its own, distinct from leaving the dropdown alone: untouched means
+   * "change nothing about the effort", which is what a press that only switches model has to mean,
+   * while this means "go back to the application's setting" and is the way out of an effort already
+   * stored on a model.
+   */
+  public static final String EFFORT_INHERIT_OPTION = "__inherit__";
+
   static final String ACTIVE = "cfg_active";
   static final String NAME = "cfg_name";
   static final String BASE_URL = "cfg_baseurl";
   static final String MODEL = "cfg_model";
+  static final String EFFORT = "cfg_effort";
   static final String TOKEN = "cfg_token";
 
   private final JsonMapper objectMapper;
@@ -82,10 +96,11 @@ public class FeishuConfigForm {
    */
   public String card(
       final List<UserModelConfig> configured,
-      final String activeName,
+      final UserModelConfig active,
       final List<String> builtinModels,
       final String defaultModel)
       throws IOException {
+    final var activeName = active == null ? null : active.name();
     final var root = (ObjectNode) objectMapper.readTree(rendered());
     final var card = (ObjectNode) root.path("card");
     final var elements = (ArrayNode) card.path("body").path("elements");
@@ -109,6 +124,8 @@ public class FeishuConfigForm {
     formElements.add(root.path("nameInput").deepCopy());
     formElements.add(root.path("baseUrlInput").deepCopy());
     formElements.add(root.path("modelInput").deepCopy());
+    formElements.add(root.path("effortLabel").deepCopy());
+    formElements.add(effortSelect(root, active == null ? null : active.reasoningEffort()));
     formElements.add(root.path("tokenInput").deepCopy());
     formElements.add(root.path("submit").deepCopy());
 
@@ -164,15 +181,114 @@ public class FeishuConfigForm {
     }
 
     for (final var config : configured) {
-      options.add(
-          option(
-              root, messages.get("config-option", config.name(), config.model()), config.name()));
+      // The effort is in the label so the dropdown is also where you see what is set: it is stored
+      // per model and nothing else on this card would show it.
+      final var label =
+          config.reasoningEffort() == null
+              ? messages.get("config-option", config.name(), config.model())
+              : messages.get(
+                  "config-option-effort", config.name(), config.model(), config.reasoningEffort());
+      options.add(option(root, label, config.name()));
       if (config.name().equals(activeName)) {
         selected = options.size();
       }
     }
+    // The row that says "the application's model, whatever it is" names no model, so none of the
+    // built-in options above matched it. It is the plain default option, wherever that ended up in
+    // the list — which is not always first, since a gateway that lists the configured model has it
+    // among the others.
+    if (activeName == null || UserModelRegistry.DEFAULT_ROW.equals(activeName)) {
+      for (var index = 0; index < options.size(); index++) {
+        if (DEFAULT_OPTION.equals(options.get(index).path("value").asString(""))) {
+          selected = index + 1;
+          break;
+        }
+      }
+    }
     select.put("initial_index", selected);
     return select;
+  }
+
+  /**
+   * How hard the model should think, as a list rather than a field to type into: Spring AI takes
+   * {@code reasoning_effort} as a bare string, so a typo here is an endpoint that fails on every
+   * message rather than a validation error.
+   *
+   * <p>Preselected with what the model in use is actually set to, so the card reads as a statement
+   * of the configuration rather than as a question. That has a consequence worth knowing: a press
+   * applies the effort shown to whatever model it leaves the user on, so switching model and
+   * leaving this alone carries the shown effort over to the model switched to. The handler treats a
+   * value that is already in force as nothing to do, which is what keeps an untouched card from
+   * rewriting anything.
+   *
+   * @param current what the model in use is set to, or null for the application's own setting
+   */
+  private ObjectNode effortSelect(final ObjectNode root, final String current) {
+    final var select = (ObjectNode) root.path("effortSelect").deepCopy();
+    final var options = (ArrayNode) select.path("options");
+    options.add(option(root, messages.get("config-effort-inherit"), EFFORT_INHERIT_OPTION));
+    for (final var effort : ReasoningEfforts.VALUES) {
+      options.add(option(root, effort, effort));
+    }
+    options.add(option(root, messages.get("config-effort-not-sent"), ReasoningEfforts.NOT_SENT));
+    // initial_index is 1-based, and the first option is the application's own setting — which is
+    // what a model with no effort of its own is on.
+    var selected = 1;
+    if (current != null) {
+      final var values = new ArrayList<String>();
+      values.add(EFFORT_INHERIT_OPTION);
+      values.addAll(ReasoningEfforts.VALUES);
+      values.add(ReasoningEfforts.NOT_SENT);
+      final var found = values.indexOf(current);
+      if (found >= 0) {
+        selected = found + 1;
+      }
+    }
+    select.put("initial_index", selected);
+    return select;
+  }
+
+  /**
+   * The card a press leaves behind: what the configuration now is, in words, and no form.
+   *
+   * <p>Replacing the form matters twice over. A form that stays on screen can be submitted again
+   * later against a configuration that has moved on, and its token field would leave whatever was
+   * typed there sitting in the chat history. Nothing here repeats the token — it is write-only on
+   * every other path too.
+   *
+   * @param headline what the press did, in the words the toast used
+   * @param active the row the user is now on, or null for the application's model as configured
+   * @param defaultModel the model the application is configured with, for the row that names none
+   */
+  public String summary(
+      final String headline, final UserModelConfig active, final String defaultModel)
+      throws IOException {
+    final var root = (ObjectNode) objectMapper.readTree(rendered());
+    final var card = (ObjectNode) root.path("card");
+    final var elements = (ArrayNode) card.path("body").path("elements");
+
+    final var name =
+        active == null
+            ? messages.get("config-default-option")
+            : Optional.ofNullable(UserModelRegistry.displayName(active))
+                .orElse(messages.get("config-default-option"));
+    final var model =
+        active == null || active.model() == null || active.model().isBlank()
+            ? defaultModel
+            : active.model();
+    final var endpoint =
+        active == null || active.baseUrl() == null || active.baseUrl().isBlank()
+            ? messages.get("config-summary-own-endpoint")
+            : active.baseUrl();
+    final var effort =
+        active == null || active.reasoningEffort() == null
+            ? messages.get("config-effort-inherit")
+            : active.reasoningEffort();
+
+    final var summary = (ObjectNode) root.path("summary").deepCopy();
+    summary.put("content", messages.get("config-summary", headline, name, model, endpoint, effort));
+    elements.add(summary);
+    return objectMapper.writeValueAsString(card);
   }
 
   /**
@@ -221,6 +337,7 @@ public class FeishuConfigForm {
         text(formValue, NAME),
         text(formValue, BASE_URL),
         text(formValue, MODEL),
+        text(formValue, EFFORT),
         text(formValue, TOKEN));
   }
 
@@ -246,11 +363,28 @@ public class FeishuConfigForm {
    * @param active the option chosen in the dropdown, {@link #DEFAULT_OPTION} for the application's
    *     own model, or null if the dropdown was left alone
    */
-  public record Submission(String active, String name, String baseUrl, String model, String token) {
+  public record Submission(
+      String active, String name, String baseUrl, String model, String effort, String token) {
 
-    /** Whether the add fields were filled in at all. */
+    /**
+     * Whether the add fields were filled in at all.
+     *
+     * <p>The effort is not one of them: it is not part of what identifies an endpoint, and a press
+     * that chose only an effort is a change to the model already in use rather than an incomplete
+     * attempt to register one.
+     */
     public boolean adding() {
       return name != null || baseUrl != null || model != null || token != null;
+    }
+
+    /**
+     * The effort as it should be stored: null both for an untouched dropdown and for the option
+     * standing for the application's setting, the two being told apart by {@link #effort()} itself.
+     */
+    public String storedEffort() {
+      return effort == null || FeishuConfigForm.EFFORT_INHERIT_OPTION.equals(effort)
+          ? null
+          : effort;
     }
 
     /** Whether they were filled in completely enough to register an endpoint. */
@@ -264,6 +398,9 @@ public class FeishuConfigForm {
      *
      * <p>This is how any built-in model stays reachable on a gateway serving more of them than the
      * dropdown can hold — see {@link FeishuConfigForm#MAX_BUILTIN_OPTIONS}.
+     *
+     * <p>Says nothing about the effort: one chosen alongside is applied to that built-in model once
+     * it is the one in use, the same as it would be to an endpoint of the user's own.
      */
     public boolean builtinByName() {
       return model != null && baseUrl == null && token == null && name == null;

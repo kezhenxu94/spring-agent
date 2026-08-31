@@ -568,7 +568,8 @@ into the same ones:
   scratch silently drops everything under `spring.ai.openai.chat`, including
   `stream-options.include-usage`, whose absence shows up not as an error but as runs that report no
   token usage and so no cost. `UserChatClients` starts from `defaultChatModel.getOptions().mutate()`
-  and overrides only the three fields that make the endpoint different.
+  and overrides only what makes the endpoint different: base URL, key, model, and the reasoning
+  effort the user chose.
 - Tools are called by the `ToolCallingAdvisor` `SpringAgent` registers on the prompt, not by the
   model, so a hand-built `ChatModel` needs no `ToolCallingManager`. It does need the context's
   `OpenAiHttpClientBuilderCustomizer` beans, or its provider rejections stay unreadable.
@@ -581,12 +582,13 @@ The pieces a consumer would extend or reuse:
 
 | Type | What it is for |
 | --- | --- |
-| `UserModelRegistry` | The rows, and the one place a token is sealed or opened. `activate` clears every other row of that owner *before* setting the new one, so an interrupted switch leaves none activated rather than two — and none means the application's own model. |
-| `UserChatClients` | Resolving and caching the client, as above. Never throws: an endpoint that cannot be read is a fallback and a log line, because failing here would fail the run the user needs to fix it. |
-| `UserModelProbe` | The pre-save connection test — one tiny completion, since that exercises URL, token and model name together where `GET /models` does not. |
+| `UserModelRegistry` | The rows, and the one place a token is sealed or opened. `activate` clears every other row of that owner *before* setting the new one, so an interrupted switch leaves none activated rather than two — and none means the application's own model. `setEffort` rewrites one row's reasoning effort and nothing else, keeping the sealed token, which is the only way to change it: the token is never readable again. `setActiveEffort` applies one to whichever model the user is on, creating `DEFAULT_ROW` where that is the application's own. |
+| `UserChatClients` | Resolving and caching the client, as above. Never throws: an endpoint that cannot be read is a fallback and a log line, because failing here would fail the run the user needs to fix it. `effortInForce` answers what a run for one user will actually be made with, which is what a surface must label its thinking panel from rather than the deployment's property. |
+| `UserModelProbe` | The pre-save connection test — one tiny completion, since that exercises URL, token, model name **and** reasoning effort together where `GET /models` does not. |
 | `BuiltinModels` | What the application's own endpoint reports it can serve, cached and best-effort; an empty list is an ordinary answer. |
+| `ReasoningEfforts` | The efforts a user may choose, taken from the OpenAI SDK's own list rather than typed — Spring AI takes `reasoning_effort` as a bare string, so a typo is an endpoint that fails on every message. Three states: absent leaves the deployment's setting, a value sends it, `NOT_SENT` stops it being sent at all. |
 | `AesGcmSealer` (`core/security/`) | AES-GCM with a fresh nonce per write, shared with the shell credential store. Each caller brings its own key so a leak is contained to one feature. |
-| `UserModelConfig` (`core/dao/models/`) | The row. A **blank `baseUrl` means the application's own endpoint** — that is how choosing one of its models records itself without copying the application's key per user. Such rows are named with a `@` prefix, which user-supplied names may not contain. |
+| `UserModelConfig` (`core/dao/models/`) | The row. A **blank `baseUrl` means the application's own endpoint** and a **blank `model` means its configured model** — that is how choosing one of its models, or only an effort for it, records itself without copying the application's key per user. Such rows are named with a `@` prefix, which user-supplied names may not contain; `@` alone is `UserModelRegistry.DEFAULT_ROW`, the row that carries an effort for the application's model without pinning which model that is. |
 
 A surface that wants to offer this needs no agent run for it: `spring-agent-integration-feishu`'s
 `/config` card and `spring-agent-integration-slack`'s `/config` modal both go straight to

@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.http.okhttp.OpenAiHttpClientBuilderCustomizer;
 
 /**
@@ -31,8 +32,9 @@ import org.springframework.ai.openai.http.okhttp.OpenAiHttpClientBuilderCustomiz
  * OpenAiChatModel} does not expose the client it built, and OkHttp retires idle connections and its
  * dispatcher threads on its own once nothing references the pool.
  *
- * <p>Editing a model needs no invalidation: the key contains the base URL, token and model name, so
- * an edited endpoint is simply a key that is not in the cache, and the entry it replaces ages out.
+ * <p>Editing a model needs no invalidation: the key contains the base URL, token, model name and
+ * reasoning effort, so an edited endpoint is simply a key that is not in the cache, and the entry
+ * it replaces ages out.
  */
 @Slf4j
 public class UserChatClients {
@@ -90,12 +92,41 @@ public class UserChatClients {
   }
 
   /**
+   * The reasoning effort a run for this user will actually be made with, or null where the
+   * parameter is not sent at all.
+   *
+   * <p>Here rather than at the caller because this is the class that decides it, and a surface that
+   * tells the user how hard their model was asked to think must not answer that question from the
+   * deployment's configuration: a user on a model of their own would be shown a number that had
+   * nothing to do with their run.
+   *
+   * <p>Never throws, for the reason {@link #forUser} does not: a label is not worth failing a run
+   * over, and an unreadable row means the run went to the application's model anyway.
+   */
+  public String effortInForce(final String userId) {
+    final var configured = defaultChatModel.getOptions().getReasoningEffort();
+    if (Strings.isNullOrEmpty(userId)) {
+      return configured;
+    }
+    try {
+      final var chosen = registry.active(userId).map(UserModelConfig::reasoningEffort).orElse(null);
+      if (chosen == null) {
+        return configured;
+      }
+      return ReasoningEfforts.NOT_SENT.equals(chosen) ? null : chosen;
+    } catch (Exception e) {
+      log.warn("Could not resolve the reasoning effort {} chose", userId, e);
+      return configured;
+    }
+  }
+
+  /**
    * The client for one stored row, built on first use.
    *
    * <p>A row with no base URL is a model of the application's own that the user picked off the
    * list, not an endpoint of theirs: it borrows the configured base URL and key and changes only
-   * the model asked for. That is what keeps the application's credentials out of the database while
-   * still letting somebody choose among the models it already pays for.
+   * the model asked for, or not even that. That is what keeps the application's credentials out of
+   * the database while still letting somebody choose among the models it already pays for.
    */
   public ChatClient clientFor(final UserModelConfig config) {
     final var defaults = defaultChatModel.getOptions();
@@ -104,7 +135,12 @@ public class UserChatClients {
         new Endpoint(
             builtin ? defaults.getBaseUrl() : config.baseUrl(),
             builtin ? defaults.getApiKey() : registry.tokenOf(config),
-            config.model()));
+            // A blank model is read the same way, and only ever happens on
+            // UserModelRegistry.DEFAULT_ROW: a row that says how hard the application's model
+            // should think without saying which model that is, so that the answer stays whatever
+            // the deployment is configured with.
+            Strings.isNullOrEmpty(config.model()) ? defaults.getModel() : config.model(),
+            config.reasoningEffort()));
   }
 
   private ChatClient clientFor(final Endpoint endpoint) {
@@ -131,19 +167,21 @@ public class UserChatClients {
    * @param token the plaintext token, since there is nothing sealed to open yet
    */
   public ChatClient probeClient(final UserModelConfig config, final String token) {
-    return clientFor(new Endpoint(config.baseUrl(), token, config.model()));
+    return clientFor(
+        new Endpoint(config.baseUrl(), token, config.model(), config.reasoningEffort()));
   }
 
   /**
    * A client onto {@code endpoint}, wired like the application's own.
    *
    * <p>The options start as a <b>copy of the application's own resolved ones</b> and override only
-   * the three fields that make this a different endpoint. That is not tidiness. Spring AI does not
-   * merge runtime options with a model's defaults — {@code buildRequestPrompt} takes the supplied
-   * ones whole when there are any — so options built from scratch here would quietly drop
-   * everything under {@code spring.ai.openai.chat}: the temperature, the reasoning effort, the
-   * timeout, and {@code stream-options.include-usage}, whose absence shows up not as an error but
-   * as runs that report no token usage and therefore no cost.
+   * what makes this a different endpoint: where it is, what it authenticates with, which model to
+   * ask for, and how hard to think. That is not tidiness. Spring AI does not merge runtime options
+   * with a model's defaults — {@code buildRequestPrompt} takes the supplied ones whole when there
+   * are any — so options built from scratch here would quietly drop everything under {@code
+   * spring.ai.openai.chat}: the temperature, the reasoning effort, the timeout, and {@code
+   * stream-options.include-usage}, whose absence shows up not as an error but as runs that report
+   * no token usage and therefore no cost.
    *
    * <p>The HTTP client customizers are the context's own for the same reason {@code
    * visionChatClient} takes them: built by hand, this model would otherwise be the one endpoint
@@ -158,25 +196,45 @@ public class UserChatClients {
    */
   private ChatClient build(final Endpoint endpoint) {
     log.info("Building a chat client for {} at {}", endpoint.model(), endpoint.baseUrl());
-    final var options =
-        defaultChatModel
-            .getOptions()
-            .mutate()
-            .baseUrl(endpoint.baseUrl())
-            .apiKey(endpoint.apiKey())
-            .model(endpoint.model())
-            .build();
     final var chatModel =
         OpenAiChatModel.builder()
-            .options(options)
+            .options(optionsFor(defaultChatModel.getOptions(), endpoint))
             .httpClientBuilderCustomizers(httpClientCustomizers)
             .build();
     return ChatClient.builder(chatModel).build();
   }
 
   /**
-   * What makes two clients the same client. The token is part of it because rotating it has to
-   * produce a new client rather than keep authenticating with the old one.
+   * The application's resolved options with the endpoint's own four fields over the top.
+   *
+   * <p>A method of its own so that the three states of a reasoning effort can be asserted: they are
+   * the part of this class most easily broken by a change that looks harmless, and the difference
+   * between them is invisible from outside a built client.
    */
-  private record Endpoint(String baseUrl, String apiKey, String model) {}
+  static OpenAiChatOptions optionsFor(final OpenAiChatOptions defaults, final Endpoint endpoint) {
+    final var builder =
+        defaults
+            .mutate()
+            .baseUrl(endpoint.baseUrl())
+            .apiKey(endpoint.apiKey())
+            .model(endpoint.model());
+    // Left alone where the user chose nothing, so the application's own reasoning effort survives
+    // the copy above; cleared for the sentinel, which is the only way to stop the parameter being
+    // sent at all to a gateway that rejects it. See ReasoningEfforts for why those are two states.
+    if (ReasoningEfforts.NOT_SENT.equals(endpoint.reasoningEffort())) {
+      builder.reasoningEffort(null);
+    } else if (endpoint.reasoningEffort() != null) {
+      builder.reasoningEffort(endpoint.reasoningEffort());
+    }
+    return builder.build();
+  }
+
+  /**
+   * What makes two clients the same client. The token is part of it because rotating it has to
+   * produce a new client rather than keep authenticating with the old one, and the reasoning effort
+   * is because it lives in the options a client is built with: Spring AI takes supplied per-request
+   * options whole rather than merging them, so sending it per request would mean building a set
+   * from scratch and losing everything else the application configured.
+   */
+  record Endpoint(String baseUrl, String apiKey, String model, String reasoningEffort) {}
 }
