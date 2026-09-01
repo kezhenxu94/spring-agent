@@ -110,9 +110,12 @@ the LLM**:
 
 The dropdown also lists what the application's own endpoint reports it can serve, so choosing among
 the models the deployment already pays for needs no token of your own. That listing is best-effort:
-an endpoint that does not answer `GET /models` simply shows the one built-in entry. Where it serves
-more models than a card can hold the list is cut short — fill in the **Model** field alone, leaving
-name, base URL and token empty, to name any of them directly.
+an endpoint that does not answer `GET /models` simply shows the one built-in entry. What it does
+answer with is usually more than chat models — the embedding model this deployment uses, a
+reranker, a speech or image model — and those are filtered out by name, since `GET /models` says
+nothing about what a model is for. Where the endpoint serves more chat models than a card can hold
+the list is cut short. Either way, fill in the **Model** field alone, leaving name, base URL and
+token empty, to name any model the endpoint serves directly.
 
 ### How hard it thinks
 

@@ -5,9 +5,11 @@ import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.http.okhttp.OpenAiHttpClientBuilderCustomizer;
 import org.springframework.ai.openai.setup.OpenAiSetup;
 
@@ -36,7 +38,47 @@ public class BuiltinModels {
   /** How long to wait for the listing before giving up and showing the single entry. */
   private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
-  private final OpenAiChatModel defaultChatModel;
+  /**
+   * How a model id is cut into words — on anything that is not a letter or a digit, which covers
+   * the hyphens, dots, underscores and the vendor prefix's slash that ids are built from. A stem is
+   * then matched at the start of a word rather than anywhere in the id, so that a short one cannot
+   * fire inside an unrelated name.
+   */
+  private static final Pattern SEGMENTS = Pattern.compile("[^a-z0-9]+");
+
+  /**
+   * What a segment starting with one of these says the model is for, and it is not chatting. Stems
+   * rather than whole words so that a plural or a suffix is covered too ({@code embedding}, {@code
+   * embeddings}, {@code reranker}). See {@link #chatModelsAmong} for why the list is short.
+   */
+  private static final List<String> NON_CHAT_STEMS =
+      List.of(
+          "embed",
+          "rerank",
+          "moderation",
+          "whisper",
+          "tts",
+          "stt",
+          "asr",
+          "speech",
+          "transcribe",
+          "diffusion",
+          "dall",
+          "image",
+          "video",
+          "realtime",
+          "bge",
+          "gte",
+          "m3e",
+          "text2vec");
+
+  /**
+   * The application's endpoint as {@link ApplicationEndpoint} resolves it, rather than the options
+   * the {@code OpenAiChatModel} bean holds: those carry no base URL and no key at all, which is
+   * exactly the listing failure this class logs. See that class.
+   */
+  private final OpenAiChatOptions options;
+
   private final List<OpenAiHttpClientBuilderCustomizer> httpClientCustomizers;
 
   /**
@@ -50,10 +92,10 @@ public class BuiltinModels {
   private final AtomicReference<OpenAIClient> client = new AtomicReference<>();
 
   public BuiltinModels(
-      final OpenAiChatModel defaultChatModel,
+      final OpenAiChatOptions options,
       final List<OpenAiHttpClientBuilderCustomizer> httpClientCustomizers,
       final ObservationRegistry observationRegistry) {
-    this.defaultChatModel = defaultChatModel;
+    this.options = options;
     this.httpClientCustomizers = httpClientCustomizers;
     this.observationRegistry =
         observationRegistry == null ? ObservationRegistry.NOOP : observationRegistry;
@@ -61,7 +103,7 @@ public class BuiltinModels {
 
   /** The model the application is configured to use, which is what "the built-in model" means. */
   public String defaultModel() {
-    return defaultChatModel.getOptions().getModel();
+    return options.getModel();
   }
 
   /**
@@ -82,14 +124,18 @@ public class BuiltinModels {
 
   private List<String> fetch() {
     try {
-      final var models =
+      final var offered =
           client().models().list().data().stream()
               .map(model -> model.id())
               .filter(id -> id != null && !id.isBlank())
               .distinct()
               .sorted()
               .toList();
-      log.info("The application endpoint offers {} model(s)", models.size());
+      final var models = chatModelsAmong(offered);
+      log.info(
+          "The application endpoint offers {} model(s), {} of them usable for chat",
+          offered.size(),
+          models.size());
       return models;
     } catch (Exception e) {
       // At info, not warn: an endpoint that does not serve /models is an ordinary configuration,
@@ -100,20 +146,58 @@ public class BuiltinModels {
   }
 
   /**
+   * The ones somebody could actually chat with, as far as a name can tell.
+   *
+   * <p>An endpoint that serves this application serves its embedding model too, and typically a
+   * reranker, a speech model and an image model beside it. None of those can answer a chat
+   * completion, so every one of them in the dropdown is a way to break your own runs — and, since
+   * the surfaces cut the list short at a card's worth of options, one that pushes a real model off
+   * the end of it.
+   *
+   * <p>Decided by name, because there is nothing else to decide it with: {@code GET /models}
+   * answers with an id, a creation time and an owner, and the OpenAI API defines no field saying
+   * what a model does. Gateways that add one all add a different one. So this is a guess, and it is
+   * deliberately a conservative one — a stem here must be a word that never appears in a chat
+   * model's name, which is why {@code vision}, {@code audio} and {@code ocr} are absent: those are
+   * chat models on several gateways.
+   *
+   * <p>Being a guess is survivable in both directions. A non-chat model this fails to recognise is
+   * an entry in the dropdown, as today. A chat model it wrongly drops is still reachable, by naming
+   * it in the form's model field with no base URL and no token — the same way a model past the
+   * card's cap is reached. And a listing that this filter would empty is returned whole: a gateway
+   * whose every name looks non-chat to us is one we have understood nothing about, and an
+   * unfiltered menu beats an empty one.
+   */
+  static List<String> chatModelsAmong(final List<String> offered) {
+    final var chat = offered.stream().filter(BuiltinModels::looksLikeChatModel).toList();
+    return chat.isEmpty() ? offered : chat;
+  }
+
+  private static boolean looksLikeChatModel(final String id) {
+    for (final var segment : SEGMENTS.split(id.toLowerCase(Locale.ROOT))) {
+      for (final var stem : NON_CHAT_STEMS) {
+        if (segment.startsWith(stem)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  /**
    * A client onto the application's own endpoint, built once.
    *
-   * <p>Built here rather than taken from {@link OpenAiChatModel}, which keeps its own private and
-   * exposes no accessor. The options it was built from are public, though, so this is the same
-   * endpoint with the same credentials and the same HTTP customizers — only the timeout is this
-   * class's own, since a listing that hangs must not hold a card open for the half-hour a reasoning
-   * turn is allowed.
+   * <p>Built here rather than taken from {@code OpenAiChatModel}, which keeps its own private and
+   * exposes no accessor. The endpoint it dials is resolved from the same configuration, though, so
+   * this is the same gateway with the same credentials and the same HTTP customizers — only the
+   * timeout is this class's own, since a listing that hangs must not hold a card open for the
+   * half-hour a reasoning turn is allowed.
    */
   private OpenAIClient client() {
     final var existing = client.get();
     if (existing != null) {
       return existing;
     }
-    final var options = defaultChatModel.getOptions();
     final var built =
         OpenAiSetup.setupSyncClient(
             options.getBaseUrl(),

@@ -47,19 +47,27 @@ public class UserChatClients {
 
   private final ChatClient defaultChatClient;
   private final UserModelRegistry registry;
-  private final OpenAiChatModel defaultChatModel;
+
+  /**
+   * The application's endpoint as {@link ApplicationEndpoint} resolves it, rather than the options
+   * the {@code OpenAiChatModel} bean holds: those carry no base URL, no key and no timeout at all,
+   * and every client built here starts from them. See that class for what copying the bean's own
+   * options silently costs.
+   */
+  private final OpenAiChatOptions defaults;
+
   private final List<OpenAiHttpClientBuilderCustomizer> httpClientCustomizers;
   private final Cache<Endpoint, ChatClient> clients;
 
   public UserChatClients(
       final ChatClient defaultChatClient,
       final UserModelRegistry registry,
-      final OpenAiChatModel defaultChatModel,
+      final OpenAiChatOptions defaults,
       final List<OpenAiHttpClientBuilderCustomizer> httpClientCustomizers,
       final int cacheSize) {
     this.defaultChatClient = defaultChatClient;
     this.registry = registry;
-    this.defaultChatModel = defaultChatModel;
+    this.defaults = defaults;
     this.httpClientCustomizers = httpClientCustomizers;
     this.clients =
         CacheBuilder.newBuilder().maximumSize(cacheSize).expireAfterAccess(IDLE_TIMEOUT).build();
@@ -104,7 +112,7 @@ public class UserChatClients {
    * over, and an unreadable row means the run went to the application's model anyway.
    */
   public String effortInForce(final String userId) {
-    final var configured = defaultChatModel.getOptions().getReasoningEffort();
+    final var configured = defaults.getReasoningEffort();
     if (Strings.isNullOrEmpty(userId)) {
       return configured;
     }
@@ -129,7 +137,6 @@ public class UserChatClients {
    * the database while still letting somebody choose among the models it already pays for.
    */
   public ChatClient clientFor(final UserModelConfig config) {
-    final var defaults = defaultChatModel.getOptions();
     final var builtin = Strings.isNullOrEmpty(config.baseUrl());
     return clientFor(
         new Endpoint(
@@ -198,7 +205,7 @@ public class UserChatClients {
     log.info("Building a chat client for {} at {}", endpoint.model(), endpoint.baseUrl());
     final var chatModel =
         OpenAiChatModel.builder()
-            .options(optionsFor(defaultChatModel.getOptions(), endpoint))
+            .options(optionsFor(defaults, endpoint))
             .httpClientBuilderCustomizers(httpClientCustomizers)
             .build();
     return ChatClient.builder(chatModel).build();
