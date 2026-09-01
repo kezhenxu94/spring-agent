@@ -105,7 +105,7 @@ const STRINGS = {
   },
 
   zh: {
-    'app.title': 'Spring Agent',
+    'app.title': 'Spring 智能体',
 
     'nav.new': '新建对话',
     'nav.conversations': '对话',
@@ -222,6 +222,9 @@ export function t(key, ...args) {
 // Re-renders everything carrying a data-i18n key. Called on load and whenever the switcher changes
 // the language, so a switch does not need a page reload to take effect.
 export function applyTranslations(root = document) {
+  // The tab is part of the page: a name that differs by language has to follow the switcher there
+  // too, and this is the one call every switch already makes.
+  if (root === document) document.title = t('app.title');
   root.querySelectorAll('[data-i18n]').forEach((element) => {
     element.textContent = t(element.dataset.i18n);
   });
@@ -237,17 +240,20 @@ export function applyTranslations(root = document) {
   });
 }
 
-// What this deployment calls itself, from app.web.title, reported by /api/me.
+// What this deployment calls itself per language, reported by /api/me as {en: "...", zh: "..."} —
+// one entry per language the server supports, whether that name came from app.web.title or from
+// the app-title key in its bundle.
 //
-// Overwrites the key in *every* table rather than the current one: a name is not a translation, and
-// a deployment that renamed itself must not go back to being called Spring Agent the moment
-// somebody switches language. Written into STRINGS so that t() and applyTranslations() carry it
-// everywhere the name appears without any caller having to know it is configurable.
-export function setAppName(name) {
-  const trimmed = String(name || '').trim();
-  if (!trimmed) return;
-  Object.values(STRINGS).forEach((table) => { table['app.title'] = trimmed; });
-  document.title = trimmed;
+// Merged into STRINGS rather than replacing it, and skipping a blank, so a language the server said
+// nothing about keeps the name the page ships with. Written in at load, for every language at once,
+// so that switching language later is a table swap here and never asks the server again — which is
+// why the server sends them all rather than the reader's.
+export function setAppName(titles) {
+  if (!titles || typeof titles !== 'object') return;
+  Object.entries(titles).forEach(([language, name]) => {
+    const trimmed = String(name || '').trim();
+    if (trimmed && STRINGS[language]) STRINGS[language]['app.title'] = trimmed;
+  });
 }
 
 export const LANGUAGE_NAMES = { en: 'English', zh: '中文' };

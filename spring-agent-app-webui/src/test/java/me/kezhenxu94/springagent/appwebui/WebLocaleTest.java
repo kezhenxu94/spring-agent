@@ -114,11 +114,24 @@ class WebLocaleTest {
   }
 
   @Test
+  @DisplayName("a deployment that never renamed itself is named by the bundle, in each language")
+  void anUnconfiguredNameComesFromTheBundle() throws Exception {
+    // The name is app-title, a translated string like every other, and every supported language is
+    // sent at once because the switcher retitles the tab without asking the server again.
+    final var request =
+        get("/api/me").with(SecurityMockMvcRequestPostProcessors.oauth2Login().oauth2User(user()));
+    final var body = mvc.perform(request).andReturn().getResponse().getContentAsString();
+    assertThat(om.readValue(body, Map.class).get("title"))
+        .isEqualTo(Map.of("en", "Spring Agent", "zh", "Spring 智能体"));
+  }
+
+  @Test
   @DisplayName("every key the page can reach exists in both bundles")
   void bothBundlesAreComplete() {
     // A missing key degrades to the key itself, which reads as gibberish rather than as an error.
     final var keys =
         java.util.List.of(
+            "app-title",
             "message-empty",
             "question-empty",
             "question-expired",

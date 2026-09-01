@@ -361,12 +361,25 @@ app:
     # -PnativeBackends in springagent.native.gradle. Changing it does not migrate existing data.
     type: ${PERSISTENCE_TYPE:jpa}
   web:
-    # What this deployment calls itself: the browser tab, the brand in the sidebar, and the heading
-    # before a conversation has a title. Somebody running the agent as their own product should not
-    # have to see Spring Agent on their screen. One value rather than one per language — a name is
-    # not a translation — and it reaches the page through /api/me, which is the first response the
-    # page renders from.
-    title: ${WEB_TITLE:Spring Agent}
+    # What this deployment calls itself: the browser tab, the brand in the sidebar, and the
+    # heading before a conversation has a title. Somebody running the agent as their own product
+    # should not have to see Spring Agent on their screen. It reaches the page through /api/me,
+    # which is the first response the page renders from.
+    #
+    # One name for every language, because a name a deployment chose for itself is not something
+    # this server can translate. Unset, the name is a translated string like every other label —
+    # app-title, resolved per reader — so each one gets it in their own language and the switcher
+    # changes it along with everything else. A deployment whose name IS written differently in each
+    # language leaves this unset and overrides that key instead, through `messages` below.
+    title: ${WEB_TITLE:}
+    # Message bundles consulted before this application's own, in order, as basenames on the
+    # classpath (comma-separated: com/acme/messages,com/acme/more). The extension point for
+    # somebody embedding this server in their own: naming one key in a bundle of their own
+    # overrides that string in the language that bundle is for, and leaves every other key alone —
+    # so they never take a copy of web/messages*.properties and then silently lose whatever is
+    # added to it later. Overriding app-title is how a deployment gives itself a different name in
+    # each language.
+    messages: ${WEB_MESSAGES:}
     # The language a reader gets when their browser asks for one nothing is written in. Their own
     # language is detected from Accept-Language and overridden by the switcher in the page, both of
     # which win over this — see WebLocaleConfiguration.

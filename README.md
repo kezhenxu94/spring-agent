@@ -433,7 +433,8 @@ Its own switches, on top of the ones in the table above:
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `WEB_TITLE` | `Spring Agent` | What the deployment calls itself: the browser tab, the sidebar brand, the heading before a conversation has a title. One value for every language — a name is not a translation |
+| `WEB_TITLE` | translated per language | What the deployment calls itself: the browser tab, the sidebar brand, the heading before a conversation has a title. One name for every language; unset, each reader gets the shipped name in their own language |
+| `WEB_MESSAGES` | none | Comma-separated basenames of message bundles consulted before the server's own, so a deployment can reword any of its text — including `app-title`, which is how it gives itself a different name in each language |
 | `WEB_JOURNAL_RETENTION` | `30m` | How long a finished run's detail — its tool calls, its subagents, its thinking — is kept for a browser that comes back to it. Past this the conversation is still there; how it was reached is not |
 | `WEB_JOURNAL_MAX_RUNS` | `500` | How many runs are held in memory at all. Finished ones are dropped first; a live run never is |
 | `WEB_QUESTION_TTL` | `24h` | How long an unanswered question stays answerable |

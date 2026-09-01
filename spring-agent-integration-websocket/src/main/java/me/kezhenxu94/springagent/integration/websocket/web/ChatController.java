@@ -74,11 +74,28 @@ public class ChatController {
                 .anyMatch(it -> WebAuthoritiesMapper.ROLE.equals(it.getAuthority()));
     final var out = new LinkedHashMap<String, Object>();
     out.put("allowed", allowed);
-    // What this deployment calls itself. Reported here rather than from a public endpoint of its
-    // own
-    // because there is nowhere earlier it could be shown: a caller with no session is redirected
-    // straight to the identity provider, so this is the first response the page ever renders from.
-    out.put("title", properties.title());
+    // What this deployment calls itself, per language: {"en": "...", "zh": "..."}. Reported here
+    // rather than from a public endpoint of its own because there is nowhere earlier it could be
+    // shown: a caller with no session is redirected straight to the identity provider, so this is
+    // the first response the page ever renders from.
+    //
+    // Every supported language at once rather than the reader's alone, because the switcher in the
+    // page changes language without asking the server again — a response carrying one name would
+    // leave the tab and the sidebar brand in the language the page happened to start in.
+    //
+    // Where the names come from is the whole of the naming story: app.web.title where a deployment
+    // fixed one name for every language, and otherwise app-title from the message bundle, which a
+    // consumer overrides per language with a bundle of their own under app.web.messages. Keyed by
+    // language rather than by tag, which is how the page's own tables are keyed.
+    final var titles = new LinkedHashMap<String, Object>();
+    for (final var language : WebLocaleConfiguration.SUPPORTED) {
+      titles.put(
+          language.getLanguage(),
+          properties.title() == null
+              ? messages.get(language, WebMessages.TITLE)
+              : properties.title());
+    }
+    out.put("title", titles);
     out.put("userId", user.id());
     out.put("name", user.name());
     out.put("avatar", user.avatar());
