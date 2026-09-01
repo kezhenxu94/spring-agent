@@ -907,6 +907,16 @@ app:
     # to true in EventsProperties.BUILT_IN for exactly that reason.
     resolve-after-evaluation: ${EVENTS_RESOLVE_AFTER_EVALUATION:false}
 
+    # How long a situation may sit in INVESTIGATING before a sweep decides nobody is coming back for
+    # it and makes it due again. That phase is written before a triage run starts and only the run's
+    # own write-back leaves it, so a database blip lasting exactly that one write would otherwise
+    # strand the situation for good: nothing else queries the phase, and a restart does not revisit
+    # it either. Reclaiming bumps the generation, which is the same thing a second replica's attempt
+    # does, so a write-back that lands late sees the newer generation and does nothing. Set it
+    # comfortably longer than a triage run takes — too short only means paying the model twice for
+    # a run that was merely slow.
+    stuck-investigation-timeout: ${EVENTS_STUCK_INVESTIGATION_TIMEOUT:PT20M}
+
     # What the agent is told it is doing, with {situation} substituted, overriding every source at
     # once. Left unset, and that is what makes it translatable: a property has one value, so setting
     # one here would pin every source to one wording in one language. Unset, each source is given its
