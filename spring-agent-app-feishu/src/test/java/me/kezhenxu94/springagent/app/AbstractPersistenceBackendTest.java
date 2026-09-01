@@ -24,6 +24,11 @@ import me.kezhenxu94.springagent.core.dao.repo.SeenUpdateRepo;
 import me.kezhenxu94.springagent.core.dao.repo.SituationRepo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.MessageType;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
@@ -49,6 +54,13 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
   @Autowired ObservedEventRepo observedEventRepo;
   @Autowired ChatSessionRepo chatSessionRepo;
   @Autowired SeenUpdateRepo seenUpdateRepo;
+
+  /**
+   * Not one of this repository's own contracts, but Spring AI's, chosen by {@code
+   * app.persistence.type} along with them — so it is a semantic that switching backend must not
+   * change, which is what this class is for.
+   */
+  @Autowired ChatMemoryRepository chatMemoryRepository;
 
   /**
    * The owner is per-subclass so the two backends cannot collide on the ownerId+name constraint.
@@ -550,5 +562,42 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
     // And somebody who has never been greeted has no row, which is what the greeting reads as
     // "this person is new" rather than "this person is up to date".
     assertThat(seenUpdateRepo.findById(owner() + "-stranger")).isEmpty();
+  }
+
+  @Test
+  @DisplayName("a conversation reads back in the order it was said")
+  void chatMemoryPreservesTheOrderOfATurn() {
+    final var conversationId = owner() + "-transcript";
+    // One turn saved in one call, which is how the memory advisor writes: the user's message and
+    // the answer to it together, at the end of the turn. A backend that orders by a timestamp it
+    // stamps itself gives both the same millisecond, and the tie is then broken by whatever the
+    // store feels like — which reads as the agent having answered before it was asked.
+    final List<Message> turn =
+        List.of(new UserMessage("hi"), new AssistantMessage("Hello, how can I help?"));
+    chatMemoryRepository.saveAll(conversationId, turn);
+
+    // Ten times, because a tie broken arbitrarily is a test that passes half the time.
+    for (var attempt = 0; attempt < 10; attempt++) {
+      assertThat(chatMemoryRepository.findByConversationId(conversationId))
+          .as("attempt %d", attempt)
+          .extracting(Message::getMessageType, Message::getText)
+          .containsExactly(
+              org.assertj.core.groups.Tuple.tuple(MessageType.USER, "hi"),
+              org.assertj.core.groups.Tuple.tuple(MessageType.ASSISTANT, "Hello, how can I help?"));
+    }
+
+    // And across turns, since each one rewrites the whole conversation on some backends.
+    chatMemoryRepository.saveAll(
+        conversationId,
+        List.of(
+            new UserMessage("hi"),
+            new AssistantMessage("Hello, how can I help?"),
+            new UserMessage("what can you do?"),
+            new AssistantMessage("Quite a lot.")));
+    assertThat(chatMemoryRepository.findByConversationId(conversationId))
+        .extracting(Message::getText)
+        .containsExactly("hi", "Hello, how can I help?", "what can you do?", "Quite a lot.");
+
+    chatMemoryRepository.deleteByConversationId(conversationId);
   }
 }

@@ -624,7 +624,8 @@ binary breaks at runtime while the JVM build passes.
 | `spring-agent-integration-feishu` | Feishu/Lark chats and cards as an agent surface, plus its docs, sheets, base and wiki tools, and drive import/export |
 | `spring-agent-integration-slack` | Slack channels and Block Kit messages as an agent surface: streaming replies, a stop button, an asynchronous question form, greetings, chat observation and the message/channel/file tools. Written against Bolt, the Slack SDK's own application framework, over a Socket Mode connection |
 | `spring-agent-rag-milvus` | The knowledge base, and the only implementation of core's `KnowledgeBase` |
-| `spring-agent-app-web` | A browser surface over the runtime and nothing else; not published, it ships as an image |
+| `spring-agent-integration-websocket` | A browser as an agent surface: a single-page UI, the REST endpoints behind it, and runs streamed live over STOMP/WebSocket. Contributes no `SecurityFilterChain` — the including application owns that and wires in this module's `WebAuthoritiesMapper` — and needs `@EnableScheduling` on it |
+| `spring-agent-app-webui` | The deployable that is nothing but the runtime and the module above; not published, it ships as an image |
 
 **Only one chat surface may be on a classpath at a time.** `spring-agent-integration-feishu` and
 `spring-agent-integration-slack` each register a `@Bean AgentResponseListener` that claims every
@@ -634,6 +635,18 @@ Core merges contributors with `putAll` and `spring-agent-events` resolves the no
 format is whichever registered last, and the notifier lookup throws. None of that fails at startup.
 Pick the surface your application has; if you need both, run two applications, which is what
 `spring-agent-app-feishu` and `spring-agent-app-slack` are.
+
+`spring-agent-integration-websocket` is not a third entry in that list, and adding it to an
+application that already has a chat surface is not the mistake the rule is about. It does register a
+`@Bean AgentResponseListener` — `WebRunListener`, so that a scheduled task firing or a subagent
+starting is still visible in the page — but that one claims a run only when the request's `chatType`
+is `web`, which is what every request this module builds carries and no other surface's does. It
+contributes no `PromptVariablesContributor`, so it never decides `{replyFormat}`, and no `Notifier`.
+So a Feishu bot can gain a browser to read its conversations in by depending on it — which is the
+reason it is published at all — as long as the application's own `SecurityFilterChain` reaches the
+page's paths. See `spring-agent-app-webui`'s `SecurityConfigurer` for the arrangement, and note that
+CSRF must be on: a `POST /api/conversations/{id}/messages` makes the agent act with the logged-in
+person's credentials, files and MCP servers.
 
 Adding a module decides nothing on its own. `app.ai.tools.shell.type` decides the shell and defaults
 to `none`; `app.events.enabled` decides the events receiver and defaults to false; `app.ai.rag.enabled`
