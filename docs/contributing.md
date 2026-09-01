@@ -102,6 +102,7 @@ spring-agent-events                   observations -> situations -> a triage run
 spring-agent-integration-{github,gitlab,grafana}   webhook readers for spring-agent-events
 spring-agent-integration-feishu       Feishu/Lark chats and cards as a surface
 spring-agent-integration-slack        Slack channels and Block Kit messages as a surface
+spring-agent-integration-email        a watched IMAP mailbox as observations; dials out, so app.email.enabled
 spring-agent-integration-websocket    a browser as a surface: the SPA, its REST endpoints, STOMP run streaming
 spring-agent-rag-milvus               the knowledge base; the only KnowledgeBase implementation
 spring-agent-app-feishu               deployable server, Feishu surface; depends on every optional module
@@ -165,6 +166,21 @@ the third throws. None of it fails at startup. The constraint holds for a *test*
 auto-configuration there is still an auto-configuration, so a `testImplementation` on a second
 surface is the same mistake. If you need a cross-surface assertion, put it in each application's own
 test rather than importing the other surface.
+
+`spring-agent-integration-websocket` is the one surface that may sit beside another, and it is worth
+knowing why before assuming the rule is softer than it looks. Of the three singletons above it
+registers only the listener, and that listener claims a run exclusively when the request's
+`chatType` is `web` — a value no other surface sets — so it never answers for a Feishu or Slack run.
+It fills no `{replyFormat}` and is nobody's `Notifier`. What it does need from the application is a
+`SecurityFilterChain`: the module deliberately defines none, contributing `WebAuthoritiesMapper`
+instead, so the including application decides who may log in and which paths are public. See
+`spring-agent-app-webui`'s `SecurityConfigurer`, and note that CSRF must be **on** — a POST there
+makes the agent act with the logged-in person's credentials.
+
+Its run streaming is also the one place a surface is not simply a listener: a `RunJournal` holds
+what a run emitted so a browser can join late, and a subscription is only a reader of one. See
+`docs/architecture.md` for the shape and `RunStreamSubscriptions` for why frames go to the asking
+session rather than to a topic.
 
 What a surface owns:
 
@@ -341,8 +357,16 @@ Beans annotated `@AgentTool`, whose `@Tool` methods `AgentToolsProvider.compose(
 ### A persistence backend
 
 Repository *contracts* live in `core/dao/repo/`; each `spring-agent-persistence-*` module implements
-them, and the module also supplies the matching Spring AI chat memory repository — the two are
+them, and the module also supplies the matching conversation-memory repository — the two are
 selected together by `@ConditionalOnPersistenceBackend` so they cannot come from different places.
+
+On jpa and redis that memory repository is Spring AI's own. On mongodb it is this repository's
+`MongoChatMemoryRepo`, and `PersistenceAutoConfigurationFilter` keeps Spring AI's out of the way,
+because upstream orders a turn by a millisecond-precision timestamp it stamps itself and MongoDB
+breaks the tie however it likes — a conversation comes back answer-first, which is what the *model*
+then reads as history. That class documents exactly what to delete once upstream orders
+deterministically. A backend added later owes the same guarantee, and
+`AbstractPersistenceBackendTest#chatMemoryPreservesTheOrderOfATurn` is what checks it.
 
 When adding a model or a query, update **all three** implementations. The domain records in
 `core/dao/models/` carry JPA, MongoDB and Redis mapping annotations at once, which works because an
@@ -399,7 +423,7 @@ design documentation. Match that: when a decision is non-obvious, write down the
 and what breaks without it. Do not describe history in comments; git records that.
 
 **Configuration is documented in place.**
-[`spring-agent-app/src/main/resources/application.yaml`](../spring-agent-app/src/main/resources/application.yaml)
+[`spring-agent-app-feishu/src/main/resources/application.yaml`](../spring-agent-app-feishu/src/main/resources/application.yaml)
 is the reference for every property and environment variable. A new knob is added there, with its
 rationale, in the same change that introduces it — and with an environment variable, since a
 container deployment has no other way to set it.
@@ -417,15 +441,16 @@ agent's own rather than a person's. No scenario can withhold that.
 
 ## Documentation
 
-There are three documents and they have distinct audiences. Keep the change that alters behaviour in
+There are four documents and they have distinct audiences. Keep the change that alters behaviour in
 the same commit as the documentation for it:
 
 | Document | Audience | Update it when |
 | --- | --- | --- |
+| [`docs/architecture.md`](architecture.md) | Anybody orienting themselves | A module, surface, event source or store is added or removed; one of the relationships between them changes |
 | [`README.md`](../README.md) | Somebody running the prebuilt server or CLI | A feature becomes visible to an end user; the way either application is started or configured changes; a switch gains or loses a value |
 | [`docs/sdk.md`](sdk.md) | A Java developer embedding the library | A public API, SPI or extension point changes; a module is published or removed; a scenario, listener hook or tool-context key is added |
 | [`docs/contributing.md`](contributing.md) | Somebody changing this repository | The build, the test layout or the module rules change; a new *kind* of integration becomes possible |
 
-`application.yaml` remains the configuration reference, and none of the three duplicates it — they
+`application.yaml` remains the configuration reference, and none of the four duplicates it — they
 link to it. The same goes for the code: prefer a link to the class that explains itself over copying
 its reasoning into a document that will drift.
