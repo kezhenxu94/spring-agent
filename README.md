@@ -395,14 +395,14 @@ thread, carrying on where it left off.
 
 ## Run the web UI
 
-A third application, `spring-agent-app-web`: the agent and a browser, and nothing else. No bot, no
+A third application, `spring-agent-app-webui`: the agent and a browser, and nothing else. No bot, no
 webhook receiver, no chat platform — so what it gives you is the runtime itself with everything a run
 does made visible: the answer as it streams, what the model is thinking, every tool call and what it
 returned, a card per subagent, the live to-do list, the sources a knowledge base was consulted for,
 what the turn cost, and the agent's own questions as a form you answer in the page.
 
 ```sh
-./gradlew :spring-agent-app-web:bootRun     # the same OPENAI_*/EMBEDDING_* variables, plus the three below
+./gradlew :spring-agent-app-webui:bootRun   # the same OPENAI_*/EMBEDDING_* variables, plus the three below
 ```
 
 Then open <http://localhost:8080>. Sign-in is Feishu OAuth by default, so three more variables are needed. To sign in with Slack
@@ -421,8 +421,8 @@ In the Feishu app's console, add `http://localhost:8080/login/oauth2/code/feishu
 under your real host) as a redirect URI, and grant the app the profile scopes it needs to return
 `open_id` and `tenant_key`.
 
-**A run outlives the page it was started from.** The stream to the browser is a reader of a run that
-is happening on the server, never the run itself — so refreshing, closing the tab, or coming back an
+**A run outlives the page it was started from.** The page subscribes to a run over a websocket, and
+that subscription is a reader of a run that is happening on the server, never the run itself — so refreshing, closing the tab, or coming back an
 hour later re-attaches and redraws everything, and nothing a browser does can cancel a run except
 pressing Stop. A question the agent asked is written down rather than held open, so it survives a
 restart of the server too, and is still there to answer when you come back.
@@ -431,6 +431,7 @@ Its own switches, on top of the ones in the table above:
 
 | Variable | Default | What it does |
 | --- | --- | --- |
+| `WEB_TITLE` | `Spring Agent` | What the deployment calls itself: the browser tab, the sidebar brand, the heading before a conversation has a title. One value for every language — a name is not a translation |
 | `WEB_JOURNAL_RETENTION` | `30m` | How long a finished run's detail — its tool calls, its subagents, its thinking — is kept for a browser that comes back to it. Past this the conversation is still there; how it was reached is not |
 | `WEB_JOURNAL_MAX_RUNS` | `500` | How many runs are held in memory at all. Finished ones are dropped first; a live run never is |
 | `WEB_QUESTION_TTL` | `24h` | How long an unanswered question stays answerable |

@@ -64,12 +64,21 @@ public class PersistenceAutoConfigurationFilter
           "org.springframework.boot.data.mongodb.autoconfigure.DataMongoReactiveAutoConfiguration",
           "org.springframework.boot.data.mongodb.autoconfigure.DataMongoRepositoriesAutoConfiguration",
           "org.springframework.boot.data.mongodb.autoconfigure.DataMongoReactiveRepositoriesAutoConfiguration",
-          // Spring AI's MongoDB chat memory. It guards its bean with @ConditionalOnMissingBean on
-          // the concrete MongoChatMemoryRepository, so it would not back off in front of the JDBC
-          // repository from JdbcChatMemoryAutoConfiguration: the context would end up with two
-          // ChatMemoryRepository beans and no way to choose.
-          "org.springframework.ai.model.chat.memory.repository.mongo.autoconfigure.MongoChatMemoryAutoConfiguration",
           "org.springframework.ai.model.chat.memory.repository.mongo.autoconfigure.MongoChatMemoryIndexCreatorAutoConfiguration");
+
+  /**
+   * Dropped whenever the MongoDB backend module is present at all, selected or not, because that
+   * module supplies a {@code ChatMemoryRepository} of its own in its place — see {@code
+   * MongoChatMemoryRepo} for why upstream's cannot be used. Unconditional rather than part of the
+   * set above for two reasons: its bean is guarded with {@code @ConditionalOnMissingBean} on its
+   * own concrete type, so it backs off in front of nothing and would leave the context with two
+   * repositories and no way to choose; and the set above is only applied when more than one backend
+   * module is on the classpath, which is not the case for the deployment this most affects — one
+   * that took MongoDB and nothing else.
+   */
+  private static final Set<String> SUPERSEDED_BY_MONGODB =
+      Set.of(
+          "org.springframework.ai.model.chat.memory.repository.mongo.autoconfigure.MongoChatMemoryAutoConfiguration");
 
   /** Dropped unless the Redis backend is selected. */
   private static final Set<String> REDIS_AUTO_CONFIGURATIONS =
@@ -115,7 +124,18 @@ public class PersistenceAutoConfigurationFilter
     final var matches = new boolean[autoConfigurationClasses.length];
     Arrays.fill(matches, true);
 
-    if (PersistenceBackendResolver.present(classLoader).size() < 2) {
+    final var present = PersistenceBackendResolver.present(classLoader);
+
+    // Applied whatever else is on the classpath, and before the check below: this one is not about
+    // choosing between backends but about replacing one auto-configuration of the chosen backend's.
+    if (present.contains(Type.MONGODB)) {
+      for (int i = 0; i < matches.length; i++) {
+        final var candidate = autoConfigurationClasses[i];
+        matches[i] = candidate == null || !SUPERSEDED_BY_MONGODB.contains(candidate);
+      }
+    }
+
+    if (present.size() < 2) {
       return matches;
     }
 
@@ -131,13 +151,16 @@ public class PersistenceAutoConfigurationFilter
 
     for (int i = 0; i < matches.length; i++) {
       final var candidate = autoConfigurationClasses[i];
-      matches[i] = candidate == null || !unwanted.contains(candidate);
+      // &&, not =: a candidate already refused above stays refused.
+      matches[i] = matches[i] && (candidate == null || !unwanted.contains(candidate));
     }
     return matches;
   }
 
   /** Exposed for the test that asserts the class names above still exist on the classpath. */
   static Collection<Set<String>> filteredAutoConfigurations() {
-    return AUTO_CONFIGURATIONS.values();
+    final var all = new java.util.ArrayList<Set<String>>(AUTO_CONFIGURATIONS.values());
+    all.add(SUPERSEDED_BY_MONGODB);
+    return all;
   }
 }

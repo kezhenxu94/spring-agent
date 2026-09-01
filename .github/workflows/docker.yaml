@@ -20,10 +20,17 @@ jobs:
       matrix:
         # One image per surface. The Feishu server keeps the repository's own name, which is what it
         # has always published under and what existing deployments pull; a second application
-        # applying springagent.docker has to name its own, so the Slack one is suffixed.
+        # applying springagent.docker has to name its own, so the others are suffixed.
+        #
+        # The suffixes are not free-form: each has to agree with the module's own imageBaseName,
+        # which is what a local `bootBuildImage` publishes under, and with the image
+        # docker-compose.yaml pulls. -PimageRefs below overrides the name outright, so a suffix that
+        # disagreed would leave CI and a developer building by hand pushing to two different places
+        # and nothing failing to say so.
         project:
           - spring-agent-app-feishu
           - spring-agent-app-slack
+          - spring-agent-app-webui
         # Both axes are declared as matrix keys, not left to `include`. An `include` entry cannot
         # multiply combinations - it only adds keys to the ones already there, and a later entry
         # overwrites what an earlier one added - so two arches listed only under `include` collapse
@@ -41,6 +48,11 @@ jobs:
             image-suffix: ''
           - project: spring-agent-app-slack
             image-suffix: '-slack'
+          # -web rather than -webui: the module was renamed when its surface became a published
+          # library, and an image reference is what a deployment pulls, so renaming it would strand
+          # one. See ext.imageBaseName in spring-agent-app-webui/build.gradle.
+          - project: spring-agent-app-webui
+            image-suffix: '-web'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v5
@@ -67,6 +79,11 @@ jobs:
             image-suffix: ''
           - project: spring-agent-app-slack
             image-suffix: '-slack'
+          # -web rather than -webui: the module was renamed when its surface became a published
+          # library, and an image reference is what a deployment pulls, so renaming it would strand
+          # one. See ext.imageBaseName in spring-agent-app-webui/build.gradle.
+          - project: spring-agent-app-webui
+            image-suffix: '-web'
     steps:
       - uses: docker/metadata-action@v6
         id: meta

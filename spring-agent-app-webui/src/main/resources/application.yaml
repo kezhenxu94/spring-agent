@@ -1,0 +1,985 @@
+# The browser surface's configuration.
+#
+# Derived from spring-agent-app-feishu/src/main/resources/application.yaml and deliberately kept close to
+# it, so that a setting means the same thing whichever application a deployment runs. What differs
+# is listed here rather than left to be discovered by diffing:
+#
+#   * app.events, app.feishu and app.slack are absent — this module carries none of those modules,
+#     and configuration for absent code is a lie about what the binary does.
+#   * app.web.* is this application's own: who may log in, how long a finished run stays replayable,
+#     and how long an unanswered question lives.
+#   * app.ai.tools.shell.type defaults to none rather than local. This surface is reachable by
+#     everyone in the tenant, so `local` would hand each of them a shell in this process.
+#   * spring.threads.virtual, spring.mvc.async and spring.servlet.multipart exist for the
+#     websocket a run is streamed over, the published files served to a browser and the file
+#     uploads, none of which the server has.
+#   * The database, the vector-store file and the published-file URLs are this application's own.
+#
+# Anything else drifting from the server's file is a bug in one of the two. See CLAUDE.md.
+
+server:
+  shutdown: graceful
+spring:
+  application:
+    name: spring-agent-web
+  messages:
+    # No basename here: core/messages — what the agent writes into a conversation itself, which
+    # CoreMessages reads through this same message source rather than building one — is appended by
+    # MessagesDefaults, and this application has no bundle of its own to name alongside it. Set
+    # `basename:` to name one and core's is still appended after it.
+    #
+    # English, not the host's language, when app.locale is set to one that ships no bundle: on a
+    # server the host's language is an accident of how the image was built rather than anybody's
+    # choice. spring-agent-app-cli sets this the other way, its host being the user's own machine.
+    fallback-to-system-locale: false
+    # Unlike the server, this application does have a bundle of its own — the reasons it refuses a
+    # request, which a person reads in the page. core/messages is still appended after it.
+    basename: web.messages
+  threads:
+    virtual:
+      # A run reports through listeners on the thread driving it, and a websocket session is held
+      # for as long as somebody has the page open. Both are waiting rather than working, which is
+      # what virtual threads are for — without them the number of people who can watch at once is
+      # the size of the servlet pool.
+      enabled: true
+  mvc:
+    async:
+      # Not a timeout on the run, which is not an HTTP request at all — a run is watched over the
+      # websocket, which this does not govern. What it bounds is core's ShareController, which
+      # answers with a StreamingResponseBody: a published file large enough, or a reader slow
+      # enough, and the container would reclaim the response mid-download and the browser would
+      # read a truncated file as a complete one.
+      request-timeout: -1
+  servlet:
+    multipart:
+      # Files a person hands the agent, which land in their artifacts directory. Bounded here as
+      # well as in FileController: this is what stops a large upload being buffered at all, where
+      # the controller's limit is what produces a message somebody can read.
+      max-file-size: ${WEB_UPLOAD_MAX_FILE_SIZE:32MB}
+      max-request-size: ${WEB_UPLOAD_MAX_REQUEST_SIZE:64MB}
+  main:
+    banner-mode: off
+  ai:
+    chat:
+      memory:
+        # Each of these is read only when app.persistence.type selects the matching backend, which
+        # is also the connection the history shares: on jpa the messages land in
+        # spring.datasource beside the domain tables. How much of it is replayed is not configured
+        # here at all — the window is Spring AI's own.
+        #
+        # Stored is the user's message, the model's answer and, the advisor being inside the
+        # tool-calling loop, the calls the turn made and what they returned. Except on jpa, where
+        # JdbcChatMemoryRepository refuses tool messages and keeps the rest: anything that needs a
+        # past tool call to still be visible has to carry it in a message of its own there.
+        repository:
+          mongo:
+            create-indices: true
+          jdbc:
+            # `always`, not the default: Spring AI gates the schema initializer on Boot's
+            # embedded-database check, and SQLite does not count as embedded, so on the default
+            # deployment the SPRING_AI_CHAT_MEMORY tables would never be created. Set this to
+            # `never` if the tables are managed elsewhere.
+            initialize-schema: always
+          redis:
+            # Spring AI builds its own Jedis client from these rather than reading
+            # spring.data.redis, so the two have to be pointed at the same server by hand — it
+            # ignores Boot's connection details entirely. Same defaults as spring.data.redis above.
+            host: ${REDIS_HOST:localhost}
+            port: ${REDIS_PORT:6379}
+            username: ${REDIS_USERNAME:}
+            password: ${REDIS_PASSWORD:}
+            initialize-schema: true
+            # Load-bearing, and not a tuning knob: naming any metadata field at all is what stops
+            # the repository indexing metadata through a `$.metadata.*` text wildcard.
+            #
+            # Reads go through a RediSearch index and indexing a document is all-or-nothing, so
+            # under that wildcard a metadata value that is not a string rejects the entire message.
+            # Every chat completion carries `index` (a number) and `annotations` (a list), which
+            # means every assistant message would fail to index. It would still be stored, and
+            # JSON.GET would still return it, so nothing looks broken — the agent would simply
+            # replay the user's turns and none of its own.
+            #
+            # messageType because it is on every message and is always a string. Nothing queries
+            # it; the field exists so the wildcard does not.
+            #
+            # Changing this does not rebuild an index that already exists — the repository creates
+            # one only when it is missing. After editing, run FT.DROPINDEX chat-memory-idx (without
+            # DD, which would delete the messages too) and restart; the documents are re-indexed
+            # against the new schema.
+            metadata-fields:
+              - name: messageType
+                type: tag
+      client:
+        # Only `toolSearchTool` and whatever a search has already named reach the model on any one
+        # iteration, so the suffix appended to the system prompt is what teaches it the protocol.
+        # `system-message-suffix` is not set here on purpose: core defaults it (see
+        # ToolSearchAdvisorDefaults) to its own prompt in the app.locale language, since upstream's
+        # is a single English sentence. Set it here to say something else.
+        tool-search-advisor:
+          enabled: true
+          tool-index-type: vector
+          max-results: 5
+    # MCP servers belonging to the application rather than to a user: connected once at startup and
+    # offered to every run, whoever it belongs to. Contrast the servers a user registers at runtime,
+    # which are stored per owner (McpServerConfig), shared explicitly, and connected afresh for each
+    # request. Both reach the model the same way — AgentToolsProvider appends the callbacks of every
+    # ToolCallbackProvider bean, which is what Spring AI's client auto-configuration publishes these
+    # as, to the ones it composes itself.
+    #
+    # None are configured here; a deployment that wants one adds it. Only streamable HTTP is worth
+    # using — stdio would launch a subprocess next to the application, and SSE is deprecated
+    # upstream.
+    #
+    # `headers` is ours, not Spring AI's. Upstream binds only `url` and `endpoint` per connection
+    # and expects an authenticated server to be served by a McpSyncHttpClientRequestCustomizer bean
+    # instead, which is code a deployment should not have to write to send a bearer token. The map
+    # below is bound by McpStreamableHttpHeadersProperties, which reads this same block, and applied
+    # to every outbound request of that one connection by McpClientHeadersConfiguration. Spring AI
+    # ignores the key it does not know, so the two bindings coexist. Header names are sent as
+    # written; keep the values in the environment rather than in this file.
+    #
+    # mcp:
+    #   client:
+    #     streamable-http:
+    #       connections:
+    #         github:
+    #           url: https://api.githubcopilot.com/mcp/
+    #           headers:
+    #             Authorization: Bearer ${GITHUB_MCP_TOKEN}
+    openai:
+      base-url: ${OPENAI_BASE_URL}
+      api-key: ${OPENAI_API_KEY}
+      chat:
+        model: ${OPENAI_MODEL}
+        temperature: 0
+        # How much the model thinks before it answers, and as much as there is: the ladder the SDK
+        # knows is minimal, medium, high, xhigh, none. `xhigh` because this agent's turns are tool
+        # calling ones — which tool to reach for, and whether the result answers the question — and
+        # that is the part a model gets wrong when it is hurried, not the prose. It is also the
+        # expensive end: thinking tokens are billed at the thinking rate (app.ai.model-pricing) and
+        # the reasoning a surface shows gets correspondingly longer.
+        #
+        # Only meaningful on a reasoning model, and only on an endpoint that reads the field: an
+        # OpenAI-compatible gateway in front of a non-reasoning model ignores it, and a few reject
+        # an unknown field outright rather than dropping it, which fails every request. The value
+        # is passed through as written — ReasoningEffort.of() builds an open enum, so a word that
+        # is not on the ladder above is sent as-is and refused by the endpoint rather than here.
+        # Set OPENAI_REASONING_EFFORT to step down it, or to an empty value to stop sending the
+        # field at all.
+        reasoning-effort: ${OPENAI_REASONING_EFFORT:xhigh}
+        # Not a read timeout: Spring AI hands this to the OpenAI SDK as the request timeout, and
+        # SpringAiOpenAiHttpClient turns that into OkHttp's *callTimeout* — a ceiling on the whole
+        # HTTP call, including reading the SSE stream to its end. A streaming turn that is still
+        # arriving when it expires is cancelled mid-flight, and the run fails with
+        # `IllegalStateException: Stream processing failed` wrapping
+        # `InterruptedIOException: timeout`. So this has to be longer than the longest single model
+        # turn, not longer than a plausible gap between two chunks: a slow gateway or a long
+        # reasoning answer reaches five minutes without anything being wrong.
+        #
+        # The two cannot be separated with what Spring AI exposes. It only ever sets the SDK's
+        # `request` timeout, and the SDK's `read` timeout defaults to it, so raising the ceiling
+        # also means a stream that goes silent is held this long before it fails — one stuck run
+        # keeps its MCP clients open and delays graceful shutdown for that whole time. Setting it
+        # to 0 (the SDK's "no timeout") would remove both bounds; don't.
+        timeout: 30m
+        stream-options:
+          include-usage: true
+      image:
+        enabled: false
+      embedding:
+        base-url: ${EMBEDDING_BASE_URL}
+        api-key: ${EMBEDDING_API_KEY}
+        model: ${EMBEDDING_MODEL}
+        dimensions: 1024
+      audio:
+        transcription:
+          base-url: ${TRANSCRIPTION_OPENAI_BASE_URL}
+          api-key: ${TRANSCRIPTION_OPENAI_API_KEY}
+    tools:
+      limits:
+        # How many tool calls one turn may make. Spring AI's own numbers are 40 per tool and 150
+        # in total, which are the numbers for a chat assistant answering a question with a lookup
+        # or two; a triage run here reads an event, searches the knowledge base, walks a cluster
+        # and writes back, reaching for the same file-reading or listing tool many times over.
+        # Hitting the limit does not shorten the answer, it ends the turn mid-thought, so both are
+        # raised to where they still catch a model looping on a tool that keeps failing.
+        #
+        # Both are the same number on purpose — see ToolCallingDefaults, which is where these
+        # values come from when nothing sets them, so that an application embedding core gets them
+        # too. Keep the two in agreement. Set either to -1 to remove that limit entirely, and note
+        # that removing them both means a run that never gives up is bounded only by the model.
+        max-calls-per-tool-default: ${MAX_CALLS_PER_TOOL:200}
+        max-total-tool-calls: ${MAX_TOTAL_TOOL_CALLS:200}
+    vectorstore:
+      # Which vector store backs the tool search index. `simple` keeps that index in the heap and
+      # mirrors it to a local JSON file (app.ai.vectorstore.simple.file) — no server to run, at
+      # the cost of a linear scan per search and an index private to each replica. `milvus` needs a
+      # reachable Milvus and is what a multi-replica deployment wants. Spring AI reads this itself;
+      # each vector store auto-configuration backs off unless it names the one selected here.
+      type: ${VECTORSTORE_TYPE:simple}
+      milvus:
+        # Only read when type is milvus.
+        client:
+          host: ${MILVUS_HOST:localhost}
+          port: ${MILVUS_PORT:19530}
+        collection-name: spring_agent_bot_tool_index
+        embedding-dimension: 1024
+        initialize-schema: true
+  datasource:
+    # WAL and a busy timeout because concurrent agent streams write to it and SQLite serialises
+    # writers: without them a second writer fails immediately with SQLITE_BUSY.
+    url: ${DATASOURCE_URL:jdbc:sqlite:data/spring-agent-web.db?journal_mode=WAL&busy_timeout=5000}
+    username: ${DATASOURCE_USERNAME:}
+    password: ${DATASOURCE_PASSWORD:}
+  jpa:
+    hibernate:
+      # The schema is owned by the application: these are the agent's own tables and there is no
+      # migration tool in the picture. `update` adds tables and columns as the models gain them and
+      # never drops anything, which is the safe half of Hibernate's DDL generation.
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    # SQLite lives in hibernate-community-dialects rather than core, so Hibernate cannot infer it
+    # from the JDBC metadata the way it does for the databases it ships.
+    database-platform: ${JPA_DIALECT:org.hibernate.community.dialect.SQLiteDialect}
+    open-in-view: false
+  data:
+    mongodb:
+      auto-index-creation: true
+    redis:
+      # Only read when app.persistence.type is redis.
+      #
+      # jedis, not the Lettuce default: Spring AI's Redis chat memory is built on Jedis and
+      # spring-agent-persistence-redis excludes Lettuce, so one driver serves both the repositories
+      # and the conversation history.
+      client-type: jedis
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      username: ${REDIS_USERNAME:}
+      password: ${REDIS_PASSWORD:}
+  security:
+    oauth2:
+      client:
+        registration:
+          feishu:
+            client-id: ${FEISHU_APP_ID}
+            client-secret: ${FEISHU_APP_SECRET}
+            authorization-grant-type: authorization_code
+            redirect-uri: '{baseUrl}/{action}/oauth2/code/{registrationId}'
+            client-authentication-method: client_secret_basic
+            client-name: feishu
+        provider:
+          feishu:
+            authorization-uri: https://passport.feishu.cn/suite/passport/oauth/authorize
+            token-uri: https://passport.feishu.cn/suite/passport/oauth/token?client_id=${FEISHU_APP_ID}&client_secret=${FEISHU_APP_SECRET}
+            user-info-uri: https://passport.feishu.cn/suite/passport/oauth/userinfo
+            user-name-attribute: name
+# What a rejected request leaves behind, for whoever has to explain the failure.
+#
+# A rejection normally explains itself: openai-java renders a JSON error body straight into the
+# exception message. What it cannot render is a body that is not JSON — an empty one, an nginx error
+# page, a gateway's own plain-text refusal. Its error handler catches every parse failure and
+# substitutes JsonMissing, which prints as the single word "Unknown", so the run fails with
+# `BadRequestException: 400: Unknown` and the bytes are gone: Spring AI's client hands the SDK a
+# one-shot byteStream and nobody keeps a copy. OpenAiErrorBodyLoggingInterceptor is wired in for
+# exactly that case and logs the body at WARN, unconditionally — it only ever fires on a request
+# that already failed, so it needs no switch. OpenAiErrorBodyTest holds that line.
+#
+# The body says what the endpoint objected to. The level below answers the next question, which is
+# *which request* it objected to.
+logging:
+  level:
+    # The whole outgoing ChatClientRequest, once per model call: the rendered system prompt, the
+    # replayed conversation and every tool result in it. That is the message array the endpoint
+    # refused, and reading it is how a malformed history or an over-long context gets identified —
+    # neither of which the error body alone can distinguish.
+    #
+    # Off, because it logs conversation content and tool output: at DEBUG this application's logs
+    # come to hold what users wrote, and that is a decision a deployment has to make for itself
+    # rather than inherit from this file. Turn it on for as long as it takes to explain a rejection,
+    # with LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_AI_CHAT_CLIENT_ADVISOR_SIMPLELOGGERADVISOR=DEBUG,
+    # rather than by editing this.
+    org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: INFO
+    # The wire, when the question is about the request Spring AI actually built rather than the one
+    # it was asked for — headers, and the JSON body as sent. Louder still than the above, and rarely
+    # what is wanted, so it stays off.
+    # org.springframework.ai.openai: DEBUG
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+app:
+  # Which language the agent's own text speaks — what it writes into a conversation itself, as
+  # opposed to what the model wrote or what a surface says directly. The note recording that the
+  # user has already been asked something is the one so far. Blank takes the host's language, which
+  # deployment that has already picked a language for its cards gets the same one here without
+  # saying so twice. en and zh_CN ship with it, and any other is a core/messages_xx.properties on
+  # the classpath away.
+  #
+  # Not the same knob as app.web.locale below, and the difference matters on this surface in a way
+  # it does not on a single-user one: this is per process, because it reaches the model as part of
+  # the prompt and a run has one prompt. app.web.locale is only the fallback for a reader whose
+  # browser asked for a language nothing is written in.
+  locale: ${SPRING_AGENT_LOCALE:}
+  #
+  # This also chooses the language the tools describe themselves to the model in. What @Tool and
+  # @ToolParam say is English, an annotation value being a compile-time constant, so a translation is
+  # an override applied on the way to the model: core/prompts/tools/<ToolName>_<locale>.md for a
+  # tool's own description, and a <ToolName>.<parameterName> key in core/tools_<locale>.properties for
+  # each of its parameters. A module with tools of its own ships the same pair — see feishu/tools.
+  # Anything untranslated keeps the English it declares, so this can be filled in a tool at a time,
+  # and the tools whose names nothing here can know, every MCP server's, are left alone.
+  storage:
+    location: ${STORAGE_LOCATION:./data/}
+    # Where a published file is reachable. This application serves core's ShareController itself, so
+    # unlike the server — which sits behind whatever fronts it — the honest default is its own path.
+    base-url: ${STORAGE_BASE_URL:http://localhost:8080/share/public/%s}
+    cdn-url: ${STORAGE_CDN_URL:http://localhost:8080/share/public/%s}
+  persistence:
+    # Where the agent's own records live — MCP server configs, scheduled tasks, published resources,
+    # shell credentials and the conversation history, all together. One of:
+    #
+    #   jpa      spring.datasource above, so the default deployment needs no server at all.
+    #   mongodb  spring.data.mongodb, for a deployment that already runs one.
+    #   redis    spring.data.redis. Needs Redis 8 or Redis Stack, because the chat memory
+    #            repository stores messages as RedisJSON and reads them through a RediSearch
+    #            index; against a plain Redis it fails creating that index at startup. It also
+    #            needs a server configured to keep what it is given — `maxmemory-policy
+    #            noeviction` plus AOF or RDB. These are the agent's own records, not a cache: a
+    #            Redis provisioned the usual way for caching will evict a user's stored shell
+    #            credentials or a scheduled task that has not fired yet, and say nothing.
+    #
+    # This selects which repositories exist, so it is a build-time decision in a native image: see
+    # -PnativeBackends in springagent.native.gradle. Changing it does not migrate existing data.
+    type: ${PERSISTENCE_TYPE:jpa}
+  web:
+    # What this deployment calls itself: the browser tab, the brand in the sidebar, and the heading
+    # before a conversation has a title. Somebody running the agent as their own product should not
+    # have to see Spring Agent on their screen. One value rather than one per language — a name is
+    # not a translation — and it reaches the page through /api/me, which is the first response the
+    # page renders from.
+    title: ${WEB_TITLE:Spring Agent}
+    # The language a reader gets when their browser asks for one nothing is written in. Their own
+    # language is detected from Accept-Language and overridden by the switcher in the page, both of
+    # which win over this — see WebLocaleConfiguration.
+    locale: ${WEB_LOCALE:en}
+    auth:
+      # Which identity provider the sign-in button goes to: `feishu` or `slack`, naming one of the
+      # registrations under spring.security.oauth2.client above. Defaults to feishu, which is what
+      # this application has always used — a deployment that installed the Slack app rather than the
+      # Feishu one sets this to slack and fills in the SLACK_* variables instead.
+      provider: ${WEB_AUTH_PROVIDER:feishu}
+      # Whose people may use this deployment: a Feishu tenant key, or a Slack team id where the
+      # provider above is slack. There is deliberately no permissive default: unset,
+      # WebAuthoritiesMapper refuses everyone rather than admitting anybody who can complete the
+      # OAuth flow, which for a public app is anybody at all. The agent acts with the logged-in
+      # person's credentials and files, so this is the line between a colleague and a stranger.
+      #
+      # A refusal is not silent: the log says which workspace was refused and which was expected,
+      # and /api/me tells the person in the page rather than leaving them a wall of 403s.
+      tenant-id: ${WEB_AUTH_TENANT_ID:${FEISHU_TENANT_ID:${SLACK_TEAM_ID:}}}
+    journal:
+      # How long a finished run's detail — its tool calls, its subagents, its thinking — is kept for
+      # a browser that comes back to it. The case it exists for is a reload seconds after an answer
+      # arrived. Past this the conversation itself is still there, read back from chat memory; what
+      # is lost is how it was reached.
+      retention: ${WEB_JOURNAL_RETENTION:30m}
+      # How many run journals are held at all. This is memory, and a busy server must not grow
+      # without limit. Finished ones are evicted first, oldest first; a live run is never evicted,
+      # because the browser reading it has no other source for what it is saying.
+      max-runs: ${WEB_JOURNAL_MAX_RUNS:500}
+      sweep-interval: ${WEB_JOURNAL_SWEEP_INTERVAL:PT1M}
+    question:
+      # How long a question the agent asked stays answerable. Asking ends the turn on this surface,
+      # so this is genuinely how long the user has: the run is over and only the form is waiting,
+      # which is why it is hours rather than the seconds a held-open run would allow.
+      ttl: ${WEB_QUESTION_TTL:24h}
+  scheduling:
+    # The timers behind scheduled tasks and, where spring-agent-events is carried, situation triage.
+    # Nothing here is a model setting, which is why it sits beside app.ai rather than inside it.
+
+    # How often to look for scheduled tasks that have come due, and so the worst case by which a
+    # task fires late.
+    #
+    # Longer than app.events.sweep-interval, and deliberately: the tightest schedule anybody can
+    # create is five minutes, because ScheduledTaskTool raises anything shorter, so thirty seconds
+    # is at worst a tenth of the shortest cadence in play and the tasks people actually write are
+    # hourly and daily. Firing was never to the second in any case — a run is handed to a Reactor
+    # scheduler and its first token is seconds away. Against that, a sweep reads the whole active
+    # set, which on the Redis backend is a set read plus a hash read per member.
+    #
+    # Lower this only alongside that five-minute floor in ScheduledTaskTool#enforceMinimumInterval;
+    # the two are what make each other reasonable.
+    #
+    # Two consequences of the schedule living in the database rather than in a timer, both worth
+    # knowing before an outage rather than after one. A task whose moment passed while the process
+    # was down is not skipped, as it used to be — it fires when the process comes back. And however
+    # many occurrences were missed, it fires *once*: a periodic task is a standing instruction, not
+    # a debt, and replaying three days of a five-minutely task would be eight hundred model calls at
+    # the worst possible moment. See ScheduledTaskService#nextFireAtFor.
+    #
+    # One deployment constraint follows from it too: replicas sharing a database must agree on TZ.
+    # A cron expression is resolved against the JVM's default zone, so two replicas set differently
+    # would each keep advancing the schedule to its own idea of the next occurrence.
+    sweep-interval: ${SCHEDULING_SWEEP_INTERVAL:PT30S}
+
+    # How many threads the shared scheduler has.
+    #
+    # Shared by more than the name suggests: the scheduled-task sweeper, the situation sweeper, and
+    # every @Scheduled method in the application. Neither sweep holds its thread for the length of
+    # an agent run — firing a run returns immediately — so four is ample for the sweeps themselves.
+    # The knob is here for a deployment that adds blocking scheduled work of its own, which would
+    # otherwise starve them.
+    #
+    # Note that spring.task.scheduling.pool.size does *not* reach this. The bean is built by hand in
+    # SpringAgentCoreAutoConfiguration and named taskScheduler, which displaces Boot's own, so
+    # Boot's settings for it are read by nothing. This is the property that works.
+    pool-size: ${SCHEDULING_POOL_SIZE:4}
+  ai:
+    # The agent's system prompt lives in core, as core/prompts/system-prompt.md and its per-locale
+    # siblings, and PromptDefaults supplies it in the app.locale language. It is not stated here
+    # because a property has one value and so can only be in one language, and this is the largest
+    # single block of text the model reads — five and a half thousand characters, against a few
+    # hundred for even the wordiest tool.
+    #
+    # Rendered per request with these variables: {userId} {chatId} {chatType} {messageId} {threadId}
+    # {parentId} {mentions} {replyFormat} {homeDirs} — referencing any other name will fail the
+    # render, so a translation has to carry every one of them.
+    #
+    # {homeDirs} lists the homes this request reaches, one line each: the sender's own, the group
+    # chat's when the message came from one, and the tenant's. The tools are already allowed into all
+    # of them; this is what tells the model they exist, and who else can read what it puts there
+    # (HomeDirsPromptVariables, which localizes its own lines through CoreMessages).
+    #
+    # {replyFormat} is filled by whichever surface the answer lands on, with how it wants one written
+    # — for Feishu, the card markdown and the difference between mentioning somebody and merely
+    # naming them (FeishuReplyFormat, still English; see its class comment).
+    #
+    # Set `system-prompt:` here to override it — a persona, house rules, domain knowledge. What you
+    # write wins over the file in every locale, this being config data and that a lowest-precedence
+    # default.
+    # What a firing scheduled task says to the model: core/prompts/scheduled-task-prompt.md and its
+    # siblings, for the same reason. One variable, {taskText}, the prompt the task was created with;
+    # referencing any other name will fail the render, and a template that fails to render falls back
+    # to sending the task's own text unwrapped.
+    # How a subagent is introduced to itself, ahead of the brief the run that started it wrote:
+    # core/prompts/subagent-prompt.md and its siblings. Same one variable as the firing above,
+    # {taskText}, here the brief.
+    #
+    # Everything a subagent cannot do has to be said there, in every language it is written in. The
+    # tools that would let it see the conversation, ask the user or start subagents of its own are
+    # simply absent from the run, and a model that is not told reaches for them anyway and then
+    # reports that it could not.
+
+    # Who this deployment trusts with everybody else's work: a comma-separated list of user ids, as
+    # the surface writes them — a Feishu open id, not a name or an email. Empty, and the emptiness
+    # is the feature being off.
+    #
+    # What being one grants, in full:
+    #   - Reading and posting in Feishu chats they are not a member of, so their agent can act on a
+    #     group it was never added to (FeishuChatAccess).
+    #   - Answering a question the agent put to somebody else, on the card everyone in the group
+    #     can already see. The run stays the asked person's; the answer says who gave it.
+    #   - Speaking into a run that is already going for somebody else, instead of starting a second
+    #     one beside it. Their message is read at the next gap between tool calls, marked as theirs
+    #     (SpringAgent#liveRunFor).
+    #   - The tools declared @AgentTool(admin = true), which nobody else is offered at all — today ListPlaybooks and
+    #     WritePlaybook, below.
+    #   - A role=admin label on their shell sandbox, for a cluster that wants to tell them apart.
+    #
+    # This is not a UI role, and the difference is worth being plain about. An admin's word steers
+    # another person's run, and a run keeps the identity it started with: that person's files,
+    # their credentials, their MCP servers. So an admin can cause things to happen as somebody
+    # else. List the people who would be trusted with those things directly, and nobody else.
+    #
+    # An admin tool is decided on the user id alone, so an administrator holds one in their own
+    # scheduled tasks and subagents as well — both act on a brief they wrote themselves.
+    #
+    # Which makes the identity the boundary, and there is one pairing to avoid: never list an
+    # app.events.sources.<name>.owner.user-id here. A triage run assumes that identity and reads
+    # whatever the event's author wrote, so it would put WritePlaybook in a stranger's reach. The
+    # application refuses to start on that pairing rather than leaving it to be noticed. If such an
+    # identity needs to reach chats it is not in, give that source an identity of its own.
+    admins: ${ADMINS:}
+    embedding:
+      # How the tool-search index is built, which is a few hundred tool descriptions embedded at
+      # once whenever a user's tool set changes — the first request after a restart, and any
+      # request whose MCP servers offer something different from the last one's. It is paid before
+      # the model has been asked anything, so what it costs is what the user waits.
+      #
+      # How many documents one embeddings call may carry. Capped by the provider rather than by
+      # us: DashScope's OpenAI-compatible endpoint refuses more than twenty rows per call whatever
+      # their token count ("batch size is invalid, it should not be larger than 20"), which is why
+      # the default sits well under that instead of leaving Spring AI's token-counting strategy to
+      # fit dozens into one call. Raise it for a provider that allows more.
+      batch-size: ${EMBEDDING_BATCH_SIZE:10}
+      # How many of those calls may be in flight at once. This is the half that matters: the calls
+      # are made one after another otherwise — Spring AI's `EmbeddingModel.embed` is a plain loop
+      # over the batches — so four hundred tools at ten a call is forty round trips end to end
+      # before the run starts. See ParallelAddVectorStore, which is what spreads them.
+      #
+      # It bounds the burst the embedding endpoint sees, so raise it against what that endpoint
+      # will take rather than against how many cores this runs on. 1 puts the sequential loop back.
+      concurrency: ${EMBEDDING_CONCURRENCY:8}
+    vectorstore:
+      # Nested under the store's own name, as spring.ai.vectorstore.milvus above is: what is here
+      # belongs to the simple store alone and is ignored by every other backend.
+      simple:
+        # Only read when spring.ai.vectorstore.type is simple. Written on a graceful shutdown and
+        # reloaded on startup; if it is missing or unreadable the index is simply rebuilt, at the
+        # cost of re-embedding the tool descriptions.
+        file: ${VECTORSTORE_FILE:data/spring-agent-web-vectorstore.json}
+    user-models:
+      # Lets a user run their own chat model instead of the one configured above, for their own
+      # conversations only. They register an OpenAI-compatible endpoint with AddChatModel or on the
+      # card that /config opens, and every run of theirs from then on goes to it; everyone who has
+      # not chosen one keeps the application's model, which is also the fallback whenever a chosen
+      # one cannot be reached.
+      #
+      # Off unless a key is set, and off by *having no key* rather than by a flag of its own. The
+      # tokens users register are bearer credentials for somebody else's paid endpoint, and the
+      # only alternative to sealing them is a column holding them in the clear — so the same
+      # reasoning as app.ai.tools.shell.type defaulting to none: a feature that cannot be run
+      # safely is not run. With this unset the tools are not registered at all, /config is not a
+      # command, and nothing about the runtime changes.
+      #
+      # A base64-encoded AES key of 128, 192 or 256 bits:
+      #   openssl rand -base64 32
+      # Keep it out of the database and out of this file. Rotating it does not re-seal what is
+      # already stored: those rows stop being readable and say so loudly rather than silently
+      # behaving as though the user had registered nothing.
+      #
+      # The embedding model is deliberately not configurable this way. The knowledge base is shared
+      # between users and its collections are built with one embedding model, so letting a user
+      # change theirs would invalidate vectors that are not theirs.
+      encryption-key: ${USER_MODELS_ENCRYPTION_KEY:}
+      # How many endpoints one user may register, so that a table anyone can write to has a ceiling.
+      max-per-user: ${USER_MODELS_MAX_PER_USER:10}
+      # How many distinct endpoints are held as live clients at once. Each is an HTTP client with a
+      # connection pool, so this bounds sockets rather than memory; the least recently used is
+      # dropped when a new one does not fit. Endpoints are shared, so this counts endpoints and not
+      # users: everyone pointing at the same gateway with the same token uses one client.
+      cache-size: ${USER_MODELS_CACHE_SIZE:50}
+      # How long the connection test before saving waits. Short on purpose: it is a single tiny
+      # completion, and somebody who mistyped a URL should be told so rather than left watching
+      # spring.ai.openai.chat.timeout, which is measured in minutes because a reasoning turn is.
+      probe-timeout: ${USER_MODELS_PROBE_TIMEOUT:30s}
+    rag:
+      # The knowledge base: what a user, a group or the whole company has told the agent to write
+      # down, searched before every answer and managed with the ListKnowledgeBase, IndexKnowledge,
+      # SearchKnowledge, UpdateKnowledgeScope and DeleteKnowledge tools.
+      #
+      # This is not the same thing as the vector store above, and the separation is deliberate. That
+      # one holds the tool search index — a rebuildable cache of tool descriptions, chosen with
+      # spring.ai.vectorstore.type. This one holds user data, in its own Milvus collection, with its
+      # own connection. Keeping them apart means the knowledge base does not dilute tool search,
+      # clearing the tool index cannot touch user data, and a deployment can run the tool index in
+      # the heap while keeping its knowledge base in Milvus. That last combination is the reason
+      # this has its own connection settings rather than borrowing spring.ai.vectorstore.milvus.
+      #
+      # A knowledge base exists at all only because spring-agent-rag-milvus is on the classpath; it
+      # is the sole implementation of core's KnowledgeBase contract. Nothing here conjures one, and
+      # a build without that module simply has no knowledge base and no knowledge tools.
+      # Off by default, and on purpose: a knowledge base needs a Milvus, and the default
+      # deployment (jpa + simple, no containers at all) runs none. Turning this on without one
+      # reachable at app.ai.rag.milvus.host below stops the application from starting, the same
+      # way pointing app.persistence.type at a database that is not there would. Bring Milvus up
+      # first — COMPOSE_PROFILES=...,milvus — then set RAG_ENABLED=true.
+      #
+      # This gates the whole feature: with it off there is no knowledge base, no knowledge tools,
+      # no connection, and no automatic search. With it on, every incoming message is embedded to
+      # search the knowledge base whether or not it has anything to say; individual kinds of run
+      # opt out separately, in AgentScenario.knowledgeRetrieval().
+      enabled: ${RAG_ENABLED:false}
+      #
+      # How many passages an automatic search may put in front of the model. Each one is context the
+      # model pays for on every turn, so this trades recall against the prompt budget.
+      top-k: ${RAG_TOP_K:4}
+      # How close a passage must be to count: a raw cosine similarity between 0 and 1, compared
+      # against the score the vector store returns.
+      #
+      # No value here is right for every embedding model, so treat this as a starting point and
+      # measure. Embeddings from a modern model sit in a narrow cone: set it too low and unrelated
+      # text clears the bar, so a knowledge base holding one document returns it for every question
+      # asked; set it too high and a question the knowledge base plainly answers retrieves nothing.
+      # The gap between those two is often narrower than it sounds.
+      #
+      # SearchKnowledge is the instrument. It ignores this threshold on purpose and prints the score
+      # of every passage it returns, so it still shows evidence when this is set too high. Ask it
+      # something the knowledge base covers and something it does not, then put the threshold
+      # between the two scores.
+      similarity-threshold: ${RAG_SIMILARITY_THRESHOLD:0.45}
+      # The token target a document is split into. Also the granularity at which knowledge is either
+      # relevant or not, since a chunk is handed to the model whole.
+      chunk-size: ${RAG_CHUNK_SIZE:800}
+      # How many documents ListKnowledgeBase returns when the model does not say.
+      list-page-size: ${RAG_LIST_PAGE_SIZE:20}
+      milvus:
+        # Only read when spring-agent-rag-milvus is on the classpath. Deliberately separate from
+        # spring.ai.vectorstore.milvus above, which configures the tool search index.
+        host: ${RAG_MILVUS_HOST:localhost}
+        port: ${RAG_MILVUS_PORT:19530}
+        # A collection of its own, never the tool index's.
+        collection-name: ${RAG_MILVUS_COLLECTION:spring_agent_knowledge}
+        # Must match the embedding model. Changing the model invalidates everything already stored,
+        # and unlike the tool index the knowledge base does not rebuild itself — re-indexing is a
+        # manual act, so treat a change here as data loss until it is done.
+        embedding-dimension: ${RAG_MILVUS_DIMENSION:1024}
+        initialize-schema: true
+    tools:
+      # Every value below is also core's own default, supplied by ToolDefaults so that an
+      # application depending on core as a library gets the same behaviour. They are repeated here
+      # to give each one an environment variable to override it with, and to write down why the
+      # value is what it is; keep the numbers agreeing with the constants ToolDefaults reads.
+      ask-user-question:
+        # Whether the agent may stop and ask the user a multiple-choice question when a request is
+        # ambiguous, rather than guessing.
+        #
+        # It never waits for the reply. The questions go onto the reply card as a form, the run
+        # ends, and submitting the form starts a fresh run on the same conversation with the
+        # answers — so an answer given an hour later, or after a restart, works exactly like an
+        # answer given at once. The tool is only offered on runs that have somewhere to put the
+        # questions, which today means a Feishu chat; a scheduled task is told there is nobody
+        # to ask.
+        enabled: ${ASK_USER_QUESTION_ENABLED:true}
+        # How long the questions stay answerable. Capped from above by Feishu regardless of what is
+        # set here: the card the form lives on expires 14 days after it is created.
+        ttl: ${ASK_USER_QUESTION_TTL:24h}
+      subagent:
+        # How many subagents one run may have going at once.
+        #
+        # A subagent is the agent run again, with its own context window and the same tools, on one
+        # task the run that started it wrote out in full — work whose middle nobody needs to see.
+        # It reads and writes no conversation memory, cannot ask the user anything and cannot start
+        # subagents of its own, so a run fans out one level and no further.
+        #
+        # Bounded because each one is a run in full: an MCP handshake per server it can reach, its
+        # own workspace and skills build, its own tool-index lookup. Over the limit the tool refuses
+        # and tells the model to collect an answer before starting another. Nothing turns the tools
+        # off outright — a deployment that does not want them keeps them out with its own
+        # AgentScenario, which is what decides who is offered what.
+        max-concurrent: ${SUBAGENT_MAX_CONCURRENT:10}
+        # How long WaitForSubagent blocks before handing the turn back to the model to ask again.
+        #
+        # This one is load-bearing rather than a preference. That wait runs on a Reactor
+        # boundedElastic worker, and so does every subagent's own stream: the pool is a fixed number
+        # of single-threaded executors (ten per core), a worker is pinned to one of them when it is
+        # created, and once the pool is full a new worker is handed one that is already busy —
+        # Reactor pins tasks to an executor and never steals them back. A wait that never let go
+        # could therefore be holding the one thread the subagent it waits for needs in order to
+        # finish, and since nothing throws and nothing times out there, the turn simply went quiet:
+        # no reply, no error, nothing in the log. Letting go on a timer is what makes that
+        # impossible rather than merely unlikely.
+        #
+        # Raising it is safe and costs nothing while subagents are quick — the wait returns the
+        # moment one finishes, so the poll is invisible in the ordinary case. It only buys a further
+        # model call, and one more stretch of held thread, once a subagent outlives it. Do not set
+        # it to hours: that is the unbounded wait again.
+        wait-poll: ${SUBAGENT_WAIT_POLL:60s}
+        # How long a run may wait for one subagent in total, however many polls that takes.
+        #
+        # Reaching this means something is wrong rather than slow, so the subagent is cancelled and
+        # the model told the work did not happen. A ceiling that is never hit is still what keeps
+        # the next bug in this area from becoming a turn that hangs for good with nothing to show
+        # for it. Matched to spring.ai.openai.chat.timeout above, since a subagent is a chat turn
+        # and cannot sensibly outlast one.
+        wait-timeout: ${SUBAGENT_WAIT_TIMEOUT:30m}
+      skills:
+        # Whether a turn that has cost a great many tool calls ends with the agent offering to keep
+        # what it worked out as a skill.
+        #
+        # A skill is a folder of instructions the agent loads by name — SkillManagementTools writes
+        # them, the Skill tool runs them, and the index is rebuilt per request, so one written today
+        # is invocable on the next run. What was missing was anything that noticed a run worth
+        # keeping: a question that took forty tool calls costs forty again the next time somebody
+        # asks it.
+        #
+        # This is a nudge and nothing more. Past the threshold below, a paragraph is appended to the
+        # system message asking the agent to finish its answer and then offer, in one sentence, to
+        # save the method. Nothing is written unless the user says yes on the turn after — and where
+        # the run was not given the skill tools in the first place, no offer is made at all.
+        #
+        # Turning it off is for a deployment that would rather its skills were written by hand.
+        # Every skill kept is listed to the model in every conversation that follows, so they are
+        # not free once they exist.
+        offer-after-expensive-runs: ${SKILLS_OFFER_AFTER_EXPENSIVE_RUNS:true}
+        # How many tool calls one turn has to make before that offer is asked for.
+        #
+        # Counted per turn rather than per conversation, since what a skill would save is the cost
+        # of answering this question again. Twenty is well past what an ordinary answer takes and
+        # short of where a person starts to notice a run is slow, which is the window where the
+        # offer is both warranted and still welcome. Lower it and the agent starts offering to
+        # remember things nobody will ask twice.
+        tool-call-threshold: ${SKILLS_TOOL_CALL_THRESHOLD:20}
+      # How long any tool's result may be before it is written to the user's workspace and the
+      # model handed the path instead of the text — see LargeResponseInterceptor, which applies
+      # this to every tool alike, the shell included. Nothing is lost: the model reads the file
+      # with Read, greps it, or sends it to the user, which is usually what it wanted from a
+      # 200 000-line log anyway.
+      #
+      # One number for every tool on purpose. The shell backends used to cap their own output at
+      # the same 30000 first, which meant this threshold could never see a shell result whole:
+      # what reached it had already been cut, and the file it saved was the cut version. A tool
+      # now returns everything it has and this decides, in one place, what the model reads
+      # directly.
+      #
+      # Counted in characters, which is what a result costs a context window rather than what it
+      # costs a disk — so it is not the same amount of text in every language. 30000 characters
+      # of English is roughly 7500 tokens; 30000 characters of Chinese is closer to 25000, most
+      # of a small model's window.
+      #
+      # 30000 is the English-sized number, and it is what the shell backends used to cut their
+      # own output at. They cut it in bytes, though, so a Chinese shell result was in practice
+      # held to about 10000 characters — removing their cap raised what a single such result
+      # costs by roughly two and a half times. A deployment whose tools answer in Chinese wants
+      # about 12000 here to be where it was.
+      max-result-chars: ${TOOLS_MAX_RESULT_CHARS:30000}
+
+      # How much of such a saved file may be read back into a tool argument given as an @file:
+      # reference — the other half of the same idea. Where a tool result exists only to become the
+      # next tool call's argument, the model would otherwise write out every byte of a payload it
+      # had just been handed a pointer to, paying for it a second time in the same turn and again
+      # in every later turn that replays the conversation. Naming the file instead costs a line.
+      #
+      # Which parameters accept one is an allow-list each module declares (ToolInputFileRefs), not
+      # a setting, and that is deliberate: a parameter that takes a reference is a parameter a tool
+      # call can be steered into reading a file with, and a triage run reads text written by
+      # whoever caused the event it is looking at.
+      #
+      # Far above max-result-chars because the two bound different things. That one is a context
+      # window; this one is only the memory a single call may take and the size of the request the
+      # tool then makes with it — the content never goes near the model. Going over is an error
+      # rather than a truncation: half a JSON argument is malformed JSON that a lenient parser may
+      # accept part of, which is a corrupted document rather than a failed call.
+      max-inlined-input-chars: ${TOOLS_MAX_INLINED_INPUT_CHARS:300000}
+      publish-file:
+        # Where the links PublishFile hands out point: the address a colleague, or anyone holding a
+        # public link, reaches this application on. ShareController serves them under /share/, so
+        # this is the origin only — scheme, host and port, no path.
+        #
+        # Not app.storage.base-url, which serves an uploaded file directly: a published link carries
+        # a token this application has to check before it hands the file over, and expires.
+        base-url: http://localhost:8080
+      shell:
+        # Where the agent's Bash tool runs commands. One of:
+        #
+        #   none        no Bash tool at all.
+        #   kubernetes  a disposable per-user sandbox Pod, configured below. The only option fit for
+        #               real users.
+        #   docker      a per-user sandbox container on the local Docker daemon, for a single host
+        #               with no cluster. Isolates users from each other and from this application,
+        #               but reaching the Docker socket is equivalent to root on the host, so this
+        #               trades the model's blast radius for the application's own.
+        #   local       Spring AI's own ShellTools, in this process as this application's own OS
+        #               user, with its filesystem, secrets and network. No sandbox and no isolation
+        #               between users. Development only.
+        #
+        # This selects which beans exist, so it is a build-time decision in a native image: see
+        # -PnativeBackends in springagent.native.gradle.
+        type: ${TOOLS_SHELL_TYPE:none}
+        kubernetes:
+          # The bot's ServiceAccount needs get/list/create/update/patch/delete on `secrets` in the
+          # sandbox namespace (used by SetCredential / ListCredentials / DeleteCredential to manage
+          # per-user credential Secrets), and the same verbs on `jobs` and `pods` plus `pods/exec`.
+          #
+          # Defaults to the sandbox image this repository publishes from docker/shell-runner, which
+          # carries what the shell tools require plus git, gh, jq, yq, curl and python3. Override it
+          # with an image built FROM that one to add a language toolchain.
+          image: ${TOOLS_SHELL_KUBERNETES_IMAGE:ghcr.io/kezhenxu94/spring-agent/shell-runner:latest}
+          # Must match the mount-path of one of the storage.mounts entries below for the shell to
+          # actually start in persistent storage.
+          working-dir: ${TOOLS_SHELL_KUBERNETES_WORKING_DIR:/data/spring-agent}
+          # namespace: spring-agent-assistant     # optional; auto-detected from the bot's own ServiceAccount
+          # Comma-separated list of imagePullSecret names to attach to each shell sandbox Pod.
+          # Required when `image` lives in a private registry (the Pod does not inherit the bot's secrets).
+          image-pull-secrets: ${TOOLS_SHELL_KUBERNETES_IMAGE_PULL_SECRETS:}
+          idle-timeout: 30m
+          hard-deadline: 4h
+          startup-timeout: 60s
+          default-timeout-ms: 120000
+          max-timeout-ms: 600000
+          # Applied as the Pod's securityContext.fsGroup; needed so a non-root sandbox image user
+          # can write to volumes whose CSI driver doesn't otherwise grant it write access.
+          fs-group: ${TOOLS_SHELL_KUBERNETES_FS_GROUP:}
+          storage:
+            # Every mount gets a per-user subPath, so one shared PVC serves every user's Pod
+            # without their files colliding; working-dir above (not list position) picks which
+            # mount's path the shell starts in. Additional entries (extra PVCs, e.g. a faster NAS
+            # mounted at /workspace) aren't aliased here - set them via Spring's indexed env var
+            # binding directly, e.g. APP_AI_TOOLS_SHELL_KUBERNETES_STORAGE_MOUNTS_1_PVC_NAME /
+            # _1_MOUNT_PATH.
+            mounts:
+              - pvc-name: ${TOOLS_SHELL_KUBERNETES_STORAGE_PVC_NAME:}
+                mount-path: ${TOOLS_SHELL_KUBERNETES_WORKING_DIR:/data/spring-agent}
+          resources:
+            cpu-request: 100m
+            memory-request: 256Mi
+            cpu-limit: 1000m
+            memory-limit: 1Gi
+          credentials:
+            mount-path: /run/secrets/credentials
+            # Secrets an operator pre-provisions in the sandbox namespace and shares with a group, a
+            # tenant or a named user — the SetCredential tool only ever writes a user's own Secret,
+            # so this is the only way a credential arrives without somebody typing it into a chat.
+            #
+            # Each entry is a label selector over the Secrets in the namespace; every Secret it
+            # matches is attached to the Pod as an envFrom source, so its keys arrive as environment
+            # variables. Values may carry {userId}, {groupId} and {tenantId}, which is what lets one
+            # mechanism cover all three kinds of sharing.
+            #
+            # Order is precedence, weakest first, and all of them sit below the per-scope Secrets
+            # this application manages itself — envFrom lets a later source win a key, so the user's
+            # own credential is always the last word on a name they set for themselves.
+            #
+            # A selector whose placeholder has nothing to fill it is dropped rather than matched on
+            # a blank, which would select every Secret storing a blank there — every other group's.
+            # So is an id that is not a legal label value (63 chars, alphanumeric at both ends).
+            #
+            # The selector is the whole access rule: never key on a label an untrusted party can
+            # set, and remember the Secrets are resolved when the Pod is created, so a label added
+            # later reaches that user on their next sandbox rather than the one they are in.
+            #
+            # Every label key has to be written in brackets, and this is not a style choice: a
+            # match-labels key binds into a Map, and an unbracketed one is canonicalised to
+            # [a-z0-9-] — split on the dots, every other character dropped, the pieces rejoined
+            # with dots. So `springagent.io/shell-shared-user-id` arrives as
+            # `springagent.ioshell-shared-user-id`, which is still a legal label key, so the API
+            # server answers the selector with zero Secrets and the credential silently never
+            # reaches the sandbox. Brackets are what makes the key bind verbatim.
+            #
+            # Commented out because sharing credentials is a deliberate act, not a default. Labels
+            # here are examples: use whatever the Secrets in your namespace already carry.
+            # shared:
+            #   - match-labels:
+            #       "[springagent.io/shell-shared]": "everyone"
+            #   - match-labels:
+            #       "[springagent.io/shell-shared-tenant-id]": "{tenantId}"
+            #   - match-labels:
+            #       "[springagent.io/shell-shared-group-id]": "{groupId}"
+            #   - match-labels:
+            #       "[springagent.io/shell-shared-user-id]": "{userId}"
+        docker:
+          # The same sandbox image the kubernetes block above defaults to. An image substituted here
+          # needs bash, GNU coreutils for the `stat -c` and `dd` the background-shell bookkeeping
+          # relies on, and util-linux for `setsid` — see docker/shell-runner/Dockerfile.
+          image: ${TOOLS_SHELL_DOCKER_IMAGE:ghcr.io/kezhenxu94/spring-agent/shell-runner:latest}
+          # network: bridge                      # optional; the daemon's default when unset
+          # Unlike the Kubernetes sandbox, a container does not outlive this application: the
+          # Testcontainers reaper stops every one of them when the JVM exits, so a restart gives
+          # each user a fresh sandbox and loses their background shells. Files under
+          # app.storage.location survive, because they are bind-mounted from the host.
+          idle-timeout: 30m
+          hard-deadline: 4h
+          startup-timeout: 60s
+          default-timeout-ms: 120000
+          max-timeout-ms: 600000
+          resources:
+            # Docker has no requests/limits split, so there is nothing here matching the
+            # Kubernetes block's cpu-request and memory-request.
+            cpu-limit: 1000m
+            memory-limit: 1Gi
+          credentials:
+            # Credentials live in the database, not on this host: they are read at container start,
+            # passed as environment variables, and written into a tmpfs at the path below. Nothing
+            # lands on the host filesystem.
+            mount-path: /run/secrets/credentials
+            # Required before any credential can be stored — without it the values would sit in the
+            # database as plaintext, which is what keeping them off disk was meant to avoid.
+            # A base64-encoded 128, 192 or 256-bit key; generate one with:
+            #   head -c 32 /dev/urandom | base64
+            encryption-key: ${TOOLS_SHELL_DOCKER_CREDENTIALS_ENCRYPTION_KEY:}
+      mcp:
+        # Hostnames allowed to bypass the SSRF guard's https-only and private-address checks.
+        # Keep this narrow — every entry is reachable by any user who registers an MCP server.
+        trusted-hosts:
+          - monitoring-mcp.monitoring
+    model-pricing:
+      '[qwen3.7-plus]':
+        non-thinking-input-per-million: 2.0
+        thinking-input-per-million: 8.0
+        output-per-million: 8.0
+        currency: CNY
+      '[qwen3.7-max]':
+        non-thinking-input-per-million: 12.0
+        thinking-input-per-million: 12.0
+        output-per-million: 36.0
+        currency: CNY
+      '[qwen3.8-max]':
+        non-thinking-input-per-million: 12.0
+        thinking-input-per-million: 12.0
+        output-per-million: 36.0
+        currency: CNY
+      '[qwen3.8-flash]':
+        non-thinking-input-per-million: 0.8
+        thinking-input-per-million: 0.8
+        output-per-million: 2.7
+        currency: CNY
+      '[gpt-5.6-luna]':
+        non-thinking-input-per-million: 1.0
+        thinking-input-per-million: 1.0
+        output-per-million: 6.0
+        currency: USD
+  dashscope:
+    image:
+      api-key: ${DASHSCOPE_IMAGE_API_KEY}
+      base-url: ${DASHSCOPE_IMAGE_BASE_URL:https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation}
+      model: ${DASHSCOPE_IMAGE_MODEL:wan2.7-image-pro}
+    vision:
+      api-key: ${DASHSCOPE_VISION_API_KEY}
+      base-url: ${DASHSCOPE_VISION_BASE_URL:https://ws-x1m3p2roqbf7dij1.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
+      model: ${DASHSCOPE_VISION_MODEL:qwen3-vl-plus}
+
+---
+# Signing in with Slack instead of Feishu.
+#
+# A profile rather than a second registration sitting alongside the first, because Spring Security
+# validates every registration it can see at startup and refuses one whose client-id is empty — so
+# two registrations with only one configured is a context that will not refresh. Activate it with
+# SPRING_PROFILES_ACTIVE=slack-login, and set SLACK_CLIENT_ID, SLACK_CLIENT_SECRET and
+# SLACK_TEAM_ID. It replaces the Feishu registration rather than adding to it: this application
+# admits people from one workspace, and which workspace is what app.web.auth.tenant-id names.
+spring:
+  config:
+    activate:
+      on-profile: slack-login
+  security:
+    oauth2:
+      client:
+        registration:
+          slack:
+            client-id: ${SLACK_CLIENT_ID}
+            client-secret: ${SLACK_CLIENT_SECRET}
+            authorization-grant-type: authorization_code
+            # openid gets a token at all; profile carries the display name and email the address.
+            # The workspace this person belongs to arrives as a claim either way, and it is what
+            # app.web.auth.tenant-id is compared against.
+            scope: openid,profile,email
+            redirect-uri: '{baseUrl}/{action}/oauth2/code/{registrationId}'
+            client-authentication-method: client_secret_basic
+            client-name: Slack
+        provider:
+          slack:
+            # Slack's OpenID Connect endpoints, which are a different family from the /oauth/v2/*
+            # ones used to install a bot — installing an app and identifying a person are separate
+            # flows there, and only this one returns an id token.
+            issuer-uri: https://slack.com
+            authorization-uri: https://slack.com/openid/connect/authorize
+            token-uri: https://slack.com/api/openid.connect.token
+            user-info-uri: https://slack.com/api/openid.connect.userInfo
+            jwk-set-uri: https://slack.com/openid/connect/keys
+            # `sub` is the Slack user id, which is what every other part of this application knows a
+            # person by. `name` would be their display name, which is neither unique nor stable.
+            user-name-attribute: sub
+app:
+  web:
+    auth:
+      provider: slack
+      tenant-id: ${SLACK_TEAM_ID}

@@ -1,0 +1,100 @@
+plugins {
+  alias(libs.plugins.spring.boot)
+  alias(libs.plugins.spring.dependency.management)
+  id 'springagent.java-common-conventions'
+  id 'springagent.docker'
+  id 'springagent.native'
+  id 'application'
+  // Applied below instead of here, see the conditional in spring-agent-app-feishu/build.gradle for why the
+  // gate exists. `apply false` still makes the plugin resolvable by id, which is what
+  // pluginManager.apply needs.
+  alias(libs.plugins.graalvm) apply false
+}
+
+// Read by springagent.docker.gradle and springagent.native.gradle, so they have to be set before
+// either configures anything. Names of its own rather than the defaults: spring-agent-app-feishu
+// publishes under `spring-agent`, and two applications pushing the same image reference would mean
+// whichever built last is what a deployment pulls. Unchanged by the module's own rename to
+// -app-webui: an image reference is what a deployment pulls, and renaming it would strand one.
+ext.imageBaseName = 'spring-agent-web'
+ext.nativeImageName = 'spring-agent-web'
+
+if (providers.gradleProperty('native').present) {
+  pluginManager.apply('org.graalvm.buildtools.native')
+}
+
+// spring-boot-dependencies manages jedis below the version Spring AI's Redis chat memory needs, and
+// the mismatch turns that memory off without logging anything. The same override spring-agent-app
+// carries, for the same reason and with the same caveat: this must be a BOM property rather than a
+// resolutionStrategy force, because io.spring.dependency-management re-applies its managed versions
+// after Gradle's own rules.
+ext['jedis.version'] = libs.versions.jedis.get()
+
+def patchJvmArgs = [
+  // sqlite-jdbc loads its bundled native library through System::load.
+  "--enable-native-access=ALL-UNNAMED",
+  "--add-opens=java.base/java.io=ALL-UNNAMED",
+  "--add-opens=java.base/java.lang=ALL-UNNAMED",
+  "--add-opens=java.base/java.time=ALL-UNNAMED",
+  "--add-opens=java.base/java.util=ALL-UNNAMED",
+  "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED"
+]
+
+dependencies {
+  implementation project(':spring-agent-core')
+
+  // All three, like spring-agent-app-feishu: a web server is a deployed thing, and a deployment running
+  // more than one instance needs a store they share, which SQLite under a container's filesystem is
+  // not. app.persistence.type chooses; it defaults to jpa so a laptop needs no server.
+  implementation project(':spring-agent-persistence-jpa')
+  implementation project(':spring-agent-persistence-mongodb')
+  implementation project(':spring-agent-persistence-redis')
+
+  // Not integrations, so they do not contradict what this module is for. Taking them decides
+  // nothing — app.ai.tools.shell.type does, and it defaults to none — but without them on the
+  // classpath there is no value of that switch that would give the agent a shell at all.
+  implementation project(':spring-agent-tools-shell-kubernetes')
+  implementation project(':spring-agent-tools-shell-docker')
+
+  // The knowledge base, so the UI has something to put in its sources pane: retrieval happens
+  // without the model asking and without appearing among the tool calls, and this surface is the
+  // one that can show a reader what an answer was actually built on. app.ai.rag.enabled turns it
+  // back off, and defaults to false.
+  implementation project(':spring-agent-rag-milvus')
+
+  // Its whole surface, and the only integration it takes: the pages, the REST endpoints and the
+  // STOMP broker a run streams over. Deliberately no chat platform — this application logs people
+  // in with Feishu, which is Spring Security and a tenant key rather than the Feishu SDK, so it
+  // needs none of that module. See WebAuthoritiesMapper.
+  implementation project(':spring-agent-integration-websocket')
+
+  // Declared rather than inherited: spring-agent-core keeps it as `implementation`, so a consumer
+  // that serves HTTP of its own has to ask for it. This application is nothing but HTTP.
+  implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+  implementation 'org.springframework.boot:spring-boot-starter-actuator'
+  implementation 'org.springframework.boot:spring-boot-starter-security'
+  implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'
+  implementation 'io.micrometer:micrometer-registry-prometheus'
+
+  implementation platform(libs.spring.ai.bom)
+  implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+  // The tool-search index, not the knowledge base — the two are separate stores and the module
+  // above carries its own client. See the same dependency in spring-agent-app for the full reason.
+  implementation 'org.springframework.ai:spring-ai-starter-vector-store-milvus'
+
+  implementation libs.spring.ai.agent.utils
+  implementation libs.guava
+
+  testImplementation 'org.springframework.boot:spring-boot-starter-test'
+  // MockMvc moved out of spring-boot-test-autoconfigure in Boot 4; it now lives in the per-stack
+  // test module, which the starter does not pull in.
+  testImplementation 'org.springframework.boot:spring-boot-webmvc-test'
+  testImplementation 'org.springframework.security:spring-security-test'
+}
+
+application {
+  mainClass = 'me.kezhenxu94.springagent.appwebui.SpringAgentWebUiApplication'
+  applicationDefaultJvmArgs += patchJvmArgs
+}
+
+bootRun { jvmArgs += patchJvmArgs }

@@ -26,7 +26,7 @@ Other tasks:
 ./gradlew :spring-agent-app-feishu:bootRun   # the Feishu server
 ./gradlew :spring-agent-app-slack:bootRun    # the Slack server
 ./gradlew :spring-agent-app-cli:bootRun      # the command line (stdin/tty wired for JLine)
-./gradlew :spring-agent-app-web:bootRun      # the browser UI, on :8080
+./gradlew :spring-agent-app-webui:bootRun    # the browser UI, on :8080
 ./gradlew :spring-agent-app-feishu:bootBuildImage   # container image (Paketo buildpack, no Dockerfile)
 ./gradlew :spring-agent-app-cli:nativeCompile -Pnative
 ```
@@ -54,10 +54,11 @@ spring-agent-events           observations -> situations -> a triage run; serves
 spring-agent-integration-{github,gitlab,grafana}   webhook readers for spring-agent-events
 spring-agent-rag-milvus       the knowledge base; the only implementation of core's KnowledgeBase
 spring-agent-integration-feishu
+spring-agent-integration-websocket  a browser as a surface: the SPA, its REST endpoints, STOMP run streaming
 spring-agent-app-feishu        deployable server whose surface is Feishu; depends on every optional module
 spring-agent-app-slack         the same server, with Slack as its surface instead
 spring-agent-app-cli           laptop command line; jpa + local shell only
-spring-agent-app-web           browser surface; no integrations, Feishu OAuth for login only
+spring-agent-app-webui         the same server, with a browser as its surface
 ```
 
 `spring-agent-core` must stay free of any persistence backend. This is enforced by `checkRuntimeClasspathIsolation` (wired into `check`, defined in `buildSrc/.../springagent.classpath-isolation.gradle`, configured at the bottom of `spring-agent-core/build.gradle`): it fails the build if Hibernate, the Mongo driver, Jedis, Milvus, fabric8 and friends reach core's runtime classpath. If that task fails, a dependency became `api` or grew a new transitive — fix the dependency, do not widen the allow-list.
@@ -133,7 +134,7 @@ Configuration is documented in place. `spring-agent-app-feishu/src/main/resource
 
 **One chat surface per application, and this is a runtime constraint rather than a preference.** Three singletons in this runtime answer for every run rather than for one surface's runs: a `@Bean AgentResponseListener` claims every run, `PromptVariablesContributor`s are merged with `putAll` so the last one registered decides `{replyFormat}`, and `SituationSweeper` resolves its `Notifier` with `getIfAvailable()`, which throws when two exist. None of the three fails at startup, so a second surface on the classpath is a build that passes and a deployment that misbehaves — a Feishu card replied onto a Slack timestamp, the run aborted before it reaches the model. That is why `spring-agent-app-feishu` and `spring-agent-app-slack` are two applications rather than one server with both integrations, and why the constraint holds for a test classpath too: an auto-configuration is still an auto-configuration there. `OneChatSurfaceTest` in `spring-agent-app-slack` is the check that notices.
 
-**`spring-agent-app-slack`'s and `spring-agent-app-web`'s `application.yaml` are derived from `spring-agent-app-feishu`'s and have to stay in step with it.** The two applications run the same runtime, so a setting must mean the same thing in both — a deployment that moves between them should not silently get different tool limits, a different subagent budget or a different sandbox. A knob added to the Feishu server's file belongs in the other two as well, with the same default and the same rationale.
+**`spring-agent-app-slack`'s and `spring-agent-app-webui`'s `application.yaml` are derived from `spring-agent-app-feishu`'s and have to stay in step with it.** The two applications run the same runtime, so a setting must mean the same thing in both — a deployment that moves between them should not silently get different tool limits, a different subagent budget or a different sandbox. A knob added to the Feishu server's file belongs in the other two as well, with the same default and the same rationale.
 
 Only these kinds of difference are legitimate, and each is stated in the header comment at the top of the derived file rather than left to be found by diffing:
 
@@ -142,7 +143,7 @@ Only these kinds of difference are legitimate, and each is stated in the header 
 - **what the surface needs and the server does not** — `spring.threads.virtual`, `spring.mvc.async` for the SSE streams, `spring.servlet.multipart` for uploads;
 - **per-application storage** — its own SQLite file, its own vector-store file, its own published-file URLs.
 
-Anything else drifting is a bug in one of the two. `DockerShellDefaultsTest` in `spring-agent-app-web` is the check that notices for the shell sandbox, and it binds the properties rather than parsing the YAML, so it also catches a block landing at a nesting level Boot ignores in silence.
+Anything else drifting is a bug in one of the two. `DockerShellDefaultsTest` in `spring-agent-app-webui` is the check that notices for the shell sandbox, and it binds the properties rather than parsing the YAML, so it also catches a block landing at a nesting level Boot ignores in silence.
 
 ## Running locally
 

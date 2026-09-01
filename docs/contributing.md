@@ -61,7 +61,7 @@ Other tasks:
 ./gradlew :spring-agent-app-feishu:bootRun   # the Feishu server
 ./gradlew :spring-agent-app-slack:bootRun    # the Slack server
 ./gradlew :spring-agent-app-cli:bootRun      # the command line (stdin/tty wired for JLine)
-./gradlew :spring-agent-app-web:bootRun      # the browser UI, on :8080
+./gradlew :spring-agent-app-webui:bootRun    # the browser UI, on :8080
 ./gradlew :spring-agent-app-feishu:bootBuildImage   # container image (Paketo buildpack, no Dockerfile)
 ./gradlew :spring-agent-app-cli:nativeCompile -Pnative
 ```
@@ -102,11 +102,12 @@ spring-agent-events                   observations -> situations -> a triage run
 spring-agent-integration-{github,gitlab,grafana}   webhook readers for spring-agent-events
 spring-agent-integration-feishu       Feishu/Lark chats and cards as a surface
 spring-agent-integration-slack        Slack channels and Block Kit messages as a surface
+spring-agent-integration-websocket    a browser as a surface: the SPA, its REST endpoints, STOMP run streaming
 spring-agent-rag-milvus               the knowledge base; the only KnowledgeBase implementation
 spring-agent-app-feishu               deployable server, Feishu surface; depends on every optional module
 spring-agent-app-slack                the same server, Slack surface
 spring-agent-app-cli                  laptop command line; jpa + local shell only
-spring-agent-app-web                  browser surface; no integrations, Feishu OAuth for login only
+spring-agent-app-webui                the same runtime with the browser surface and nothing else
 ```
 
 `spring-agent-core` must stay free of any persistence backend. This is enforced by
