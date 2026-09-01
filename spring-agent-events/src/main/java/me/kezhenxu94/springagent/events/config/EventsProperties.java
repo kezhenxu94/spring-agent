@@ -55,6 +55,14 @@ import org.springframework.util.unit.DataSize;
  * @param resolveAfterEvaluation whether one evaluation ends the situation. False suits a condition
  *     that persists and wants watching; true suits a window over a stream, where the next batch of
  *     messages is a new question rather than more of the old one.
+ * @param stuckInvestigationTimeout how long a situation may sit in {@code INVESTIGATING} before a
+ *     sweep decides nobody is coming back for it and makes it due again. Only the run's own
+ *     write-back ever leaves that phase, so a database blip while that write is attempted would
+ *     otherwise orphan the situation for good — nothing else queries the phase, and a restart does
+ *     not revisit it either. Long enough that a triage run genuinely still working is never
+ *     reclaimed underneath itself, which is what the number is really about; the late write-back is
+ *     harmless either way, since reclaiming bumps the generation and {@code
+ *     SituationSweeper.Evaluation} already declines to write over a generation that moved on.
  * @param playbook how a triage run finds the deployment's own instructions for dealing with an
  *     event, overriding every source at once. Usually left unset here and stated per source, since
  *     the whole point is that a GitHub event and an alert are dealt with differently.
@@ -80,6 +88,7 @@ public record EventsProperties(
     Duration cooldown,
     Duration resolveAfterQuiet,
     boolean resolveAfterEvaluation,
+    Duration stuckInvestigationTimeout,
     Playbook playbook,
     String triagePrompt,
     Map<String, Source> sources) {
@@ -97,6 +106,7 @@ public record EventsProperties(
   public static final Duration DEFAULT_COOLDOWN = Duration.ofMinutes(10);
   public static final Duration DEFAULT_RESOLVE_AFTER_QUIET = Duration.ofHours(6);
   public static final boolean DEFAULT_RESOLVE_AFTER_EVALUATION = false;
+  public static final Duration DEFAULT_STUCK_INVESTIGATION_TIMEOUT = Duration.ofMinutes(20);
 
   /**
    * The source name the Feishu integration reports group chat messages under.
@@ -171,6 +181,10 @@ public record EventsProperties(
     maxDebounce = maxDebounce == null ? DEFAULT_MAX_DEBOUNCE : maxDebounce;
     cooldown = cooldown == null ? DEFAULT_COOLDOWN : cooldown;
     resolveAfterQuiet = resolveAfterQuiet == null ? DEFAULT_RESOLVE_AFTER_QUIET : resolveAfterQuiet;
+    stuckInvestigationTimeout =
+        stuckInvestigationTimeout == null
+            ? DEFAULT_STUCK_INVESTIGATION_TIMEOUT
+            : stuckInvestigationTimeout;
     playbook = playbook == null ? Playbook.NONE : playbook;
     triagePrompt = blankToNull(triagePrompt);
     sources = sources == null ? Map.of() : Map.copyOf(sources);

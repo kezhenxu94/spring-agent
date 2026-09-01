@@ -582,6 +582,75 @@ class SituationSweeperTest {
   }
 
   @Test
+  @DisplayName("a situation left INVESTIGATING past the timeout is made due again")
+  void shouldReclaimAStuckInvestigation() {
+    // The failure this exists for: the write-back that would have left INVESTIGATING never landed,
+    // so without a reclaim nothing in the system ever looks at this row again — evaluateDue reads
+    // only AWAITING_EVALUATION, resolveQuiet skips the phase, and a restart changes nothing.
+    final var properties = properties(false, 2);
+    observed(properties, "d1");
+    clock.advance(Duration.ofSeconds(31));
+    final var sweeper = sweeper(properties);
+    sweeper.sweep();
+    assertThat(repos.situations.only().phase()).isEqualTo(Situation.Phase.INVESTIGATING);
+
+    clock.advance(properties.stuckInvestigationTimeout().plusMinutes(1));
+    sweeper.sweep();
+
+    final var updated = repos.situations.only();
+    // Reclaimed and evaluated again in the one sweep, since it is made due as of now.
+    assertThat(updated.phase()).isEqualTo(Situation.Phase.INVESTIGATING);
+    // Two generations on: one for the reclaim, one for the attempt it let through.
+    assertThat(updated.generation()).isEqualTo(3);
+    verify(springAgent, times(2)).fire(any());
+  }
+
+  @Test
+  @DisplayName("a situation still within the timeout is left to get on with it")
+  void shouldLeaveARunningInvestigationAlone() {
+    // A triage run that is merely slow must not be reclaimed underneath itself: the model would be
+    // paid for twice for one situation.
+    final var properties = properties(false, 2);
+    observed(properties, "d1");
+    clock.advance(Duration.ofSeconds(31));
+    final var sweeper = sweeper(properties);
+    sweeper.sweep();
+
+    clock.advance(properties.stuckInvestigationTimeout().minusMinutes(1));
+    sweeper.sweep();
+
+    final var updated = repos.situations.only();
+    assertThat(updated.phase()).isEqualTo(Situation.Phase.INVESTIGATING);
+    assertThat(updated.generation()).isEqualTo(1);
+    verify(springAgent, times(1)).fire(any());
+  }
+
+  @Test
+  @DisplayName("the write-back a reclaimed attempt eventually manages does nothing")
+  void shouldIgnoreTheWriteBackOfAReclaimedAttempt() {
+    // What makes reclaiming safe rather than a race: the reclaim bumps the generation, which is the
+    // same protection two replicas already rely on, so a late outcome finds a row it no longer
+    // owns.
+    final var properties = properties(true, 2);
+    observed(properties, "d1");
+    clock.advance(Duration.ofSeconds(31));
+    final var sweeper = sweeper(properties);
+    sweeper.sweep();
+    final var reclaimed = fired();
+
+    clock.advance(properties.stuckInvestigationTimeout().plusMinutes(1));
+    sweeper.sweep();
+    final var beforeTheLateOutcome = repos.situations.only();
+    finish(reclaimed, AgentOutcome.COMPLETED);
+
+    final var updated = repos.situations.only();
+    assertThat(updated.generation()).isEqualTo(beforeTheLateOutcome.generation());
+    assertThat(updated.phase()).isEqualTo(beforeTheLateOutcome.phase());
+    // In particular it does not close a situation the newer attempt is still looking at.
+    assertThat(updated.status()).isEqualTo(Situation.Status.OPEN);
+  }
+
+  @Test
   @DisplayName("a situation nothing has been heard about is closed")
   void shouldResolveWhatHasGoneQuiet() {
     final var properties = properties(false, 2);

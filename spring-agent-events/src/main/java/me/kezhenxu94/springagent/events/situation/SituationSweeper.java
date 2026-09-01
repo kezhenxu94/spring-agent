@@ -202,8 +202,55 @@ public class SituationSweeper {
       log.debug("Shutting down, skipping the sweep");
       return;
     }
+    reclaimStuck();
     evaluateDue();
     resolveQuiet();
+  }
+
+  /**
+   * Makes a situation due again when the run that claimed it never said what became of it.
+   *
+   * <p>{@code INVESTIGATING} is written before the run starts and only {@link Evaluation#finish} —
+   * one write, to the same database — ever leaves it. So a connection refused for the length of
+   * that one write orphans the situation permanently: {@link #evaluateDue} reads only {@code
+   * AWAITING_EVALUATION}, {@link #resolveQuiet} skips this phase on purpose, {@code
+   * SituationEventIntake} deliberately leaves a situation in it when more arrives, and nothing runs
+   * at startup either. This is the pass that notices.
+   *
+   * <p>Safe against reclaiming a run that is merely slow, rather than merely unlikely to: bumping
+   * the generation is exactly what a second replica's attempt does, and {@link Evaluation#finish}
+   * already declines to write over a generation that has moved on. A write-back arriving after this
+   * therefore no-ops instead of fighting it. What the timeout buys is only that the reclaimed run
+   * is usually one that is genuinely gone, so the model is not paid for twice.
+   *
+   * <p>Loud, unlike most of what this class does: a situation reaching here means an outcome was
+   * lost, which is worth a line even though the recovery is automatic.
+   */
+  private void reclaimStuck() {
+    final var now = clock.instant();
+    final var deadline = now.minus(properties.stuckInvestigationTimeout());
+    for (final var situation : situations.findByPhase(Situation.Phase.INVESTIGATING)) {
+      if (situation.lastEvaluatedAt() == null || !situation.lastEvaluatedAt().isBefore(deadline)) {
+        continue;
+      }
+      log.warn(
+          "Situation {} has been INVESTIGATING since {}, longer than {}; its evaluation left no"
+              + " outcome, so it is being made due again",
+          situation.id(),
+          situation.lastEvaluatedAt(),
+          properties.stuckInvestigationTimeout());
+      situations.save(
+          situation.toBuilder()
+              .phase(Situation.Phase.AWAITING_EVALUATION)
+              .generation((situation.generation() == null ? 0 : situation.generation()) + 1)
+              .awaitingSince(now)
+              .evaluateAfter(now)
+              .lastError(
+                  "Stuck in INVESTIGATING for longer than "
+                      + properties.stuckInvestigationTimeout()
+                      + "; requeued")
+              .build());
+    }
   }
 
   private void evaluateDue() {

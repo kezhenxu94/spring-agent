@@ -47,6 +47,8 @@ public class EventsDefaults implements EnvironmentPostProcessor, Ordered {
   static final String RESOLVE_AFTER_QUIET = EventsProperties.PREFIX + ".resolve-after-quiet";
   static final String RESOLVE_AFTER_EVALUATION =
       EventsProperties.PREFIX + ".resolve-after-evaluation";
+  static final String STUCK_INVESTIGATION_TIMEOUT =
+      EventsProperties.PREFIX + ".stuck-investigation-timeout";
 
   @Override
   public void postProcessEnvironment(
@@ -81,7 +83,10 @@ public class EventsDefaults implements EnvironmentPostProcessor, Ordered {
                         EventsProperties.DEFAULT_RESOLVE_AFTER_QUIET.toString()),
                     Map.entry(
                         RESOLVE_AFTER_EVALUATION,
-                        String.valueOf(EventsProperties.DEFAULT_RESOLVE_AFTER_EVALUATION)))));
+                        String.valueOf(EventsProperties.DEFAULT_RESOLVE_AFTER_EVALUATION)),
+                    Map.entry(
+                        STUCK_INVESTIGATION_TIMEOUT,
+                        EventsProperties.DEFAULT_STUCK_INVESTIGATION_TIMEOUT.toString()))));
   }
 
   /**
