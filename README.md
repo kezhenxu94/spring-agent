@@ -11,7 +11,9 @@ new abilities in conversation, without a redeploy.
 
 It is also a library. If you are building your own agent on Spring Boot 4 and Spring AI, read
 [docs/sdk.md](docs/sdk.md); if you want to change this repository, read
-[docs/contributing.md](docs/contributing.md).
+[docs/contributing.md](docs/contributing.md). For how the pieces fit together — the surfaces, the
+event sources, what a run is offered and where state lives — [docs/architecture.md](docs/architecture.md)
+draws it.
 
 Every property and environment variable is documented in place, with the reason for its default, in
 [`spring-agent-app-feishu/src/main/resources/application.yaml`](spring-agent-app-feishu/src/main/resources/application.yaml).

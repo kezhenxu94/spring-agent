@@ -33,7 +33,7 @@ Other tasks:
 
 `-Pnative` is required for any native task: the GraalVM plugin is applied conditionally so that a plain `bootBuildImage` does not silently turn into a native build (see the comment in `spring-agent-app-feishu/build.gradle`).
 
-Tests need a running Docker daemon — `AbstractIntegrationTest` starts MongoDB and Redis containers via Testcontainers. Unit tests sit beside the class they cover; cross-cutting integration tests live in `spring-agent-app-feishu/src/test`. A behaviour that must hold for every persistence backend goes in `AbstractPersistenceBackendTest`, which is run once per backend by `PersistenceJpaTest`/`PersistenceMongoTest`/`PersistenceRedisTest` — add the assertion there rather than to one backend's test.
+Tests need a running Docker daemon — `AbstractIntegrationTest` starts MongoDB and Redis containers via Testcontainers. Unit tests sit beside the class they cover; cross-cutting integration tests live in `spring-agent-app-feishu/src/test`. A behaviour that must hold for every persistence backend goes in `AbstractPersistenceBackendTest`, which is run once per backend by `PersistenceJpaTest`/`PersistenceMongoTest`/`PersistenceRedisTest` — add the assertion there rather than to one backend's test. That class also covers Spring AI's conversation-memory repository, which is not one of core's contracts but is selected by the same switch — `chatMemoryPreservesTheOrderOfATurn` is what caught MongoDB returning a turn answer-first.
 
 There is **no CI workflow that builds or tests**. The three workflows publish only. Verification is local; run `make build` before pushing.
 
@@ -47,18 +47,19 @@ There is **no CI workflow that builds or tests**. The three workflows publish on
 ## Modules
 
 ```
-spring-agent-core              the agent runtime and every SPI; backend-agnostic
+spring-agent-core                                 the agent runtime and every SPI; backend-agnostic
 spring-agent-persistence-{jpa,mongodb,redis}
 spring-agent-tools-shell-{kubernetes,docker}
-spring-agent-events           observations -> situations -> a triage run; serves /events/webhooks/<source>
-spring-agent-integration-{github,gitlab,grafana}   webhook readers for spring-agent-events
-spring-agent-rag-milvus       the knowledge base; the only implementation of core's KnowledgeBase
-spring-agent-integration-feishu
-spring-agent-integration-websocket  a browser as a surface: the SPA, its REST endpoints, STOMP run streaming
-spring-agent-app-feishu        deployable server whose surface is Feishu; depends on every optional module
-spring-agent-app-slack         the same server, with Slack as its surface instead
-spring-agent-app-cli           laptop command line; jpa + local shell only
-spring-agent-app-webui         the same server, with a browser as its surface
+spring-agent-events                               observations -> situations -> a triage run; serves /events/webhooks/<source>
+spring-agent-integration-{github,gitlab,grafana}  webhook readers for spring-agent-events
+spring-agent-integration-email                    a watched mailbox as observations; dials out, so app.email.enabled
+spring-agent-rag-milvus                           the knowledge base; the only implementation of core's KnowledgeBase
+spring-agent-integration-{feishu,slack}           chats and cards / channels and Block Kit, as a surface
+spring-agent-integration-websocket                a browser as a surface: the SPA, its REST endpoints, STOMP run streaming
+spring-agent-app-feishu                           deployable server whose surface is Feishu; depends on every optional module
+spring-agent-app-slack                            the same server, with Slack as its surface instead
+spring-agent-app-cli                              laptop command line; jpa + local shell only
+spring-agent-app-webui                            the same server, with a browser as its surface
 ```
 
 `spring-agent-core` must stay free of any persistence backend. This is enforced by `checkRuntimeClasspathIsolation` (wired into `check`, defined in `buildSrc/.../springagent.classpath-isolation.gradle`, configured at the bottom of `spring-agent-core/build.gradle`): it fails the build if Hibernate, the Mongo driver, Jedis, Milvus, fabric8 and friends reach core's runtime classpath. If that task fails, a dependency became `api` or grew a new transitive — fix the dependency, do not widen the allow-list.
@@ -75,7 +76,7 @@ A run is offered exactly what `compose(...)` returns, so tools that come from el
 
 **Two runtime switches select beans by condition**, not by classpath alone:
 
-- `app.persistence.type` — `jpa` (default, SQLite) | `mongodb` | `redis`, via `@ConditionalOnPersistenceBackend`. Chooses repositories *and* the Spring AI chat memory repository together.
+- `app.persistence.type` — `jpa` (default, SQLite) | `mongodb` | `redis`, via `@ConditionalOnPersistenceBackend`. Chooses repositories *and* the conversation-memory repository together. On jpa and redis that is Spring AI's own; on mongodb it is `MongoChatMemoryRepo` in that module, because Spring AI's orders a turn by a millisecond timestamp it stamps itself and so returns it scrambled — read that class before touching it.
 - `app.ai.tools.shell.type` — `none` (default) | `kubernetes` | `docker` | `local`, via `@ConditionalOnShellBackend`.
 
 Both are evaluated during AOT, so in a **native image they are build-time decisions** baked by `-PnativeBackends` (see `springagent.native.gradle`); the environment variable is inert at runtime and must be set to agree with what was baked.
@@ -96,15 +97,17 @@ Schema is owned by the application (`ddl-auto: update`) — there is no Flyway o
 
 **Not every run starts with somebody talking to the agent.** `core/observing/` is the contract for the other case, and core ships no implementation of it: a transport reports an `Observation` (source, delivery id, kind, correlation key, evidence, and a `Route` saying where a run about it may talk) to `EventIntakes`, which hands it to every `EventIntake` bean, each independent and each isolated from the others' failures. That is why a transport — the Feishu integration, a webhook receiver — depends only on core, and nothing consuming observations depends on a transport. `spring-agent-events` is the intake that correlates observations into situations by their key, debounces, and wakes a triage run; the `spring-agent-integration-{github,gitlab,grafana}` modules each contribute one `WebhookSource` and nothing else. All of it is off unless `app.events.enabled`, and a source not named in `app.events.sources` is dropped at the door. Payload text is written by whoever caused the event: it is evidence, never routing and never instructions, and a triage run must assume an identity of the agent's own rather than a person's — a scenario cannot withhold the files, credentials and MCP servers that come with an identity.
 
+**A browser is a surface like any other, with one thing of its own: the run journal.** `spring-agent-integration-websocket` holds every event a run emitted in a `RunJournal`, and an HTTP or websocket connection is only ever a *reader* of one. Opening a subscription starts nothing and dropping one stops nothing, which is what makes closing a tab safe — only pressing Stop cancels a run. A late or reconnecting browser says how far it got and is replayed from there, so replay is per-subscriber: `RunStreamSubscriptions` therefore writes STOMP frames straight to the asking session rather than publishing to a topic, which would hand one tab another's backlog. `RunJournal.attach` replays and registers the reader under one lock, because "send history then subscribe" loses what arrives in between and "subscribe then send history" sends some of it twice. CSRF is *on* in that surface's application, unlike the webhook servers': a POST there makes the agent act with the logged-in person's credentials, files and MCP servers.
+
 **Asking the user a question ends the turn.** On a surface whose question handler is asynchronous (Feishu), the ask tool persists a `PendingQuestion`, returns no answers, and the run stops; the answer arrives later as a *new* `AgentRequest` on the same `conversationId`. A handler that can answer inline (the CLI) implements the `SynchronousQuestionHandler` marker instead and the turn continues. Do not assume an answer is available in the same run.
 
 Each library module ships a Spring Boot auto-configuration that component-scans its own package (registered in `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`), plus an `aot` package of `RuntimeHints` pulled in with `@ImportRuntimeHints`. Native image is first-class here: reflection, resources and proxies used by new code need hints registered there or the binary breaks at runtime while the JVM build passes.
 
-Text the agent writes itself (as opposed to what the model produced) is localized through a `MessageSource` — `CoreMessages`, `FeishuMessages`, `CliMessages` over `messages*.properties` (en, zh_CN). Do not hardcode such strings.
+Text the agent writes itself (as opposed to what the model produced) is localized through a `MessageSource` — `CoreMessages`, `FeishuMessages`, `CliMessages`, `WebMessages` over `messages*.properties` (en, zh_CN). Do not hardcode such strings.
 
 ## Documentation
 
-`README.md` at the root, everything else under `docs/`. Three documents, three audiences, and a
+`README.md` at the root, everything else under `docs/`. Four documents, four audiences, and a
 change that alters behaviour updates the relevant one in the same commit:
 
 - **`README.md`** — somebody running the prebuilt server or CLI. Features as an end user meets them,
@@ -116,6 +119,11 @@ change that alters behaviour updates the relevant one in the same commit:
   context, the observing and knowledge SPIs, persistence, native image, the module table. Update it
   when a public API, SPI or extension point changes, when a module is published or removed, or when
   a scenario, listener hook or tool-context key is added.
+- **`docs/architecture.md`** — anybody orienting themselves, before they pick one of the three
+  below. Mermaid diagrams of the surfaces, the two ways a run starts, what a run is offered, where
+  state lives, and which module may depend on which. Update it when a module, a surface, an event
+  source or a store is added or removed, or when one of those relationships changes. Keep it
+  structural: it is not a configuration reference and must not grow into one.
 - **`docs/contributing.md`** — somebody changing this repository. Build/test/lint, module layout and
   the classpath rules, how to add each kind of integration, conventions. Update it when the build,
   the test layout or the module rules change, or when a new *kind* of integration becomes possible.
@@ -134,13 +142,15 @@ Configuration is documented in place. `spring-agent-app-feishu/src/main/resource
 
 **One chat surface per application, and this is a runtime constraint rather than a preference.** Three singletons in this runtime answer for every run rather than for one surface's runs: a `@Bean AgentResponseListener` claims every run, `PromptVariablesContributor`s are merged with `putAll` so the last one registered decides `{replyFormat}`, and `SituationSweeper` resolves its `Notifier` with `getIfAvailable()`, which throws when two exist. None of the three fails at startup, so a second surface on the classpath is a build that passes and a deployment that misbehaves — a Feishu card replied onto a Slack timestamp, the run aborted before it reaches the model. That is why `spring-agent-app-feishu` and `spring-agent-app-slack` are two applications rather than one server with both integrations, and why the constraint holds for a test classpath too: an auto-configuration is still an auto-configuration there. `OneChatSurfaceTest` in `spring-agent-app-slack` is the check that notices.
 
+`spring-agent-integration-websocket` is deliberately not a third entry in that count. It does register a `@Bean AgentResponseListener`, so that a scheduled task firing or a subagent starting is still visible in the page, but that one claims a run only when the request's `chatType` is `web` — which no other surface sets — and it contributes no `PromptVariablesContributor` and no `Notifier`. So it may sit beside a chat surface, which is the point of publishing it.
+
 **`spring-agent-app-slack`'s and `spring-agent-app-webui`'s `application.yaml` are derived from `spring-agent-app-feishu`'s and have to stay in step with it.** The two applications run the same runtime, so a setting must mean the same thing in both — a deployment that moves between them should not silently get different tool limits, a different subagent budget or a different sandbox. A knob added to the Feishu server's file belongs in the other two as well, with the same default and the same rationale.
 
 Only these kinds of difference are legitimate, and each is stated in the header comment at the top of the derived file rather than left to be found by diffing:
 
 - **absent modules** — `app.events` and `app.feishu` have no configuration in the web file because it carries neither, and `spring-agent-app-slack` has `app.slack` where the Feishu server has `app.feishu`; configuring absent code is a lie about what the binary does;
 - **`app.web.*`** — who may log in, how long a finished run stays replayable, how long an unanswered question lives;
-- **what the surface needs and the server does not** — `spring.threads.virtual`, `spring.mvc.async` for the SSE streams, `spring.servlet.multipart` for uploads;
+- **what the surface needs and the server does not** — `spring.threads.virtual` for the websocket sessions a page holds open, `spring.mvc.async` for the published files core's `ShareController` streams, `spring.servlet.multipart` for uploads;
 - **per-application storage** — its own SQLite file, its own vector-store file, its own published-file URLs.
 
 Anything else drifting is a bug in one of the two. `DockerShellDefaultsTest` in `spring-agent-app-webui` is the check that notices for the shell sandbox, and it binds the properties rather than parsing the YAML, so it also catches a block landing at a nesting level Boot ignores in silence.

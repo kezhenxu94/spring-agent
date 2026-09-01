@@ -4,7 +4,8 @@
 for the Java developer embedding it: what to depend on, what to configure, how to start a run, and
 what the extension points are. If you only want to run the applications that ship here, read the
 [README](../README.md) instead; if you want to change this repository, read
-[contributing.md](contributing.md).
+[contributing.md](contributing.md). [architecture.md](architecture.md) draws what the paragraphs
+below describe, if a picture first is easier.
 
 Artifacts are published to Maven Central under the `me.kezhenxu94` group. Java 21 is the floor —
 the modules target bytecode 21 and use nothing newer.
@@ -19,6 +20,7 @@ the modules target bytecode 21 and use nothing newer.
 - [Where a user's files live](#where-a-users-files-live)
 - [Watching what other systems do](#watching-what-other-systems-do)
 - [The knowledge base](#the-knowledge-base)
+- [A browser as your surface](#a-browser-as-your-surface)
 - [The system prompt and other prose](#the-system-prompt-and-other-prose)
 - [Persistence](#persistence)
 - [Native image](#native-image)
@@ -28,7 +30,9 @@ the modules target bytecode 21 and use nothing newer.
 
 Take `spring-agent-core` plus exactly one persistence module. Core is backend-agnostic and carries
 no database driver; the persistence module is what supplies both the agent's own repositories and
-the Spring AI chat memory repository, and those two have to come from the same place.
+the conversation-memory repository, and those two have to come from the same place. (On jpa and
+redis that is Spring AI's own repository; on mongodb the module substitutes one of its own, because
+upstream's returns a turn in an undefined order — see `MongoChatMemoryRepo`.)
 
 ```groovy
 implementation 'me.kezhenxu94:spring-agent-core:<version>'
@@ -83,7 +87,7 @@ you named there, so your own bundles keep winning.
 That is the minimum, not the whole of it. Everything you can turn on from here — the shell sandbox,
 the tool-search advisor, per-user storage and published-file links, the MCP allow-list, the question
 tool's lifetime, the events receiver, the knowledge base — is written out with its rationale in the
-server's [`application.yaml`](../spring-agent-app/src/main/resources/application.yaml). That file is
+server's [`application.yaml`](../spring-agent-app-feishu/src/main/resources/application.yaml). That file is
 the configuration reference for the SDK as much as for the server; copy the blocks you want out of
 it rather than rediscovering property names.
 
@@ -500,16 +504,67 @@ Text the agent writes itself — as opposed to what the model produced — is lo
 `MessageSource` (`CoreMessages` over `core/messages*.properties`, contributed to
 `spring.messages.basename` by `MessagesDefaults`). Do not hardcode such strings in a module of your
 own; ship a bundle, and either name it in `spring.messages.basename` — core's is appended after
-whatever you name — or build a `MessageSource` of your own for it, as `FeishuMessages` does, so that
+whatever you name — or build a `MessageSource` of your own for it, as `FeishuMessages` and
+`WebMessages` do, so that
 two modules are not fighting over one basename. `app.locale`
 also chooses the language tool descriptions are rewritten into on the way to the model, from
 `core/prompts/tools/<ToolName>_<locale>.md` and `core/tools_<locale>.properties`.
 
+## A browser as your surface
+
+`spring-agent-integration-websocket` is a whole surface as a dependency: a single-page UI, the REST
+endpoints behind it, and runs streamed live over STOMP. It is what `spring-agent-app-webui` is made
+of, and taking it gives an application of your own the same conversation list, transcript, live run
+view, file uploads, task list and question forms.
+
+```groovy
+implementation 'me.kezhenxu94:spring-agent-integration-websocket:<version>'
+```
+
+Unusually for a surface here, it may sit beside a chat surface. It registers one
+`AgentResponseListener` bean, which claims a run only when the request's `chatType` is `web`, and it
+fills no `{replyFormat}` and is nobody's `Notifier` — so a Feishu or Slack bot can gain a browser to
+read its own conversations in without the collisions described under
+[the module reference](#module-reference).
+
+Four things it needs from you:
+
+1. **A `SecurityFilterChain`.** The module deliberately defines none, because who may log in, which
+   OAuth2 registration the sign-in button goes to and which of *your* other paths are public are not
+   its decisions. It contributes `WebAuthoritiesMapper`, the rule that admits a person whose tenant
+   or workspace matches `app.web.auth.tenant-id`; wire it into your `oauth2Login`. Copy
+   `spring-agent-app-webui`'s `SecurityConfigurer` as the reference: the page's own assets and
+   `/share/public/**` are `permitAll`, `/api/me` is `authenticated` so a refused person can be told
+   *why*, and everything else — the `/ws/runs` handshake included — requires the role.
+2. **CSRF on, not off.** A `POST /api/conversations/{id}/messages` makes the agent act with the
+   logged-in person's credentials, files and MCP servers, so a forgeable request is one that puts
+   words in their mouth. Use `CookieCsrfTokenRepository.withHttpOnlyFalse()` — the page reads the
+   cookie and echoes it in `X-XSRF-TOKEN` — and call
+   `setCsrfRequestAttributeName(null)` on the request handler, or the deferred token means no cookie
+   is written until the *first POST has already been refused*.
+3. **`@EnableScheduling`.** `RunJournals` sweeps finished runs on a timer. Boot auto-configures a
+   scheduler but never the annotation that makes `@Scheduled` mean anything, so without it
+   `app.web.journal.retention` stops meaning anything.
+4. **A `ChatSessionRepo` and a `ChatMemory`**, which any persistence module already gives you. A
+   conversation's `userId` is the same identity every other surface uses, so history lines up across
+   them.
+
+`app.web.*` is the module's own configuration: `title` (what the deployment calls itself),
+`auth.provider` and `auth.tenant-id`, `journal.retention`/`journal.max-runs` (how long and how much
+of a finished run stays replayable — it is memory, so it is bounded twice over), `question.ttl` and
+`locale`.
+
+The streaming contract, if you are writing another client against it: connect STOMP to `/ws/runs`,
+subscribe to `/app/runs/{requestId}` with a `from` header carrying the last sequence number you
+hold. You are sent a `replay` event whose `through` is the last sequence number that already
+existed, then the backlog, then live events; `gone` means there is no journal for that id — evicted,
+or not yours, deliberately indistinguishable. Frames are `RunEvent` as JSON: `{seq, type, data}`.
+
 ## Persistence
 
 `app.persistence.type` — `jpa` (default, SQLite out of the box) | `mongodb` | `redis` — selects
-repositories *and* the Spring AI chat memory repository together, through
-`@ConditionalOnPersistenceBackend`.
+repositories *and* the conversation-memory repository together, through
+`@ConditionalOnPersistenceBackend`, so the two can never come from different backends.
 
 One domain model serves every backend: the records in `core/dao/models/` carry JPA, MongoDB and
 Redis mapping annotations at once, which works because an annotation whose type is absent at runtime
