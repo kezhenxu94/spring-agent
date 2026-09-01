@@ -39,7 +39,7 @@ class UserChatClientsTest {
       new UserChatClients(
           ChatClient.builder(appModel).build(),
           new UserModelRegistry(mock(UserModelConfigRepo.class), new AesGcmSealer(KEY, "t"), 3),
-          appModel,
+          appOptions,
           List.of(),
           10);
 

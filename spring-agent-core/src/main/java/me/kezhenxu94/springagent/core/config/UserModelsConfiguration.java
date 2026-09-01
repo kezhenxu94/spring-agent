@@ -5,6 +5,7 @@ import java.util.List;
 import me.kezhenxu94.springagent.core.dao.repo.UserModelConfigRepo;
 import me.kezhenxu94.springagent.core.security.AesGcmSealer;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
+import me.kezhenxu94.springagent.core.usermodels.ApplicationEndpoint;
 import me.kezhenxu94.springagent.core.usermodels.BuiltinModels;
 import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import me.kezhenxu94.springagent.core.usermodels.UserModelCommand;
@@ -12,7 +13,10 @@ import me.kezhenxu94.springagent.core.usermodels.UserModelProbe;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import me.kezhenxu94.springagent.core.usermodels.UserModelTools;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
+import org.springframework.ai.model.openai.autoconfigure.OpenAiCommonProperties;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.http.okhttp.OpenAiHttpClientBuilderCustomizer;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -55,21 +59,36 @@ public class UserModelsConfiguration {
   }
 
   /**
-   * @param defaultChatModel the application's own, which every user client is built as a variation
-   *     of — see {@code UserChatClients#build} for why it is copied rather than rebuilt.
+   * The application's own chat options, endpoint included, which every client built in this package
+   * is a variation of — see {@link ApplicationEndpoint} for why the {@link OpenAiChatModel} bean's
+   * own options are not enough, and {@code UserChatClients#build} for why they are copied rather
+   * than rebuilt.
+   *
+   * <p>Not a bean: an {@code OpenAiChatOptions} bean in the context is a type Spring AI itself
+   * looks up, and this one describes the application's endpoint rather than any single request.
    */
+  private static OpenAiChatOptions resolvedOptions(
+      final OpenAiChatModel defaultChatModel,
+      final OpenAiCommonProperties commonProperties,
+      final OpenAiChatProperties chatProperties) {
+    return ApplicationEndpoint.resolve(
+        defaultChatModel.getOptions(), commonProperties, chatProperties);
+  }
+
   @Bean
   @ConditionalOnMissingBean
   UserChatClients userChatClients(
       @Qualifier("chatClient") final ChatClient defaultChatClient,
       final OpenAiChatModel defaultChatModel,
+      final OpenAiCommonProperties commonProperties,
+      final OpenAiChatProperties chatProperties,
       final UserModelRegistry registry,
       final List<OpenAiHttpClientBuilderCustomizer> httpClientCustomizers,
       final UserModelsProperties properties) {
     return new UserChatClients(
         defaultChatClient,
         registry,
-        defaultChatModel,
+        resolvedOptions(defaultChatModel, commonProperties, chatProperties),
         httpClientCustomizers,
         properties.cacheSize());
   }
@@ -84,10 +103,14 @@ public class UserModelsConfiguration {
   @ConditionalOnMissingBean
   BuiltinModels builtinModels(
       final OpenAiChatModel defaultChatModel,
+      final OpenAiCommonProperties commonProperties,
+      final OpenAiChatProperties chatProperties,
       final List<OpenAiHttpClientBuilderCustomizer> httpClientCustomizers,
       final ObjectProvider<ObservationRegistry> observationRegistry) {
     return new BuiltinModels(
-        defaultChatModel, httpClientCustomizers, observationRegistry.getIfAvailable());
+        resolvedOptions(defaultChatModel, commonProperties, chatProperties),
+        httpClientCustomizers,
+        observationRegistry.getIfAvailable());
   }
 
   @Bean

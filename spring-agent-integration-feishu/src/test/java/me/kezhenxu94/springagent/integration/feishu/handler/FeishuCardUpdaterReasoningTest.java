@@ -182,23 +182,21 @@ class FeishuCardUpdaterReasoningTest {
             .build();
     final var repo = org.mockito.Mockito.mock(UserModelConfigRepo.class);
     org.mockito.Mockito.when(repo.findByOwnerId(userId)).thenReturn(List.of(row));
-    final var appModel =
-        OpenAiChatModel.builder()
-            .options(
-                OpenAiChatOptions.builder()
-                    .baseUrl("https://app/v1")
-                    .apiKey("k")
-                    .model("app-model")
-                    .reasoningEffort("xhigh")
-                    .build())
+    final var appOptions =
+        OpenAiChatOptions.builder()
+            .baseUrl("https://app/v1")
+            .apiKey("k")
+            .model("app-model")
+            .reasoningEffort("xhigh")
             .build();
+    final var appModel = OpenAiChatModel.builder().options(appOptions).build();
     return new UserChatClients(
         ChatClient.builder(appModel).build(),
         new UserModelRegistry(
             repo,
             new AesGcmSealer(java.util.Base64.getEncoder().encodeToString(new byte[32]), "test"),
             3),
-        appModel,
+        appOptions,
         List.of(),
         4);
   }
