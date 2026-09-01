@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.integration.websocket.config;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -11,25 +12,46 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param question how long a question the agent asked stays answerable
  * @param auth who is allowed in
  * @param title what this deployment calls itself: the browser tab, the sidebar brand and the
- *     heading a conversation title has not replaced yet. A deployment running the agent as its own
- *     product should not have to say Spring Agent in three places on somebody's screen. Not
- *     translated — a name is the same in every language — so it is one value rather than an entry
- *     per bundle
+ *     heading a conversation title has not replaced yet. Somebody running the agent as their own
+ *     product should not have to say Spring Agent in three places on somebody's screen. One value
+ *     for every language, because a name a deployment chose for itself is not something this server
+ *     can translate. Null where nobody set it, and then the name is a translated string like every
+ *     other — {@code app-title}, resolved per reader — which is also how a name that <em>is</em>
+ *     written differently in each language is given: a bundle of the consumer's own in {@code
+ *     messages}, naming that one key
+ * @param messages basenames of message bundles consulted before this module's own, in order. The
+ *     extension point for a consumer embedding this module: naming one key in a bundle of their own
+ *     overrides that string and leaves every other one alone, so they never take a copy of this
+ *     module's bundle and then silently lose whatever is added to it later
  * @param locale the language to fall back to when a browser asks for one nothing is written in.
  *     Null means English, which is what every bundle here has a translation for
  */
 @ConfigurationProperties(prefix = "app.web")
 public record WebProperties(
-    Journal journal, Question question, Auth auth, Locale locale, String title) {
-
-  /** What the page is called when a deployment has not renamed it. */
-  public static final String DEFAULT_TITLE = "Spring Agent";
+    Journal journal,
+    Question question,
+    Auth auth,
+    Locale locale,
+    String title,
+    List<String> messages) {
 
   public WebProperties {
     journal = journal == null ? new Journal(null, null) : journal;
     question = question == null ? new Question(null) : question;
     auth = auth == null ? new Auth(null, null) : auth;
-    title = title == null || title.isBlank() ? DEFAULT_TITLE : title.trim();
+    // Blank is null rather than a name: it means nobody renamed this deployment, which is what
+    // sends the caller to the bundle for a name in the reader's own language.
+    title = title == null || title.isBlank() ? null : title.trim();
+    // A blank basename is dropped rather than passed on. It resolves to a bundle that does not
+    // exist, and ResourceBundleMessageSource says nothing about one — the override would simply
+    // never happen, which is the hardest kind of misconfiguration to see.
+    messages =
+        messages == null
+            ? List.of()
+            : messages.stream()
+                .filter(it -> it != null && !it.isBlank())
+                .map(String::trim)
+                .toList();
   }
 
   /**

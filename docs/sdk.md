@@ -550,9 +550,32 @@ Four things it needs from you:
    them.
 
 `app.web.*` is the module's own configuration: `title` (what the deployment calls itself),
-`auth.provider` and `auth.tenant-id`, `journal.retention`/`journal.max-runs` (how long and how much
-of a finished run stays replayable — it is memory, so it is bounded twice over), `question.ttl` and
-`locale`.
+`messages` (below), `auth.provider` and `auth.tenant-id`, `journal.retention`/`journal.max-runs`
+(how long and how much of a finished run stays replayable — it is memory, so it is bounded twice
+over), `question.ttl` and `locale`.
+
+**Saying it in your own words.** `app.web.messages` is a list of message-bundle basenames consulted
+before the module's own `web/messages`, in order, key by key. Naming one key in a bundle of yours
+overrides that one string and leaves the rest — so you never take a copy of the module's bundle and
+then silently lose whatever is added to it in a later version:
+
+```yaml
+app.web.messages: com/acme/agent-messages
+```
+
+```properties
+# com/acme/agent-messages.properties, and _zh_CN.properties beside it
+app-title=Acme Agent
+```
+
+`app-title` is what the deployment is called — the browser tab, the sidebar brand, the heading
+before a conversation has a title. It is the one string a *reader* sees rather than a person being
+refused, and overriding it per bundle is how a deployment whose name is written differently in each
+language gives itself that name: `app.web.title` is deliberately one name for every language, since
+a name somebody chose is not something this server can translate. `/api/me` reports the resolved
+name for every supported language at once, because the language switcher in the page never asks the
+server again. In a native image, register your bundle as a resource — the module registers only its
+own (`WebRuntimeHints`).
 
 The streaming contract, if you are writing another client against it: connect STOMP to `/ws/runs`,
 subscribe to `/app/runs/{requestId}` with a `from` header carrying the last sequence number you
