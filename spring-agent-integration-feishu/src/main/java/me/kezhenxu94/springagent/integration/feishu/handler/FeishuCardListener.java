@@ -144,6 +144,16 @@ public class FeishuCardListener implements AgentResponseListener {
       attachSubagentPanel(registry, request, parent);
       return;
     }
+    // Feishu's own chat_type is never anything but p2p or group, so this is the reliable signal
+    // that a run is ours to reply a card onto. Not merely "replyTo is non-empty" below: another
+    // surface on the same classpath — the web UI, say — fills in a rootMessageId/replyMessageId
+    // of its own for its own reasons (a conversation id, a request id), and neither is a Feishu
+    // open_message_id, so replying onto it fails at the Feishu API rather than here, aborting a
+    // run that was never ours in the first place.
+    if (!"p2p".equalsIgnoreCase(request.chatType())
+        && !"group".equalsIgnoreCase(request.chatType())) {
+      return;
+    }
     final var replyTo =
         Strings.isNullOrEmpty(request.replyMessageId())
             ? request.rootMessageId()
