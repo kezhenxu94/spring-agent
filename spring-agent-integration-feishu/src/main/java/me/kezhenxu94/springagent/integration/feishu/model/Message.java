@@ -23,8 +23,10 @@ public class Message {
   @JsonProperty("msg_type")
   MessageType messageType;
 
+  @JsonProperty("content")
   String content;
 
+  @JsonProperty("uuid")
   String uuid;
 
   public interface Content {
