@@ -1,11 +1,11 @@
 // One document per row in the sidebar, the same shape a conversation has: a dot, a name that
-// truncates, and a delete that appears when the row does. They are the two things this agent keeps,
-// so they are read the same way.
+// truncates, and a menu of what can be done to it. They are the two things this agent keeps, so
+// they are read the same way.
 
 import { t } from './i18n.js';
 import { $ } from './dom.js';
-import { api } from './api.js';
-import { attempt, toast } from './toast.js';
+import { menuButton } from './menu.js';
+import { documentActions } from './knowledge-actions.js';
 import { knowledgeRoute, go } from './route.js';
 
 /**
@@ -57,27 +57,15 @@ function row(entry, options) {
   open.addEventListener('click', () => go(knowledgeRoute(entry.docId)));
   item.append(open);
 
-  if (!options.readOnly) {
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'absolute right-1 top-1/2 -translate-y-1/2 rounded px-1 text-[13px] '
-      + 'text-mist opacity-0 transition hover:text-alarm focus-visible:opacity-100 '
-      + 'group-hover:opacity-100';
-    remove.textContent = '×';
-    remove.setAttribute('aria-label', t('knowledge.delete'));
-    remove.addEventListener('click', (event) => {
-      event.stopPropagation();
-      if (!window.confirm(t('knowledge.delete.confirm'))) return;
-      attempt(async () => {
-        await api(`/api/knowledge?docId=${encodeURIComponent(entry.docId)}`, { method: 'DELETE' });
-        // Off the document that no longer exists before the list is fetched again, or the detail
-        // would redraw against an entry that is on its way out.
-        if (current) go(knowledgeRoute());
-        await options.refresh();
-        toast(t('knowledge.deleted'), 'settled', 2500);
-      });
-    });
-    item.append(remove);
+  // Built when the menu is pressed rather than now, so what it offers follows the document as it
+  // stands — a row whose share has just been undone offers to share it again without redrawing.
+  const items = () => documentActions(entry, { ...options, selected: current });
+  // Nothing to offer is nothing to press: reading somebody else's is read-only, and a ⋯ that opens
+  // an empty menu says the feature is broken rather than that it is not theirs to use.
+  if (items().length) {
+    const actions = menuButton(t('knowledge.actions'), items);
+    actions.classList.add('row-action');
+    item.append(actions);
   }
   return item;
 }

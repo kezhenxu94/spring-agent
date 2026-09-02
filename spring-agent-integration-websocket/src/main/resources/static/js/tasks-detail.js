@@ -2,9 +2,7 @@
 
 import { t } from './i18n.js';
 import { $ } from './dom.js';
-import { api } from './api.js';
-import { attempt, toast } from './toast.js';
-import { chatRoute, tasksRoute, go } from './route.js';
+import { chatRoute, go } from './route.js';
 
 export function renderTaskDetail(task, options) {
   const host = $('task-detail');
@@ -59,14 +57,11 @@ function actions(task, options) {
 
   const cancel = document.createElement('button');
   cancel.type = 'button';
-  cancel.className = 'panel-action';
+  cancel.className = 'panel-action panel-action-danger';
   cancel.textContent = t('task.cancel');
-  cancel.addEventListener('click', () => attempt(async () => {
-    await api(`/api/tasks/${task.id}`, { method: 'DELETE' });
-    go(tasksRoute());
-    await options.refresh();
-    toast(t('task.cancelled'), 'settled', 3000);
-  }));
+  // Asked for, and carried out, in the dialog: the button stays as it is and the confirmation is
+  // what spins, so there is one place on this page where an irreversible thing is in progress.
+  cancel.addEventListener('click', () => options.cancel());
   host.append(cancel);
   return host;
 }

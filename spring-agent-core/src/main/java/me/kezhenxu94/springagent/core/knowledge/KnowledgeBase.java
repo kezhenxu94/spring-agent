@@ -41,6 +41,18 @@ public interface KnowledgeBase {
   KnowledgePage list(KnowledgeScope scope, int offset, int limit);
 
   /**
+   * One document with the text it was indexed from, or empty where {@code scope} cannot reach it.
+   *
+   * <p>On the contract rather than left to a caller for the same reason {@link #move} is: nothing
+   * outside an implementation can read a stored document's text back, because searching returns
+   * what a query matched rather than what a document holds, and there is no query here.
+   *
+   * <p>Scoped exactly as {@link #delete} is — a document id belonging to somebody else is not found
+   * rather than refused, so this cannot be used to ask whether one exists.
+   */
+  Optional<KnowledgeDocument> read(KnowledgeScope scope, String docId);
+
+  /**
    * Removes a document and all its chunks, silently doing nothing if {@code scope} cannot reach it.
    */
   void delete(KnowledgeScope scope, String docId);

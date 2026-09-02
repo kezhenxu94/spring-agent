@@ -6,6 +6,7 @@ import { t } from './i18n.js';
 import { $, humanSize } from './dom.js';
 import { api } from './api.js';
 import { attempt, toast } from './toast.js';
+import { busyButton } from './busy.js';
 import { loadConversations } from './conversations.js';
 import { bus, state } from './state.js';
 
@@ -44,6 +45,10 @@ export function renderAttachments() {
 export async function uploadFiles(fileList) {
   const chosen = [...fileList];
   if (!chosen.length) return;
+  // The paperclip is the only thing on screen that knows an upload is happening — the chips it
+  // produces do not exist yet — so it is what spins. A file dropped on the page or pasted into the
+  // composer goes through here too, and lands on the same button.
+  const done = busyButton($('attach'));
   await attempt(async () => {
     if (!state.conversationId) {
       const created = await api('/api/conversations', { method: 'POST' });
@@ -63,6 +68,7 @@ export async function uploadFiles(fileList) {
     renderAttachments();
     toast(t('composer.attach.done', result.files.length), 'settled', 3000);
   });
+  done();
 }
 
 export function initAttachments() {

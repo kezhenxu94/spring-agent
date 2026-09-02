@@ -2,7 +2,19 @@
 <html lang="en" class="h-full">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--
+    Fixed at one scale. This page is an instrument panel with a drawer, a composer pinned to the
+    bottom and a status strip in the header, and a pinch zoom takes all three off screen at once —
+    including the Stop button, which is the one control a run in progress needs. Everything is laid
+    out to the viewport instead and wraps rather than widening (see base.css), so there is nothing
+    off to the side to zoom out to find.
+
+    The cost is real: pinch-to-zoom is how somebody with low vision reads a small label, and this
+    takes it away. What replaces it is the browser's own text size, which this page respects because
+    every size here is relative to the root.
+  -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>Spring Agent</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230B0E14'/><rect x='9' y='7' width='2.5' height='18' rx='1.25' fill='%23FFB020'/><circle cx='19' cy='11' r='2.5' fill='%234FD1C5'/><circle cx='19' cy='19' r='2.5' fill='%23FFB020'/></svg>">
 
@@ -327,7 +339,7 @@
       out-specify it, the same reason the composer toggles display explicitly.
     -->
     <section id="knowledge-panel" hidden class="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-      <div class="mx-auto max-w-[46rem] space-y-5">
+      <div id="knowledge-body" class="mx-auto max-w-[46rem] space-y-5">
 
         <div id="knowledge-intro" class="space-y-1">
           <h2 class="font-display text-[20px] font-semibold tracking-tight"

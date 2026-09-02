@@ -7,6 +7,7 @@ import { t } from './i18n.js';
 import { $, scrollToEnd } from './dom.js';
 import { api } from './api.js';
 import { toast } from './toast.js';
+import { busyButton } from './busy.js';
 import { bus, state } from './state.js';
 
 export function removeQuestion() {
@@ -40,9 +41,7 @@ export function renderQuestion(pending) {
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    submit.disabled = true;
-    const label = submit.textContent;
-    submit.textContent = t('question.sending');
+    const done = busyButton(submit, t('question.sending'));
     try {
       const answers = pending.questions.map((question) => ({
         index: question.index,
@@ -68,8 +67,7 @@ export function renderQuestion(pending) {
       }
       failure.textContent = error.message;
       toast(error.message);
-      submit.disabled = false;
-      submit.textContent = label;
+      done();
     }
   });
 

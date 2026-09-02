@@ -4,10 +4,11 @@
 // state every module reads, and a bus for the few messages that would otherwise be a cycle.
 //
 // The import rule this file exists to make possible: modules are layered, and a module may import
-// only ones earlier than itself — the core (this, dom, i18n, render, api, toast), then status,
-// theme and sidebar, then questions, stream, conversations, attachments, composer, and finally
-// tasks, language and denied. app.js is the only file that imports across the whole set, and the
-// only place the wiring is visible.
+// only ones earlier than itself — the core (this, i18n, dom, render, busy, api, toast, route), then
+// the two pieces every section reuses to ask before it destroys something and to offer what can be
+// done to a row (confirm, menu), then status, theme and sidebar, then questions, stream, conversations,
+// attachments, composer, and finally tasks, knowledge, language and denied. app.js is the only file
+// that imports across the whole set, and the only place the wiring is visible.
 //
 // An edge that would point backwards goes through the bus instead. That matters more here than the
 // tidiness suggests: an ES module cycle does not fail, it resolves the binding to `undefined` and

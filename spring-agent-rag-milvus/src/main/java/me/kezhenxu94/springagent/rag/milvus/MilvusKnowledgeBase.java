@@ -20,9 +20,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeDocument;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeEntry;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeMetadata;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgePage;
@@ -140,7 +142,7 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
 
   @Override
   public String index(final KnowledgeSource source) {
-    final var text = source.mustBeRead() ? read(source.source()) : source.text();
+    final var text = source.mustBeRead() ? extractText(source.source()) : source.text();
     if (text == null || text.isBlank()) {
       throw new IllegalArgumentException("Nothing to index: the content is empty");
     }
@@ -241,6 +243,19 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
   }
 
   @Override
+  public Optional<KnowledgeDocument> read(final KnowledgeScope scope, final String docId) {
+    final var chunks = documentChunks(scope, docId);
+    if (chunks.isEmpty()) {
+      return Optional.empty();
+    }
+    // Joined with a blank line rather than with nothing: the splitter cut mid-text, so no join is
+    // the original, and a visible break at least says where a chunk ends — which is the boundary a
+    // retrieval that returned half an answer was cut on.
+    final var text = chunks.stream().map(StoredChunk::text).collect(Collectors.joining("\n\n"));
+    return Optional.of(new KnowledgeDocument(entryOf(chunks.getFirst().metadata()), text));
+  }
+
+  @Override
   public void delete(final KnowledgeScope scope, final String docId) {
     // Scoped rather than by id alone, so a docId belonging to someone else matches nothing instead
     // of deleting their document.
@@ -250,14 +265,10 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
   @Override
   public Optional<KnowledgeEntry> move(
       final KnowledgeScope scope, final String docId, final KnowledgeScope.Target target) {
-    final var chunks = chunksOf(scope, docId);
+    final var chunks = documentChunks(scope, docId);
     if (chunks.isEmpty()) {
       return Optional.empty();
     }
-    // Sorted so the document is rebuilt in its own order: a query returns rows in whatever order
-    // the segments hand them over, and a chunk's ordinal is the only record of where it belongs.
-    chunks.sort(
-        Comparator.comparingInt(chunk -> integer(chunk.metadata(), KnowledgeMetadata.CHUNK)));
     final var head = chunks.getFirst().metadata();
     final var title = string(head, KnowledgeMetadata.TITLE);
     final var source = string(head, KnowledgeMetadata.SOURCE);
@@ -337,7 +348,7 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
    * markdown and source files as readily as it handles a pdf, so one path is both simpler and less
    * to get wrong about which formats go where.
    */
-  private String read(final String path) {
+  private String extractText(final String path) {
     final var file = Path.of(path);
     if (!Files.isReadable(file)) {
       throw new IllegalArgumentException("Cannot read the file: " + path);
@@ -349,6 +360,20 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
       throw new IllegalArgumentException(
           "Could not extract text from " + path + ": " + e.getMessage(), e);
     }
+  }
+
+  /**
+   * The document's chunks in their own order.
+   *
+   * <p>Sorted here rather than by each caller: a query returns rows in whatever order the segments
+   * hand them over, and a chunk's ordinal is the only record of where it belongs — so a document
+   * rebuilt from an unsorted answer is a document with its paragraphs shuffled.
+   */
+  private List<StoredChunk> documentChunks(final KnowledgeScope scope, final String docId) {
+    final var chunks = chunksOf(scope, docId);
+    chunks.sort(
+        Comparator.comparingInt(chunk -> integer(chunk.metadata(), KnowledgeMetadata.CHUNK)));
+    return chunks;
   }
 
   /**

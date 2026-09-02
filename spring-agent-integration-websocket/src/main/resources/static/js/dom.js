@@ -1,5 +1,7 @@
 // The small things every part of the page uses to draw itself.
 
+import { locale } from './i18n.js';
+
 /** By id, because that is how this page addresses everything it did not just create. */
 export const $ = (id) => document.getElementById(id);
 
@@ -21,6 +23,53 @@ export function humanSize(bytes) {
   if (bytes < 1024) return `${bytes}B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
+
+/**
+ * A moment, as short as it can be and still be unambiguous: the clock for something today, the day
+ * for something this year, the date for anything older.
+ *
+ * Relative wording — "2h ago" — reads better for the top of a list and worse everywhere else: it
+ * needs a phrase per language and per unit, and it goes stale in a tab left open, which for a list
+ * whose whole point is that a run outlives the page is the wrong way round. The browser's own
+ * formatting is localised already, so this only has to choose how much of it to show.
+ *
+ * The full moment goes in the title, because the short form is a hint and somebody looking twice
+ * wants the answer.
+ */
+export function shortTime(value) {
+  const when = moment(value);
+  if (!when) return '';
+  const tag = locale() === 'zh' ? 'zh-CN' : 'en';
+  const now = new Date();
+  const sameDay = when.getFullYear() === now.getFullYear()
+    && when.getMonth() === now.getMonth()
+    && when.getDate() === now.getDate();
+  // `numeric` on the hour rather than `2-digit`: en renders 12-hour with a meridiem, so a leading
+  // zero is a character of width spent on nothing in a row this narrow.
+  if (sameDay) return when.toLocaleTimeString(tag, { hour: 'numeric', minute: '2-digit' });
+  if (when.getFullYear() === now.getFullYear()) {
+    return when.toLocaleDateString(tag, { month: 'short', day: 'numeric' });
+  }
+  return when.toLocaleDateString(tag, { year: 'numeric', month: 'numeric', day: 'numeric' });
+}
+
+export function fullTime(value) {
+  const when = moment(value);
+  return when ? when.toLocaleString(locale() === 'zh' ? 'zh-CN' : 'en') : '';
+}
+
+/**
+ * A date, or nothing.
+ *
+ * A row may legitimately carry no time — the server sends null for a conversation that has none —
+ * and `new Date` turns anything it cannot read into an Invalid Date whose `toLocaleString` is the
+ * words "Invalid Date". In a sidebar row that is worse than an empty space, so both become one.
+ */
+function moment(value) {
+  if (!value) return null;
+  const when = new Date(value);
+  return Number.isNaN(when.getTime()) ? null : when;
 }
 
 export function scrollToEnd(force) {

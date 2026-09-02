@@ -465,7 +465,7 @@ for refuses everything.
 ## The knowledge base
 
 Retrieval over user data lives behind the `KnowledgeBase` SPI in `core/knowledge/` —
-`index`/`search`/`list`/`delete`/`move`, scoped by `KnowledgeScope` (owner, group, tenant).
+`index`/`search`/`list`/`read`/`delete`/`move`, scoped by `KnowledgeScope` (owner, group, tenant).
 `spring-agent-rag-milvus` is the implementation that ships. Core registers the knowledge tools only
 when a `KnowledgeBase` bean exists, so taking that module is what decides a deployment has one at
 all; `app.ai.rag.enabled` turns automatic retrieval back off.
@@ -477,6 +477,12 @@ knowledge base in Milvus.
 Scoping is one definition, `KnowledgeScopeFilter`, used for retrieval and listing alike, and a
 filter clause is only ever emitted for a non-blank identity — a blank one would match every document
 that stores a blank there, which is every other user's.
+
+`read(scope, docId)` returns a `KnowledgeDocument` — the entry plus the text its chunks were split
+from, in order. It is on the SPI rather than on a caller for the same reason `list` and `move` are:
+a vector store answers a query, so nothing outside an implementation can ask it for one document's
+own content. What comes back is not byte-for-byte what was indexed — the splitter cut it, and the
+joins are where it cut — but it is what retrieval hands the model.
 
 Runs are not the only caller: the browser surface puts this SPI behind `/api/knowledge` so a person
 can read and correct what the agent remembers without asking the model to do it for them. See
@@ -588,17 +594,17 @@ server again. In a native image, register your bundle as a resource — the modu
 own (`WebRuntimeHints`).
 
 **The knowledge base, where the application has one.** `/api/knowledge` is a thin HTTP face on
-core's `KnowledgeBase` SPI — list, `GET /search`, `POST /files` (multipart, stored in the caller's
-workspace and indexed on the spot), `POST /notes`, `PATCH` to move a document between scopes and
-`DELETE` — and it exists only when a `KnowledgeBase` bean does, which in practice means
+core's `KnowledgeBase` SPI — list, `GET /search`, `GET /document` (one document with its stored
+text), `POST /files` (multipart, stored in the caller's workspace and indexed on the spot), `POST
+/notes`, `PATCH` to move a document between scopes and `DELETE` — and it exists only when a `KnowledgeBase` bean does, which in practice means
 `spring-agent-rag-milvus` on the classpath and `app.ai.rag.enabled` set. Without one every endpoint
 answers 404 and `/api/me` reports `knowledge.enabled: false`, which is what keeps the page from
 offering a section this deployment does not have.
 
 Two rules there are worth knowing if you build against it. The scope a document is read and written
 under comes from the session and never from the request — the same `userId`/`tenantId` a run on this
-surface carries — with one exception: a member of `app.ai.admins` may name an `owner` on the two
-read endpoints, which mirrors `KnowledgeAdminTools` and goes no further, so no write accepts one.
+surface carries — with one exception: a member of `app.ai.admins` may name an `owner` on the read
+endpoints, which mirrors `KnowledgeAdminTools` and goes no further, so no write accepts one.
 And a document id travels in the query string or the body, never in the path, because a document
 indexed from a file is identified by its absolute path: encoded, the slashes are rejected by the
 servlet container; unencoded, they are more path segments.

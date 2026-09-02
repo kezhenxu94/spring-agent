@@ -9,6 +9,7 @@ import { applyTranslations, setAppName, setLocale, t } from './i18n.js';
 import { $ } from './dom.js';
 import { api, csrfToken } from './api.js';
 import { attempt, toast } from './toast.js';
+import { skeletonList, skeletonTranscript } from './busy.js';
 import { bus, state } from './state.js';
 import { initTheme, relabelTheme } from './theme.js';
 import { renderStatus } from './status.js';
@@ -69,10 +70,12 @@ function dispatch(route) {
   showPanel(route.view);
   if (route.view === 'knowledge') {
     showKnowledge(route.id);
+    getOutOfTheWay(route);
     return;
   }
   if (route.view === 'tasks') {
     showTasks(route.id);
+    getOutOfTheWay(route);
     return;
   }
   renderConversationTitle();
@@ -85,12 +88,38 @@ function dispatch(route) {
   }
 }
 
+/**
+ * The drawer, once it has done what it was opened for.
+ *
+ * Below md the sidebar covers the column it selects into, so picking a document or a task has to
+ * close it — otherwise the thing you chose is drawn behind the list you chose it from, and it looks
+ * as though nothing happened. `openConversation` does this for itself, which is why the chat branch
+ * does not come through here.
+ *
+ * Only where the route names something. Pressing a tab is not picking a thing: the list it switches
+ * to is what you opened the drawer to read.
+ */
+function getOutOfTheWay(route) {
+  if (route.id && onNarrowScreen()) sidebarOpen(false);
+}
+
 async function start() {
   initTheme();
+
+  // The two places something is about to appear, said before the first request goes out. Not a veil
+  // over the page: the chrome around them is already drawn and correct, and covering it would hide
+  // the theme and the sign-in this page can show before it has asked the server anything.
+  const settleList = skeletonList($('conversation-list'), 5);
+  const settleTranscript = skeletonTranscript($('transcript'));
+  const settle = () => {
+    settleList();
+    settleTranscript();
+  };
 
   try {
     state.me = await api('/api/me');
   } catch (error) {
+    settle();
     if (!error?.handled) {
       // api() has not redirected, so this is a server that is up but unhappy. Say so on the page —
       // there is no sidebar to fall back to yet.
@@ -106,6 +135,7 @@ async function start() {
   applyTranslations();
 
   if (state.me.allowed === false) {
+    settle();
     renderDenied(state.me);
     return;
   }
@@ -137,13 +167,21 @@ async function start() {
     const route = current();
     const wanted = route.view === 'chat' ? route.id : null;
     const target = state.conversations.find((it) => it.id === wanted) || state.conversations[0];
+    // openConversation empties the transcript itself; the other branch has to, or the placeholder
+    // turns would sit above an invitation to start the first conversation.
     if (target) await openConversation(target.id);
-    else renderEmptyTranscript();
+    else {
+      settleTranscript();
+      renderEmptyTranscript();
+    }
 
     // The section the hash named, now that there is a conversation under it to go back to.
     if (route.view === 'chat') go(chatRoute(target ? target.id : null));
     else dispatch(route);
   });
+  // Whatever happened above, nothing is still on its way. A placeholder left standing over a
+  // request that failed is the one thing worse than no placeholder at all.
+  settle();
 }
 
 start();

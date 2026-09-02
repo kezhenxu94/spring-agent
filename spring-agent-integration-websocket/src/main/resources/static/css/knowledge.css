@@ -24,3 +24,57 @@
 /* Shared with more people than the reader, which is worth picking out at a glance — carried by a
    filled surface rather than by a hue. */
 .knowledge-scope-tenant { background: var(--code-bg); color: var(--fg); }
+
+/* ─────────────────────────────────────── what a document holds ───────────────────────────────────────
+ *
+ * The stored text, which is the reason to open a document rather than read its row. Drawn as
+ * markdown through the same sanitiser an answer goes through — see knowledge-detail.js — so this
+ * only has to say where it sits and how far it may grow.
+ */
+.knowledge-text-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+}
+
+/* Scrolled rather than allowed to run: a long document would otherwise push its own heading — which
+   carries the menu of everything that can be done to it — off the top of the screen. The cap is
+   only for the case below, where the panel is not the document. */
+.knowledge-text {
+  max-height: 26rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* With a document open the panel *is* that document, so it takes the whole column and the text
+   scrolls inside it. The alternative — a card as tall as its contents inside a scrolling panel —
+   wastes the bottom half of a wide screen on a short note and hides the heading on a long one.
+   Every step of the chain needs `min-height: 0`, or a flex item refuses to shrink below the height
+   of its own content and the scroller ends up on the page instead of on the text. */
+/* `:not([hidden])` is load-bearing, not defensive: an id selector out-specifies the `[hidden]`
+   rule in the browser's own stylesheet, so a `display` set here without it would put the knowledge
+   base on screen over the conversation the moment a document had ever been opened. */
+#knowledge-panel.knowledge-open:not([hidden]) { display: flex; overflow: hidden; }
+#knowledge-panel.knowledge-open > #knowledge-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+/* And it stops being a card. A border and an inset of its own made sense around one item in a
+   panel; around the whole panel they are a second frame just inside the first, and they spend the
+   width the document is read at on nothing. The panel's own padding is the document's margin. */
+#knowledge-panel.knowledge-open > #knowledge-body > #knowledge-detail {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+#knowledge-panel.knowledge-open .knowledge-text-box { flex: 1; min-height: 0; }
+#knowledge-panel.knowledge-open .knowledge-text { flex: 1; min-height: 0; max-height: none; }

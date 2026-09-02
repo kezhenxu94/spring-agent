@@ -427,16 +427,20 @@ under your real host) as a redirect URI, and grant the app the profile scopes it
 later, and — wherever a deployment has one — the knowledge base. Each is a list read the same way,
 and each has an address, so `#/chat/<conversation>`, `#/tasks/<task>` and `#/kb/<document>` are
 links worth keeping and the back button works between them. Picking a row opens it in the main
-column: a conversation is its transcript, a document is where it came from and who else can read it,
+column: a conversation is its transcript, a document is what it says and who else can read it,
 a scheduled task is what it will do and when — with the way to open the conversation its answers go
-into, or to call it off. Nothing on that screen creates a task, because nothing can: a schedule
+into, or to call it off. Anything that cannot be undone — deleting a conversation or a document,
+calling off a scheduled task — asks first, and the asking is where the work happens, so the button
+you pressed says so until it is done. Nothing on that screen creates a task, because nothing can: a schedule
 comes from asking the agent for one.
 
 **The knowledge base is the third of those tabs**, wherever a deployment has one at all
 (`RAG_ENABLED`, plus a Milvus to point it at — see the knowledge base above). Documents are listed
 there the way conversations are — one row per document rather than per chunk, opened by clicking it,
-deleted by the × on the row — and the box above the list searches them. Opening one shows where it
-came from, how many chunks it was split into and who else can read it. Adding is on the same screen:
+shared or deleted from the ⋯ menu on the row — and the box above the list searches them. Opening one
+shows where it came from, how many chunks it was split into, who else can read it and **what it
+actually says**: the stored text, rendered as markdown, which is the same text the agent is handed
+when it retrieves the document. Adding is on the same screen:
 files are uploaded, stored in your own workspace and indexed on the spot, and a note is typed
 straight in; either can go into your own knowledge base or the company's. It is the same knowledge base a
 conversation reaches with `ListKnowledgeBase`, `IndexKnowledge`, `SearchKnowledge`,
@@ -445,7 +449,7 @@ next message, and what a run stored is what this list shows. There is no group k
 the browser: a group is a group chat, and this surface has none.
 
 Somebody listed in `ADMINS` gets one thing more: a box to name another person's user id and read
-their knowledge base — list and search, and nothing else. That mirrors the admin tools
+their knowledge base — listing, searching and reading a document, and nothing else. That mirrors the admin tools
 (`ListOwnerKnowledgeBase`, `SearchOwnerKnowledge`) exactly, and like them it is for the person who
 maintains what the agent knows. Deleting or re-scoping somebody else's document is not offered
 anywhere, in the page or in a chat.

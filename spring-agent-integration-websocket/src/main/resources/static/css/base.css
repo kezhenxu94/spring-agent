@@ -49,6 +49,18 @@
 
 /* ─────────────────────────────────────── the quality floor ─────────────────────────────────────── */
 
+/* Nothing widens the page. The strings this application shows are the ones with no spaces in them —
+   an absolute path a document was indexed from, a container id, a request id, a URL a run followed —
+   and one of those in a sidebar row or a panel would otherwise push a horizontal scrollbar onto a
+   layout that has nowhere to scroll to, on a viewport that cannot be zoomed back out.
+
+   `anywhere` rather than `break-word` for a second reason: it is also counted in a flex or grid
+   item's minimum size, so the column holding the long word can actually shrink to its container.
+
+   Code blocks and tool output are unaffected — they set `white-space: pre` and carry a scroller of
+   their own, which for a command or a stack trace is the right answer rather than this one. */
+body { overflow-wrap: anywhere; }
+
 /* A live indicator that breathes; the only motion in the chrome. */
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
