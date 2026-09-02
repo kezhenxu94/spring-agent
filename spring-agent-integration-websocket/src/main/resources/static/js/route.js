@@ -13,6 +13,9 @@ const CHAT = '#/chat/';
 const KNOWLEDGE = '#/kb';
 const TASKS = '#/tasks';
 
+/** The knowledge bases a document can be in, for reading one back out of a route. */
+const SCOPES = ['own', 'group', 'tenant'];
+
 /** The hash that opens a conversation, or the empty conversation list when there is none. */
 export function chatRoute(conversationId) {
   return conversationId ? CHAT + encodeURIComponent(conversationId) : '#/chat';
@@ -21,11 +24,20 @@ export function chatRoute(conversationId) {
 /**
  * The hash that opens the knowledge base, or one document in it.
  *
+ * The knowledge base the document is in is part of the route, because an id is unique inside one
+ * base and not across them: the same file filed privately and company-wide is two documents
+ * wearing one id, and a route naming only the id would open whichever of them the list happened to
+ * hold first — then offer a delete for it under the other one's title.
+ *
  * The id is encoded because a document indexed from a file is identified by its absolute path, so
- * it contains slashes — which would otherwise read as more of the route.
+ * it contains slashes — which would otherwise read as more of the route. The scope is not, and is
+ * what lets the two be told apart on the way back: it is one of a closed set of words with no
+ * slash in any of them, so the segment before the first slash is the scope whenever it is one.
  */
-export function knowledgeRoute(docId) {
-  return docId ? `${KNOWLEDGE}/${encodeURIComponent(docId)}` : KNOWLEDGE;
+export function knowledgeRoute(docId, scope) {
+  if (!docId) return KNOWLEDGE;
+  const id = encodeURIComponent(docId);
+  return scope ? `${KNOWLEDGE}/${scope}/${id}` : `${KNOWLEDGE}/${id}`;
 }
 
 /** The hash that shows what the agent has been asked to do later, or one of those tasks. */
@@ -38,7 +50,15 @@ export function parse(hash) {
   const raw = (hash || '').replace(/^#/, '');
   if (raw.startsWith('/kb')) {
     const rest = raw.slice('/kb'.length).replace(/^\//, '');
-    return { view: 'knowledge', id: rest ? decode(rest) : null };
+    if (!rest) return { view: 'knowledge', id: null, scope: null };
+    const cut = rest.indexOf('/');
+    const head = cut < 0 ? rest : rest.slice(0, cut);
+    // A link kept from before the scope was in the route names only the id. Still opened, with
+    // whichever copy of it the list holds — the same document as it used to open.
+    if (cut < 0 || !SCOPES.includes(head)) {
+      return { view: 'knowledge', id: decode(rest), scope: null };
+    }
+    return { view: 'knowledge', id: decode(rest.slice(cut + 1)), scope: head };
   }
   if (raw.startsWith('/tasks')) {
     const rest = raw.slice('/tasks'.length).replace(/^\//, '');

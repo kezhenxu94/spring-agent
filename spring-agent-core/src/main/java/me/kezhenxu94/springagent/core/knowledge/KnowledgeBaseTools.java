@@ -44,7 +44,9 @@ the current user's own, the current group's shared one, or the tenant-wide one.
 Usage:
 - Call with no arguments for the first page.
 - The result says whether more documents remain; if so, call again with offset advanced by limit.
-- Use the returned document id with DeleteKnowledge.
+- Use the returned document id with DeleteKnowledge or UpdateKnowledgeScope, together with the
+  knowledge base the row says it is in: an id is unique inside one knowledge base and not across
+  them, so both are needed to name a document.
 """)
   public String listKnowledgeBase(
       @ToolParam(required = false, description = "How many documents to skip; 0 for the first page")
@@ -244,9 +246,12 @@ Move a document into a different knowledge base: keep it to yourself, share it w
 share it with the whole company.
 
 Usage:
-- docId comes from ListKnowledgeBase, whose rows also say which knowledge base each document is in
-  now.
-- scope is where it should end up: "own", "group" or "tenant".
+- docId comes from ListKnowledgeBase.
+- from is which knowledge base it is in now, which ListKnowledgeBase says for every row: "own",
+  "group" or "tenant". A document id is unique inside one knowledge base and not across them, so
+  the same file or page filed twice is two documents wearing one id — without this the wrong one
+  would be moved. An id that is not in the base you name is reported as not found.
+- to is where it should end up: "own", "group" or "tenant".
 - The document keeps its id, title, origin and content; only who can read it changes. To change
   what a document *says*, index it again under the same id with IndexKnowledge.
 - Sharing something with a group or the whole company is a decision for the person who stored it,
@@ -256,31 +261,46 @@ Usage:
       @ToolParam(description = "The document id, as shown by ListKnowledgeBase") String docId,
       @ToolParam(
               description =
+                  "Which knowledge base it is in now, as shown by ListKnowledgeBase: \"own\","
+                      + " \"group\" or \"tenant\"")
+          String from,
+      @ToolParam(
+              description =
                   "Which knowledge base to move it into: \"own\", \"group\" or \"tenant\"")
-          String scope,
+          String to,
       final ToolContext context) {
 
     if (docId == null || docId.isBlank()) {
       return messages.get("knowledge-doc-id-required");
     }
-    final var requested = KnowledgeScope.Target.named(scope);
-    if (requested.isEmpty()) {
-      // Not defaulted to "own" the way indexing does. Indexing without a scope means the caller had
-      // no opinion; a misspelt scope here means they did, and reading it as "own" would take a
-      // document out of the company knowledge base because of a typo.
-      return messages.get("knowledge-scope-unknown", scope);
+    // Neither of the two is defaulted to "own" the way indexing does. Indexing without a scope
+    // means the caller had no opinion; a scope left out or misspelt here means they did, and
+    // reading it as "own" would take a document out of the company knowledge base — or move the
+    // private copy of an id and report the company's as moved — because of a typo.
+    final var current = KnowledgeScope.Target.named(from);
+    if (current.isEmpty()) {
+      return messages.get("knowledge-current-scope-unknown", from);
     }
+    final var requested = KnowledgeScope.Target.named(to);
+    if (requested.isEmpty()) {
+      return messages.get("knowledge-scope-unknown", to);
+    }
+    final var owning = current.get();
     final var target = requested.get();
 
     final var readable = KnowledgeScope.forRequest(context);
-    final var refusal = refuseUnreachableTarget(readable, target);
+    final var refusal = refuseUnreachableTarget(readable, owning);
     if (refusal != null) {
       return refusal;
+    }
+    final var targetRefusal = refuseUnreachableTarget(readable, target);
+    if (targetRefusal != null) {
+      return targetRefusal;
     }
 
     final java.util.Optional<KnowledgeEntry> moved;
     try {
-      moved = knowledgeBase.move(readable, docId, target);
+      moved = knowledgeBase.move(readable, owning, docId, target);
     } catch (RuntimeException e) {
       return messages.get("knowledge-move-failed", e.getMessage());
     }
@@ -291,7 +311,12 @@ Usage:
                     "knowledge-moved",
                     entry.title(),
                     messages.get(KnowledgeFormat.scopeLabel(target))))
-        .orElseGet(() -> messages.get("knowledge-move-not-found", docId));
+        .orElseGet(
+            () ->
+                messages.get(
+                    "knowledge-move-not-found",
+                    docId,
+                    messages.get(KnowledgeFormat.scopeLabel(owning))));
   }
 
   @Tool(
@@ -302,23 +327,47 @@ Remove a document and all of its chunks from the knowledge base.
 
 Usage:
 - docId comes from ListKnowledgeBase.
-- Only documents the current user can reach can be deleted; a document belonging to another user is
-  reported as not found.
-- This operation is irreversible.
+- scope is which knowledge base to remove it from, which ListKnowledgeBase says for every row:
+  "own", "group" or "tenant". A document id is unique inside one knowledge base and not across
+  them — the same file or page filed both privately and company-wide is two documents wearing one
+  id — so without this it would be unanswerable which of them a delete meant, and deleting all of
+  them would throw away a shared document to tidy up a private one.
+- Only documents the current user can reach can be deleted; a document belonging to another user,
+  or an id that is not in the knowledge base you name, is reported as not found.
+- This operation is irreversible. Deleting from the group's or the company's knowledge base takes
+  it away from everybody, so ask first unless they have just asked you to.
 """)
   public String deleteKnowledge(
       @ToolParam(description = "The document id, as shown by ListKnowledgeBase") String docId,
+      @ToolParam(
+              description =
+                  "Which knowledge base to remove it from, as shown by ListKnowledgeBase:"
+                      + " \"own\", \"group\" or \"tenant\"")
+          String scope,
       final ToolContext context) {
 
     if (docId == null || docId.isBlank()) {
       return messages.get("knowledge-doc-id-required");
     }
+    // Not defaulted, for the same reason the move's is not: a delete that fell back to "own" would
+    // report a document deleted while the copy the user was looking at, the company's, is still
+    // there — and the reverse default would delete a shared document on a typo.
+    final var owning = KnowledgeScope.Target.named(scope);
+    if (owning.isEmpty()) {
+      return messages.get("knowledge-current-scope-unknown", scope);
+    }
+    final var readable = KnowledgeScope.forRequest(context);
+    final var refusal = refuseUnreachableTarget(readable, owning.get());
+    if (refusal != null) {
+      return refusal;
+    }
     try {
-      knowledgeBase.delete(KnowledgeScope.forRequest(context), docId);
+      knowledgeBase.delete(readable, owning.get(), docId);
     } catch (RuntimeException e) {
       return messages.get("knowledge-delete-failed", e.getMessage());
     }
-    return messages.get("knowledge-deleted", docId);
+    return messages.get(
+        "knowledge-deleted", docId, messages.get(KnowledgeFormat.scopeLabel(owning.get())));
   }
 
   /**
@@ -337,10 +386,14 @@ Usage:
   }
 
   /**
-   * Refuses a write to a shared knowledge base the request has no identity for — a group scope from
-   * a one-to-one chat, or a tenant scope from an integration with no tenant concept. Without this
-   * the document would be stamped with a blank owning scope, which no reader's filter matches: it
-   * would be stored, reported as stored, and never seen again.
+   * Refuses naming a knowledge base the request has no identity for — a group scope from a
+   * one-to-one chat, or a tenant scope from an integration with no tenant concept.
+   *
+   * <p>On a write, without this the document would be stamped with a blank owning scope, which no
+   * reader's filter matches: it would be stored, reported as stored, and never seen again. On a
+   * read, a delete or a move it is the scope naming which document is meant, and an all-blank one
+   * names nothing — {@code KnowledgeScopeFilter.documentOwnedBy} throws on it rather than quietly
+   * matching no rows, so this is what turns that into an answer saying which word was wrong.
    */
   private String refuseUnreachableTarget(
       final KnowledgeScope scope, final KnowledgeScope.Target target) {

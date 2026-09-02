@@ -15,7 +15,7 @@ import { attempt } from './toast.js';
 import { busyButton, skeletonList } from './busy.js';
 import { openMenu } from './menu.js';
 import { knowledgeRoute, go } from './route.js';
-import { renderKnowledgeList } from './knowledge-list.js';
+import { isSelected, renderKnowledgeList } from './knowledge-list.js';
 import { forgetDocumentText, renderKnowledgeDetail } from './knowledge-detail.js';
 import { headline } from './panels.js';
 import { bus, state } from './state.js';
@@ -27,7 +27,10 @@ const SCOPES = ['own', 'tenant'];
 
 export function initKnowledge() {
   state.knowledge = {
-    offset: 0, docId: null, owner: '', scope: '', entries: [], hasMore: false, searching: false,
+    // `scope` is what the list is filtered to; `docScope` is which knowledge base the open
+    // document is in, which is half of what names it — see KnowledgeBase#delete in core.
+    offset: 0, docId: null, docScope: null, owner: '', scope: '',
+    entries: [], hasMore: false, searching: false,
   };
 
   $('knowledge-add-button').addEventListener('click', () => {
@@ -74,13 +77,14 @@ export function scopesAvailable() {
 }
 
 /**
- * Shows the knowledge base, with `docId` selected if one was named.
+ * Shows the knowledge base, with the document `docId` in `scope` selected if one was named.
  *
  * Reached only from the route handler. The list is fetched the first time and then kept, so moving
  * between documents is not a page of requests — {@link reload} is what a write asks for.
  */
-export function showKnowledge(docId) {
+export function showKnowledge(docId, scope) {
   state.knowledge.docId = docId || null;
+  state.knowledge.docScope = docId ? scope || null : null;
   renderList();
   renderDetail();
   title();
@@ -88,7 +92,7 @@ export function showKnowledge(docId) {
 }
 
 function title() {
-  const entry = state.knowledge.entries.find((it) => it.docId === state.knowledge.docId);
+  const entry = selectedEntry();
   headline(entry ? entry.title || entry.docId : t('knowledge.title'));
 }
 
@@ -188,10 +192,18 @@ function describe() {
   bar.hidden = !text;
 }
 
+/** The open document, matched on its knowledge base as well as its id. */
+function selectedEntry() {
+  const knowledge = state.knowledge;
+  const options = { selected: knowledge.docId, selectedScope: knowledge.docScope };
+  return knowledge.entries.find((it) => isSelected(it, options));
+}
+
 function renderList() {
   const knowledge = state.knowledge;
   renderKnowledgeList(knowledge.entries, {
     selected: knowledge.docId,
+    selectedScope: knowledge.docScope,
     searching: knowledge.searching,
     // Reading somebody else's is reading only, exactly as far as KnowledgeAdminTools goes. The
     // server refuses a write naming an owner too; this is only about not offering one.
@@ -204,7 +216,7 @@ function renderList() {
 
 function renderDetail() {
   const knowledge = state.knowledge;
-  const entry = knowledge.entries.find((it) => it.docId === knowledge.docId);
+  const entry = selectedEntry();
   renderKnowledgeDetail(entry, {
     readOnly: Boolean(knowledge.owner),
     tenant: Boolean(state.me?.knowledge?.tenant),

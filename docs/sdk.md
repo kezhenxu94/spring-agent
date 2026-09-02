@@ -465,7 +465,8 @@ for refuses everything.
 ## The knowledge base
 
 Retrieval over user data lives behind the `KnowledgeBase` SPI in `core/knowledge/` —
-`index`/`search`/`list`/`read`/`delete`/`move`, scoped by `KnowledgeScope` (owner, group, tenant).
+`index`/`search`/`list`/`read`/`delete`/`move`, scoped by `KnowledgeScope` (owner, group, tenant),
+with the single-document operations also naming which of those bases the document is in.
 `spring-agent-rag-milvus` is the implementation that ships. Core registers the knowledge tools only
 when a `KnowledgeBase` bean exists, so taking that module is what decides a deployment has one at
 all; `app.ai.rag.enabled` turns automatic retrieval back off.
@@ -478,8 +479,18 @@ Scoping is one definition, `KnowledgeScopeFilter`, used for retrieval and listin
 filter clause is only ever emitted for a non-blank identity — a blank one would match every document
 that stores a blank there, which is every other user's.
 
-`read(scope, docId)` returns a `KnowledgeDocument` — the entry plus the text its chunks were split
-from, in order. It is on the SPI rather than on a caller for the same reason `list` and `move` are:
+**A document id names a document only together with the knowledge base holding it**, so `read`,
+`delete` and `move` all take a `KnowledgeScope.Target` saying which of the caller's bases is meant:
+`read(scope, owning, docId)`, `delete(scope, owning, docId)`, `move(scope, owning, docId, target)`.
+An id is unique inside one base and not across them — the same file, wiki token or URL filed
+privately and company-wide is two documents wearing one id, which is what happens whenever somebody
+files what they had already filed. Acting on an id across everything the caller may read would then
+delete the company's copy along with their own, and read the two documents' chunks back interleaved.
+A `docId` that is not in the named base is not found rather than acted on, exactly as somebody
+else's is. `list` reports the base per document, and so do `/api/knowledge`'s listing and search.
+
+`read(scope, owning, docId)` returns a `KnowledgeDocument` — the entry plus the text its chunks were
+split from, in order. It is on the SPI rather than on a caller for the same reason `list` and `move` are:
 a vector store answers a query, so nothing outside an implementation can ask it for one document's
 own content. What comes back is not byte-for-byte what was indexed — the splitter cut it, and the
 joins are where it cut — but it is what retrieval hands the model.
@@ -600,6 +611,11 @@ text), `POST /files` (multipart, stored in the caller's workspace and indexed on
 `spring-agent-rag-milvus` on the classpath and `app.ai.rag.enabled` set. Without one every endpoint
 answers 404 and `/api/me` reports `knowledge.enabled: false`, which is what keeps the page from
 offering a section this deployment does not have.
+
+`GET /document`, `PATCH` and `DELETE` each require a `scope` alongside the `docId` — the `PATCH`
+body carries it as `from`, beside the `scope` it is moving to. That is not a filter but half of what
+names the document, for the reason the SPI's `delete` explains. A listing row carries the base it is
+in, so the page always has it, and the document route (`#/kb/<scope>/<docId>`) carries it too.
 
 Two rules there are worth knowing if you build against it. The scope a document is read and written
 under comes from the session and never from the request — the same `userId`/`tenantId` a run on this

@@ -165,9 +165,10 @@ class KnowledgeControllerTest {
   void deleteIsScoped() {
     final var recorder = new Recorder();
     final var controller = controller(recorder, Set.of(ME), null);
-    controller.delete(principal(ME, TENANT), "note:theirs");
+    controller.delete(principal(ME, TENANT), "note:theirs", "own");
 
-    assertThat(recorder.deleted).containsExactly(Map.entry(scope(ME, TENANT), "note:theirs"));
+    assertThat(recorder.deleted)
+        .containsExactly(new Asked(scope(ME, TENANT), KnowledgeScope.Target.OWN, "note:theirs"));
   }
 
   @Test
@@ -177,17 +178,18 @@ class KnowledgeControllerTest {
     final var recorder = new Recorder();
     final var controller = controller(recorder, Set.of(), null);
 
-    final var document = controller.document(principal(ME, TENANT), "note:mine", null);
+    final var document = controller.document(principal(ME, TENANT), "note:mine", "own", null);
     assertThat(document).containsEntry("text", "what is stored").containsEntry("chunkCount", 2);
 
     // Somebody else's id is not found rather than refused, so this is not a way to ask whether
     // their document exists.
-    assertThatThrownBy(() -> controller.document(principal(ME, TENANT), "note:theirs", null))
+    assertThatThrownBy(() -> controller.document(principal(ME, TENANT), "note:theirs", "own", null))
         .isInstanceOf(ResponseStatusException.class)
         .hasMessageContaining("404");
     assertThat(recorder.readDocuments)
         .containsExactly(
-            Map.entry(scope(ME, TENANT), "note:mine"), Map.entry(scope(ME, TENANT), "note:theirs"));
+            new Asked(scope(ME, TENANT), KnowledgeScope.Target.OWN, "note:mine"),
+            new Asked(scope(ME, TENANT), KnowledgeScope.Target.OWN, "note:theirs"));
   }
 
   @Test
@@ -195,7 +197,7 @@ class KnowledgeControllerTest {
   void readingAnothersDocumentIsAdminOnly() {
     final var controller = controller(new Recorder(), Set.of(), null);
     assertThatThrownBy(
-            () -> controller.document(principal(ME, TENANT), "note:mine", "ou_someone_else"))
+            () -> controller.document(principal(ME, TENANT), "note:mine", "own", "ou_someone_else"))
         .isInstanceOf(ResponseStatusException.class)
         .hasMessageContaining("403");
   }
@@ -209,10 +211,12 @@ class KnowledgeControllerTest {
     assertThatThrownBy(
             () ->
                 controller.move(
-                    principal(ME, TENANT), new KnowledgeController.Move("note:theirs", "tenant")))
+                    principal(ME, TENANT),
+                    new KnowledgeController.Move("note:theirs", "own", "tenant")))
         .isInstanceOf(ResponseStatusException.class)
         .hasMessageContaining("404");
-    assertThat(recorder.moved).containsExactly(Map.entry(scope(ME, TENANT), "note:theirs"));
+    assertThat(recorder.moved)
+        .containsExactly(new Asked(scope(ME, TENANT), KnowledgeScope.Target.OWN, "note:theirs"));
   }
 
   @Test
@@ -224,9 +228,10 @@ class KnowledgeControllerTest {
     // slashes are rejected before the method is reached; unencoded, they are more path segments.
     final var path = "/var/agent/ou_me/artifacts/report.pdf";
 
-    controller.delete(principal(ME, TENANT), path);
+    controller.delete(principal(ME, TENANT), path, "tenant");
 
-    assertThat(recorder.deleted).containsExactly(Map.entry(scope(ME, TENANT), path));
+    assertThat(recorder.deleted)
+        .containsExactly(new Asked(scope(ME, TENANT), KnowledgeScope.Target.TENANT, path));
   }
 
   @Test
@@ -236,8 +241,42 @@ class KnowledgeControllerTest {
     assertThatThrownBy(
             () ->
                 controller.move(
-                    principal(ME, TENANT), new KnowledgeController.Move("note:mine", "")))
+                    principal(ME, TENANT), new KnowledgeController.Move("note:mine", "own", "")))
         .isInstanceOf(ResponseStatusException.class);
+  }
+
+  @Test
+  @DisplayName("a delete with no knowledge base named is refused rather than read as the own one")
+  void deleteNeedsAScope() {
+    // An id is unique inside one knowledge base and not across them, so a delete that fell back
+    // to "own" would report the document the caller is looking at as gone while it is still there.
+    final var controller = controller(new Recorder(), Set.of(), null);
+    assertThatThrownBy(() -> controller.delete(principal(ME, TENANT), "note:mine", null))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("400");
+  }
+
+  @Test
+  @DisplayName("a knowledge base the sign-in carries no identity for is refused, not a 500")
+  void deleteFromAKnowledgeBaseYouHaveNoIdentityFor() {
+    // owning(TENANT) on a sign-in with no company leaves an all-blank scope, which names no
+    // document — KnowledgeScopeFilter throws on one rather than matching nothing.
+    final var controller = controller(new Recorder(), Set.of(), null);
+    assertThatThrownBy(() -> controller.delete(principal(ME, ""), "note:mine", "tenant"))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("400");
+  }
+
+  @Test
+  @DisplayName("a move says which knowledge base the document is in now, and it is not defaulted")
+  void moveNeedsTheCurrentScope() {
+    final var controller = controller(new Recorder(), Set.of(), null);
+    assertThatThrownBy(
+            () ->
+                controller.move(
+                    principal(ME, TENANT), new KnowledgeController.Move("note:mine", "", "tenant")))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("400");
   }
 
   @Test
@@ -318,7 +357,7 @@ class KnowledgeControllerTest {
   void withoutAKnowledgeBase() {
     final var controller =
         new KnowledgeController(provider(null), admins(Set.of()), null, messages(), properties());
-    assertThatThrownBy(() -> controller.delete(principal(ME, TENANT), "anything"))
+    assertThatThrownBy(() -> controller.delete(principal(ME, TENANT), "anything", "own"))
         .isInstanceOf(ResponseStatusException.class)
         .hasMessageContaining("404");
   }
@@ -417,13 +456,20 @@ class KnowledgeControllerTest {
     };
   }
 
+  /**
+   * One call naming one document: who was asking, which of their knowledge bases, and which
+   * document in it. The knowledge base is part of it because an id names a document only together
+   * with the base holding it — see {@code KnowledgeBase#delete}.
+   */
+  private record Asked(KnowledgeScope scope, KnowledgeScope.Target owning, String docId) {}
+
   /** A knowledge base that stores nothing and remembers who was asked what. */
   private static final class Recorder implements KnowledgeBase {
 
     private final List<KnowledgeSource> indexed = new ArrayList<>();
-    private final List<Map.Entry<KnowledgeScope, String>> deleted = new ArrayList<>();
-    private final List<Map.Entry<KnowledgeScope, String>> moved = new ArrayList<>();
-    private final List<Map.Entry<KnowledgeScope, String>> readDocuments = new ArrayList<>();
+    private final List<Asked> deleted = new ArrayList<>();
+    private final List<Asked> moved = new ArrayList<>();
+    private final List<Asked> readDocuments = new ArrayList<>();
     private final List<KnowledgeScope> listed = new ArrayList<>();
 
     @Override
@@ -439,8 +485,9 @@ class KnowledgeControllerTest {
     }
 
     @Override
-    public Optional<KnowledgeDocument> read(final KnowledgeScope scope, final String docId) {
-      readDocuments.add(Map.entry(scope, docId));
+    public Optional<KnowledgeDocument> read(
+        final KnowledgeScope scope, final KnowledgeScope.Target owning, final String docId) {
+      readDocuments.add(new Asked(scope, owning, docId));
       return docId.startsWith("note:mine")
           ? Optional.of(
               new KnowledgeDocument(
@@ -450,14 +497,18 @@ class KnowledgeControllerTest {
     }
 
     @Override
-    public void delete(final KnowledgeScope scope, final String docId) {
-      deleted.add(Map.entry(scope, docId));
+    public void delete(
+        final KnowledgeScope scope, final KnowledgeScope.Target owning, final String docId) {
+      deleted.add(new Asked(scope, owning, docId));
     }
 
     @Override
     public Optional<KnowledgeEntry> move(
-        final KnowledgeScope scope, final String docId, final KnowledgeScope.Target target) {
-      moved.add(Map.entry(scope, docId));
+        final KnowledgeScope scope,
+        final KnowledgeScope.Target owning,
+        final String docId,
+        final KnowledgeScope.Target target) {
+      moved.add(new Asked(scope, owning, docId));
       return Optional.empty();
     }
 

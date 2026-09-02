@@ -3,6 +3,7 @@
 import { t } from './i18n.js';
 import { $ } from './dom.js';
 import { chatRoute, go } from './route.js';
+import { markdown } from './render.js';
 
 export function renderTaskDetail(task, options) {
   const host = $('task-detail');
@@ -13,9 +14,14 @@ export function renderTaskDetail(task, options) {
   $('tasks-intro').hidden = Boolean(task);
   if (!task) return;
 
-  const what = document.createElement('p');
-  what.className = 'whitespace-pre-wrap text-[14px] leading-relaxed';
-  what.textContent = task.text;
+  // What the task will do, as markdown — the same way an answer in the transcript and a stored
+  // document are drawn. A task's text is a prompt somebody wrote, so it arrives with lists,
+  // headings and code in it, and read as plain text those are the punctuation instead of the
+  // shape. Through the same sanitiser too, and not as a nicety: the text may have been written by
+  // the model, so it is exactly as untrusted as anything else it produced.
+  const what = document.createElement('div');
+  what.className = 'prose max-w-none text-[14px] leading-[1.7]';
+  what.innerHTML = markdown(task.text);
   host.append(what);
 
   const facts = document.createElement('dl');

@@ -29,7 +29,7 @@ export function renderKnowledgeList(entries, options) {
 }
 
 function row(entry, options) {
-  const current = entry.docId === options.selected;
+  const current = isSelected(entry, options);
   const item = document.createElement('li');
   item.className = 'group relative';
 
@@ -54,7 +54,7 @@ function row(entry, options) {
   title.className = 'min-w-0 flex-1 truncate';
   title.textContent = entry.title || entry.docId;
   open.append(dot, title);
-  open.addEventListener('click', () => go(knowledgeRoute(entry.docId)));
+  open.addEventListener('click', () => go(knowledgeRoute(entry.docId, entry.scope)));
   item.append(open);
 
   // Built when the menu is pressed rather than now, so what it offers follows the document as it
@@ -68,4 +68,17 @@ function row(entry, options) {
     item.append(actions);
   }
   return item;
+}
+
+/**
+ * Whether this row is the document that is open.
+ *
+ * The knowledge base counts as well as the id, because an id is unique inside one base and not
+ * across them — the same file filed privately and company-wide is two rows, and matching on the id
+ * alone would draw both as current and open the first for either. A route kept from before the
+ * scope was in it names no base, and then the id alone is all there is to go on.
+ */
+export function isSelected(entry, options) {
+  if (!entry || entry.docId !== options.selected) return false;
+  return !options.selectedScope || entry.scope === options.selectedScope;
 }
