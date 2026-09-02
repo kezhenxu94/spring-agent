@@ -20,6 +20,7 @@ import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeReference;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
+import me.kezhenxu94.springagent.core.tools.DisplayDescription;
 import me.kezhenxu94.springagent.core.tools.ToolContextKey;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
@@ -516,9 +517,11 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    * Announces a tool call: in the run's tool pane on the card, and inline under what it has said so
    * far for a subagent, whose panel is the whole of what a reader sees of one while it works.
    *
-   * <p>Tools that take a {@code description} — {@code Bash} asks the model for one, in active
-   * voice, saying what the command does — describe the call far better than its name does, so that
+   * <p>What the model said the call was for describes it far better than its name does, so that
    * text names the call in both places and is left out of the fields below rather than said twice.
+   * A tool that takes a {@code description} of its own — {@code Bash} asks for one, in active
+   * voice, saying what the command does — supplies it; every other tool is offered {@link
+   * DisplayDescription} by the runtime and answers there.
    */
   public synchronized void setToolStatus(
       String toolName, String toolInput, ToolContext toolContext) {
@@ -527,7 +530,12 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     sync();
     toolCallsInFlight++;
     final var input = parseObject(toolInput);
-    final var description = input == null ? null : singleLine(input.path(DESCRIPTION_FIELD));
+    // The tool's own field first, and the one the runtime offers only where there is none: a tool
+    // that asks for a description asks in its own words, for its own reasons, and that is the one
+    // the model was answering.
+    final var own = input == null ? null : singleLine(input.path(DESCRIPTION_FIELD));
+    final var description =
+        own != null || input == null ? own : singleLine(input.path(DisplayDescription.FIELD));
     log.info(
         "Tool call: cardId={}, element={}, tool={}", card.cardId(), contentElementId, toolName);
     final var header =
@@ -723,8 +731,17 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     return text.isEmpty() ? null : text;
   }
 
+  /**
+   * The object laid out one field to a line.
+   *
+   * <p>The runtime's display field is never among them: it is the line above these, on every call
+   * that carries one, and it is not a parameter of the tool for a reader to be shown. A tool's own
+   * {@code description} is dropped only when it is what named the call, since a tool could ask for
+   * one meaning something else entirely.
+   */
   private static String formatFields(JsonNode input, boolean skipDescription) {
     return input.properties().stream()
+        .filter(entry -> !DisplayDescription.FIELD.equals(entry.getKey()))
         .filter(entry -> !skipDescription || !DESCRIPTION_FIELD.equals(entry.getKey()))
         .map(entry -> entry.getKey() + ": " + valueOf(entry.getValue()))
         .collect(Collectors.joining("\n"));
