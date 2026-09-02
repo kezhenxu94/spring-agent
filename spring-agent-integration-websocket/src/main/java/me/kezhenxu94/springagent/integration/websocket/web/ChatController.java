@@ -133,7 +133,10 @@ public class ChatController {
       final var item = new LinkedHashMap<String, Object>();
       item.put("id", session.id());
       item.put("title", sessions.titleOf(session));
-      item.put("updatedAt", String.valueOf(session.updatedAt()));
+      // Null rather than the four characters "null", which is what String.valueOf makes of a
+      // missing instant — and which the page would put through Date and draw as "Invalid Date".
+      // A row can legitimately have none: listFor sorts with nullsFirst for the same reason.
+      item.put("updatedAt", session.updatedAt() == null ? null : session.updatedAt().toString());
       item.put("live", journals.liveByConversationId(session.id()).isPresent());
       out.add(item);
     }

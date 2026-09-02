@@ -12,9 +12,10 @@ import { t } from './i18n.js';
 import { $ } from './dom.js';
 import { api } from './api.js';
 import { attempt } from './toast.js';
+import { busyButton, skeletonList } from './busy.js';
 import { knowledgeRoute, go } from './route.js';
 import { renderKnowledgeList } from './knowledge-list.js';
-import { renderKnowledgeDetail } from './knowledge-detail.js';
+import { forgetDocumentText, renderKnowledgeDetail } from './knowledge-detail.js';
 import { headline } from './panels.js';
 import { bus, state } from './state.js';
 
@@ -88,9 +89,21 @@ async function reload() {
   knowledge.offset = 0;
   knowledge.searching = false;
   $('knowledge-search').value = '';
-  const page = await list(0);
+  // Only the list in the sidebar, and only while it is empty: the panel beside it keeps the document
+  // that is open, which after a write is usually the one that was just changed, and a reload is
+  // mostly a write's own refresh rather than somebody waiting to see the list at all.
+  const done = knowledge.entries.length ? () => {} : skeletonList($('knowledge-list'), 6);
+  let page;
+  try {
+    page = await list(0);
+  } finally {
+    done();
+  }
   knowledge.entries = page.entries;
   knowledge.hasMore = page.hasMore;
+  // A reload follows a write, and a write can have changed the text of the document on screen
+  // without changing its id — which is the only thing the panel would otherwise notice.
+  forgetDocumentText();
   note('');
   renderList();
   renderDetail();
@@ -99,8 +112,18 @@ async function reload() {
 
 async function loadMore() {
   const knowledge = state.knowledge;
+  // On the button that was pressed, because that is the only part of the page that is waiting: the
+  // rows already fetched stay where they are and the next ones arrive under them.
+  const done = busyButton($('knowledge-more'), t('busy.loading'));
+  let page;
+  try {
+    page = await list(knowledge.offset + PAGE);
+  } finally {
+    done();
+  }
+  // Moved only once the page is in hand, or a failed request would leave the offset past rows
+  // nobody ever fetched and skip them on the next press.
   knowledge.offset += PAGE;
-  const page = await list(knowledge.offset);
   knowledge.entries = knowledge.entries.concat(page.entries);
   knowledge.hasMore = page.hasMore;
   renderList();
@@ -119,7 +142,13 @@ async function runSearch(text) {
   const knowledge = state.knowledge;
   const params = new URLSearchParams({ q: query });
   if (knowledge.owner) params.set('owner', knowledge.owner);
-  const result = await api(`/api/knowledge/search?${params}`);
+  const done = skeletonList($('knowledge-list'), 4);
+  let result;
+  try {
+    result = await api(`/api/knowledge/search?${params}`);
+  } finally {
+    done();
+  }
   knowledge.searching = true;
   knowledge.entries = result.hits;
   knowledge.hasMore = false;
@@ -142,6 +171,7 @@ function renderList() {
     // Reading somebody else's is reading only, exactly as far as KnowledgeAdminTools goes. The
     // server refuses a write naming an owner too; this is only about not offering one.
     readOnly: Boolean(knowledge.owner),
+    tenant: Boolean(state.me?.knowledge?.tenant),
     refresh: () => attempt(reload),
   });
   $('knowledge-more').hidden = !knowledge.hasMore;
@@ -153,6 +183,9 @@ function renderDetail() {
   renderKnowledgeDetail(entry, {
     readOnly: Boolean(knowledge.owner),
     tenant: Boolean(state.me?.knowledge?.tenant),
+    // Whose knowledge base is being read, for the one request that fetches a document's text. Read
+    // endpoints only, and the server checks it again.
+    owner: knowledge.owner,
     refresh: () => attempt(reload),
   });
 }

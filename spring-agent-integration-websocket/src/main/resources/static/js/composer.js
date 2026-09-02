@@ -4,6 +4,7 @@ import { t } from './i18n.js';
 import { $, scrollToEnd } from './dom.js';
 import { api } from './api.js';
 import { attempt, toast } from './toast.js';
+import { busyButton } from './busy.js';
 import { loadConversations, newConversation } from './conversations.js';
 import { appendTurn } from './transcript.js';
 import { removeQuestion } from './questions.js';
@@ -88,9 +89,15 @@ export async function send() {
 
 export async function stop() {
   if (!state.requestId) return;
+  // On the Stop button itself, until the server has taken the cancellation. What follows is the run
+  // ending, which arrives as an event and is drawn by the status strip — but between the press and
+  // that event there is a round trip, and a button that looks pressable through it gets pressed
+  // again.
+  const done = busyButton($('stop'));
   await attempt(async () => {
     await api(`/api/runs/${state.requestId}/cancel`, { method: 'POST' });
   });
+  done();
 }
 
 export function initComposer() {

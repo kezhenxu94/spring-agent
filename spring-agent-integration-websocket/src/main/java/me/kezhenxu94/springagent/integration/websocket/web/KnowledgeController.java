@@ -51,7 +51,7 @@ import org.springframework.web.server.ResponseStatusException;
  * <p><b>Whose knowledge base is decided by the authenticated principal, never by the request.</b>
  * The scope is built from the principal exactly as {@code ChatController} builds an {@code
  * AgentRequest} — so a page cannot read a knowledge base a run started from it could not. The one
- * exception is {@code owner}, which an admin may name on the two read endpoints, mirroring {@code
+ * exception is {@code owner}, which an admin may name on the read endpoints, mirroring {@code
  * KnowledgeAdminTools} and going no further than it does: no write ever accepts one.
  *
  * <p>A deployment with no {@link KnowledgeBase} bean is a supported deployment, not a broken one —
@@ -125,6 +125,38 @@ public class KnowledgeController {
       hits.add(hit);
     }
     return Map.of("hits", hits);
+  }
+
+  /**
+   * One document with the text that was indexed, for reading what is actually stored.
+   *
+   * <p>The id is a parameter rather than a path variable, the same as {@link #delete} and {@link
+   * #move}: a document indexed from a file is identified by its absolute path.
+   *
+   * <p>Readable by an admin naming an owner, because this is a read and it shows exactly what a
+   * listing already showed them the title of — {@code KnowledgeAdminTools} reads another person's
+   * documents on the same terms.
+   */
+  @GetMapping("/document")
+  public Map<String, Object> document(
+      @AuthenticationPrincipal final OAuth2User principal,
+      @RequestParam("docId") final String docId,
+      @RequestParam(required = false) final String owner) {
+
+    final var user = ChatController.user(principal);
+    final var document =
+        knowledgeBase()
+            .read(readableScope(user, owner), docId)
+            // Not found rather than forbidden, as everywhere else here: whether somebody else's
+            // document exists is not this caller's business.
+            .orElseThrow(
+                () ->
+                    new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, messages.get("knowledge-not-found", docId)));
+
+    final var out = new LinkedHashMap<>(asJson(document.entry()));
+    out.put("text", document.text());
+    return out;
   }
 
   /**

@@ -7,17 +7,27 @@
 import { t } from './i18n.js';
 import { $ } from './dom.js';
 import { api } from './api.js';
-import { attempt, toast } from './toast.js';
-import { tasksRoute, go } from './route.js';
+import { toast } from './toast.js';
+import { skeletonList } from './busy.js';
+import { confirmAction } from './confirm.js';
+import { menuButton } from './menu.js';
+import { chatRoute, tasksRoute, go } from './route.js';
 import { headline } from './panels.js';
 import { renderTaskDetail } from './tasks-detail.js';
 import { state } from './state.js';
 
 export async function loadTasks() {
-  state.tasks = await api('/api/tasks');
-  renderTaskList();
-  // The one on screen may have just been cancelled, or may have run since.
-  if (state.taskId) renderDetail();
+  // The list alone, and only while it is empty — as in the conversations, and for the same reason:
+  // this is called again after every cancellation.
+  const done = state.tasks.length ? () => {} : skeletonList($('task-list'), 3);
+  try {
+    state.tasks = await api('/api/tasks');
+  } finally {
+    done();
+    renderTaskList();
+    // The one on screen may have just been cancelled, or may have run since.
+    if (state.taskId) renderDetail();
+  }
 }
 
 export function renderTaskList() {
@@ -42,7 +52,9 @@ export function showTasks(taskId) {
 
 function renderDetail() {
   const task = state.tasks.find((it) => it.id === state.taskId);
-  renderTaskDetail(task, { refresh: () => attempt(loadTasks) });
+  // The panel is handed what cancelling means rather than importing it: this module already owns
+  // the dialog and the reload, and a detail that imported them back would close the loop.
+  renderTaskDetail(task, { cancel: () => cancelTask(task, true) });
   headline(task ? task.text : t('tasks.title'));
 }
 
@@ -70,23 +82,40 @@ function row(task) {
   open.addEventListener('click', () => go(tasksRoute(task.id)));
   item.append(open);
 
-  const cancel = document.createElement('button');
-  cancel.type = 'button';
-  cancel.className = 'absolute right-1 top-1/2 -translate-y-1/2 rounded px-1 text-[13px] '
-    + 'text-mist opacity-0 transition hover:text-alarm focus-visible:opacity-100 '
-    + 'group-hover:opacity-100';
-  cancel.textContent = '×';
-  cancel.setAttribute('aria-label', t('task.cancel'));
-  cancel.addEventListener('click', (event) => {
-    event.stopPropagation();
-    attempt(async () => {
+  const actions = menuButton(t('task.actions'), [
+    task.conversationId && {
+      label: t('task.open'),
+      onSelect: () => go(chatRoute(task.conversationId)),
+    },
+    {
+      label: t('task.cancel'),
+      danger: true,
+      onSelect: () => cancelTask(task, current),
+    },
+  ]);
+  actions.classList.add('row-action');
+  item.append(actions);
+  return item;
+}
+
+/**
+ * Cancelling one, asked for first.
+ *
+ * A scheduled task is the one thing on this page that cannot be made again from the page — it comes
+ * from asking the agent for it — so cancelling one by catching the wrong row is expensive in a way
+ * closing a conversation is not.
+ */
+export function cancelTask(task, wasOpen) {
+  return confirmAction({
+    title: t('task.cancel.title'),
+    body: t('task.cancel.confirm'),
+    action: t('task.cancel.action'),
+    run: async () => {
       await api(`/api/tasks/${task.id}`, { method: 'DELETE' });
       // Off the task that no longer exists before the list is fetched again.
-      if (current) go(tasksRoute());
+      if (wasOpen) go(tasksRoute());
       await loadTasks();
       toast(t('task.cancelled'), 'settled', 3000);
-    });
+    },
   });
-  item.append(cancel);
-  return item;
 }

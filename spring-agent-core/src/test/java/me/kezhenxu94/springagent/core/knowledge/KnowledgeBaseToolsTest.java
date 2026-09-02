@@ -48,6 +48,11 @@ class KnowledgeBaseToolsTest {
         }
 
         @Override
+        public Optional<KnowledgeDocument> read(final KnowledgeScope scope, final String docId) {
+          return Optional.empty();
+        }
+
+        @Override
         public void delete(final KnowledgeScope scope, final String docId) {}
 
         @Override

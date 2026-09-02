@@ -1,0 +1,170 @@
+/* ─────────────────────────────────────── waiting ───────────────────────────────────────
+ *
+ * Three shapes for the same idea: a silhouette where a list or a transcript is coming, a spinner
+ * where the shape is not known, and a dialog that stays up doing its own work.
+ *
+ * Nothing here is a state colour. Amber, teal, violet and coral say something specific about a run
+ * everywhere else on this page — a page waiting on its own list is not the agent doing anything,
+ * and colouring it as though it were would make every reload look like a run starting.
+ */
+
+/* The placeholder bar: the hairline colour, breathing. --line is what separates a row from its
+   ground on either theme, so a bar of it reads as content on its way without a list of five of
+   them becoming a strobe. */
+@keyframes skeleton-sweep {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+.skeleton {
+  display: block;
+  height: 0.75rem;
+  border-radius: 0.3rem;
+  background: var(--line);
+  animation: skeleton-sweep 1.4s ease-in-out infinite;
+}
+
+/* A sidebar row's silhouette, at the height the real rows are so the list does not jump when they
+   arrive. */
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  padding: 0.4rem 0.5rem;
+}
+
+.spinner {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  flex: none;
+  border: 1.5px solid var(--line);
+  border-top-color: var(--fg-dim);
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Reduced motion is honoured globally in base.css by flattening every animation, which would leave
+   a spinner as a static ring saying nothing. Give it back a change something can be read from. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: skeleton-sweep 1.4s steps(2, end) infinite !important; }
+  .spinner { border-top-color: transparent; border-right-color: var(--fg-dim); }
+}
+
+/* What a panel shows while it is fetching what goes in it. */
+.busy-block {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 0;
+  color: var(--fg-dim);
+  font-size: 12.5px;
+}
+
+/* ─────────────────────────────────────── asking first ───────────────────────────────────────
+ *
+ * A <dialog>, so the browser owns the modality: focus stays inside it, Escape closes it, and the
+ * page behind it is inert without this file having to make it so. What is left is what it looks
+ * like.
+ */
+.dialog {
+  /* Centred by hand. A modal <dialog> centres itself with `margin: auto` against `inset: 0`, and
+     Tailwind's preflight zeroes the margin on every element — which leaves it in the top-left
+     corner with nothing in the markup to explain why. */
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  height: fit-content;
+  width: min(26rem, calc(100vw - 2rem));
+  padding: 1.1rem 1.15rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 20px 50px -20px rgb(0 0 0 / 0.55);
+}
+.dialog::backdrop { background: rgb(0 0 0 / 0.45); }
+
+.dialog-title {
+  font-family: var(--font-display, inherit);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.dialog-body {
+  margin-top: 0.4rem;
+  color: var(--fg-dim);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.dialog-failure {
+  margin-top: 0.6rem;
+  color: var(--alarm-fg);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+/* The one button on this page that is coloured for what it costs rather than for what a run is
+   doing. Coral is the alarm colour, and destroying something a person stored is the only chrome
+   worth spending it on. */
+.panel-action-danger {
+  border-color: color-mix(in oklch, var(--alarm) 55%, transparent);
+  color: var(--alarm-fg);
+}
+.panel-action-danger:hover {
+  border-color: var(--alarm);
+  background: color-mix(in oklch, var(--alarm) 10%, transparent);
+}
+
+/* ─────────────────────────────────────── row menus ───────────────────────────────────────
+ *
+ * The ⋯ on a list row and in a panel's heading. It replaces a × that appeared on hover, so unlike
+ * that × it has to be reachable without a pointer: it is always there, only quiet, and it comes
+ * fully into view on hover, on focus, and on the row that is open.
+ */
+.row-menu {
+  display: grid;
+  place-items: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 0.3rem;
+  color: var(--fg-dim);
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.45;
+  transition: opacity 120ms ease, color 120ms ease, background 120ms ease;
+}
+.row-menu:hover,
+.row-menu[aria-expanded="true"] { opacity: 1; color: var(--fg); background: var(--code-bg); }
+.row-menu:focus-visible { opacity: 1; outline: 2px solid var(--mist); outline-offset: 1px; }
+.group:hover .row-menu { opacity: 1; }
+
+/* Where a list row keeps it: over the row's own padding, which every row reserves with pr-7. */
+.row-action {
+  position: absolute;
+  right: 0.25rem;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Placed against the trigger's rectangle by menu.js, because a menu nested in the sidebar's
+   scrolling column would be clipped by it. */
+.menu-floating {
+  position: fixed;
+  min-width: 10rem;
+}
+
+.menu-item-danger { color: var(--alarm-fg); }
+.menu-item-danger:hover { background: color-mix(in oklch, var(--alarm) 12%, transparent); }

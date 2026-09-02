@@ -13,6 +13,7 @@ import java.util.Set;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeDocument;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeEntry;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgePage;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
@@ -114,6 +115,36 @@ class KnowledgeControllerTest {
     controller.delete(principal(ME, TENANT), "note:theirs");
 
     assertThat(recorder.deleted).containsExactly(Map.entry(scope(ME, TENANT), "note:theirs"));
+  }
+
+  @Test
+  @DisplayName(
+      "reads a document with the caller's scope, and reports one it cannot reach as absent")
+  void readIsScoped() {
+    final var recorder = new Recorder();
+    final var controller = controller(recorder, Set.of(), null);
+
+    final var document = controller.document(principal(ME, TENANT), "note:mine", null);
+    assertThat(document).containsEntry("text", "what is stored").containsEntry("chunkCount", 2);
+
+    // Somebody else's id is not found rather than refused, so this is not a way to ask whether
+    // their document exists.
+    assertThatThrownBy(() -> controller.document(principal(ME, TENANT), "note:theirs", null))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("404");
+    assertThat(recorder.readDocuments)
+        .containsExactly(
+            Map.entry(scope(ME, TENANT), "note:mine"), Map.entry(scope(ME, TENANT), "note:theirs"));
+  }
+
+  @Test
+  @DisplayName("refuses a non-admin naming an owner when reading one document")
+  void readingAnothersDocumentIsAdminOnly() {
+    final var controller = controller(new Recorder(), Set.of(), null);
+    assertThatThrownBy(
+            () -> controller.document(principal(ME, TENANT), "note:mine", "ou_someone_else"))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("403");
   }
 
   @Test
@@ -339,6 +370,7 @@ class KnowledgeControllerTest {
     private final List<KnowledgeSource> indexed = new ArrayList<>();
     private final List<Map.Entry<KnowledgeScope, String>> deleted = new ArrayList<>();
     private final List<Map.Entry<KnowledgeScope, String>> moved = new ArrayList<>();
+    private final List<Map.Entry<KnowledgeScope, String>> readDocuments = new ArrayList<>();
 
     @Override
     public String index(final KnowledgeSource source) {
@@ -349,6 +381,17 @@ class KnowledgeControllerTest {
     @Override
     public KnowledgePage list(final KnowledgeScope scope, final int offset, final int limit) {
       return KnowledgePage.EMPTY;
+    }
+
+    @Override
+    public Optional<KnowledgeDocument> read(final KnowledgeScope scope, final String docId) {
+      readDocuments.add(Map.entry(scope, docId));
+      return docId.startsWith("note:mine")
+          ? Optional.of(
+              new KnowledgeDocument(
+                  new KnowledgeEntry(docId, "Mine", "", 2, null, KnowledgeScope.Target.OWN),
+                  "what is stored"))
+          : Optional.empty();
     }
 
     @Override

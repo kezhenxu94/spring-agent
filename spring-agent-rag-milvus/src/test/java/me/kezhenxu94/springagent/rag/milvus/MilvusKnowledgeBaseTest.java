@@ -292,6 +292,59 @@ class MilvusKnowledgeBaseTest {
   }
 
   @Nested
+  class Reading {
+
+    @Test
+    @DisplayName("a document reads back as the text it was indexed from, and as its own entry")
+    void readsWhatWasStored() {
+      final var owner = scope("read-owner", "", "read-acme");
+      final var docId =
+          store(owner, KnowledgeScope.Target.OWN, "read-note", "the badge code is 4321");
+
+      final var document = knowledgeBase.read(owner, docId).orElseThrow();
+
+      assertThat(document.text()).contains("the badge code is 4321");
+      // The entry travels with it, so a caller holding only a search hit does not need a second
+      // query for the chunk count and the date.
+      assertThat(document.entry().docId()).isEqualTo(docId);
+      assertThat(document.entry().title()).isEqualTo("read-note");
+      assertThat(document.entry().scope()).isEqualTo(KnowledgeScope.Target.OWN);
+      assertThat(document.entry().chunkCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("a document split into several chunks reads back in its own order")
+    void rejoinsEveryChunkInOrder() {
+      final var owner = scope("read-long", "", "");
+      // Numbered, so a query that hands its rows back in segment order rather than in the
+      // document's shows up as a jumble here rather than as text that happens to look fine.
+      final var text =
+          java.util.stream.IntStream.range(0, 200)
+              .mapToObj(i -> "paragraph " + i + " of the policy. ")
+              .reduce("", String::concat);
+      final var docId = store(owner, KnowledgeScope.Target.OWN, "read-policy", text);
+
+      final var document = knowledgeBase.read(owner, docId).orElseThrow();
+
+      assertThat(document.entry().chunkCount()).isGreaterThan(1);
+      assertThat(document.text().indexOf("paragraph 0 "))
+          .isLessThan(document.text().indexOf("paragraph 199 "));
+      assertThat(document.text()).contains("paragraph 100 ");
+    }
+
+    @Test
+    @DisplayName("somebody else's document is not found rather than refused")
+    void isScopedLikeADelete() {
+      final var alice = scope("read-alice", "", "");
+      final var mallory = scope("read-mallory", "", "");
+      final var docId = store(alice, KnowledgeScope.Target.OWN, "read-private", "alice only");
+
+      assertThat(knowledgeBase.read(mallory, docId)).isEmpty();
+      assertThat(knowledgeBase.read(alice, docId)).isPresent();
+    }
+  }
+
+  @Nested
   class Moving {
 
     @Test

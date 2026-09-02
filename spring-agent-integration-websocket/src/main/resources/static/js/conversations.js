@@ -5,9 +5,12 @@
 // there. The same path on a first visit, a reload mid-answer, and a return an hour later.
 
 import { t } from './i18n.js';
-import { $, scrollToEnd } from './dom.js';
+import { $, fullTime, scrollToEnd, shortTime } from './dom.js';
 import { api } from './api.js';
-import { attempt, toast } from './toast.js';
+import { toast } from './toast.js';
+import { skeletonList, skeletonTranscript } from './busy.js';
+import { confirmAction } from './confirm.js';
+import { menuButton } from './menu.js';
 import { renderStatus } from './status.js';
 import { onNarrowScreen, sidebarOpen } from './sidebar.js';
 import { chatRoute, go } from './route.js';
@@ -17,8 +20,21 @@ import { appendTurn, renderEmptyTranscript } from './transcript.js';
 import { state } from './state.js';
 
 export async function loadConversations() {
-  state.conversations = await api('/api/conversations');
-  renderConversationList();
+  // Only the list waits — the run beside it carries on being watched, and a page-wide veil over a
+  // sidebar fetch would hide the one thing this application exists to show.
+  //
+  // And only where there is nothing to look at yet. This is called again every time a run ends, to
+  // pick up a title the run gave the conversation and to clear its live dot; a placeholder over the
+  // list somebody is already reading would make finishing a run look like losing the sidebar.
+  const done = state.conversations.length ? () => {} : skeletonList($('conversation-list'), 5);
+  try {
+    state.conversations = await api('/api/conversations');
+  } finally {
+    // Either way: a failure leaves the list as it was rather than as a row of grey bars that never
+    // becomes anything.
+    done();
+    renderConversationList();
+  }
 }
 
 export function renderConversationList() {
@@ -53,35 +69,52 @@ function row(conversation) {
   title.className = 'min-w-0 flex-1 truncate';
   title.textContent = conversation.title || t('nav.untitled');
   open.append(dot, title);
+
+  // When it was last said something to, at the end of the same line rather than on a second one:
+  // the list is what you scan to find the conversation you were in an hour ago, and doubling every
+  // row's height to say so would fit half as many of them on screen. The row already reserves the
+  // width the ⋯ sits in, so this lands to the left of it and nothing moves on hover.
+  const when = shortTime(conversation.updatedAt);
+  if (when) {
+    const stamp = document.createElement('span');
+    stamp.className = 'shrink-0 font-mono text-[10px] tabular-nums text-mist';
+    stamp.textContent = when;
+    stamp.title = fullTime(conversation.updatedAt);
+    open.append(stamp);
+  }
   // Navigated to rather than opened here: the route is what decides what is on screen, and the
   // handler it reaches closes the drawer.
   open.addEventListener('click', () => go(chatRoute(conversation.id)));
 
-  const remove = document.createElement('button');
-  remove.className = 'absolute right-1 top-1/2 -translate-y-1/2 rounded px-1 text-[13px] '
-    + 'text-mist opacity-0 transition hover:text-alarm focus-visible:opacity-100 '
-    + 'group-hover:opacity-100';
-  remove.textContent = '×';
-  remove.setAttribute('aria-label', t('nav.delete'));
-  remove.addEventListener('click', (event) => {
-    event.stopPropagation();
-    if (!window.confirm(t('delete.confirm'))) return;
-    attempt(async () => {
-      await api(`/api/conversations/${conversation.id}`, { method: 'DELETE' });
-      if (state.conversationId === conversation.id) {
-        closeStream();
-        state.conversationId = null;
-        state.runView = null;
-        $('transcript').replaceChildren();
-        renderEmptyTranscript();
-        renderStatus('idle');
-      }
-      await loadConversations();
-      toast(t('delete.done'), 'settled', 3500);
-    });
-  });
+  // The same ⋯ the other two lists carry. The work happens inside the dialog, so the row cannot be
+  // pressed a second time while the delete is in flight.
+  const actions = menuButton(t('nav.actions'), [
+    {
+      label: t('nav.delete'),
+      danger: true,
+      onSelect: () => confirmAction({
+        title: t('delete.title'),
+        body: t('delete.confirm'),
+        action: t('delete.action'),
+        run: async () => {
+          await api(`/api/conversations/${conversation.id}`, { method: 'DELETE' });
+          if (state.conversationId === conversation.id) {
+            closeStream();
+            state.conversationId = null;
+            state.runView = null;
+            $('transcript').replaceChildren();
+            renderEmptyTranscript();
+            renderStatus('idle');
+          }
+          await loadConversations();
+          toast(t('delete.done'), 'settled', 3500);
+        },
+      }),
+    },
+  ]);
+  actions.classList.add('row-action');
 
-  item.append(open, remove);
+  item.append(open, actions);
   return item;
 }
 
@@ -111,10 +144,18 @@ export async function openConversation(id) {
   const transcript = $('transcript');
   transcript.replaceChildren();
   renderStatus('idle');
+  // In the transcript alone, in the shape of a conversation: the sidebar keeps its list, the header
+  // keeps its status, and only the column that has just been emptied says it is filling again.
+  const drawn = skeletonTranscript(transcript);
 
   // The transcript first: it comes from chat memory, so it is there after a restart of the server,
   // and it is what a reload has to show even when the run detail is long gone.
-  const turns = await api(`/api/conversations/${id}/messages`);
+  let turns;
+  try {
+    turns = await api(`/api/conversations/${id}/messages`);
+  } finally {
+    drawn();
+  }
   turns.forEach((turn) => appendTurn(turn.role, turn.text));
   if (!turns.length) renderEmptyTranscript();
 

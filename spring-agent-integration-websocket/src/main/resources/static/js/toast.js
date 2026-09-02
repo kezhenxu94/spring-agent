@@ -3,6 +3,7 @@
 
 import { t } from './i18n.js';
 import { $ } from './dom.js';
+import { spinner } from './busy.js';
 
 export function toast(message, tone = 'alarm', ttl = 8000) {
   let host = $('toasts');
@@ -37,6 +38,20 @@ export function toast(message, tone = 'alarm', ttl = 8000) {
   host.append(node);
   if (ttl) setTimeout(dismiss, ttl);
   return node;
+}
+
+/**
+ * A toast that stays up while something is happening, and the way to take it down.
+ *
+ * For work started from a menu, which closes as it is chosen: there is no button left to put a
+ * spinner on, and re-embedding a large document is slow enough that nothing on screen saying so
+ * reads as nothing having happened. Everything with a button of its own should use that instead —
+ * see busyButton.
+ */
+export function working(message) {
+  const node = toast(message, 'working', 0);
+  node.querySelector('.toast-mark').replaceChildren(spinner());
+  return () => node.remove();
 }
 
 /** Runs an action and surfaces whatever it throws, rather than losing it to an unhandled rejection. */

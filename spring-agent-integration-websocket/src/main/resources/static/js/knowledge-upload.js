@@ -8,6 +8,7 @@ import { t } from './i18n.js';
 import { $ } from './dom.js';
 import { api } from './api.js';
 import { attempt, toast } from './toast.js';
+import { busyButton } from './busy.js';
 import { bus } from './state.js';
 
 export function initKnowledgeAdd(scopes) {
@@ -52,9 +53,9 @@ export function initKnowledgeAdd(scopes) {
 }
 
 function uploadFiles(files, scope, button) {
-  const label = button.textContent;
-  button.disabled = true;
-  button.textContent = t('knowledge.uploading', files.length);
+  // On the button that was pressed and nowhere else. Indexing is synchronous — the request answers
+  // once the document is searchable — so this is a wait worth measuring in seconds on a large file.
+  const done = busyButton(button, t('knowledge.uploading', files.length));
   attempt(async () => {
     const body = new FormData();
     files.forEach((file) => body.append('files', file));
@@ -62,19 +63,14 @@ function uploadFiles(files, scope, button) {
     const result = await api('/api/knowledge/files', { method: 'POST', body });
     toast(t('knowledge.uploaded', result.documents.length), 'settled', 3000);
     bus.emit('knowledge:changed');
-  }).finally(() => {
-    button.disabled = false;
-    button.textContent = label;
-  });
+  }).finally(done);
 }
 
 function saveNote(scope, form) {
   const title = $('knowledge-note-title');
   const text = $('knowledge-note-text');
   const submit = form.querySelector('button[type="submit"]');
-  const label = submit.textContent;
-  submit.disabled = true;
-  submit.textContent = t('knowledge.uploading', 1);
+  const done = busyButton(submit, t('knowledge.uploading', 1));
   attempt(async () => {
     await api('/api/knowledge/notes', {
       method: 'POST',
@@ -86,8 +82,5 @@ function saveNote(scope, form) {
     form.hidden = true;
     toast(t('knowledge.note.saved'), 'settled', 3000);
     bus.emit('knowledge:changed');
-  }).finally(() => {
-    submit.disabled = false;
-    submit.textContent = label;
-  });
+  }).finally(done);
 }

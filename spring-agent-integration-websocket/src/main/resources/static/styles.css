@@ -1,9 +1,9 @@
 /*
- * What Tailwind's utilities do not cover, in five files.
+ * What Tailwind's utilities do not cover, in six files.
  *
  * Still one <link> in the page: the browser resolves these imports itself, and keeping the entry
  * point single means the load order is stated here rather than left to the order the tags happen
- * to be in. base.css comes first because it defines the tokens the other four read.
+ * to be in. base.css comes first because it defines the tokens the others read.
  *
  * Why plain CSS at all, and why the tokens are repeated here rather than read from Tailwind's
  * @theme, is explained at the top of base.css.
@@ -14,3 +14,4 @@
 @import "./css/chrome.css";
 @import "./css/composer.css";
 @import "./css/knowledge.css";
+@import "./css/busy.css";
