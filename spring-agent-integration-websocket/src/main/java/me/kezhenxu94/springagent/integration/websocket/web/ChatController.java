@@ -11,8 +11,10 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
 import me.kezhenxu94.springagent.integration.websocket.config.WebLocaleConfiguration;
 import me.kezhenxu94.springagent.integration.websocket.config.WebMessages;
 import me.kezhenxu94.springagent.integration.websocket.config.WebProperties;
@@ -20,6 +22,7 @@ import me.kezhenxu94.springagent.integration.websocket.run.RunJournals;
 import me.kezhenxu94.springagent.integration.websocket.run.WebRunListener;
 import me.kezhenxu94.springagent.integration.websocket.security.WebAuthoritiesMapper;
 import me.kezhenxu94.springagent.integration.websocket.security.WebUser;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -49,6 +52,8 @@ import tools.jackson.databind.json.JsonMapper;
 public class ChatController {
 
   private final SpringAgent springAgent;
+  private final ObjectProvider<KnowledgeBase> knowledgeBases;
+  private final Admins admins;
   private final ChatSessions sessions;
   private final RunJournals journals;
   private final PendingQuestionRepo pendingQuestionRepo;
@@ -106,6 +111,16 @@ public class ChatController {
     out.put(
         "locales",
         WebLocaleConfiguration.SUPPORTED.stream().map(java.util.Locale::toLanguageTag).toList());
+    // Whether the knowledge panel is worth offering, and what it may show. Availability rather
+    // than content: a deployment without spring-agent-rag-milvus has no knowledge base at all, and
+    // a page that offered one anyway would be a menu entry leading to a wall of 404s. The admin
+    // flag says only that the "browse somebody else's" control should be drawn — the endpoint
+    // checks the same thing again, and it is the check that counts.
+    final var knowledge = new LinkedHashMap<String, Object>();
+    knowledge.put("enabled", knowledgeBases.getIfAvailable() != null);
+    knowledge.put("admin", admins.isAdmin(user.id()));
+    knowledge.put("tenant", !Strings.isNullOrEmpty(user.tenantId()));
+    out.put("knowledge", knowledge);
     return out;
   }
 

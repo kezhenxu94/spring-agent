@@ -110,7 +110,53 @@
       </button>
     </div>
 
-    <div class="px-3 pb-3">
+    <!--
+      Which list the sidebar is showing. Icons rather than words, and the same segmented control the
+      theme switch uses, because it is the same kind of choice — one of a small fixed set, worth
+      seeing rather than finding. Each carries its name as a tooltip and again for a screen reader,
+      since an icon on its own names nothing.
+
+      Drawn only where this deployment has a knowledge base: one tab is not a choice, and a strip
+      offering a section that does not exist is worse than no strip.
+    -->
+    <div id="sidebar-tabs" hidden role="tablist" data-i18n-label="nav.sections"
+         class="mx-3 mb-3 flex items-center gap-0.5 rounded-lg border border-zinc-300 p-0.5
+                dark:border-edge">
+      <button id="tab-conversations-button" type="button" role="tab" aria-selected="true"
+              aria-controls="tab-conversations" class="seg seg-tab seg-on flex-1"
+              data-i18n-title="nav.conversations">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+             stroke-linecap="round" stroke-linejoin="round" class="size-[15px]" aria-hidden="true">
+          <path d="M2.6 4.1c0-.7.6-1.3 1.3-1.3h8.2c.7 0 1.3.6 1.3 1.3v5.4c0 .7-.6 1.3-1.3 1.3H6.4L3.4 13V10.8h-.8V4.1Z"/>
+        </svg>
+        <span class="sr-only" data-i18n="nav.conversations">Conversations</span>
+      </button>
+      <button id="tab-tasks-button" type="button" role="tab" aria-selected="false"
+              aria-controls="tab-tasks" class="seg seg-tab flex-1" data-i18n-title="nav.tasks">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+             stroke-linecap="round" stroke-linejoin="round" class="size-[15px]" aria-hidden="true">
+          <circle cx="8" cy="8.4" r="5.4"/><path d="M8 5.4v3l1.9 1.2M6 1.6h4"/>
+        </svg>
+        <span class="sr-only" data-i18n="nav.tasks">Scheduled</span>
+      </button>
+      <button id="tab-knowledge-button" type="button" role="tab" aria-selected="false" hidden
+              aria-controls="tab-knowledge" class="seg seg-tab flex-1" data-i18n-title="nav.knowledge">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+             stroke-linecap="round" stroke-linejoin="round" class="size-[15px]" aria-hidden="true">
+          <path d="M8 4.3c0-.9-.7-1.6-1.6-1.6H2.8v8.6h3.6c.9 0 1.6.7 1.6 1.6m0-8.6c0-.9.7-1.6 1.6-1.6h3.6v8.6H9.6c-.9 0-1.6.7-1.6 1.6m0-8.6v8.6"/>
+        </svg>
+        <span class="sr-only" data-i18n="nav.knowledge">Knowledge base</span>
+      </button>
+    </div>
+
+    <!--
+      The primary action, which is whichever thing the section on screen makes: a conversation, or
+      something for the agent to remember. One slot rather than two buttons side by side, because
+      only one of them is ever the thing you came to the sidebar to do.
+    -->
+    <!-- Empty on a section that makes nothing — see selectTab — which is why it sits below the
+         strip rather than above it: the tabs would otherwise move as you switched between them. -->
+    <div id="primary-action" class="px-3 pb-3">
       <button id="new-conversation"
               class="group flex w-full items-center gap-2 rounded-lg border border-zinc-300 px-3 py-2
                      text-[13px] font-medium transition hover:border-zinc-400 hover:bg-white
@@ -119,16 +165,50 @@
         <span class="text-mist transition group-hover:text-signal">+</span>
         <span data-i18n="nav.new">New conversation</span>
       </button>
+      <button id="new-knowledge" type="button" hidden
+              class="group flex w-full items-center gap-2 rounded-lg border border-zinc-300 px-3 py-2
+                     text-[13px] font-medium transition hover:border-zinc-400 hover:bg-white
+                     focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal
+                     dark:border-edge dark:hover:border-mist dark:hover:bg-rail">
+        <span class="text-mist transition group-hover:text-signal">+</span>
+        <span data-i18n="knowledge.add">Add to the knowledge base</span>
+      </button>
     </div>
 
     <nav class="flex-1 overflow-y-auto px-3 pb-2">
-      <h2 class="px-1 pb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-mist"
-          data-i18n="nav.conversations">Conversations</h2>
-      <ul id="conversation-list" class="space-y-px"></ul>
 
-      <h2 class="mt-6 px-1 pb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-mist"
-          data-i18n="nav.tasks">Scheduled</h2>
-      <ul id="task-list" class="space-y-1.5"></ul>
+      <!-- No heading over any of the three: the strip above them says which one this is, and a
+           label repeating it is a line of chrome that pushes the list itself further down. -->
+      <div id="tab-conversations" role="tabpanel" aria-labelledby="tab-conversations-button">
+        <ul id="conversation-list" class="space-y-px"></ul>
+      </div>
+
+      <!--
+        What the agent has been asked to do later. Its own section rather than a coda to the
+        conversations, because a task is not one: it belongs to a schedule, it fires whether or not
+        anybody is here, and the row that shows it needs the room to say when.
+      -->
+      <div id="tab-tasks" role="tabpanel" aria-labelledby="tab-tasks-button" hidden>
+        <ul id="task-list" class="space-y-1.5"></ul>
+      </div>
+
+      <!--
+        The same list, for the other thing this agent keeps: one row per document, opened the way a
+        conversation is opened. Search sits above it and replaces what the list shows, so there is
+        one list to read rather than a second one somewhere else.
+      -->
+      <div id="tab-knowledge" role="tabpanel" aria-labelledby="tab-knowledge-button" hidden>
+        <input id="knowledge-search" type="search" autocomplete="off"
+               class="mb-2 w-full rounded-md border border-zinc-300 bg-transparent px-2 py-1.5
+                      text-[12.5px] outline-none focus:border-signal dark:border-edge"
+               data-i18n-placeholder="knowledge.search.placeholder">
+        <p id="knowledge-note-bar" hidden class="px-1 pb-1.5 text-[11px] leading-snug text-mist"></p>
+        <ul id="knowledge-list" class="space-y-px"></ul>
+        <button id="knowledge-more" type="button" hidden
+                class="mt-2 w-full rounded-md px-2 py-1.5 font-mono text-[10px] uppercase
+                       tracking-wider text-mist transition hover:bg-zinc-100 dark:hover:bg-rail/60"
+                data-i18n="knowledge.more">Load more</button>
+      </div>
     </nav>
 
     <div class="space-y-2.5 border-t border-zinc-200 p-3 dark:border-rail">
@@ -217,7 +297,105 @@
 
     <div id="transcript" class="flex-1 overflow-y-auto scroll-smooth px-4 py-8 sm:px-6"></div>
 
-    <div class="shrink-0 border-t border-zinc-200 px-4 py-3 sm:px-6 dark:border-rail">
+    <!--
+      The schedule, over the run for the same reason the knowledge base is: the composer belongs to
+      a conversation, and leaving it under a list of tasks was the tell that this section had been
+      hung off the chat rather than built as a peer of it.
+    -->
+    <section id="tasks-panel" hidden class="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+      <div class="mx-auto max-w-[46rem] space-y-5">
+
+        <div id="tasks-intro" class="space-y-1">
+          <h2 class="font-display text-[20px] font-semibold tracking-tight"
+              data-i18n="tasks.title">Scheduled</h2>
+          <p class="max-w-[38rem] text-[12.5px] leading-relaxed text-mist"
+             data-i18n="tasks.subtitle"></p>
+        </div>
+
+        <!-- One task: what it will do and when. Filled in by the page. -->
+        <article id="task-detail" hidden
+                 class="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-rail"></article>
+      </div>
+    </section>
+
+    <!--
+      The knowledge base, over the run rather than beside it. The list lives in the sidebar, where
+      the conversations are, so this is what the sidebar's selection opens onto: one document, or —
+      with nothing selected — the two ways of adding one.
+
+      Hidden with the `hidden` attribute rather than a class, so nothing in the utility layer can
+      out-specify it, the same reason the composer toggles display explicitly.
+    -->
+    <section id="knowledge-panel" hidden class="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+      <div class="mx-auto max-w-[46rem] space-y-5">
+
+        <div id="knowledge-intro" class="space-y-1">
+          <h2 class="font-display text-[20px] font-semibold tracking-tight"
+              data-i18n="knowledge.title">Knowledge base</h2>
+          <p class="max-w-[38rem] text-[12.5px] leading-relaxed text-mist"
+             data-i18n="knowledge.subtitle"></p>
+        </div>
+
+        <!-- One document: what it is, where it came from, and the two things that can be done to
+             it. Filled in by the page; empty and hidden until the sidebar selects one. -->
+        <article id="knowledge-detail" hidden
+                 class="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-rail"></article>
+
+        <!-- Adding to it. Both halves write through the endpoints the chat tools write through. -->
+        <div id="knowledge-add" class="space-y-2 rounded-xl border border-zinc-200 p-3 dark:border-rail">
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="knowledge-upload" type="button" class="panel-action"
+                    data-i18n="knowledge.upload">Add files</button>
+            <button id="knowledge-note-open" type="button" class="panel-action"
+                    data-i18n="knowledge.note">Write a note</button>
+            <label class="ml-auto flex items-center gap-1.5 text-[11.5px] text-mist">
+              <span data-i18n="knowledge.into">Into</span>
+              <select id="knowledge-target"
+                      class="rounded-md border border-zinc-300 bg-transparent px-1.5 py-1
+                             text-[11.5px] outline-none dark:border-edge"></select>
+            </label>
+            <input id="knowledge-file-input" type="file" multiple class="hidden">
+          </div>
+          <p class="text-[11.5px] leading-relaxed text-mist" data-i18n="knowledge.upload.hint"></p>
+
+          <form id="knowledge-note-form" hidden class="space-y-2 pt-1">
+            <input id="knowledge-note-title" type="text" required
+                   class="w-full rounded-lg border border-zinc-300 bg-transparent px-2.5 py-1.5
+                          text-[13px] outline-none focus:border-signal dark:border-edge"
+                   data-i18n-placeholder="knowledge.note.title">
+            <textarea id="knowledge-note-text" rows="4" required
+                      class="w-full resize-y rounded-lg border border-zinc-300 bg-transparent px-2.5
+                             py-1.5 text-[13px] leading-relaxed outline-none focus:border-signal
+                             dark:border-edge"
+                      data-i18n-placeholder="knowledge.note.text"></textarea>
+            <div class="flex gap-2">
+              <button type="submit" class="panel-action panel-action-primary"
+                      data-i18n="knowledge.note.save">Store it</button>
+              <button id="knowledge-note-cancel" type="button" class="panel-action"
+                      data-i18n="knowledge.cancel">Cancel</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Reading somebody else's, for an admin. Drawn only when /api/me says so. -->
+        <div id="knowledge-admin" hidden
+             class="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-zinc-300
+                    px-3 py-2 dark:border-edge">
+          <span class="font-mono text-[10px] uppercase tracking-wider text-mist"
+                data-i18n="knowledge.owner">Read another person</span>
+          <input id="knowledge-owner" type="text" autocomplete="off"
+                 class="min-w-0 flex-1 rounded-md border border-zinc-300 bg-transparent px-2 py-1
+                        font-mono text-[12px] outline-none focus:border-signal dark:border-edge"
+                 data-i18n-placeholder="knowledge.owner.placeholder">
+          <button id="knowledge-owner-open" type="button" class="panel-action"
+                  data-i18n="knowledge.owner.browse">Open</button>
+          <button id="knowledge-owner-clear" type="button" class="panel-action" hidden
+                  data-i18n="knowledge.owner.mine">Back to mine</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="composer-bar" class="shrink-0 border-t border-zinc-200 px-4 py-3 sm:px-6 dark:border-rail">
       <div class="mx-auto max-w-[46rem]">
 
         <!-- What has been uploaded but not yet sent. Empty and hidden until there is something. -->
@@ -273,6 +451,6 @@
   </main>
 </div>
 
-<script type="module" src="/app.js"></script>
+<script type="module" src="/js/app.js"></script>
 </body>
 </html>

@@ -204,6 +204,58 @@ What a surface owns:
   `FeishuChatObservations`, which is deliberately a class of its own next to the handler that
   answers, so that it is obvious at the call site that nothing there starts a run.
 
+### The page the browser surface serves
+
+`spring-agent-integration-websocket/src/main/resources/static` is the whole of it: **no bundler, no
+framework, no build step.** Plain ES modules under `js/`, plain CSS under `css/`, and everything it
+depends on vendored under `vendor/` rather than fetched from a CDN. Tailwind is the *browser* build,
+which compiles only the `<style type="text/tailwindcss">` block inside `index.html` — a linked
+stylesheet never reaches it, so `@apply` and `@import "tailwindcss"` in `css/` silently do nothing
+and the design tokens are restated there as custom properties.
+
+**Modules are layered, and the layering is the one rule to keep.** `js/state.js` writes it down: the
+core (`state`, `dom`, `i18n`, `render`, `api`, `toast`, `route`), then `status`, `theme` and
+`sidebar`, then the features, and `js/app.js` last as the only file that imports across the whole
+set. A module imports only ones earlier than itself; an edge that would point backwards goes over
+the small `bus` in `state.js` instead. This matters more than tidiness: an ES module cycle does not
+fail, it resolves the binding to `undefined` and throws at the call, on whichever path nobody
+clicked.
+
+**Navigation is one-way.** `js/route.js` owns the hash — `#/chat/<id>`, `#/tasks/<id>`,
+`#/kb/<docId>`, ids percent-encoded because a knowledge document's id can be an absolute path.
+Something clicked calls `go(...)`; the hash changes; `app.js`'s `dispatch` decides what is on
+screen. Nothing opens a thing and *then* writes the hash, because that leaves the two able to
+disagree — and the one that disagrees is the one the back button reads. `js/panels.js` is the only
+thing that hides and shows the main column's panels, so a section never has to remember to put the
+composer back. Adding a sidebar section is five small edits: a tab button and a panel in
+`index.html`, a route in `route.js`, an arm in `dispatch`, a case in `selectTab`, and a line in
+`showPanel`.
+
+**CSS import order is load-bearing.** `styles.css` is the single linked entry and does nothing but
+`@import` the files in `css/` in a stated order. Rules there routinely tie on specificity with
+Tailwind's utilities and with each other, so a rule that wins today can lose tomorrow because a file
+moved: splitting this stylesheet once put `.tool-button` after `.drawer-only` and brought the
+drawer's controls back at every width, invisibly, on a screen wide enough that there is no drawer.
+Where a rule must hold regardless of order, buy the specificity and say why.
+
+**Text comes from two bundles, and both carry every language.** `js/i18n.js` holds what the page
+says for itself — labels, buttons — declared with `data-i18n`, `data-i18n-placeholder`,
+`data-i18n-title` and `data-i18n-label` attributes in the markup and read with `t(key)` in
+JavaScript. `web/messages*.properties` holds what the *server* says, which is mostly the reasons it
+refused. Adding a language is one file on each side and nothing else. Anything a list draws in
+JavaScript must also redraw on `bus.on('language:changed', ...)`, or that list stays in the language
+the page happened to start in.
+
+**Every static file has to be readable before login**, because the page that offers to log you in is
+made of them. The application's `SecurityFilterChain` permits them by prefix (`/js/**`, `/css/**`);
+a new top-level file outside those prefixes is a page that is blank *only* for somebody not signed
+in yet, which is the one state nobody develops in.
+
+There is no test runner for this code. What is checkable without one — that every imported symbol is
+exported, that the module graph is acyclic, that every `$('id')` exists in `index.html`, that both
+i18n bundles carry the same keys — is worth checking by hand or by a throwaway script when you touch
+it, and the page is worth opening at a narrow width, in dark mode, and signed out.
+
 ### A webhook event source
 
 One module per system. Implement `WebhookSource` from `spring-agent-events`, publish it as a bean
@@ -409,6 +461,10 @@ base is a backend module rather than something core implements over any store.
 Scoping is `KnowledgeScopeFilter`, and a filter clause is only ever emitted for a non-blank identity:
 a blank one would match every document that stores a blank there, which is every other user's.
 `KnowledgeScopeFilterTest` covers that case by name — read it before changing the filter.
+
+The browser surface reaches this SPI over HTTP rather than through a run — `KnowledgeController`,
+`/api/knowledge` — so a change to the SPI's shape has a second caller to keep in step, and one whose
+scoping is derived from the session rather than from a tool context.
 
 ## Conventions
 
