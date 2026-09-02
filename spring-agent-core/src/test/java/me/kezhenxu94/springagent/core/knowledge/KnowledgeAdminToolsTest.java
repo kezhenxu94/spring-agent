@@ -55,16 +55,21 @@ class KnowledgeAdminToolsTest {
         }
 
         @Override
-        public Optional<KnowledgeDocument> read(final KnowledgeScope scope, final String docId) {
+        public Optional<KnowledgeDocument> read(
+            final KnowledgeScope scope, final KnowledgeScope.Target owning, final String docId) {
           return Optional.empty();
         }
 
         @Override
-        public void delete(final KnowledgeScope scope, final String docId) {}
+        public void delete(
+            final KnowledgeScope scope, final KnowledgeScope.Target owning, final String docId) {}
 
         @Override
         public Optional<KnowledgeEntry> move(
-            final KnowledgeScope scope, final String docId, final KnowledgeScope.Target target) {
+            final KnowledgeScope scope,
+            final KnowledgeScope.Target owning,
+            final String docId,
+            final KnowledgeScope.Target target) {
           return Optional.empty();
         }
 

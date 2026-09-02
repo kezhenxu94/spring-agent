@@ -425,11 +425,12 @@ under your real host) as a redirect URI, and grant the app the profile scopes it
 
 **The sidebar is three tabs**, an icon each: the conversations, what the agent has been asked to do
 later, and — wherever a deployment has one — the knowledge base. Each is a list read the same way,
-and each has an address, so `#/chat/<conversation>`, `#/tasks/<task>` and `#/kb/<document>` are
-links worth keeping and the back button works between them. Picking a row opens it in the main
-column: a conversation is its transcript, a document is what it says and who else can read it,
-a scheduled task is what it will do and when — with the way to open the conversation its answers go
-into, or to call it off. Anything that cannot be undone — deleting a conversation or a document,
+and each has an address, so `#/chat/<conversation>`, `#/tasks/<task>` and
+`#/kb/<scope>/<document>` are links worth keeping and the back button works between them. Picking a
+row opens it in the main column: a conversation is its transcript, a document is what it says and
+who else can read it, a scheduled task is what it will do and when. A task is drawn as markdown,
+since a prompt somebody wrote has lists and code in it, and comes with the way to open the
+conversation its answers go into, or to call it off. Anything that cannot be undone — deleting a conversation or a document,
 calling off a scheduled task — asks first, and the asking is where the work happens, so the button
 you pressed says so until it is done. Nothing on that screen creates a task, because nothing can: a schedule
 comes from asking the agent for one.
@@ -448,7 +449,10 @@ files are uploaded, stored in your own workspace and indexed on the spot, and a 
 straight in; either can go into your own knowledge base or the company's. It is the same knowledge base a
 conversation reaches with `ListKnowledgeBase`, `IndexKnowledge`, `SearchKnowledge`,
 `UpdateKnowledgeScope` and `DeleteKnowledge` — what you add here is what the agent retrieves on the
-next message, and what a run stored is what this list shows. There is no group knowledge base in
+next message, and what a run stored is what this list shows. Sharing, moving and deleting always
+name which knowledge base the document is in, in the page and in a chat alike: the same file filed
+both privately and company-wide is two documents wearing one id, and without saying which one is
+meant a tidy-up of your own copy would take the company's away with it. There is no group knowledge base in
 the browser: a group is a group chat, and this surface has none.
 
 Somebody listed in `ADMINS` gets one thing more, in that same menu: `Read another person` asks for a

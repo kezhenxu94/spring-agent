@@ -73,10 +73,44 @@ class KnowledgeScopeFilterTest {
             KnowledgeMetadata.TENANT, tenant));
   }
 
+  /** The same, for the filters that name one document rather than a scope's whole reach. */
+  private static Document filed(
+      final String id,
+      final String owner,
+      final String group,
+      final String tenant,
+      final String docId) {
+    return new Document(
+        id,
+        "content of " + id,
+        Map.of(
+            KnowledgeMetadata.OWNER, owner,
+            KnowledgeMetadata.GROUP, group,
+            KnowledgeMetadata.TENANT, tenant,
+            KnowledgeMetadata.DOC_ID, docId));
+  }
+
   private static SimpleVectorStore storeOf(final Document... documents) {
     final var store = SimpleVectorStore.builder(CONSTANT_EMBEDDING).build();
     store.add(List.of(documents));
     return store;
+  }
+
+  /** The ids a filter matches, for the assertions that check a filter against stored chunks. */
+  private static List<String> matching(
+      final SimpleVectorStore store, final Filter.Expression expression) {
+    return store
+        .similaritySearch(
+            SearchRequest.builder()
+                .query("anything")
+                .topK(100)
+                .similarityThresholdAll()
+                .filterExpression(expression)
+                .build())
+        .stream()
+        .map(Document::getId)
+        .sorted()
+        .toList();
   }
 
   private static List<String> readableIds(
@@ -135,7 +169,8 @@ class KnowledgeScopeFilterTest {
                   printReadable(new KnowledgeScope("u", "", "")),
                   printReadable(new KnowledgeScope("u", "g", "t")),
                   print(KnowledgeScopeFilter.firstChunks(new KnowledgeScope("u", "g", "t"))),
-                  print(KnowledgeScopeFilter.document(new KnowledgeScope("u", "g", "t"), "d"))))
+                  print(
+                      KnowledgeScopeFilter.documentOwnedBy(new KnowledgeScope("u", "", ""), "d"))))
           .allSatisfy(printed -> assertThat(printed).doesNotContain("NULL"));
     }
   }
@@ -283,7 +318,8 @@ class KnowledgeScopeFilterTest {
   class ComposedExpressions {
 
     @Test
-    @DisplayName("deleting is scoped, so a docId belonging to another user matches nothing")
+    @DisplayName(
+        "naming a document is scoped, so a docId belonging to another user matches nothing")
     void deleteIsScoped() {
       final var mine =
           new Document(
@@ -320,10 +356,51 @@ class KnowledgeScopeFilterTest {
                   .topK(100)
                   .similarityThresholdAll()
                   .filterExpression(
-                      KnowledgeScopeFilter.document(new KnowledgeScope("alice", "", ""), "doc-1"))
+                      KnowledgeScopeFilter.documentOwnedBy(
+                          new KnowledgeScope("alice", "", ""), "doc-1"))
                   .build());
 
       assertThat(found).extracting(Document::getId).containsExactly("a");
+    }
+
+    @Test
+    @DisplayName("one id in two knowledge bases is two documents, and each is named on its own")
+    void oneIdInTwoScopes() {
+      // The normal outcome of somebody filing what they had already filed: a file's absolute path
+      // is its id, so the private copy and the company's copy wear the same one. A filter over
+      // everything the reader may reach would name both, which is a delete taking the company's
+      // document away to tidy up a private one, and a read handing back the two interleaved.
+      final var store =
+          storeOf(
+              filed("private", "alice", "", "", "/home/alice/report.pdf"),
+              filed("company", "", "", "acme", "/home/alice/report.pdf"));
+      final var scope = new KnowledgeScope("alice", "", "acme");
+      final var docId = "/home/alice/report.pdf";
+
+      assertThat(
+              matching(
+                  store,
+                  KnowledgeScopeFilter.documentOwnedBy(
+                      scope.owning(KnowledgeScope.Target.OWN), docId)))
+          .containsExactly("private");
+      assertThat(
+              matching(
+                  store,
+                  KnowledgeScopeFilter.documentOwnedBy(
+                      scope.owning(KnowledgeScope.Target.TENANT), docId)))
+          .containsExactly("company");
+    }
+
+    @Test
+    @DisplayName("a scope with no identity at all owns nothing, and says so rather than matching")
+    void anOwningScopeWithNoIdentity() {
+      // What asking for a group document from a chat with no group produces. Every stored chunk
+      // carries exactly one non-blank scope field, so all-blank matches nothing — safe, and
+      // indistinguishable from "no such document", which is the answer nobody should be given.
+      assertThatThrownBy(
+              () -> KnowledgeScopeFilter.documentOwnedBy(new KnowledgeScope("", "", ""), "doc-1"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("owns nothing");
     }
 
     @Test
@@ -520,22 +597,6 @@ class KnowledgeScopeFilterTest {
               "",
               KnowledgeMetadata.DOC_ID,
               docId));
-    }
-
-    private static List<String> matching(
-        final SimpleVectorStore store, final Filter.Expression expression) {
-      return store
-          .similaritySearch(
-              SearchRequest.builder()
-                  .query("anything")
-                  .topK(100)
-                  .similarityThresholdAll()
-                  .filterExpression(expression)
-                  .build())
-          .stream()
-          .map(Document::getId)
-          .sorted()
-          .toList();
     }
   }
 }

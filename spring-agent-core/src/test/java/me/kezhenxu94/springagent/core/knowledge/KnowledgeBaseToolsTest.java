@@ -31,6 +31,7 @@ class KnowledgeBaseToolsTest {
 
   private final AtomicReference<KnowledgeSource> indexed = new AtomicReference<>();
   private final AtomicReference<KnowledgeEntry> moved = new AtomicReference<>();
+  private final AtomicReference<KnowledgeScope.Target> deleted = new AtomicReference<>();
   private KnowledgeBaseTools tools;
 
   /** Records what it was asked to store, which is the whole of what these tests are about. */
@@ -48,16 +49,23 @@ class KnowledgeBaseToolsTest {
         }
 
         @Override
-        public Optional<KnowledgeDocument> read(final KnowledgeScope scope, final String docId) {
+        public Optional<KnowledgeDocument> read(
+            final KnowledgeScope scope, final KnowledgeScope.Target owning, final String docId) {
           return Optional.empty();
         }
 
         @Override
-        public void delete(final KnowledgeScope scope, final String docId) {}
+        public void delete(
+            final KnowledgeScope scope, final KnowledgeScope.Target owning, final String docId) {
+          deleted.set(owning);
+        }
 
         @Override
         public Optional<KnowledgeEntry> move(
-            final KnowledgeScope scope, final String docId, final KnowledgeScope.Target target) {
+            final KnowledgeScope scope,
+            final KnowledgeScope.Target owning,
+            final String docId,
+            final KnowledgeScope.Target target) {
           moved.set(new KnowledgeEntry(docId, docId, "", 1, null, target));
           return Optional.of(moved.get());
         }
@@ -106,6 +114,17 @@ class KnowledgeBaseToolsTest {
                 FileSystemStorageProperties.builder().location(location.toString()).build()),
             properties,
             new CoreMessages(source, properties));
+  }
+
+  @Test
+  @DisplayName("a delete names one knowledge base, so the copy in another one is left alone")
+  void deleteNamesTheKnowledgeBase() {
+    // The same id can be in two of them at once, so which one is being deleted from is part of
+    // the call rather than something the store decides.
+    final var result = tools.deleteKnowledge("a-doc", "own", context("om_42"));
+
+    assertThat(result).contains("a-doc");
+    assertThat(deleted.get()).isEqualTo(KnowledgeScope.Target.OWN);
   }
 
   @Nested
@@ -200,7 +219,7 @@ class KnowledgeBaseToolsTest {
     void unknownScopeIsRefused() {
       // Read as "own" it would take a document out of the company knowledge base because of a
       // typo, which is the one direction this must never go by default.
-      final var result = tools.updateKnowledgeScope("a-doc", "everyone", context("om_42"));
+      final var result = tools.updateKnowledgeScope("a-doc", "own", "everyone", context("om_42"));
 
       assertThat(result).contains("Not a knowledge base");
       assertThat(moved.get()).isNull();
@@ -209,10 +228,41 @@ class KnowledgeBaseToolsTest {
     @Test
     @DisplayName("moving a document into a group from a chat with no group is refused")
     void moveToGroupWithoutAGroup() {
-      final var result = tools.updateKnowledgeScope("a-doc", "group", context("om_42"));
+      final var result = tools.updateKnowledgeScope("a-doc", "own", "group", context("om_42"));
 
       assertThat(result).contains("no group");
       assertThat(moved.get()).isNull();
+    }
+
+    @Test
+    @DisplayName("a move that does not say which knowledge base the document is in is refused")
+    void moveWithoutTheCurrentScope() {
+      // The same id can be in two of them, so without this the private copy could be moved and
+      // the company's reported as moved. Not defaulted for the same reason the destination is not.
+      final var result = tools.updateKnowledgeScope("a-doc", null, "tenant", context("om_42"));
+
+      assertThat(result).contains("which knowledge base the document is in");
+      assertThat(moved.get()).isNull();
+    }
+
+    @Test
+    @DisplayName("a delete that does not say which knowledge base to remove from is refused")
+    void deleteWithoutAScope() {
+      final var result = tools.deleteKnowledge("a-doc", null, context("om_42"));
+
+      assertThat(result).contains("which knowledge base the document is in");
+      assertThat(deleted.get()).isNull();
+    }
+
+    @Test
+    @DisplayName("deleting from a group knowledge base in a chat with no group is refused")
+    void deleteFromAGroupWithoutAGroup() {
+      // An all-blank owning scope names no document at all, and KnowledgeScopeFilter throws on
+      // one rather than quietly matching nothing.
+      final var result = tools.deleteKnowledge("a-doc", "group", context("om_42"));
+
+      assertThat(result).contains("no group");
+      assertThat(deleted.get()).isNull();
     }
 
     @Test

@@ -69,22 +69,21 @@ public class KnowledgeScopeFilter {
   }
 
   /**
-   * One document, but only if {@code scope} may reach it. Scoping the delete rather than trusting
-   * the id is what keeps a guessed or copied {@code docId} from reaching another user's document.
-   */
-  public static Filter.Expression document(final KnowledgeScope scope, final String docId) {
-    final var b = new FilterExpressionBuilder();
-    return b.and(b.eq(KnowledgeMetadata.DOC_ID, docId), grouped(b, scope)).build();
-  }
-
-  /**
    * One document, but only where it is owned by exactly {@code owning} — every scope field matched,
    * including the blank ones.
    *
-   * <p>For replacing a document on re-index, and an exact match rather than {@link #document} on
-   * purpose. A user who may *read* the tenant knowledge base must not be able to destroy a document
-   * in it by re-indexing that id into their own: scoping the replacement to the scope being written
-   * means a mismatched id matches nothing and the write is simply a new document.
+   * <p><b>This is the only way to name one document</b>, and an exact match rather than "one the
+   * reader may reach" on purpose. A {@code docId} is unique within a knowledge base and not across
+   * them: the same file, wiki token or URL indexed into a private base and into the company's is
+   * two documents wearing one id, which is the normal outcome of somebody filing what they had
+   * already filed. A filter that matched a reader's whole reach would then name both of them, so a
+   * delete would take the company's copy along with the user's own, and a read would hand back the
+   * two documents' chunks interleaved. The caller therefore has to say which base it means, and a
+   * mismatch is a document not found rather than a different document acted on.
+   *
+   * <p>It is also what keeps a re-index from destroying somebody else's document: a user who may
+   * *read* the tenant knowledge base must not be able to overwrite a document in it by indexing
+   * that id as their own, and here a mismatched id simply matches nothing.
    *
    * <p>Note this cannot be expressed as {@code readableBy(owningScope)}. A document owned by a
    * group stores a blank owner, so that disjunction would begin {@code owner == ""} and match every
@@ -92,6 +91,14 @@ public class KnowledgeScopeFilter {
    * read filter avoids by omitting blank clauses, arriving here from the opposite direction.
    */
   public static Filter.Expression documentOwnedBy(final KnowledgeScope owning, final String docId) {
+    if (!owning.hasOwner() && !owning.hasGroup() && !owning.hasTenant()) {
+      // Every stored chunk carries exactly one non-blank scope field, so an all-blank owning scope
+      // matches nothing — which is safe and unreadable. It only ever arises from asking for a base
+      // the requester has no identity for, a group document from a p2p chat say, and the caller
+      // that did so needs to hear about it rather than be told the document does not exist.
+      throw new IllegalArgumentException(
+          "A knowledge scope with no owner, group or tenant owns nothing");
+    }
     final var b = new FilterExpressionBuilder();
     return b.and(
             b.eq(KnowledgeMetadata.DOC_ID, docId),

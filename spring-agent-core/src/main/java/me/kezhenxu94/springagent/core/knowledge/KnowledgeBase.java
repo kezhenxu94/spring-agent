@@ -41,7 +41,8 @@ public interface KnowledgeBase {
   KnowledgePage list(KnowledgeScope scope, int offset, int limit);
 
   /**
-   * One document with the text it was indexed from, or empty where {@code scope} cannot reach it.
+   * One document with the text it was indexed from, or empty where {@code owning} holds no such
+   * document {@code scope} may reach.
    *
    * <p>On the contract rather than left to a caller for the same reason {@link #move} is: nothing
    * outside an implementation can read a stored document's text back, because searching returns
@@ -49,13 +50,30 @@ public interface KnowledgeBase {
    *
    * <p>Scoped exactly as {@link #delete} is — a document id belonging to somebody else is not found
    * rather than refused, so this cannot be used to ask whether one exists.
+   *
+   * @param owning which of {@code scope}'s knowledge bases the document is in. Required, because a
+   *     {@code docId} identifies a document only together with the base holding it — see {@link
+   *     #delete}
    */
-  Optional<KnowledgeDocument> read(KnowledgeScope scope, String docId);
+  Optional<KnowledgeDocument> read(
+      KnowledgeScope scope, KnowledgeScope.Target owning, String docId);
 
   /**
-   * Removes a document and all its chunks, silently doing nothing if {@code scope} cannot reach it.
+   * Removes a document and all its chunks, silently doing nothing where {@code owning} holds no
+   * such document {@code scope} may reach.
+   *
+   * <p><b>{@code docId} alone does not identify a document, and that is why {@code owning} is not
+   * optional.</b> A document is unique on its id *within one knowledge base*: the same file, wiki
+   * token or URL filed into a private base and into the company's is two documents sharing an id,
+   * which is what happens whenever somebody files what they had already filed. Deleting by id
+   * across everything the caller may read would then take the company's copy along with their own,
+   * and which one they meant would be unanswerable. So the caller names the base — {@code
+   * ListKnowledgeBase} and {@code /api/knowledge} both report it per document — and an id that is
+   * not in that one is simply not found.
+   *
+   * @param owning which of {@code scope}'s knowledge bases to delete from
    */
-  void delete(KnowledgeScope scope, String docId);
+  void delete(KnowledgeScope scope, KnowledgeScope.Target owning, String docId);
 
   /**
    * Moves a document into another knowledge base, keeping its id, title, origin and content.
@@ -64,13 +82,21 @@ public interface KnowledgeBase {
    * document's text back — searching returns what a query matched, not a document — and a move is a
    * rewrite of every chunk's scope. The caller decides who may do it; this only carries it out.
    *
-   * <p>Scoped like {@link #delete}: a document {@code scope} cannot reach is not found rather than
-   * moved, which is what keeps a copied id from dragging somebody else's document into a scope of
-   * one's own. Moving a document to the base it is already in is a no-op that still reports it.
+   * <p>Scoped like {@link #delete}: a document not in {@code owning}, or one {@code scope} cannot
+   * reach, is not found rather than moved — which is what keeps a copied id from dragging somebody
+   * else's document into a scope of one's own. Moving a document to the base it is already in is a
+   * no-op that still reports it.
    *
-   * @return the document as it now stands, or empty when {@code scope} cannot reach {@code docId}
+   * @param owning which of {@code scope}'s knowledge bases the document is in now
+   * @param target which one it should end up in
+   * @return the document as it now stands, or empty where {@code owning} holds no such document
+   *     {@code scope} may reach
    */
-  Optional<KnowledgeEntry> move(KnowledgeScope scope, String docId, KnowledgeScope.Target target);
+  Optional<KnowledgeEntry> move(
+      KnowledgeScope scope,
+      KnowledgeScope.Target owning,
+      String docId,
+      KnowledgeScope.Target target);
 
   /**
    * A retriever restricted to what {@code scope} may read, for attaching to a run's advisor chain.

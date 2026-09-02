@@ -20,7 +20,10 @@ import { documentActions } from './knowledge-actions.js';
 // The document whose text is on screen, and a counter that says which fetch is the current one.
 // Without the counter, opening a large document and then a small one races: the large one answers
 // second and overwrites the small one's text under the small one's title.
-let shown = { docId: null, text: null };
+// Keyed by the knowledge base as well as by the id, because an id is unique inside one base and
+// not across them: the same file filed privately and company-wide is two documents wearing one id,
+// and keying on the id alone would show one of them the other's text.
+let shown = { docId: null, scope: null, text: null };
 let fetching = 0;
 
 /**
@@ -30,7 +33,7 @@ let fetching = 0;
  * would tell this panel that what it is showing is no longer what is stored.
  */
 export function forgetDocumentText() {
-  shown = { docId: null, text: null };
+  shown = { docId: null, scope: null, text: null };
 }
 
 export function renderKnowledgeDetail(entry, options) {
@@ -97,7 +100,7 @@ function content(entry, options) {
   label.textContent = t('knowledge.content');
   box.append(label);
 
-  if (shown.docId === entry.docId) {
+  if (shown.docId === entry.docId && shown.scope === entry.scope) {
     box.append(text(shown.text));
     return box;
   }
@@ -107,7 +110,9 @@ function content(entry, options) {
 
   const mine = fetching + 1;
   fetching = mine;
-  const params = new URLSearchParams({ docId: entry.docId });
+  // The knowledge base goes with the id, and is not optional: it is the other half of what names
+  // the document — see KnowledgeBase#delete in core.
+  const params = new URLSearchParams({ docId: entry.docId, scope: entry.scope });
   // The one place a request from this page names somebody: an admin reading another person's, which
   // the server checks again and allows only for a read.
   if (options.owner) params.set('owner', options.owner);
@@ -115,7 +120,7 @@ function content(entry, options) {
     .then((stored) => {
       // A later document was opened while this was in flight; its own fetch owns the panel now.
       if (mine !== fetching) return;
-      shown = { docId: stored.docId, text: stored.text };
+      shown = { docId: stored.docId, scope: stored.scope, text: stored.text };
       waiting.replaceWith(text(stored.text));
     })
     .catch((error) => {

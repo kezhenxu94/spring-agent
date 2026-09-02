@@ -243,8 +243,9 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
   }
 
   @Override
-  public Optional<KnowledgeDocument> read(final KnowledgeScope scope, final String docId) {
-    final var chunks = documentChunks(scope, docId);
+  public Optional<KnowledgeDocument> read(
+      final KnowledgeScope scope, final KnowledgeScope.Target owning, final String docId) {
+    final var chunks = documentChunks(scope.owning(owning), docId);
     if (chunks.isEmpty()) {
       return Optional.empty();
     }
@@ -256,16 +257,22 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
   }
 
   @Override
-  public void delete(final KnowledgeScope scope, final String docId) {
-    // Scoped rather than by id alone, so a docId belonging to someone else matches nothing instead
-    // of deleting their document.
-    store.delete(KnowledgeScopeFilter.document(scope, docId));
+  public void delete(
+      final KnowledgeScope scope, final KnowledgeScope.Target owning, final String docId) {
+    // Scoped to one knowledge base rather than to everything the caller may read: a docId
+    // belonging to someone else matches nothing instead of deleting their document, and a docId
+    // the caller has in two of their own bases deletes the copy they named rather than both.
+    store.delete(KnowledgeScopeFilter.documentOwnedBy(scope.owning(owning), docId));
   }
 
   @Override
   public Optional<KnowledgeEntry> move(
-      final KnowledgeScope scope, final String docId, final KnowledgeScope.Target target) {
-    final var chunks = documentChunks(scope, docId);
+      final KnowledgeScope scope,
+      final KnowledgeScope.Target owning,
+      final String docId,
+      final KnowledgeScope.Target target) {
+    final var from = scope.owning(owning);
+    final var chunks = documentChunks(from, docId);
     if (chunks.isEmpty()) {
       return Optional.empty();
     }
@@ -274,27 +281,26 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
     final var source = string(head, KnowledgeMetadata.SOURCE);
     final var createdAt = string(head, KnowledgeMetadata.CREATED_AT);
 
-    // The chunks came back through the read filter, so a document found as OWN is this requester's
-    // own and one found as GROUP is this group's — matching the target enum is therefore the whole
-    // of "it is already there", and there is nothing to rewrite.
-    if (targetOf(head) == target) {
+    // The chunks were fetched from exactly one knowledge base, the one the caller named, so
+    // "already there" is that base being the destination and there is nothing to rewrite.
+    if (owning == target) {
       return Optional.of(entryOf(head));
     }
 
-    final var owning = scope.owning(target);
+    final var to = scope.owning(target);
     // Delete first, as index() does, and for the same reason: the rewritten chunks are readable by
     // the same requester, so a delete afterwards would take the move's own output with it. What
     // this costs is that a failure between the two loses the document rather than duplicating it,
     // which is the direction to fail in — a document silently existing twice in two scopes
     // contradicts itself in every later answer, and nobody finds out.
-    store.delete(KnowledgeScopeFilter.document(scope, docId));
+    store.delete(KnowledgeScopeFilter.documentOwnedBy(from, docId));
 
     final var moved = new ArrayList<Document>(chunks.size());
     for (var i = 0; i < chunks.size(); i++) {
       final var metadata = new LinkedHashMap<String, Object>();
-      metadata.put(KnowledgeMetadata.OWNER, owning.owner());
-      metadata.put(KnowledgeMetadata.GROUP, owning.group());
-      metadata.put(KnowledgeMetadata.TENANT, owning.tenant());
+      metadata.put(KnowledgeMetadata.OWNER, to.owner());
+      metadata.put(KnowledgeMetadata.GROUP, to.group());
+      metadata.put(KnowledgeMetadata.TENANT, to.tenant());
       metadata.put(KnowledgeMetadata.DOC_ID, docId);
       metadata.put(KnowledgeMetadata.TITLE, title);
       metadata.put(KnowledgeMetadata.SOURCE, source);
@@ -369,26 +375,31 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
    * hand them over, and a chunk's ordinal is the only record of where it belongs — so a document
    * rebuilt from an unsorted answer is a document with its paragraphs shuffled.
    */
-  private List<StoredChunk> documentChunks(final KnowledgeScope scope, final String docId) {
-    final var chunks = chunksOf(scope, docId);
+  private List<StoredChunk> documentChunks(final KnowledgeScope owning, final String docId) {
+    final var chunks = chunksOf(owning, docId);
     chunks.sort(
         Comparator.comparingInt(chunk -> integer(chunk.metadata(), KnowledgeMetadata.CHUNK)));
     return chunks;
   }
 
   /**
-   * Every chunk of one document that {@code scope} may read, text and all.
+   * Every chunk of the one document {@code owning} holds under {@code docId}, text and all.
    *
    * <p>Another raw query for the same reason {@link #list} is one: what is wanted is the rows of a
    * document, and a vector store's only way of returning content is a similarity search over a
    * query nobody has here.
+   *
+   * <p>{@code owning} is one knowledge base and not a reader's whole reach, so what comes back is
+   * one document. Across a reach it would be the chunks of every copy of that id, and rebuilding a
+   * document from them would interleave two documents' paragraphs by their ordinals.
    */
-  private List<StoredChunk> chunksOf(final KnowledgeScope scope, final String docId) {
+  private List<StoredChunk> chunksOf(final KnowledgeScope owning, final String docId) {
     final var response =
         client.query(
             QueryParam.newBuilder()
                 .withCollectionName(properties.collectionName())
-                .withExpr(toMilvus.convertExpression(KnowledgeScopeFilter.document(scope, docId)))
+                .withExpr(
+                    toMilvus.convertExpression(KnowledgeScopeFilter.documentOwnedBy(owning, docId)))
                 .withOutFields(List.of(METADATA_FIELD, CONTENT_FIELD))
                 .withLimit((long) MAX_CHUNKS_PER_DOCUMENT)
                 // As in list(), and for the same reason: a document is commonly moved in the same

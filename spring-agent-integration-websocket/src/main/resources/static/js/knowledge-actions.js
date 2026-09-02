@@ -47,10 +47,12 @@ export function moveDocument(entry, options) {
   const done = working(t('knowledge.moving'));
   return attempt(async () => {
     // The id travels in the body, never in the path: a document indexed from a file is identified
-    // by its absolute path, and a path inside a path is not a route.
+    // by its absolute path, and a path inside a path is not a route. `from` goes with it because
+    // an id names a document only together with the knowledge base holding it — the same file can
+    // be in both of these.
     await api('/api/knowledge', {
       method: 'PATCH',
-      body: JSON.stringify({ docId: entry.docId, scope: target }),
+      body: JSON.stringify({ docId: entry.docId, from: entry.scope, scope: target }),
     });
     await options.refresh();
     toast(t('knowledge.moved'), 'settled', 2500);
@@ -63,7 +65,10 @@ export function deleteDocument(entry, options) {
     body: t('knowledge.delete.confirm'),
     action: t('knowledge.delete.action'),
     run: async () => {
-      await api(`/api/knowledge?docId=${encodeURIComponent(entry.docId)}`, { method: 'DELETE' });
+      // Scoped for the same reason the move is: deleting by id alone could not say which of two
+      // knowledge bases holding that id was meant.
+      const params = new URLSearchParams({ docId: entry.docId, scope: entry.scope });
+      await api(`/api/knowledge?${params}`, { method: 'DELETE' });
       // Off the document that no longer exists before the list is fetched again, or the panel
       // would redraw against an entry that is on its way out.
       if (options.selected) go(knowledgeRoute());

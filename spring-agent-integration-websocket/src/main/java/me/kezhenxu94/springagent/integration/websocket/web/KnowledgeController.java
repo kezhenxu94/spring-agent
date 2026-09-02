@@ -137,6 +137,11 @@ public class KnowledgeController {
    * <p>The id is a parameter rather than a path variable, the same as {@link #delete} and {@link
    * #move}: a document indexed from a file is identified by its absolute path.
    *
+   * <p>{@code scope} says which knowledge base the document is in, and is required for the reason
+   * {@link KnowledgeBase#delete} explains: an id is unique inside one base and not across them, so
+   * the same file filed privately and company-wide is two documents wearing one id. The list this
+   * is opened from reports the base per document, so the page always has it.
+   *
    * <p>Readable by an admin naming an owner, because this is a read and it shows exactly what a
    * listing already showed them the title of — {@code KnowledgeAdminTools} reads another person's
    * documents on the same terms.
@@ -145,12 +150,14 @@ public class KnowledgeController {
   public Map<String, Object> document(
       @AuthenticationPrincipal final OAuth2User principal,
       @RequestParam("docId") final String docId,
+      @RequestParam("scope") final String scope,
       @RequestParam(required = false) final String owner) {
 
     final var user = ChatController.user(principal);
+    final var readable = readableScope(user, owner);
     final var document =
         knowledgeBase()
-            .read(readableScope(user, owner), docId)
+            .read(readable, owningTarget(readable, scope), docId)
             // Not found rather than forbidden, as everywhere else here: whether somebody else's
             // document exists is not this caller's business.
             .orElseThrow(
@@ -288,8 +295,9 @@ public class KnowledgeController {
           HttpStatus.BAD_REQUEST, messages.get("knowledge-scope-unknown", ""));
     }
     final var target = targetFor(move.scope(), user);
+    final var caller = callerScope(user);
     return knowledgeBase()
-        .move(callerScope(user), move.docId(), target)
+        .move(caller, owningTarget(caller, move.from()), move.docId(), target)
         .map(KnowledgeController::asJson)
         // Not found rather than forbidden, the same as everywhere else here: whether somebody
         // else's document exists is not this caller's business.
@@ -299,16 +307,27 @@ public class KnowledgeController {
                     HttpStatus.NOT_FOUND, messages.get("knowledge-not-found", move.docId())));
   }
 
+  /**
+   * Removes one document from one knowledge base.
+   *
+   * <p>{@code scope} is required, and not because the caller might want to narrow anything: it is
+   * half of what names the document. See {@link KnowledgeBase#delete} — deleting an id across
+   * everything the caller may read would take the company's copy of a file along with their own
+   * private copy of it, and there would be no way for them to say which they meant.
+   */
   @DeleteMapping
   public ResponseEntity<Void> delete(
       @AuthenticationPrincipal final OAuth2User principal,
-      @RequestParam("docId") final String docId) {
+      @RequestParam("docId") final String docId,
+      @RequestParam("scope") final String scope) {
 
     final var user = ChatController.user(principal);
+    final var caller = callerScope(user);
+    final var owning = owningTarget(caller, scope);
     // Scoped, so a docId belonging to somebody else matches nothing rather than being refused —
     // which is also what keeps this from being a way to ask whether a document exists.
-    knowledgeBase().delete(callerScope(user), docId);
-    log.info("Knowledge document {} deleted by {}", docId, user.id());
+    knowledgeBase().delete(caller, owning, docId);
+    log.info("Knowledge document {} deleted from {} by {}", docId, owning, user.id());
     return ResponseEntity.noContent().build();
   }
 
@@ -414,6 +433,40 @@ public class KnowledgeController {
   }
 
   /**
+   * Which knowledge base a document already in one is in — the other half of its id.
+   *
+   * <p>Separate from {@link #targetFor} because that one defaults a missing scope to {@code own},
+   * which is right for a write nobody had an opinion about and wrong here: it would name a
+   * different document than the one the caller is looking at and report having acted on theirs. So
+   * this refuses a missing scope, and it refuses a group one for the same reason {@code targetFor}
+   * does — this surface puts no group on a request, so no document here is in a group base.
+   */
+  KnowledgeScope.Target owningTarget(final KnowledgeScope readable, final String scope) {
+    if (scope == null || scope.isBlank()) {
+      throw new ResponseStatusException(
+          HttpStatus.BAD_REQUEST, messages.get("knowledge-scope-required"));
+    }
+    final var target =
+        KnowledgeScope.Target.named(scope)
+            .orElseThrow(
+                () ->
+                    new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, messages.get("knowledge-scope-unknown", scope)));
+    if (target == KnowledgeScope.Target.GROUP) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, messages.get("knowledge-no-group"));
+    }
+    // A base this caller has no identity for names no document at all, and the filter throws on
+    // such a scope rather than quietly matching nothing — answering here says which knob was
+    // wrong instead of turning it into a 500. The same reasoning as {@link #narrowedTo}.
+    final var only = readable.owning(target);
+    if (!only.hasOwner() && !only.hasGroup() && !only.hasTenant()) {
+      throw new ResponseStatusException(
+          HttpStatus.BAD_REQUEST, messages.get("knowledge-no-tenant"));
+    }
+    return target;
+  }
+
+  /**
    * Which knowledge base a write goes into.
    *
    * <p>A target, not an identity — the identity is always the caller's. A group one is refused
@@ -464,5 +517,9 @@ public class KnowledgeController {
 
   public record Note(String title, String text, String scope) {}
 
-  public record Move(String docId, String scope) {}
+  /**
+   * @param from which knowledge base the document is in now, which is part of naming it
+   * @param scope which one it should end up in
+   */
+  public record Move(String docId, String from, String scope) {}
 }

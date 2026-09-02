@@ -301,7 +301,8 @@ class MilvusKnowledgeBaseTest {
       final var docId =
           store(owner, KnowledgeScope.Target.OWN, "read-note", "the badge code is 4321");
 
-      final var document = knowledgeBase.read(owner, docId).orElseThrow();
+      final var document =
+          knowledgeBase.read(owner, KnowledgeScope.Target.OWN, docId).orElseThrow();
 
       assertThat(document.text()).contains("the badge code is 4321");
       // The entry travels with it, so a caller holding only a search hit does not need a second
@@ -324,12 +325,30 @@ class MilvusKnowledgeBaseTest {
               .reduce("", String::concat);
       final var docId = store(owner, KnowledgeScope.Target.OWN, "read-policy", text);
 
-      final var document = knowledgeBase.read(owner, docId).orElseThrow();
+      final var document =
+          knowledgeBase.read(owner, KnowledgeScope.Target.OWN, docId).orElseThrow();
 
       assertThat(document.entry().chunkCount()).isGreaterThan(1);
       assertThat(document.text().indexOf("paragraph 0 "))
           .isLessThan(document.text().indexOf("paragraph 199 "));
       assertThat(document.text()).contains("paragraph 100 ");
+    }
+
+    @Test
+    @DisplayName("one id in two knowledge bases reads back as two documents, not as one mixture")
+    void readsOneKnowledgeBaseAtATime() {
+      final var owner = scope("read-both", "", "read-both-acme");
+      final var docId =
+          store(owner, KnowledgeScope.Target.OWN, "read-shared-id", "the private one");
+      store(owner, KnowledgeScope.Target.TENANT, "read-shared-id", "the company one");
+
+      // Read across the caller's whole reach these would come back as one document with both
+      // texts in it, ordered by chunk ordinals that mean nothing across two documents.
+      assertThat(knowledgeBase.read(owner, KnowledgeScope.Target.OWN, docId).orElseThrow().text())
+          .isEqualTo("the private one");
+      assertThat(
+              knowledgeBase.read(owner, KnowledgeScope.Target.TENANT, docId).orElseThrow().text())
+          .isEqualTo("the company one");
     }
 
     @Test
@@ -339,8 +358,8 @@ class MilvusKnowledgeBaseTest {
       final var mallory = scope("read-mallory", "", "");
       final var docId = store(alice, KnowledgeScope.Target.OWN, "read-private", "alice only");
 
-      assertThat(knowledgeBase.read(mallory, docId)).isEmpty();
-      assertThat(knowledgeBase.read(alice, docId)).isPresent();
+      assertThat(knowledgeBase.read(mallory, KnowledgeScope.Target.OWN, docId)).isEmpty();
+      assertThat(knowledgeBase.read(alice, KnowledgeScope.Target.OWN, docId)).isPresent();
     }
   }
 
@@ -358,7 +377,8 @@ class MilvusKnowledgeBaseTest {
       // Bob is in the same group but cannot see Alice's own document.
       assertThat(searchTitles(bob, "release")).doesNotContain("move-runbook");
 
-      final var moved = knowledgeBase.move(alice, docId, KnowledgeScope.Target.GROUP);
+      final var moved =
+          knowledgeBase.move(alice, KnowledgeScope.Target.OWN, docId, KnowledgeScope.Target.GROUP);
 
       assertThat(moved).isPresent();
       assertThat(moved.get().scope()).isEqualTo(KnowledgeScope.Target.GROUP);
@@ -378,7 +398,7 @@ class MilvusKnowledgeBaseTest {
       final var docId =
           store(owner, KnowledgeScope.Target.OWN, "move-policy", "the badge code is 4321");
 
-      knowledgeBase.move(owner, docId, KnowledgeScope.Target.TENANT);
+      knowledgeBase.move(owner, KnowledgeScope.Target.OWN, docId, KnowledgeScope.Target.TENANT);
 
       final var found = knowledgeBase.search(owner, "badge", 50);
       assertThat(found).isNotEmpty();
@@ -399,7 +419,10 @@ class MilvusKnowledgeBaseTest {
       final var mallory = scope("move-owner-mallory", "", "");
       final var docId = store(alice, KnowledgeScope.Target.OWN, "move-private", "alice only");
 
-      assertThat(knowledgeBase.move(mallory, docId, KnowledgeScope.Target.OWN)).isEmpty();
+      assertThat(
+              knowledgeBase.move(
+                  mallory, KnowledgeScope.Target.OWN, docId, KnowledgeScope.Target.OWN))
+          .isEmpty();
       assertThat(searchTitles(alice, "alice only")).contains("move-private");
       assertThat(searchTitles(mallory, "alice only")).isEmpty();
     }
@@ -412,7 +435,8 @@ class MilvusKnowledgeBaseTest {
       final var docId =
           store(alice, KnowledgeScope.Target.OWN, "move-long", "paragraph of text. ".repeat(400));
 
-      final var moved = knowledgeBase.move(alice, docId, KnowledgeScope.Target.GROUP);
+      final var moved =
+          knowledgeBase.move(alice, KnowledgeScope.Target.OWN, docId, KnowledgeScope.Target.GROUP);
 
       assertThat(moved).isPresent();
       assertThat(moved.get().chunkCount()).isGreaterThan(1);
@@ -576,11 +600,37 @@ class MilvusKnowledgeBaseTest {
       final var docId =
           store(owner, KnowledgeScope.Target.OWN, "del-doc", "sentence to remove. ".repeat(400));
 
-      knowledgeBase.delete(owner, docId);
+      knowledgeBase.delete(owner, KnowledgeScope.Target.OWN, docId);
 
       final var titles =
           knowledgeBase.list(owner, 0, 50).entries().stream().map(e -> e.title()).toList();
       assertThat(titles).doesNotContain("del-doc");
+    }
+
+    @Test
+    @DisplayName("one id in two knowledge bases: the copy that was named goes, the other stays")
+    void deletesOnlyTheNamedKnowledgeBase() {
+      // What happens whenever somebody files what they had already filed: a file's absolute path
+      // is its id, so the private copy and the company's wear the same one. Deleting across
+      // everything the caller can read would take the company's document away with theirs, and
+      // nobody would be able to say which of the two they had asked to remove.
+      final var owner = scope("del-both", "", "del-both-acme");
+      final var docId = store(owner, KnowledgeScope.Target.OWN, "del-shared-id", "the private one");
+      store(owner, KnowledgeScope.Target.TENANT, "del-shared-id", "the company one");
+
+      knowledgeBase.delete(owner, KnowledgeScope.Target.OWN, docId);
+
+      final var left =
+          knowledgeBase.list(owner, 0, 50).entries().stream()
+              .filter(e -> docId.equals(e.docId()))
+              .toList();
+      assertThat(left)
+          .singleElement()
+          .extracting(KnowledgeEntry::scope)
+          .isEqualTo(KnowledgeScope.Target.TENANT);
+      assertThat(
+              knowledgeBase.read(owner, KnowledgeScope.Target.TENANT, docId).orElseThrow().text())
+          .isEqualTo("the company one");
     }
 
     @Test
@@ -590,7 +640,7 @@ class MilvusKnowledgeBaseTest {
       final var bob = scope("delx-bob", "", "");
       final var aliceDoc = store(alice, KnowledgeScope.Target.OWN, "delx-alice-doc", "mine");
 
-      knowledgeBase.delete(bob, aliceDoc);
+      knowledgeBase.delete(bob, KnowledgeScope.Target.OWN, aliceDoc);
 
       final var titles =
           knowledgeBase.list(alice, 0, 50).entries().stream().map(e -> e.title()).toList();
