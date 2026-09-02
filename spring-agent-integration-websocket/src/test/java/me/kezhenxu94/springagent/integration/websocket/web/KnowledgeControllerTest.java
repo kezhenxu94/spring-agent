@@ -108,6 +108,59 @@ class KnowledgeControllerTest {
   }
 
   @Test
+  @DisplayName("narrowing a listing to one scope reaches only what that scope owns")
+  void narrowedListings() {
+    final var controller = controller(new Recorder(), Set.of(), null);
+    final var readable = scope(ME, TENANT);
+
+    // Nothing asked for is everything the caller may read, which is what a listing has always been.
+    assertThat(controller.narrowedTo(readable, null)).isEqualTo(readable);
+    assertThat(controller.narrowedTo(readable, " ")).isEqualTo(readable);
+    // And each half of it on its own carries exactly one identity, so the filter built from it
+    // cannot fall back on a blank field as a wildcard — see KnowledgeScopeFilter.
+    assertThat(controller.narrowedTo(readable, "own")).isEqualTo(new KnowledgeScope(ME, "", ""));
+    assertThat(controller.narrowedTo(readable, "tenant"))
+        .isEqualTo(new KnowledgeScope("", "", TENANT));
+  }
+
+  @Test
+  @DisplayName("narrowing can only shrink what the caller may read, never reach past it")
+  void narrowingNeverWidens() {
+    final var controller = controller(new Recorder(), Set.of(ME), null);
+    // An admin reading somebody else reads that person's own knowledge base and no tenant, so
+    // there is no company scope to narrow to — refused rather than answered with the admin's own.
+    final var theirs = controller.readableScope(user(ME, TENANT), "ou_someone_else");
+    assertThatThrownBy(() -> controller.narrowedTo(theirs, "tenant"))
+        .isInstanceOf(ResponseStatusException.class);
+    assertThat(controller.narrowedTo(theirs, "own")).isEqualTo(theirs);
+
+    // The same refusal for a sign-in that carries no company at all.
+    assertThatThrownBy(() -> controller.narrowedTo(scope(ME, ""), "tenant"))
+        .isInstanceOf(ResponseStatusException.class);
+    // And the two words this surface has no identity for or does not know.
+    assertThatThrownBy(() -> controller.narrowedTo(scope(ME, TENANT), "group"))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("group knowledge base");
+    assertThatThrownBy(() -> controller.narrowedTo(scope(ME, TENANT), "everyone"))
+        .isInstanceOf(ResponseStatusException.class);
+  }
+
+  @Test
+  @DisplayName("the scope a listing was asked for is the scope the store is given")
+  void listingPassesTheNarrowedScope() {
+    final var recorder = new Recorder();
+    final var controller = controller(recorder, Set.of(), null);
+
+    // A page size is stated rather than left to the configured default, which these properties do
+    // not carry — the assertion is about the scope, not about paging.
+    controller.list(principal(ME, TENANT), null, 10, null, null);
+    controller.list(principal(ME, TENANT), null, 10, null, "tenant");
+
+    assertThat(recorder.listed)
+        .containsExactly(scope(ME, TENANT), new KnowledgeScope("", "", TENANT));
+  }
+
+  @Test
   @DisplayName("deletes with the caller's scope, so another person's document id reaches nothing")
   void deleteIsScoped() {
     final var recorder = new Recorder();
@@ -371,6 +424,7 @@ class KnowledgeControllerTest {
     private final List<Map.Entry<KnowledgeScope, String>> deleted = new ArrayList<>();
     private final List<Map.Entry<KnowledgeScope, String>> moved = new ArrayList<>();
     private final List<Map.Entry<KnowledgeScope, String>> readDocuments = new ArrayList<>();
+    private final List<KnowledgeScope> listed = new ArrayList<>();
 
     @Override
     public String index(final KnowledgeSource source) {
@@ -380,6 +434,7 @@ class KnowledgeControllerTest {
 
     @Override
     public KnowledgePage list(final KnowledgeScope scope, final int offset, final int limit) {
+      listed.add(scope);
       return KnowledgePage.EMPTY;
     }
 

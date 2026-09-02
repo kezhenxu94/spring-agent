@@ -19,6 +19,40 @@ export function icon(name, size = 15) {
     aria-hidden="true">${ICONS[name]}</svg>`;
 }
 
+/** Long enough to cover a commit's own keydown arriving after it, short enough to feel absent. */
+const COMPOSITION_TAIL = 80;
+
+let composedAt = -Infinity;
+
+/**
+ * Whether a Return press is the one that acts, or one an input method is still using.
+ *
+ * Typing Chinese, Japanese or Korean means typing latin letters into the input method and pressing
+ * Return to accept what it made of them — often the latin letters themselves, when none of the
+ * candidates is what was wanted. That Return reaches the page as a keydown like any other, so a
+ * handler that only asks for `Enter` sends `doc` the moment somebody meant to keep typing.
+ *
+ * Asking `isComposing` is not enough on its own, and this is the part that bites on macOS. The
+ * committing key ends the composition and fires Return, but the order of the two is the browser's
+ * business: WebKit ends the composition first, so by the time the keydown arrives `isComposing` is
+ * already false and the press looks exactly like a deliberate one. So a composition that has only
+ * just ended counts as still going. Nobody commits an input method's text and means to send within
+ * the same handful of milliseconds — the commit was itself a keypress, and a second one cannot
+ * follow it that fast.
+ *
+ * Every Return this page acts on has to ask, which is why it is one function here rather than a
+ * condition remembered in three places.
+ */
+export const submits = (event) => event.key === 'Enter'
+  && !event.isComposing
+  && performance.now() - composedAt > COMPOSITION_TAIL;
+
+// One listener for every input on the page, registered once and in the capture phase so nothing on
+// the way up can stop this from seeing a composition end.
+document.addEventListener('compositionend', () => {
+  composedAt = performance.now();
+}, true);
+
 export function humanSize(bytes) {
   if (bytes < 1024) return `${bytes}B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;

@@ -78,3 +78,14 @@
 }
 #knowledge-panel.knowledge-open .knowledge-text-box { flex: 1; min-height: 0; }
 #knowledge-panel.knowledge-open .knowledge-text { flex: 1; min-height: 0; max-height: none; }
+
+/* ─────────────────────────────────────── a narrowed list ───────────────────────────────────────
+ *
+ * The menu deciding what the list shows sits next to the search box as an icon, so with a scope or
+ * somebody else's knowledge base chosen there is nothing on screen saying the list is not all of
+ * it — the note bar says so in words, but it is also where a search's result count goes and only
+ * one of the three can be said at a time. The trigger therefore carries the fact itself, raised
+ * the way .row-menu is while its own menu is open. No state colour, for the reason at the top of
+ * this file.
+ */
+#knowledge-view[data-on="true"] { color: var(--fg); background: var(--code-bg); }

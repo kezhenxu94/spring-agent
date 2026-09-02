@@ -35,6 +35,10 @@ public record KnowledgeScope(String owner, String group, String tenant) {
         ToolContexts.get(context, ToolContexts.TENANT_ID));
   }
 
+  public boolean hasOwner() {
+    return !owner.isEmpty();
+  }
+
   public boolean hasGroup() {
     return !group.isEmpty();
   }

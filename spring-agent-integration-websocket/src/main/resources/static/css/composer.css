@@ -41,6 +41,12 @@
 }
 .tool-button:hover { color: var(--fg); background: var(--code-bg); }
 .tool-button:focus-visible { outline: 2px solid var(--mist); outline-offset: 1px; }
+/* The `display` above is an author rule, and the only thing saying `[hidden]` means invisible is
+   the browser's own stylesheet, which every author rule beats regardless of specificity. So a
+   .tool-button the page hides with the attribute — the knowledge base hides two of them — would
+   stay on screen. Here rather than beside those buttons, because it is a fact about this class
+   rather than about them, and .drawer-only next door is the same lesson learnt the hard way. */
+.tool-button[hidden] { display: none; }
 
 .composer-box {
   position: relative;

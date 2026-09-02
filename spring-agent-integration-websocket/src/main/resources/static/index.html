@@ -162,12 +162,16 @@
     </div>
 
     <!--
-      The primary action, which is whichever thing the section on screen makes: a conversation, or
-      something for the agent to remember. One slot rather than two buttons side by side, because
-      only one of them is ever the thing you came to the sidebar to do.
+      Starting a conversation, which is the one thing worth a row of its own: it is what somebody
+      came to this page to do, and it is a sentence rather than an icon because there is nothing
+      beside it to be confused with.
+
+      The other two sections make their own things in their own panels — a task by asking the agent
+      for one, a document from the controls above the knowledge list — so this slot goes on those
+      rather than holding a button that would have to be explained. See selectTab, and note that
+      the slot sits below the tab strip for that reason: the tabs would otherwise move as you
+      switched between them.
     -->
-    <!-- Empty on a section that makes nothing — see selectTab — which is why it sits below the
-         strip rather than above it: the tabs would otherwise move as you switched between them. -->
     <div id="primary-action" class="px-3 pb-3">
       <button id="new-conversation"
               class="group flex w-full items-center gap-2 rounded-lg border border-zinc-300 px-3 py-2
@@ -176,14 +180,6 @@
                      dark:border-edge dark:hover:border-mist dark:hover:bg-rail">
         <span class="text-mist transition group-hover:text-signal">+</span>
         <span data-i18n="nav.new">New conversation</span>
-      </button>
-      <button id="new-knowledge" type="button" hidden
-              class="group flex w-full items-center gap-2 rounded-lg border border-zinc-300 px-3 py-2
-                     text-[13px] font-medium transition hover:border-zinc-400 hover:bg-white
-                     focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal
-                     dark:border-edge dark:hover:border-mist dark:hover:bg-rail">
-        <span class="text-mist transition group-hover:text-signal">+</span>
-        <span data-i18n="knowledge.add">Add to the knowledge base</span>
       </button>
     </div>
 
@@ -208,12 +204,61 @@
         The same list, for the other thing this agent keeps: one row per document, opened the way a
         conversation is opened. Search sits above it and replaces what the list shows, so there is
         one list to read rather than a second one somewhere else.
+
+        One line of controls, then one line of state. Three things can narrow this list — a search,
+        a scope, somebody else's knowledge base — and rather than a badge for each they resolve to
+        one sentence in the note bar; see describe() in knowledge.js. Adding and narrowing are
+        icons because the list is what this column is for, and neither of them is worth a row.
       -->
       <div id="tab-knowledge" role="tabpanel" aria-labelledby="tab-knowledge-button" hidden>
-        <input id="knowledge-search" type="search" autocomplete="off"
-               class="mb-2 w-full rounded-md border border-zinc-300 bg-transparent px-2 py-1.5
-                      text-[12.5px] outline-none focus:border-signal dark:border-edge"
-               data-i18n-placeholder="knowledge.search.placeholder">
+        <div class="mb-2 flex items-center gap-1">
+          <input id="knowledge-search" type="search" autocomplete="off"
+                 class="min-w-0 flex-1 rounded-md border border-zinc-300 bg-transparent px-2 py-1.5
+                        text-[12.5px] outline-none focus:border-signal dark:border-edge"
+                 data-i18n-placeholder="knowledge.search.placeholder">
+          <button id="knowledge-add-button" type="button" class="tool-button shrink-0"
+                  data-i18n-title="knowledge.add">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+                 stroke-linecap="round" class="size-[15px]" aria-hidden="true">
+              <path d="M8 3.5v9M3.5 8h9"/>
+            </svg>
+            <span class="sr-only" data-i18n="knowledge.add">Add to the knowledge base</span>
+          </button>
+          <!-- Hidden until initView finds something to put in it: a menu offering one row, or
+               none, says the feature is broken rather than that it is not this person's to use. -->
+          <button id="knowledge-view" type="button" hidden class="tool-button shrink-0"
+                  aria-haspopup="menu" aria-expanded="false" data-i18n-title="knowledge.view">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+                 stroke-linecap="round" stroke-linejoin="round" class="size-[15px]"
+                 aria-hidden="true">
+              <path d="M2.8 3.8h10.4L9.3 8.6v3.8L6.7 11V8.6z"/>
+            </svg>
+            <span class="sr-only" data-i18n="knowledge.view">What this list shows</span>
+          </button>
+        </div>
+
+        <!--
+          Reading somebody else's, for an admin. Revealed by the menu above rather than standing
+          open: it is the rarest thing this column does, and the menu row that reveals it has
+          already named it — which is why there is no caption here.
+        -->
+        <div id="knowledge-owner-row" hidden class="mb-2 flex items-center gap-1">
+          <input id="knowledge-owner" type="text" autocomplete="off"
+                 class="min-w-0 flex-1 rounded-md border border-zinc-300 bg-transparent px-2 py-1
+                        font-mono text-[12px] outline-none focus:border-signal dark:border-edge"
+                 data-i18n-placeholder="knowledge.owner.placeholder">
+          <button id="knowledge-owner-open" type="button" class="panel-action shrink-0"
+                  data-i18n="knowledge.owner.browse">Open</button>
+          <button id="knowledge-owner-clear" type="button" hidden class="tool-button shrink-0"
+                  data-i18n-title="knowledge.owner.mine">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+                 stroke-linecap="round" class="size-[14px]" aria-hidden="true">
+              <path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2"/>
+            </svg>
+            <span class="sr-only" data-i18n="knowledge.owner.mine">Back to mine</span>
+          </button>
+        </div>
+
         <p id="knowledge-note-bar" hidden class="px-1 pb-1.5 text-[11px] leading-snug text-mist"></p>
         <ul id="knowledge-list" class="space-y-px"></ul>
         <button id="knowledge-more" type="button" hidden
@@ -387,22 +432,6 @@
                       data-i18n="knowledge.cancel">Cancel</button>
             </div>
           </form>
-        </div>
-
-        <!-- Reading somebody else's, for an admin. Drawn only when /api/me says so. -->
-        <div id="knowledge-admin" hidden
-             class="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-zinc-300
-                    px-3 py-2 dark:border-edge">
-          <span class="font-mono text-[10px] uppercase tracking-wider text-mist"
-                data-i18n="knowledge.owner">Read another person</span>
-          <input id="knowledge-owner" type="text" autocomplete="off"
-                 class="min-w-0 flex-1 rounded-md border border-zinc-300 bg-transparent px-2 py-1
-                        font-mono text-[12px] outline-none focus:border-signal dark:border-edge"
-                 data-i18n-placeholder="knowledge.owner.placeholder">
-          <button id="knowledge-owner-open" type="button" class="panel-action"
-                  data-i18n="knowledge.owner.browse">Open</button>
-          <button id="knowledge-owner-clear" type="button" class="panel-action" hidden
-                  data-i18n="knowledge.owner.mine">Back to mine</button>
         </div>
       </div>
     </section>

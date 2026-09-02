@@ -23,8 +23,13 @@ export function closeMenu() {
 /**
  * Opens a menu against `trigger`.
  *
- * Items are `{ label, danger, onSelect }`, and anything falsy in the list is dropped so a caller
- * can write a conditional entry inline rather than assembling the array in two steps.
+ * Items are `{ label, danger, checked, onSelect }`, and anything falsy in the list is dropped so a
+ * caller can write a conditional entry inline rather than assembling the array in two steps.
+ *
+ * `checked` absent and `checked: false` are different things: absent is a command, and false is one
+ * of a set of choices that is not the current one. A choice gets the radio role and a tick column,
+ * so its rows line up whichever of them is ticked — the same shape the language menu draws in
+ * markup, which is what this is here to let a caller build from JavaScript.
  */
 export function openMenu(trigger, items) {
   closeMenu();
@@ -40,9 +45,17 @@ export function openMenu(trigger, items) {
     item.setAttribute('role', 'none');
     const button = document.createElement('button');
     button.type = 'button';
-    button.setAttribute('role', 'menuitem');
     button.className = entry.danger ? 'menu-item menu-item-danger' : 'menu-item';
-    button.textContent = entry.label;
+    const choice = typeof entry.checked === 'boolean';
+    button.setAttribute('role', choice ? 'menuitemradio' : 'menuitem');
+    if (choice) {
+      button.setAttribute('aria-checked', String(entry.checked));
+      const tick = document.createElement('span');
+      tick.className = 'menu-tick';
+      tick.textContent = entry.checked ? '✓' : '';
+      button.append(tick);
+    }
+    button.append(document.createTextNode(entry.label));
     button.addEventListener('click', () => {
       closeMenu();
       entry.onSelect();
