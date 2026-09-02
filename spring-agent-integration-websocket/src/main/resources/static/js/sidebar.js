@@ -68,10 +68,9 @@ export function selectTab(view) {
     button.setAttribute('aria-selected', String(on));
     $(`tab-${name}`).hidden = !on;
   });
-  // The primary action is whichever thing the section on screen makes — and the schedule makes
-  // nothing here: a task is created by asking the agent for one, so the slot goes rather than
-  // holding a button that would have to be explained.
-  $('new-conversation').hidden = view !== 'conversations';
-  $('new-knowledge').hidden = view !== 'knowledge';
-  $('primary-action').hidden = view === 'tasks';
+  // The primary action belongs to the conversations, and only to them. The other two sections make
+  // their own things in their own panels — a task by asking the agent for one, a document from the
+  // controls above the knowledge list — so the slot goes rather than holding a button that would
+  // have to be explained.
+  $('primary-action').hidden = view !== 'conversations';
 }

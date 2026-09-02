@@ -437,7 +437,10 @@ comes from asking the agent for one.
 **The knowledge base is the third of those tabs**, wherever a deployment has one at all
 (`RAG_ENABLED`, plus a Milvus to point it at — see the knowledge base above). Documents are listed
 there the way conversations are — one row per document rather than per chunk, opened by clicking it,
-shared or deleted from the ⋯ menu on the row — and the box above the list searches them. Opening one
+shared or deleted from the ⋯ menu on the row — and the box above the list searches them. Beside that
+box are two icons: one adds to the knowledge base, and one chooses what the list shows — everything
+you can read, only your own documents, or only the company's. A chosen scope narrows a search as
+well as the list, and the line under the box says which of the three you are looking at. Opening one
 shows where it came from, how many chunks it was split into, who else can read it and **what it
 actually says**: the stored text, rendered as markdown, which is the same text the agent is handed
 when it retrieves the document. Adding is on the same screen:
@@ -448,7 +451,8 @@ conversation reaches with `ListKnowledgeBase`, `IndexKnowledge`, `SearchKnowledg
 next message, and what a run stored is what this list shows. There is no group knowledge base in
 the browser: a group is a group chat, and this surface has none.
 
-Somebody listed in `ADMINS` gets one thing more: a box to name another person's user id and read
+Somebody listed in `ADMINS` gets one thing more, in that same menu: `Read another person` asks for a
+user id and lists
 their knowledge base — listing, searching and reading a document, and nothing else. That mirrors the admin tools
 (`ListOwnerKnowledgeBase`, `SearchOwnerKnowledge`) exactly, and like them it is for the person who
 maintains what the agent knows. Deleting or re-scoping somebody else's document is not offered

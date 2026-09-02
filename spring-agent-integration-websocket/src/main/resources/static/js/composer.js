@@ -1,7 +1,7 @@
 // The box at the bottom: what it can send, and what it looks like while a run is going.
 
 import { t } from './i18n.js';
-import { $, scrollToEnd } from './dom.js';
+import { $, scrollToEnd, submits } from './dom.js';
 import { api } from './api.js';
 import { attempt, toast } from './toast.js';
 import { busyButton } from './busy.js';
@@ -108,7 +108,7 @@ export function initComposer() {
     refreshSendState();
   });
   composer.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (submits(event) && !event.shiftKey) {
       event.preventDefault();
       send();
     }

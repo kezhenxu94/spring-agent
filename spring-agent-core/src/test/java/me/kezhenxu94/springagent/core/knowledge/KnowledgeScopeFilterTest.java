@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.core.knowledge;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
@@ -172,6 +173,68 @@ class KnowledgeScopeFilterTest {
 
       assertThat(readableIds(store, new KnowledgeScope("alice", "", "")))
           .containsExactly("alice-own");
+    }
+
+    @Test
+    @DisplayName("a blank owner does not read everything a group or a tenant owns")
+    void blankOwnerIsNotAWildcard() {
+      // The same leak from the other side, and the one a narrowed read walks into: every
+      // group-owned and tenant-owned document stores owner="", so an `owner == ""` clause would
+      // hand over every other tenant's knowledge base along with this one's.
+      final var store =
+          storeOf(
+              chunk("acme-wide", "", "", "acme"),
+              chunk("globex-wide", "", "", "globex"),
+              chunk("eng-shared", "", "eng", ""));
+
+      assertThat(printReadable(new KnowledgeScope("", "", "acme"))).doesNotContain("owner");
+      assertThat(readableIds(store, new KnowledgeScope("", "", "acme")))
+          .containsExactly("acme-wide");
+    }
+  }
+
+  /**
+   * Reading one of the scopes rather than all of them, which is what {@code KnowledgeController}
+   * hands the store when the page asks for its own documents or the company's — see {@link
+   * KnowledgeScope#owning}.
+   */
+  @Nested
+  class NarrowedToOneTarget {
+
+    private final SimpleVectorStore store =
+        storeOf(
+            chunk("alice-own", "alice", "", ""),
+            chunk("bob-own", "bob", "", ""),
+            chunk("acme-wide", "", "", "acme"),
+            chunk("globex-wide", "", "", "globex"));
+
+    private final KnowledgeScope alice = new KnowledgeScope("alice", "", "acme");
+
+    @Test
+    @DisplayName("narrowed to the tenant, the filter is that tenant alone")
+    void tenantOnly() {
+      final var only = alice.owning(KnowledgeScope.Target.TENANT);
+
+      assertThat(printReadable(only)).isEqualTo("tenant EQ \"acme\"");
+      assertThat(readableIds(store, only)).containsExactly("acme-wide");
+    }
+
+    @Test
+    @DisplayName("narrowed to their own, the filter is that owner alone")
+    void ownOnly() {
+      final var only = alice.owning(KnowledgeScope.Target.OWN);
+
+      assertThat(printReadable(only)).isEqualTo("owner EQ \"alice\"");
+      assertThat(readableIds(store, only)).containsExactly("alice-own");
+    }
+
+    @Test
+    @DisplayName("a scope carrying no identity at all is refused rather than answered")
+    void nothingAtAll() {
+      // What narrowing to the tenant of a scope that has none would produce. An empty result would
+      // say the company knowledge base is empty, and be believed.
+      assertThatThrownBy(() -> printReadable(new KnowledgeScope("", "", "")))
+          .isInstanceOf(IllegalArgumentException.class);
     }
   }
 

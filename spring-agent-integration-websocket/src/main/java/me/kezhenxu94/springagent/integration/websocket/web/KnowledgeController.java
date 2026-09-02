@@ -79,7 +79,8 @@ public class KnowledgeController {
       @AuthenticationPrincipal final OAuth2User principal,
       @RequestParam(required = false) final Integer offset,
       @RequestParam(required = false) final Integer limit,
-      @RequestParam(required = false) final String owner) {
+      @RequestParam(required = false) final String owner,
+      @RequestParam(required = false) final String scope) {
 
     final var user = ChatController.user(principal);
     final var from = offset == null || offset < 0 ? 0 : offset;
@@ -88,7 +89,8 @@ public class KnowledgeController {
             MAX_PAGE_SIZE,
             limit == null || limit <= 0 ? properties.ai().rag().listPageSize() : limit);
 
-    final var page = knowledgeBase().list(readableScope(user, owner), from, size);
+    final var page =
+        knowledgeBase().list(narrowedTo(readableScope(user, owner), scope), from, size);
     final var out = new LinkedHashMap<String, Object>();
     out.put("entries", page.entries().stream().map(KnowledgeController::asJson).toList());
     out.put("hasMore", page.hasMore());
@@ -102,14 +104,16 @@ public class KnowledgeController {
       @AuthenticationPrincipal final OAuth2User principal,
       @RequestParam("q") final String query,
       @RequestParam(required = false) final Integer topK,
-      @RequestParam(required = false) final String owner) {
+      @RequestParam(required = false) final String owner,
+      @RequestParam(required = false) final String scope) {
 
     final var user = ChatController.user(principal);
     if (query == null || query.isBlank()) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, messages.get("knowledge-no-query"));
     }
     final var limit = topK == null || topK <= 0 ? properties.ai().rag().topK() : topK;
-    final var found = knowledgeBase().search(readableScope(user, owner), query, limit);
+    final var found =
+        knowledgeBase().search(narrowedTo(readableScope(user, owner), scope), query, limit);
 
     // Per document rather than per passage, and deduped by the same rule a card's citations use:
     // five chunks of one file are one thing somebody stored, and listing them five times would say
@@ -368,6 +372,45 @@ public class KnowledgeController {
           HttpStatus.FORBIDDEN, messages.get("knowledge-owner-forbidden"));
     }
     return new KnowledgeScope(owner.trim(), "", "");
+  }
+
+  /**
+   * The same reach, narrowed to one of the scopes in it — what the page asks for when somebody
+   * wants to read their own notes without the company's documents mixed into the list, or the
+   * company's without their own.
+   *
+   * <p>A second step over {@link #readableScope}'s result rather than a parameter threaded into it,
+   * and that is the point: it can only ever shrink what that method decided, so no combination of
+   * {@code owner} and {@code scope} can reach further than {@code owner} alone already did.
+   *
+   * <p>{@link KnowledgeScope#owning} does the narrowing, which is the same method a write uses to
+   * decide what to stamp a new document with — so "owned by the company" has one spelling in this
+   * codebase rather than two that could disagree.
+   *
+   * <p>The refusal at the end is not defensive. Narrowing to a scope the caller does not have
+   * leaves no identity at all, and {@code KnowledgeScopeFilter} throws on such a scope rather than
+   * quietly matching nothing; answering here says which knob was wrong instead of turning that into
+   * a 500.
+   */
+  KnowledgeScope narrowedTo(final KnowledgeScope readable, final String scope) {
+    if (scope == null || scope.isBlank()) {
+      return readable;
+    }
+    final var target =
+        KnowledgeScope.Target.named(scope)
+            .orElseThrow(
+                () ->
+                    new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, messages.get("knowledge-scope-unknown", scope)));
+    if (target == KnowledgeScope.Target.GROUP) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, messages.get("knowledge-no-group"));
+    }
+    final var only = readable.owning(target);
+    if (!only.hasOwner() && !only.hasGroup() && !only.hasTenant()) {
+      throw new ResponseStatusException(
+          HttpStatus.BAD_REQUEST, messages.get("knowledge-no-tenant"));
+    }
+    return only;
   }
 
   /**

@@ -14,11 +14,13 @@ import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder.Op;
  * independent keys rather than one packed string: a reader reaches a document through any scope it
  * belongs to.
  *
- * <p><b>A clause is emitted only for a non-blank identity.</b> This is the correctness requirement,
- * not a tidiness one. Documents carry blank strings for the scopes that do not apply to them, so a
- * request with no tenant that emitted {@code tenant == ''} would match every user-scoped document
- * in the deployment — every other user's knowledge, handed to whoever asked. The tests cover that
- * case by name.
+ * <p><b>A clause is emitted only for a non-blank identity, all three of them included.</b> This is
+ * the correctness requirement, not a tidiness one. Documents carry blank strings for the scopes
+ * that do not apply to them, so a request with no tenant that emitted {@code tenant == ''} would
+ * match every user-scoped document in the deployment — every other user's knowledge, handed to
+ * whoever asked — and a scope narrowed to one target, whose owner is blank, would do the same
+ * through {@code owner == ''} for everything a group or a tenant owns. A scope carrying none of the
+ * three is refused rather than answered. The tests cover each case by name.
  *
  * <p>Only {@code eq}, {@code or}, {@code and} and {@code group} are built here. Milvus' filter
  * converter has no case for {@code ISNULL}/{@code ISNOTNULL} and throws when it meets one, so "this
@@ -110,13 +112,35 @@ public class KnowledgeScopeFilter {
     return b.and(grouped(b, scope), b.eq(KnowledgeMetadata.CHUNK, 0)).build();
   }
 
+  /**
+   * One {@code or} branch per identity the scope actually carries.
+   *
+   * <p>The owner clause is conditional for exactly the reason the other two are. A scope with a
+   * blank owner is not hypothetical — it is what narrowing a read to one target produces, see
+   * {@link KnowledgeScope#owning} — and {@code owner == ''} would match every group-owned and
+   * tenant-owned document in the deployment, other tenants' included, because a document stores a
+   * blank in the two scopes that do not apply to it.
+   *
+   * <p>A scope carrying no identity at all reaches nothing, and asking what it may read is a
+   * mistake in the caller rather than a query with an empty answer. It throws instead of returning
+   * a match-nothing expression, which would answer "your knowledge base is empty" and be believed.
+   */
   private static Op disjunction(final FilterExpressionBuilder b, final KnowledgeScope scope) {
-    var op = b.eq(KnowledgeMetadata.OWNER, scope.owner());
+    Op op = null;
+    if (scope.hasOwner()) {
+      op = b.eq(KnowledgeMetadata.OWNER, scope.owner());
+    }
     if (scope.hasGroup()) {
-      op = b.or(op, b.eq(KnowledgeMetadata.GROUP, scope.group()));
+      final var group = b.eq(KnowledgeMetadata.GROUP, scope.group());
+      op = op == null ? group : b.or(op, group);
     }
     if (scope.hasTenant()) {
-      op = b.or(op, b.eq(KnowledgeMetadata.TENANT, scope.tenant()));
+      final var tenant = b.eq(KnowledgeMetadata.TENANT, scope.tenant());
+      op = op == null ? tenant : b.or(op, tenant);
+    }
+    if (op == null) {
+      throw new IllegalArgumentException(
+          "A knowledge scope with no owner, group or tenant reaches nothing");
     }
     return op;
   }
@@ -127,6 +151,10 @@ public class KnowledgeScopeFilter {
    */
   private static Op grouped(final FilterExpressionBuilder b, final KnowledgeScope scope) {
     final var op = disjunction(b, scope);
-    return scope.hasGroup() || scope.hasTenant() ? b.group(op) : op;
+    return branches(scope) > 1 ? b.group(op) : op;
+  }
+
+  private static int branches(final KnowledgeScope scope) {
+    return (scope.hasOwner() ? 1 : 0) + (scope.hasGroup() ? 1 : 0) + (scope.hasTenant() ? 1 : 0);
   }
 }
