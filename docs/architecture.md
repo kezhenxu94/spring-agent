@@ -250,6 +250,24 @@ or tenant asked the agent to remember, lives behind the `KnowledgeBase` SPI, and
 collection and connection. A deployment can run the index in the heap and the knowledge base in
 Milvus.
 
+The knowledge base is also the one store a surface reaches **without a run in between**: the browser
+surface reads and writes it directly over `/api/knowledge`, on the identity of whoever is logged in.
+Everywhere else a store is touched by a tool inside a run.
+
+```mermaid
+flowchart LR
+    page[the page] -->|"/api/knowledge"| ctrl[KnowledgeController]
+    page -->|"POST a message"| chat[ChatController]
+    chat --> run[a run]
+    run -->|"knowledge tools"| kbs[KnowledgeBase SPI]
+    ctrl --> kbs
+    kbs --> store[(its own Milvus collection)]
+```
+
+The scope is derived from the session in both paths and never from the request, so the page can
+reach exactly what a run started from it could — with one exception, an `app.ai.admins` member
+naming an owner on a read, which mirrors `KnowledgeAdminTools` and goes no further.
+
 ## What may depend on what
 
 ```mermaid

@@ -1,0 +1,93 @@
+/* ─────────────────────────────────────── the question ───────────────────────────────────────
+ *
+ * Violet, which is used for nothing else, because "the agent is waiting on a person" is the one
+ * state that will not resolve itself.
+ */
+
+.question {
+  border: 1px solid color-mix(in oklch, var(--waiting) 55%, transparent);
+  background: color-mix(in oklch, var(--waiting) 9%, transparent);
+  border-radius: 0.7rem;
+  padding: 0.8rem 0.9rem;
+}
+
+.question-option {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  padding: 0.25rem 0.4rem;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.question-option:hover { background: color-mix(in oklch, var(--waiting) 14%, transparent); }
+.question-option input { margin-top: 0.28rem; accent-color: var(--waiting); }
+
+/* ─────────────────────────────────────── the composer ───────────────────────────────────────
+ *
+ * A toolbar of what can be added to a message, then the box the message is typed in with the one
+ * action that sends it in the corner of that same box. The frame is the box's, not the textarea's,
+ * so focus reads as belonging to the whole composer.
+ */
+
+.tool-button {
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 0.5rem;
+  color: var(--fg-dim);
+  transition: color 120ms ease, background 120ms ease;
+}
+.tool-button:hover { color: var(--fg); background: var(--code-bg); }
+.tool-button:focus-visible { outline: 2px solid var(--mist); outline-offset: 1px; }
+
+.composer-box {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--surface);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+:root:not(.dark) .composer-box { background: #fff; border-color: #D8DBE1; }
+
+/* Amber is the run's colour, and a focused composer is not a run — so focus is carried by contrast
+   and a neutral ring rather than by borrowing a state colour. */
+.composer-box:focus-within {
+  border-color: var(--mist);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--mist) 16%, transparent);
+}
+
+.composer-action {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.6rem;
+  background: var(--fg);
+  color: var(--surface);
+  transition: opacity 120ms ease, background 120ms ease;
+}
+/* Scoped away from the stop button: `:root:not(.dark) .composer-action` out-specifies
+   `.composer-action-stop`, so without the :not() the stop icon inherited the send button's white
+   and vanished into its own pale amber. */
+:root:not(.dark) .composer-action:not(.composer-action-stop) { color: #fff; }
+.composer-action:focus-visible { outline: 2px solid var(--mist); outline-offset: 2px; }
+
+/* Dimmed and inert while there is nothing to send, so the control says whether it will do anything
+   before it is pressed. */
+.composer-action[disabled] {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.composer-action-stop {
+  background: color-mix(in oklch, var(--signal) 16%, transparent);
+  color: var(--signal-fg);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--signal) 50%, transparent);
+}
+.composer-action-stop:hover { background: color-mix(in oklch, var(--signal) 26%, transparent); }
+

@@ -47,11 +47,15 @@ public class FileController {
 
   /**
    * Enough for a document or a log; a bigger payload belongs somewhere the agent can be pointed at.
+   *
+   * <p>Package-private, along with {@link #MAX_FILES}, {@link #artifactPath} and {@link #free},
+   * because {@code KnowledgeController} takes uploads too and the guard on what may be written into
+   * somebody's home should be one guard rather than two that drift.
    */
-  private static final long MAX_BYTES = 32L * 1024 * 1024;
+  static final long MAX_BYTES = 32L * 1024 * 1024;
 
   /** A run is given a handful of files to look at, not a directory tree. */
-  private static final int MAX_FILES = 10;
+  static final int MAX_FILES = 10;
 
   private final ChatSessions sessions;
   private final UserWorkspaceFactory workspaces;
@@ -157,7 +161,7 @@ public class FileController {
    * <p>Uploading {@code report.pdf} twice keeps both. Overwriting would be the quiet destruction of
    * something the agent may have been told about an hour ago, and this is a person's own storage.
    */
-  private static Path free(final Path destination) {
+  static Path free(final Path destination) {
     if (!Files.exists(destination)) {
       return destination;
     }

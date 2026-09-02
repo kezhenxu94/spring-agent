@@ -75,9 +75,12 @@ public class SecurityConfigurer {
                     .requestMatchers(
                         "/",
                         "/index.html",
-                        "/app.js",
-                        "/render.js",
-                        "/i18n.js",
+                        // Prefixes rather than a file each: the page is a set of ES modules and a
+                        // stylesheet that imports its parts, and a list of names here is a list
+                        // that goes stale — silently, and only for somebody who is not logged in
+                        // yet, which is the one state nobody develops in.
+                        "/js/**",
+                        "/css/**",
                         "/styles.css",
                         "/vendor/**",
                         "/fonts/**",

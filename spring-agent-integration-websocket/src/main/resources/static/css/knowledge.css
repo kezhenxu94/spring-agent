@@ -1,0 +1,26 @@
+/* ─────────────────────────────────────── the knowledge base ───────────────────────────────────────
+ *
+ * Almost nothing is needed here: a document in the sidebar is drawn with the same utilities a
+ * conversation is, on purpose, because they are the things this agent keeps and reading one should
+ * teach you how to read the other, and the panel it opens into shares .panel-action with the
+ * schedule. What is left is the one fact only a document has.
+ *
+ * No state colour. Amber, teal, violet and coral say something specific about a run everywhere else
+ * on this page, and spending one here would make a stored document look like something the agent is
+ * doing.
+ */
+/* Who else can read it, as a word rather than a colour — see the note above. In the sidebar the
+   same fact is a dot, hollow or filled, because a row there has no space for a word. */
+.knowledge-scope {
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+}
+/* Shared with more people than the reader, which is worth picking out at a glance — carried by a
+   filled surface rather than by a hue. */
+.knowledge-scope-tenant { background: var(--code-bg); color: var(--fg); }

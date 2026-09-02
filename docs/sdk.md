@@ -478,6 +478,10 @@ Scoping is one definition, `KnowledgeScopeFilter`, used for retrieval and listin
 filter clause is only ever emitted for a non-blank identity — a blank one would match every document
 that stores a blank there, which is every other user's.
 
+Runs are not the only caller: the browser surface puts this SPI behind `/api/knowledge` so a person
+can read and correct what the agent remembers without asking the model to do it for them. See
+[a browser as your surface](#a-browser-as-your-surface).
+
 `retrieverFor(scope, extra)` takes an optional `Filter.Expression` that narrows a read to part of
 what a scope may reach — `retrieverFor(scope)` is the same call with no narrowing. It composes
 *under* the scope filter (`KnowledgeScopeFilter.readableBy(scope, extra)`), so it can only ever
@@ -515,7 +519,9 @@ also chooses the language tool descriptions are rewritten into on the way to the
 `spring-agent-integration-websocket` is a whole surface as a dependency: a single-page UI, the REST
 endpoints behind it, and runs streamed live over STOMP. It is what `spring-agent-app-webui` is made
 of, and taking it gives an application of your own the same conversation list, transcript, live run
-view, file uploads, task list and question forms.
+view, file uploads, question forms, the schedule and the knowledge base — three sidebar sections
+addressed by hash route (`#/chat/<id>`, `#/tasks/<id>`, `#/kb/<docId>`), so a link into any of them
+is a link worth keeping.
 
 ```groovy
 implementation 'me.kezhenxu94:spring-agent-integration-websocket:<version>'
@@ -535,7 +541,11 @@ Four things it needs from you:
    or workspace matches `app.web.auth.tenant-id`; wire it into your `oauth2Login`. Copy
    `spring-agent-app-webui`'s `SecurityConfigurer` as the reference: the page's own assets and
    `/share/public/**` are `permitAll`, `/api/me` is `authenticated` so a refused person can be told
-   *why*, and everything else — the `/ws/runs` handshake included — requires the role.
+   *why*, and everything else — the `/ws/runs` handshake included — requires the role. Permit the
+   assets by prefix — `/js/**`, `/css/**`, `/vendor/**`, `/fonts/**`, plus `/`, `/index.html`,
+   `/styles.css` and `/favicon.ico` — rather than by naming files: the page is a set of ES modules
+   and a stylesheet that imports its parts, and a list of names goes stale silently, *and only for
+   somebody who is not logged in yet*, which is the one state nobody develops in.
 2. **CSRF on, not off.** A `POST /api/conversations/{id}/messages` makes the agent act with the
    logged-in person's credentials, files and MCP servers, so a forgeable request is one that puts
    words in their mouth. Use `CookieCsrfTokenRepository.withHttpOnlyFalse()` — the page reads the
@@ -576,6 +586,22 @@ a name somebody chose is not something this server can translate. `/api/me` repo
 name for every supported language at once, because the language switcher in the page never asks the
 server again. In a native image, register your bundle as a resource — the module registers only its
 own (`WebRuntimeHints`).
+
+**The knowledge base, where the application has one.** `/api/knowledge` is a thin HTTP face on
+core's `KnowledgeBase` SPI — list, `GET /search`, `POST /files` (multipart, stored in the caller's
+workspace and indexed on the spot), `POST /notes`, `PATCH` to move a document between scopes and
+`DELETE` — and it exists only when a `KnowledgeBase` bean does, which in practice means
+`spring-agent-rag-milvus` on the classpath and `app.ai.rag.enabled` set. Without one every endpoint
+answers 404 and `/api/me` reports `knowledge.enabled: false`, which is what keeps the page from
+offering a section this deployment does not have.
+
+Two rules there are worth knowing if you build against it. The scope a document is read and written
+under comes from the session and never from the request — the same `userId`/`tenantId` a run on this
+surface carries — with one exception: a member of `app.ai.admins` may name an `owner` on the two
+read endpoints, which mirrors `KnowledgeAdminTools` and goes no further, so no write accepts one.
+And a document id travels in the query string or the body, never in the path, because a document
+indexed from a file is identified by its absolute path: encoded, the slashes are rejected by the
+servlet container; unencoded, they are more path segments.
 
 The streaming contract, if you are writing another client against it: connect STOMP to `/ws/runs`,
 subscribe to `/app/runs/{requestId}` with a `from` header carrying the last sequence number you

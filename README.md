@@ -423,6 +423,33 @@ In the Feishu app's console, add `http://localhost:8080/login/oauth2/code/feishu
 under your real host) as a redirect URI, and grant the app the profile scopes it needs to return
 `open_id` and `tenant_key`.
 
+**The sidebar is three tabs**, an icon each: the conversations, what the agent has been asked to do
+later, and — wherever a deployment has one — the knowledge base. Each is a list read the same way,
+and each has an address, so `#/chat/<conversation>`, `#/tasks/<task>` and `#/kb/<document>` are
+links worth keeping and the back button works between them. Picking a row opens it in the main
+column: a conversation is its transcript, a document is where it came from and who else can read it,
+a scheduled task is what it will do and when — with the way to open the conversation its answers go
+into, or to call it off. Nothing on that screen creates a task, because nothing can: a schedule
+comes from asking the agent for one.
+
+**The knowledge base is the third of those tabs**, wherever a deployment has one at all
+(`RAG_ENABLED`, plus a Milvus to point it at — see the knowledge base above). Documents are listed
+there the way conversations are — one row per document rather than per chunk, opened by clicking it,
+deleted by the × on the row — and the box above the list searches them. Opening one shows where it
+came from, how many chunks it was split into and who else can read it. Adding is on the same screen:
+files are uploaded, stored in your own workspace and indexed on the spot, and a note is typed
+straight in; either can go into your own knowledge base or the company's. It is the same knowledge base a
+conversation reaches with `ListKnowledgeBase`, `IndexKnowledge`, `SearchKnowledge`,
+`UpdateKnowledgeScope` and `DeleteKnowledge` — what you add here is what the agent retrieves on the
+next message, and what a run stored is what this list shows. There is no group knowledge base in
+the browser: a group is a group chat, and this surface has none.
+
+Somebody listed in `ADMINS` gets one thing more: a box to name another person's user id and read
+their knowledge base — list and search, and nothing else. That mirrors the admin tools
+(`ListOwnerKnowledgeBase`, `SearchOwnerKnowledge`) exactly, and like them it is for the person who
+maintains what the agent knows. Deleting or re-scoping somebody else's document is not offered
+anywhere, in the page or in a chat.
+
 **A run outlives the page it was started from.** The page subscribes to a run over a websocket, and
 that subscription is a reader of a run that is happening on the server, never the run itself — so refreshing, closing the tab, or coming back an
 hour later re-attaches and redraws everything, and nothing a browser does can cancel a run except
