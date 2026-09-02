@@ -6,16 +6,28 @@ import com.lark.oapi.service.drive.v1.model.CreateExportTaskReq;
 import com.lark.oapi.service.drive.v1.model.CreateImportTaskReq;
 import com.lark.oapi.service.drive.v1.model.DownloadExportTaskReq;
 import com.lark.oapi.service.drive.v1.model.ExportTask;
+import com.lark.oapi.service.drive.v1.model.FileUploadInfo;
 import com.lark.oapi.service.drive.v1.model.GetExportTaskReq;
 import com.lark.oapi.service.drive.v1.model.GetImportTaskReq;
 import com.lark.oapi.service.drive.v1.model.ImportTask;
 import com.lark.oapi.service.drive.v1.model.ImportTaskMountPoint;
+import com.lark.oapi.service.drive.v1.model.UploadAllFileReq;
+import com.lark.oapi.service.drive.v1.model.UploadAllFileReqBody;
 import com.lark.oapi.service.drive.v1.model.UploadAllMediaReq;
 import com.lark.oapi.service.drive.v1.model.UploadAllMediaReqBody;
+import com.lark.oapi.service.drive.v1.model.UploadFinishFileReq;
+import com.lark.oapi.service.drive.v1.model.UploadFinishFileReqBody;
+import com.lark.oapi.service.drive.v1.model.UploadPartFileReq;
+import com.lark.oapi.service.drive.v1.model.UploadPartFileReqBody;
+import com.lark.oapi.service.drive.v1.model.UploadPrepareFileReq;
 import java.io.File;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.zip.Adler32;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +44,11 @@ import org.springframework.stereotype.Service;
  * <p>Import and export live here for the same reason: one file becomes a document, a spreadsheet or
  * a base depending on nothing but a string, and one document of any of those types becomes a file.
  * Neither is a call any single document service could own.
+ *
+ * <p>Putting a file into the drive as a file — rather than as a medium some document refers to, or
+ * as the source of an import — is a third thing again, and the endpoint is a different one: {@code
+ * files/upload_all}, whose product is a node in a folder rather than a token only its parent
+ * understands.
  */
 @Slf4j
 @Service
@@ -47,6 +64,27 @@ public class FeishuDriveService {
 
   /** Mount type 1, the only one there is: the imported document lands in the drive. */
   private static final int MOUNT_TO_DRIVE = 1;
+
+  /**
+   * The only upload point a file can be given, as opposed to a medium: the drive itself. The
+   * companion {@code parentNode} is then a folder token, and a file is a node in that folder rather
+   * than something a document holds.
+   */
+  private static final String DRIVE_PARENT_TYPE = "explorer";
+
+  /**
+   * Past this, {@code files/upload_all} refuses the file (1061043) and the only way in is the
+   * three-call chunked flow. Feishu's own number, not a choice made here.
+   */
+  private static final long SINGLE_UPLOAD_LIMIT = 20L * 1024 * 1024;
+
+  /**
+   * Where uploading stops being possible at all. The endpoints declare every size as a 32-bit int,
+   * so a larger file cannot even be described to them — and truncating silently would upload a
+   * prefix and call it the file. Feishu's per-edition limits are all far below this; this is only
+   * the point past which the API itself has no way to say what is being sent.
+   */
+  private static final long MAX_UPLOAD_SIZE = Integer.MAX_VALUE;
 
   /**
    * The two statuses that mean "come back later"; 0 means done and everything else is a failure
@@ -142,6 +180,218 @@ public class FeishuDriveService {
     log.info(
         "Uploaded media '{}' for parent node {}: fileToken={}", fileName, parentNode, fileToken);
     return fileToken;
+  }
+
+  /**
+   * Uploads a local file into a drive folder and returns the {@code file_token} of the node it
+   * became.
+   *
+   * <p>Which of Feishu's two upload flows is used is decided here rather than by the caller,
+   * because the choice is nothing but the file's size: one call under 20 MB, and prepare / part /
+   * finish above it. Both produce the same token, so nothing downstream can tell which ran.
+   */
+  @SneakyThrows
+  public String uploadFile(final String fileName, final String folderToken, final File file) {
+    final var size = file.length();
+    // Refused before it is sent because Feishu's own refusal is 1061002 "params error", which says
+    // nothing about the size being zero, and an empty file is a plausible mistake — a path to a
+    // file something else is still writing.
+    if (size == 0) {
+      throw new IllegalArgumentException("Feishu refuses an empty file: " + file);
+    }
+    if (size > MAX_UPLOAD_SIZE) {
+      throw new IllegalArgumentException(
+          "The file is "
+              + size
+              + " bytes, past the "
+              + MAX_UPLOAD_SIZE
+              + " the upload API can describe");
+    }
+    return size <= SINGLE_UPLOAD_LIMIT
+        ? uploadWholeFile(fileName, folderToken, file)
+        : uploadFileInParts(fileName, folderToken, file, (int) size);
+  }
+
+  @SneakyThrows
+  private String uploadWholeFile(final String fileName, final String folderToken, final File file) {
+    final var resp =
+        feishu
+            .drive()
+            .v1()
+            .file()
+            .uploadAll(
+                UploadAllFileReq.newBuilder()
+                    .uploadAllFileReqBody(
+                        UploadAllFileReqBody.newBuilder()
+                            .fileName(fileName)
+                            .parentType(DRIVE_PARENT_TYPE)
+                            .parentNode(folderToken)
+                            .size((int) file.length())
+                            .file(file)
+                            .build())
+                    .build());
+    if (!resp.success()) {
+      log.error(
+          "Failed to upload file '{}' to folder {}: {}, {}",
+          fileName,
+          folderToken,
+          resp.getCode(),
+          resp.getMsg());
+      throw new IllegalStateException("Failed to upload file: " + resp.getMsg());
+    }
+    final var fileToken = resp.getData().getFileToken();
+    log.info("Uploaded file '{}' to folder {}: fileToken={}", fileName, folderToken, fileToken);
+    return fileToken;
+  }
+
+  /**
+   * The chunked flow, for a file too big for one call.
+   *
+   * <p>The chunk size is Feishu's to decide and comes back from the pre-upload, so the file is read
+   * a block at a time in the order the blocks are numbered rather than being cut up in advance.
+   * Sequentially and never concurrently: the upload endpoints are documented as not supporting
+   * concurrent calls, and answer 1061045 to a caller that tries.
+   */
+  @SneakyThrows
+  private String uploadFileInParts(
+      final String fileName, final String folderToken, final File file, final int size) {
+
+    final var prepareResp =
+        feishu
+            .drive()
+            .v1()
+            .file()
+            .uploadPrepare(
+                UploadPrepareFileReq.newBuilder()
+                    .fileUploadInfo(
+                        FileUploadInfo.newBuilder()
+                            .fileName(fileName)
+                            .parentType(DRIVE_PARENT_TYPE)
+                            .parentNode(folderToken)
+                            .size(size)
+                            .build())
+                    .build());
+    if (!prepareResp.success()) {
+      log.error(
+          "Failed to prepare the upload of '{}' to folder {}: {}, {}",
+          fileName,
+          folderToken,
+          prepareResp.getCode(),
+          prepareResp.getMsg());
+      throw new IllegalStateException("Failed to prepare the upload: " + prepareResp.getMsg());
+    }
+    final var prepared = prepareResp.getData();
+    final var uploadId = prepared.getUploadId();
+    final var blockSize = prepared.getBlockSize();
+    final var blockNum = prepared.getBlockNum();
+    log.info(
+        "Uploading '{}' to folder {} in {} block(s) of {} bytes, uploadId={}",
+        fileName,
+        folderToken,
+        blockNum,
+        blockSize,
+        uploadId);
+
+    try (InputStream in = Files.newInputStream(file.toPath())) {
+      for (var seq = 0; seq < blockNum; seq++) {
+        final var block = in.readNBytes(blockSize);
+        // The block count came from the size Feishu was told, so a short read means the file
+        // changed under us. Sending what is left would finish an upload of something that is not
+        // the file that was asked for.
+        if (block.length == 0 || (seq < blockNum - 1 && block.length < blockSize)) {
+          throw new IllegalStateException(
+              "The file changed while it was being uploaded: block "
+                  + seq
+                  + " of "
+                  + blockNum
+                  + " read "
+                  + block.length
+                  + " of "
+                  + blockSize
+                  + " bytes");
+        }
+        uploadPart(uploadId, seq, block);
+      }
+    }
+
+    final var finishResp =
+        feishu
+            .drive()
+            .v1()
+            .file()
+            .uploadFinish(
+                UploadFinishFileReq.newBuilder()
+                    .uploadFinishFileReqBody(
+                        UploadFinishFileReqBody.newBuilder()
+                            .uploadId(uploadId)
+                            .blockNum(blockNum)
+                            .build())
+                    .build());
+    if (!finishResp.success()) {
+      log.error(
+          "Failed to finish the upload {} of '{}': {}, {}",
+          uploadId,
+          fileName,
+          finishResp.getCode(),
+          finishResp.getMsg());
+      throw new IllegalStateException("Failed to finish the upload: " + finishResp.getMsg());
+    }
+    final var fileToken = finishResp.getData().getFileToken();
+    log.info("Uploaded file '{}' to folder {}: fileToken={}", fileName, folderToken, fileToken);
+    return fileToken;
+  }
+
+  /**
+   * One block, sent with its checksum.
+   *
+   * <p>The block goes through a temporary file because the SDK's request body takes a {@code File}
+   * and nothing else; it is deleted whatever happens, since a failed upload of a large file would
+   * otherwise leave a chunk of it in the temporary directory.
+   *
+   * <p>The checksum is optional to Feishu and sent anyway: it is what the chunked flow is for. A
+   * block that arrives corrupted over the unreliable connection that made chunking necessary is
+   * refused with 1062008 rather than becoming part of a file that is silently wrong.
+   */
+  @SneakyThrows
+  private void uploadPart(final String uploadId, final int seq, final byte[] block) {
+    final Path part = Files.createTempFile("feishu-upload-part-", ".bin");
+    try {
+      Files.write(part, block);
+      final var resp =
+          feishu
+              .drive()
+              .v1()
+              .file()
+              .uploadPart(
+                  UploadPartFileReq.newBuilder()
+                      .uploadPartFileReqBody(
+                          UploadPartFileReqBody.newBuilder()
+                              .uploadId(uploadId)
+                              .seq(seq)
+                              .size(block.length)
+                              .checksum(adler32(block))
+                              .file(part.toFile())
+                              .build())
+                      .build());
+      if (!resp.success()) {
+        log.error(
+            "Failed to upload block {} of upload {}: {}, {}",
+            seq,
+            uploadId,
+            resp.getCode(),
+            resp.getMsg());
+        throw new IllegalStateException("Failed to upload block " + seq + ": " + resp.getMsg());
+      }
+    } finally {
+      Files.deleteIfExists(part);
+    }
+  }
+
+  /** An Adler-32 checksum in the unsigned decimal form Feishu reads it in. */
+  private static String adler32(final byte[] bytes) {
+    final var checksum = new Adler32();
+    checksum.update(bytes);
+    return Long.toString(checksum.getValue());
   }
 
   /**

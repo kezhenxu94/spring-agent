@@ -37,6 +37,8 @@ import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.FeishuMessageCard;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
+import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -55,6 +57,9 @@ public class FeishuTools {
   final JsonMapper objectMapper;
   final FeishuMessages messages;
   final FeishuMessageCard messageCard;
+  final FeishuDriveService feishuDriveService;
+  final FeishuPermissionTools feishuPermissionTools;
+  final FeishuProperties feishuProperties;
 
   @Builder
   @Jacksonized
@@ -66,6 +71,10 @@ public class FeishuTools {
       String createdTime,
       String modifiedTime,
       String ownerId) {}
+
+  @Builder
+  @Jacksonized
+  public static record UploadedDriveFile(String fileToken, String fileName, String url) {}
 
   @Builder
   @Jacksonized
@@ -520,6 +529,62 @@ public class FeishuTools {
       log.warn("Failed to download Drive file {}: {}", fileToken, e.getMessage());
       return "Failed: " + e.getMessage();
     }
+  }
+
+  @Tool(
+      name = "FeishuUploadDriveFile",
+      description =
+          "Put a local file into a Feishu drive folder as a file, and answer with its link — which"
+              + " is what to give the person who asked. Use it when they want a file kept in the"
+              + " drive, or shared as a link rather than as a chat attachment; FeishuSendFile is"
+              + " the one that sends it into the conversation instead.\n"
+              + "The file is stored as it is, not converted: a spreadsheet uploaded this way is a"
+              + " downloadable .xlsx and not a Feishu spreadsheet anybody can open and edit. Call"
+              + " FeishuImportFile for that. A large file is uploaded in chunks and needs nothing"
+              + " extra asked of it; an empty one is refused.")
+  @SneakyThrows
+  public UploadedDriveFile uploadDriveFile(
+      @ToolParam(description = "Absolute path of the local file to upload") final String filePath,
+      @ToolParam(
+              description =
+                  "Token of the drive folder to put it in, as FeishuListDriveFolder's link"
+                      + " carries; the default folder is used when left out",
+              required = false)
+          final String folderToken,
+      @ToolParam(
+              description = "Name to store it under; the local file's name is used when left out",
+              required = false)
+          final String fileName,
+      final ToolContext toolContext) {
+
+    if (filePath == null || filePath.isBlank()) {
+      throw new IllegalArgumentException("filePath is required");
+    }
+    final var file = new File(filePath);
+    if (!file.isFile()) {
+      throw new IllegalArgumentException("No file at " + filePath);
+    }
+    // The same rule every tool here that reads a local path applies: what may leave this machine is
+    // what this request's own scopes hold, so that a path is never a way to publish someone else's
+    // files — or the host's — into a drive.
+    if (!userWorkspaceFactory.forRequest(toolContext).contains(file.toPath())) {
+      log.warn("uploadDriveFile rejected out-of-scope path: {}", filePath);
+      throw new IllegalArgumentException("The file must be within an allowed workspace");
+    }
+
+    final var targetFolderToken =
+        Strings.isNullOrEmpty(folderToken) ? FeishuFiles.DEFAULT_FOLDER_TOKEN : folderToken;
+    final var name = Strings.isNullOrEmpty(fileName) ? file.getName() : fileName;
+    final var fileToken = feishuDriveService.uploadFile(name, targetFolderToken, file);
+    // Without this the upload is visible to the bot alone, which makes the link useless to the very
+    // person it is about to be given to.
+    feishuPermissionTools.grantDefaultPermissions(toolContext, fileToken, "file");
+
+    return UploadedDriveFile.builder()
+        .fileToken(fileToken)
+        .fileName(name)
+        .url("https://" + feishuProperties.tenantDomain() + "/file/" + fileToken)
+        .build();
   }
 
   String extractFolderToken(final String url) {
