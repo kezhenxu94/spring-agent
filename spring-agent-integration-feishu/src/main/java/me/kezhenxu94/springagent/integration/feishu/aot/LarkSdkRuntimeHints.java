@@ -86,14 +86,26 @@ import com.lark.oapi.service.drive.v1.model.CreateImportTaskResp;
 import com.lark.oapi.service.drive.v1.model.DownloadExportTaskReq;
 import com.lark.oapi.service.drive.v1.model.DownloadExportTaskResp;
 import com.lark.oapi.service.drive.v1.model.DownloadFileReq;
+import com.lark.oapi.service.drive.v1.model.FileUploadInfo;
 import com.lark.oapi.service.drive.v1.model.GetExportTaskReq;
 import com.lark.oapi.service.drive.v1.model.GetExportTaskResp;
 import com.lark.oapi.service.drive.v1.model.GetImportTaskReq;
 import com.lark.oapi.service.drive.v1.model.GetImportTaskResp;
 import com.lark.oapi.service.drive.v1.model.ListFileReq;
 import com.lark.oapi.service.drive.v1.model.ListFileResp;
+import com.lark.oapi.service.drive.v1.model.UploadAllFileReq;
+import com.lark.oapi.service.drive.v1.model.UploadAllFileReqBody;
+import com.lark.oapi.service.drive.v1.model.UploadAllFileResp;
 import com.lark.oapi.service.drive.v1.model.UploadAllMediaReq;
 import com.lark.oapi.service.drive.v1.model.UploadAllMediaReqBody;
+import com.lark.oapi.service.drive.v1.model.UploadFinishFileReq;
+import com.lark.oapi.service.drive.v1.model.UploadFinishFileReqBody;
+import com.lark.oapi.service.drive.v1.model.UploadFinishFileResp;
+import com.lark.oapi.service.drive.v1.model.UploadPartFileReq;
+import com.lark.oapi.service.drive.v1.model.UploadPartFileReqBody;
+import com.lark.oapi.service.drive.v1.model.UploadPartFileResp;
+import com.lark.oapi.service.drive.v1.model.UploadPrepareFileReq;
+import com.lark.oapi.service.drive.v1.model.UploadPrepareFileResp;
 import com.lark.oapi.service.im.v1.model.CreateFileReq;
 import com.lark.oapi.service.im.v1.model.CreateFileReqBody;
 import com.lark.oapi.service.im.v1.model.CreateImageReq;
@@ -259,6 +271,22 @@ public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
           ListFileResp.class,
           UploadAllMediaReq.class,
           UploadAllMediaReqBody.class,
+          // Uploading a file into a folder, request and response both: the file token an upload
+          // answers with, and the chunk size and count the pre-upload dictates, are read back out
+          // of the responses by Gson, so a response left unregistered uploads nothing and reports
+          // no token.
+          UploadAllFileReq.class,
+          UploadAllFileReqBody.class,
+          UploadAllFileResp.class,
+          UploadPrepareFileReq.class,
+          UploadPrepareFileResp.class,
+          FileUploadInfo.class,
+          UploadPartFileReq.class,
+          UploadPartFileReqBody.class,
+          UploadPartFileResp.class,
+          UploadFinishFileReq.class,
+          UploadFinishFileReqBody.class,
+          UploadFinishFileResp.class,
           CreateFileReq.class,
           CreateFileReqBody.class,
           CreateImageReq.class,
