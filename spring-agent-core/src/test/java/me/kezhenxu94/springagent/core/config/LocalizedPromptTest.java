@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Locale;
 import java.util.Map;
+import me.kezhenxu94.springagent.core.ContextClassLoaders;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -99,6 +100,28 @@ class LocalizedPromptTest {
             .render(Map.of("TOOL_CALL_COUNT", 42));
 
     assertThat(rendered).contains("42");
+  }
+
+  /**
+   * The one lookup that has nothing to do with which file exists: a run assembles its tools on
+   * whichever thread the bounded-elastic scheduler handed it, and that thread's context class
+   * loader is inherited from whoever submitted the run. Submitted from a common ForkJoinPool
+   * worker, whose loader the JDK sets to the system one rather than the application's, that loader
+   * arrives here — and inside a Spring Boot fat jar it sees the outer jar and nothing under
+   * BOOT-INF/lib. Resolving through it fails the run with a message about packaging, for a prompt
+   * that is sitting in the same jar as this class.
+   */
+  @Test
+  @DisplayName("a prompt is found on a thread whose context class loader can see nothing")
+  void resolvedWithoutTheThreadContextClassLoader() throws Exception {
+    assertThat(
+            ContextClassLoaders.seeingNothing(
+                () -> LocalizedPrompt.resource(MEMORY_PROMPT, Locale.ENGLISH).exists()))
+        .isTrue();
+    assertThat(
+            ContextClassLoaders.seeingNothing(
+                () -> LocalizedPrompt.text(KNOWLEDGE_RETRIEVAL_PROMPT, Locale.ENGLISH)))
+        .isNotBlank();
   }
 
   @Test
