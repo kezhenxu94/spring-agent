@@ -3,6 +3,7 @@ package me.kezhenxu94.springagent.core.tools.i18n;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Locale;
+import me.kezhenxu94.springagent.core.ContextClassLoaders;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -87,5 +88,26 @@ class ModuleToolTextsTest {
     } finally {
       Locale.setDefault(host);
     }
+  }
+
+  /**
+   * Both stores are read while a run is being assembled, on a thread whose context class loader is
+   * whatever the run's submitter had — the system loader, where that submitter was a common
+   * ForkJoinPool worker, which inside a Spring Boot fat jar sees nothing under BOOT-INF/lib.
+   * Resolving through it loses every translation silently: a description reads as absent and the
+   * tool keeps its English, with nothing to say why. Worse than silent, in fact, since {@link
+   * ModuleToolTexts#description} remembers the answer for the life of the process.
+   */
+  @Test
+  @DisplayName("both stores are read without help from the thread's context class loader")
+  void readWithoutTheThreadContextClassLoader() throws Exception {
+    final var texts = ContextClassLoaders.seeingNothing(() -> textsIn(Locale.GERMANY));
+    assertThat(texts.description("Sample")).isEqualTo("Was das Werkzeug tut.");
+    assertThat(texts.parameter("Sample", "second")).isEqualTo("zweiter Parameter, genau");
+
+    // And the same when only the reading, rather than the construction, happens there.
+    final var here = textsIn(Locale.GERMANY);
+    assertThat(ContextClassLoaders.seeingNothing(() -> here.description("Sample")))
+        .isEqualTo("Was das Werkzeug tut.");
   }
 }

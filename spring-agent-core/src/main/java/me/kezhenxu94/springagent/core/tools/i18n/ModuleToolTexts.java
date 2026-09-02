@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.LocalizedPrompt;
-import org.springframework.core.io.ClassPathResource;
+import me.kezhenxu94.springagent.core.config.PackagedResources;
 import org.springframework.core.io.Resource;
 
 /**
@@ -145,11 +145,11 @@ public class ModuleToolTexts implements ToolTexts {
             bundleBase,
             bundleBase + "_" + locale.getLanguage(),
             bundleBase + "_" + locale.getLanguage() + "_" + locale.getCountry())) {
-      final var resource = new ClassPathResource(candidate + ".properties");
-      if (!resource.exists()) {
+      final var resource = PackagedResources.find(candidate + ".properties");
+      if (resource.isEmpty()) {
         continue;
       }
-      try (var stream = resource.getInputStream()) {
+      try (var stream = resource.get().getInputStream()) {
         final var properties = new Properties();
         properties.load(new InputStreamReader(stream, StandardCharsets.UTF_8));
         merged.putAll(properties);

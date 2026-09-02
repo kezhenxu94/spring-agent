@@ -6,7 +6,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 
 /**
@@ -63,7 +62,8 @@ public final class LocalizedPrompt {
                     "No "
                         + location
                         + baseName
-                        + ".md on the classpath; the module ships one, so it was excluded"));
+                        + ".md on the classpath; the module ships one, so either it was excluded"
+                        + " from the packaging or the native image has no hint for it"));
   }
 
   /**
@@ -82,9 +82,9 @@ public final class LocalizedPrompt {
             baseName + "_" + wanted.getLanguage(),
             baseName);
     for (final var candidate : candidates) {
-      final var resource = new ClassPathResource(location + candidate + ".md");
-      if (resource.exists()) {
-        return Optional.of(resource);
+      final var resource = PackagedResources.find(location + candidate + ".md");
+      if (resource.isPresent()) {
+        return resource;
       }
     }
     return Optional.empty();
