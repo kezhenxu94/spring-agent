@@ -11,6 +11,7 @@ import me.kezhenxu94.springagent.core.aot.StoragePropertiesRuntimeHints;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageService;
 import me.kezhenxu94.springagent.core.storage.StorageProperties;
+import me.kezhenxu94.springagent.core.tools.i18n.DescribingToolCallingManager;
 import me.kezhenxu94.springagent.core.tools.i18n.LocalizingToolCallingManager;
 import me.kezhenxu94.springagent.core.tools.i18n.ModuleToolTexts;
 import me.kezhenxu94.springagent.core.tools.i18n.ToolTexts;
@@ -154,10 +155,11 @@ public class SpringAgentCoreAutoConfiguration {
   /**
    * The manager a run's tool calls go through, in the order the three layers have to sit in.
    *
-   * <p>Localization outermost of the two decorators, because what it rewrites is the definition
-   * list on its way out to the model and it must be the last word on it. Interception outermost
-   * overall, because it is what the run's own behaviour hangs off — the mid-turn user message and
-   * the wrapping of each callback — and none of that concerns the definitions.
+   * <p>Two of them rewrite the definition list on its way out to the model, and the display
+   * parameter goes on last: ordered the other way, a module translating a parameter it happened to
+   * name the same thing would be rewriting the runtime's own field. Interception outermost overall,
+   * because it is what the run's own behaviour hangs off — the mid-turn user message and the
+   * wrapping of each callback — and none of that concerns the definitions.
    *
    * <p>The innermost manager is built here rather than taken from Spring AI's own
    * auto-configuration, which is why {@code spring.ai.tools.limits.*} has to be applied by hand
@@ -174,7 +176,8 @@ public class SpringAgentCoreAutoConfiguration {
       final List<ToolCallInterceptor> interceptors,
       final ToolInputFileRefs fileRefs,
       final List<ToolTexts> toolTexts,
-      final ToolCallingProperties toolCallingProperties) {
+      final ToolCallingProperties toolCallingProperties,
+      final CoreMessages messages) {
     final var builder =
         DefaultToolCallingManager.builder()
             .toolCallbackResolver(
@@ -182,7 +185,8 @@ public class SpringAgentCoreAutoConfiguration {
     applyLimits(builder, toolCallingProperties.getLimits());
     final var defaultManager = builder.build();
     final var localizing = new LocalizingToolCallingManager(defaultManager, toolTexts);
-    return new InterceptingToolCallingManager(localizing, interceptors, fileRefs);
+    final var describing = new DescribingToolCallingManager(localizing, messages);
+    return new InterceptingToolCallingManager(describing, interceptors, fileRefs);
   }
 
   /**

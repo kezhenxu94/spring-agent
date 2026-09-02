@@ -12,6 +12,7 @@ import java.util.Set;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
+import me.kezhenxu94.springagent.core.tools.DisplayDescription;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import org.junit.jupiter.api.DisplayName;
@@ -80,6 +81,23 @@ class InterceptingToolCallbackTest {
     assertThat(delegate.received).isNull();
     assertThat(result).contains("No such tool-result file");
     assertThat(seen).hasSize(2);
+  }
+
+  @Test
+  @DisplayName("the tool never sees the display description, and every interceptor does")
+  void stripsTheDisplayDescription() {
+    // Which is the whole reason it is asked for: a surface names a call by it, and the tool was
+    // never told the parameter exists.
+    final var seen = new ArrayList<String>();
+    final var delegate = new RecordingCallback(ToolMetadata.builder().build());
+
+    new InterceptingToolCallback(delegate, List.of(watching(seen)), refs())
+        .call(
+            "{\"path\":\"/tmp/x\",\"" + DisplayDescription.FIELD + "\":\"Write the file\"}",
+            CONTEXT);
+
+    assertThat(delegate.received).isEqualTo("{\"path\":\"/tmp/x\"}");
+    assertThat(seen).hasSize(2).allSatisfy(input -> assertThat(input).contains("Write the file"));
   }
 
   private static ToolCallInterceptor watching(final List<String> seen) {

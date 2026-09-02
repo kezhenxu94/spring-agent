@@ -344,6 +344,23 @@ event, and one injected sentence is enough to aim a message-sending tool at a fi
 reference on any other parameter is refused rather than written through as text; `@@file:` escapes
 for a value that really is that text.
 
+**Every tool is offered one parameter it did not declare.** `DisplayDescription` (`core/tools/`) adds
+an optional `_display_description` to the input schema of every tool whose own schema declares no
+`description` — a sentence, in active voice, saying what this particular call does — and
+`InterceptingToolCallback` takes it back off the arguments before the tool is called, so a tool never
+sees a field it never declared. What it buys is a readable trail: a surface names a call by that
+sentence rather than by its tool, and `jira_search` twenty times over says nothing. A tool that asks
+for a `description` of its own keeps it, and that one is what a surface shows. Schemas are rewritten
+in `DescribingToolCallingManager.resolveToolDefinitions`, which is where a chat model asks for them,
+so an `@AgentTool` bean, a library's tool, an MCP server's tool and your own `ToolCallbackProvider`
+are all offered it alike. A tool taking arbitrary JSON — `additionalProperties: true` — is left alone,
+since a field added there is part of the payload rather than a parameter.
+
+It is **required**, so every call has a title rather than the readable-in-places trail an optional one
+buys, and requiring it is safe precisely because it never reaches the tool: nothing behind it can
+refuse a call over a field its own schema does not declare, since by then the field is gone. The cost
+is a sentence of output per tool call.
+
 That manager is also where `spring.ai.tools.limits.*` is read: it is built here rather than taken
 from Spring AI's auto-configuration, which backs off, so the limits are applied by hand in
 `SpringAgentCoreAutoConfiguration`. Core raises the two that bound a turn — `ToolCallingDefaults`

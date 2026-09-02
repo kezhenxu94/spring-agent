@@ -17,6 +17,7 @@ import com.lark.oapi.service.cardkit.v1.model.UpdateCardElementResp;
 import java.nio.file.Path;
 import java.util.Locale;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
+import me.kezhenxu94.springagent.core.tools.DisplayDescription;
 import me.kezhenxu94.springagent.core.tools.UserHome;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
@@ -239,6 +240,40 @@ class FeishuCardUpdaterToolStatusTest {
     assertThat(title(call(insertedPane(), 0)))
         .isEqualTo("Bash — List files in the current directory");
     assertThat(bodyOf(call(insertedPane(), 0))).isEqualTo("> command: ls -la");
+  }
+
+  /**
+   * Which is what makes the pane readable for a tool nobody here wrote: an MCP server's tool asks
+   * for no description of its own, so the runtime asks for one on the card's behalf.
+   */
+  @Test
+  @DisplayName("a tool with no description of its own names its pane by the one the runtime asked")
+  void theRuntimesDescriptionNamesTheCallsPane() throws Exception {
+    updater.setToolStatus(
+        "jira_search",
+        "{\"jql\":\"project = OPS\",\""
+            + DisplayDescription.FIELD
+            + "\":\"Look for open OPS tickets\"}",
+        null);
+
+    assertThat(title(call(insertedPane(), 0))).isEqualTo("jira_search — Look for open OPS tickets");
+    // Not among the fields either. It is the line above them, and it is not a parameter of the
+    // tool for a reader to be shown.
+    assertThat(bodyOf(call(insertedPane(), 0))).isEqualTo("> jql: project = OPS");
+  }
+
+  @Test
+  @DisplayName("a tool that asks for a description of its own is the one the pane is named by")
+  void theToolsOwnDescriptionWins() throws Exception {
+    updater.setToolStatus(
+        "Bash",
+        "{\"command\":\"ls\",\"description\":\"Listing files\",\""
+            + DisplayDescription.FIELD
+            + "\":\"Also listing files\"}",
+        null);
+
+    assertThat(title(call(insertedPane(), 0))).isEqualTo("Bash — Listing files");
+    assertThat(bodyOf(call(insertedPane(), 0))).isEqualTo("> command: ls");
   }
 
   @Test

@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.core.tools.interceptors;
 
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.tools.DisplayDescription;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
@@ -49,23 +50,29 @@ public class InterceptingToolCallback implements ToolCallback {
   }
 
   /**
-   * The call itself, with any {@code @file:} argument reference resolved on the way in.
+   * The call itself, with the display description taken off the arguments and any {@code @file:}
+   * reference among them resolved, on the way in.
    *
-   * <p>Expansion sits here rather than in a {@link ToolCallInterceptor} of its own, and the input
-   * the chain goes on to see is the one before it. Both halves of that are deliberate. An
+   * <p>Both transforms sit here rather than in a {@link ToolCallInterceptor} of their own, and the
+   * input the chain goes on to see is the one before them. Both halves of that are deliberate. An
    * interceptor would leave the order it runs in deciding whether the CLI and the Feishu card
-   * render a reference or a whole document; and {@link #applyAfter} is handed the arguments so that
-   * a surface can show what a call was given, which is the reference the model actually wrote, not
-   * the payload it stood for.
+   * render a reference or a whole document — and, for {@link DisplayDescription}, whether they see
+   * the sentence at all, which is the whole point of asking for it; and {@link #applyAfter} is
+   * handed the arguments so that a surface can show what a call was given, which is the reference
+   * the model actually wrote, not the payload it stood for.
+   *
+   * <p>The description comes off first. It is never a file reference, and leaving it in would only
+   * give {@link ToolInputFileRefs} one more argument to rule on.
    *
    * <p>A reference that cannot be honoured answers the call rather than raising: the model asked
    * for something reasonable in a way that did not work, and the way to tell it so is the same way
    * it hears everything else about a tool call.
    */
   private String invoke(final String input, final ToolContext toolContext) {
+    final var arguments = DisplayDescription.strip(input);
     final String expanded;
     try {
-      expanded = fileRefs.expand(getToolDefinition().name(), input, toolContext);
+      expanded = fileRefs.expand(getToolDefinition().name(), arguments, toolContext);
     } catch (ToolInputFileRefs.UnresolvableReference e) {
       log.info(
           "Tool '{}' was called with a file reference that could not be resolved: {}",

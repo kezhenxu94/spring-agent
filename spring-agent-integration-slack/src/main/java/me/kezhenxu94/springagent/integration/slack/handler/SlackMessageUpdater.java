@@ -19,6 +19,7 @@ import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.ModelPricing;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeReference;
+import me.kezhenxu94.springagent.core.tools.DisplayDescription;
 import me.kezhenxu94.springagent.core.tools.ToolContextKey;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.integration.slack.config.SlackMessages;
@@ -802,9 +803,13 @@ public class SlackMessageUpdater implements AgentResponseListener, TodoEventHand
   }
 
   /**
-   * What the model said the call was for, where it said anything. {@code Bash} asks for one in
-   * active voice, and it describes a call far better than its name does — {@code Bash} twenty times
-   * over is a trail that says nothing.
+   * What the model said the call was for, where it said anything. It describes a call far better
+   * than its name does — {@code Bash} twenty times over is a trail that says nothing.
+   *
+   * <p>The tool's own field first — {@code Bash} asks for one in active voice — and the one {@link
+   * DisplayDescription} has the runtime offer every other tool only where there is no such field: a
+   * tool that asks for a description asks in its own words, and that is the one the model was
+   * answering.
    */
   private String descriptionOf(final String toolInput) {
     if (Strings.isNullOrEmpty(toolInput)) {
@@ -812,14 +817,24 @@ public class SlackMessageUpdater implements AgentResponseListener, TodoEventHand
     }
     try {
       final var node = om.readTree(toolInput);
-      if (node.isObject() && node.has("description")) {
-        final var description = node.get("description").asString();
-        return Strings.isNullOrEmpty(description) ? null : description.replace('\n', ' ');
+      if (!node.isObject()) {
+        return null;
       }
+      final var own = oneLineOf(node, DisplayDescription.NATIVE_FIELD);
+      return own != null ? own : oneLineOf(node, DisplayDescription.FIELD);
     } catch (Exception ignored) {
       // Not JSON; there is nothing to read a description out of and the tool's name will do.
     }
     return null;
+  }
+
+  /** That field of the object as one line, or {@code null} where it holds no text to show. */
+  private static String oneLineOf(final JsonNode node, final String field) {
+    if (!node.has(field)) {
+      return null;
+    }
+    final var text = node.get(field).asString();
+    return Strings.isNullOrEmpty(text) ? null : text.replace('\n', ' ');
   }
 
   private String summarize(final String text) {
