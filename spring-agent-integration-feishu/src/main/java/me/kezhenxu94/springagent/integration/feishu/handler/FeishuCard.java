@@ -105,6 +105,25 @@ public class FeishuCard {
 
   private static final int CODE_TOO_MANY_ELEMENTS = 300305;
 
+  /**
+   * What Feishu says when the element a write names is not on the card: the anchor an insert was to
+   * land above, or the element a replacement was to stand in for.
+   *
+   * <p>It happens although a writer only ever names an element it put there itself and watched
+   * land. The card is Feishu's state and not ours, and an element can go from under a run — a card
+   * action's callback appears to restore the card as it stood when it answered, discarding what
+   * landed after it. Whichever way it happened, the writer's picture of the card and the card have
+   * parted, and there is no arguing with the card.
+   *
+   * <p>So the write is not lost with it: it is made again against an element the card certainly has
+   * — see {@link #recoveryAnchorFor}. Without that, one element going missing takes the rest of the
+   * turn with it, since a run puts each of its elements on the card once and streams into it from
+   * then on: the answer is anchored on the tool pane the moment the model calls a tool before it
+   * speaks, and an anchor that is not there is an answer with nowhere to go, on every chunk of it,
+   * for the rest of the turn.
+   */
+  private static final int CODE_NO_SUCH_ELEMENT = 300315;
+
   private static final Pattern IMAGE_PATTERN = Pattern.compile("!\\[(.*?)\\]\\(([^)\\s]+)\\)");
 
   private static final String FILE_SCHEME = "file:";
@@ -792,8 +811,43 @@ public class FeishuCard {
     return true;
   }
 
-  @SneakyThrows
+  /**
+   * Where an element the card would not take where it was asked to goes instead, or null where
+   * there is nowhere left to try.
+   *
+   * <p>The top of the footer first, which is where anything that has lost its place belongs: below
+   * everything the run has said and above what the card says about the run. And the spend row if
+   * that was what went missing, since the footer's top is only ever the sources panel above it — a
+   * card that does not have that one has a footer of the spend row alone again.
+   *
+   * <p>Which ends the search, because the spend row is the element every card is created carrying
+   * and the one nothing ever takes off: {@code close()} removes the stop button inside it and
+   * leaves the row. So it is the anchor that cannot itself be missing, and a write that fails
+   * against it is a card there is nothing left to say about.
+   */
+  private String recoveryAnchorFor(final String failedTarget) {
+    final var footer = footerElementId;
+    if (!footer.equals(failedTarget)) {
+      return footer;
+    }
+    if (!FeishuCardElements.USAGE.equals(failedTarget)) {
+      footerElementId = FeishuCardElements.USAGE;
+      return FeishuCardElements.USAGE;
+    }
+    return null;
+  }
+
   private boolean insert(final Insert insert) {
+    return insert(insert, insert.targetElementId());
+  }
+
+  /**
+   * @param target where these elements go, which is what the insert named until that turned out not
+   *     to be on the card — the idempotency key is carried over unchanged, since an insert that was
+   *     refused did not land and a repeat of one that did is refused rather than duplicated
+   */
+  @SneakyThrows
+  private boolean insert(final Insert insert, final String target) {
     final var seq = sequence.getAndIncrement();
     final var response =
         feishu
@@ -806,7 +860,7 @@ public class FeishuCard {
                     .createCardElementReqBody(
                         CreateCardElementReqBody.newBuilder()
                             .type(CreateCardElementTypeEnum.INSERT_BEFORE)
-                            .targetElementId(insert.targetElementId())
+                            .targetElementId(target)
                             .uuid(insert.uuid())
                             .sequence(seq)
                             .elements(insert.elementsJson())
@@ -815,13 +869,22 @@ public class FeishuCard {
     if (response.getCode() != 0) {
       log.warn(
           "Failed to insert elements before {}: cardId={}, seq={}, code={}, msg={}",
-          insert.targetElementId(),
+          target,
           cardId,
           seq,
           response.getCode(),
           response.getMsg());
       if (full(response.getCode())) {
         continueOnNewCard();
+        return false;
+      }
+      if (response.getCode() == CODE_NO_SUCH_ELEMENT) {
+        final var anchor = recoveryAnchorFor(target);
+        if (anchor != null) {
+          log.info(
+              "Card {} has no {}, so the elements go above {} instead", cardId, target, anchor);
+          return insert(insert, anchor);
+        }
       }
       return false;
     }
@@ -858,6 +921,20 @@ public class FeishuCard {
           response.getMsg());
       if (full(response.getCode())) {
         continueOnNewCard();
+        return false;
+      }
+      if (response.getCode() == CODE_NO_SUCH_ELEMENT) {
+        // A replacement carries the whole element, so one that is not on the card can be put back
+        // rather than only reported — and it is the tool pane and the task list that are replaced,
+        // both of which are rewritten on every change and would otherwise stop at the change that
+        // found them gone. The element is already serialized, so the array the insert takes is that
+        // one element in brackets.
+        final var anchor = recoveryAnchorFor(change.elementId());
+        if (anchor != null) {
+          log.info("Card {} has no {} to replace, so it is put back", cardId, change.elementId());
+          return insert(
+              new Insert(anchor, "[" + change.elementJson() + "]", change.uuid(), null), anchor);
+        }
       }
       return false;
     }
