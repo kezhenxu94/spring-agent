@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.SeenUpdate;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
 import me.kezhenxu94.springagent.core.dao.repo.SeenUpdateRepo;
+import me.kezhenxu94.springagent.integration.slack.config.SlackAutoConfiguration;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Component;
@@ -46,7 +47,7 @@ public class SlackGreetings {
    * bounded by anything this code controls. Boot's general-purpose executor rather than the
    * scheduler's, whose threads exist to fire scheduled tasks on time.
    */
-  @Qualifier("applicationTaskExecutor")
+  @Qualifier(SlackAutoConfiguration.TASK_EXECUTOR)
   private final TaskExecutor taskExecutor;
 
   /** Called from the event thread; returns as soon as the work is handed off. */

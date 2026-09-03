@@ -21,7 +21,7 @@ import {
 } from './conversations.js';
 import { initScrollToEnd, renderEmptyTranscript } from './transcript.js';
 import { initAttachments } from './attachments.js';
-import { initComposer, refreshSendState, setRunning } from './composer.js';
+import { initComposer, refreshMirror, refreshSendState, setRunning } from './composer.js';
 import { loadTasks, showTasks } from './tasks.js';
 import { initKnowledge, knowledgeAvailable, scopesAvailable, showKnowledge } from './knowledge.js';
 import { showPanel } from './panels.js';
@@ -41,11 +41,16 @@ function wire() {
   bus.on('run:attach', ({ requestId, from }) => attachRun(requestId, from));
   // A finished run may have given the conversation its title, and clears its live dot.
   bus.on('conversations:changed', () => attempt(loadConversations));
+  // Whether the answer also goes to a chat is remembered per conversation, so opening one is when
+  // the toggle has to be redrawn from what was stored for it.
+  bus.on('conversation:opened', refreshMirror);
   // Everything already on screen, in the language just chosen. Anything drawn from a template in
   // the markup is handled by applyTranslations; these are the lists built in JavaScript.
   bus.on('language:changed', () => {
     renderConversationList();
     renderStatus();
+    // Its title names the chat platform, so it is a label like any other.
+    refreshMirror();
     // And whatever the main column is showing, by asking the route what that is — which is cheaper
     // to keep right than a list of every panel that would otherwise have to be remembered here.
     dispatch(current());

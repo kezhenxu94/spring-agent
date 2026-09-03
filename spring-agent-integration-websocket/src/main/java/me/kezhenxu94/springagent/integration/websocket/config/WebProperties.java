@@ -25,6 +25,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     module's bundle and then silently lose whatever is added to it later
  * @param locale the language to fall back to when a browser asks for one nothing is written in.
  *     Null means English, which is what every bundle here has a translation for
+ * @param baseUrl the address a person reaches this page on, scheme and host and port with no path.
+ *     Only needed where a link to a conversation has to be written into somewhere that is not this
+ *     page — a chat message mirroring an answer, say — since a browser needs no absolute URL to
+ *     reach the page it is already on. Blank leaves such a link out rather than guessing: a guessed
+ *     host is a link that goes nowhere, and a message is more useful without one than with a broken
+ *     one
+ * @param followChatRuns whether a run that started on the chat surface beside this one is also
+ *     journaled here, so a browser can open that conversation and watch the run as it happens
+ *     rather than only read it afterwards. Off by default: this module is publishable precisely
+ *     because it claims only its own runs, and a deployment carrying no chat surface has nothing to
+ *     follow. On, every chat run is held in memory for {@code app.web.journal.retention} whether or
+ *     not anybody looks, which is a cost a deployment decides for itself
  */
 @ConfigurationProperties(prefix = "app.web")
 public record WebProperties(
@@ -33,6 +45,8 @@ public record WebProperties(
     Auth auth,
     Locale locale,
     String title,
+    String baseUrl,
+    boolean followChatRuns,
     List<String> messages) {
 
   public WebProperties {
@@ -42,6 +56,9 @@ public record WebProperties(
     // Blank is null rather than a name: it means nobody renamed this deployment, which is what
     // sends the caller to the bundle for a name in the reader's own language.
     title = title == null || title.isBlank() ? null : title.trim();
+    // Trailing slash taken here rather than at each use, since the callers append a path and two
+    // slashes in a URL a person clicks is the kind of thing that gets reported as a bug.
+    baseUrl = baseUrl == null ? "" : baseUrl.trim().replaceAll("/+$", "");
     // A blank basename is dropped rather than passed on. It resolves to a bundle that does not
     // exist, and ResourceBundleMessageSource says nothing about one — the override would simply
     // never happen, which is the hardest kind of misconfiguration to see.

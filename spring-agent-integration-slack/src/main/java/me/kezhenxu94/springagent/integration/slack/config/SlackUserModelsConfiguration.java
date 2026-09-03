@@ -52,7 +52,7 @@ public class SlackUserModelsConfiguration {
       final BuiltinModels builtins,
       final SlackConfigForm form,
       final SlackMessages messages,
-      @Qualifier("applicationTaskExecutor") final TaskExecutor taskExecutor) {
+      @Qualifier(SlackAutoConfiguration.TASK_EXECUTOR) final TaskExecutor taskExecutor) {
     return new SlackConfigHandler(slack, registry, probe, builtins, form, messages, taskExecutor);
   }
 }

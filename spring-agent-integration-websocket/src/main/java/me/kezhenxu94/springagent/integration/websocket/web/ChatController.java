@@ -18,6 +18,7 @@ import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
 import me.kezhenxu94.springagent.integration.websocket.config.WebLocaleConfiguration;
 import me.kezhenxu94.springagent.integration.websocket.config.WebMessages;
 import me.kezhenxu94.springagent.integration.websocket.config.WebProperties;
+import me.kezhenxu94.springagent.integration.websocket.run.ChatMirrors;
 import me.kezhenxu94.springagent.integration.websocket.run.RunJournals;
 import me.kezhenxu94.springagent.integration.websocket.run.WebRunListener;
 import me.kezhenxu94.springagent.integration.websocket.security.WebAuthoritiesMapper;
@@ -57,6 +58,7 @@ public class ChatController {
   private final ChatSessions sessions;
   private final RunJournals journals;
   private final PendingQuestionRepo pendingQuestionRepo;
+  private final ChatMirrors mirrors;
   private final WebMessages messages;
   private final WebProperties properties;
   private final JsonMapper om;
@@ -121,6 +123,14 @@ public class ChatController {
     knowledge.put("admin", admins.isAdmin(user.id()));
     knowledge.put("tenant", !Strings.isNullOrEmpty(user.tenantId()));
     out.put("knowledge", knowledge);
+    // Whether an answer written here can also be put on a chat, and on which platform. The page
+    // draws that platform's own icon on the button, so a name it does not recognise is a button it
+    // does not draw — availability rather than a promise, exactly as with the knowledge base
+    // above, and for the same reason: a deployment carrying no chat surface has nowhere to mirror
+    // to, and a button offering it would be a control that silently does nothing.
+    final var surface = mirrors.surface();
+    out.put(
+        "mirror", Map.of("enabled", surface != null, "surface", surface == null ? "" : surface));
     return out;
   }
 
@@ -215,8 +225,16 @@ public class ChatController {
     return (List<org.springaicommunity.agent.tools.AskUserQuestionTool.Question>) questions;
   }
 
-  /** What the composer posts. */
-  public record Send(String text) {}
+  /**
+   * What the composer posts.
+   *
+   * <p>{@code mirror} is the composer's toggle: whether this answer should also be put on the chat
+   * surface beside this page. Per message rather than remembered here, so nothing has to be stored
+   * and nothing decides for a later turn; the page remembers the setting for the conversation and
+   * says so again each time. Boxed, so a client that has never heard of it sends no field and gets
+   * the default rather than a rejection.
+   */
+  public record Send(String text, Boolean mirror) {}
 
   @PostMapping("/conversations/{id}/messages")
   public Map<String, Object> send(
@@ -235,19 +253,32 @@ public class ChatController {
     supersedePendingQuestions(session.id());
 
     final var requestId = UUID.randomUUID().toString();
-    final var request =
+    final var builder =
         AgentRequest.builder()
             .requestId(requestId)
             .scenario(BuiltInScenarios.CHAT)
             .userId(user.id())
             .chatId(session.id())
             .chatType(WebRunListener.CHAT_TYPE)
+            // From the row rather than from nowhere: a conversation that belongs to a group chat
+            // was indexed with that group, and groupId is what scopes the knowledge base and picks
+            // the group's home directory. Continuing such a conversation here without it runs the
+            // agent outside the group it is about, which is a quiet wrong answer rather than an
+            // error. The tenant stays the caller's own — that one is authenticated, where the row
+            // holds whatever the run that wrote it happened to carry.
+            .groupId(session.groupId())
             .tenantId(user.tenantId())
             .conversationId(session.id())
             .rootMessageId(session.id())
             .replyMessageId(requestId)
-            .userMessage(spec -> spec.text(text))
-            .build();
+            .userMessage(spec -> spec.text(text));
+    if (Boolean.TRUE.equals(body.mirror())) {
+      final var mirror = mirrors.forRun(session, user, text);
+      if (mirror != null) {
+        builder.listener(mirror);
+      }
+    }
+    final var request = builder.build();
 
     // fireOrQueue rather than fire: a message sent while a run is going joins that run and reaches
     // the model mid-turn, so a correction lands before the tool call it was meant to prevent. Only

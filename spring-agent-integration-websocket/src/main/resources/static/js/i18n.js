@@ -42,6 +42,13 @@ const STRINGS = {
     'composer.attach.note': 'I have put these in my artifacts directory: {0}',
     'composer.stop': 'Stop run',
     'composer.scroll.end': 'Jump to the latest',
+    // The chat toggle. Two titles rather than one, because the button's own state is the thing
+    // worth saying: a title reading "Also send to Feishu" on a button that is already doing so
+    // leaves the reader guessing which way round it is.
+    'composer.mirror': 'Also send to the chat',
+    'composer.mirror.on': 'Answers also go to {0}. Click to stop.',
+    'composer.mirror.off': 'Also send the answer to {0}',
+    'composer.mirror.surface.feishu': 'Feishu',
 
     'status.idle': 'Idle',
     'status.attached': 'Running',
@@ -64,6 +71,7 @@ const STRINGS = {
     'run.queued': 'Queued: {0}',
     'run.queued.read': 'Picked up',
     'run.queued.sent': 'Added to the run in progress.',
+    'run.mirror.next': 'This run is already going. The answer after it is the first one sent on.',
     'run.stopped': 'Stopped.',
     'run.failed': 'The run hit a problem',
     'run.reattached': 'Reattached.',
@@ -228,6 +236,10 @@ const STRINGS = {
     'composer.attach.note': '我已经把这些文件放到 artifacts 目录：{0}',
     'composer.stop': '停止执行',
     'composer.scroll.end': '回到最新消息',
+    'composer.mirror': '同时发送到聊天',
+    'composer.mirror.on': '回答会同时发送到{0}，点击可关闭。',
+    'composer.mirror.off': '把回答同时发送到{0}',
+    'composer.mirror.surface.feishu': '飞书',
 
     'status.idle': '空闲',
     'status.attached': '执行中',
@@ -250,6 +262,7 @@ const STRINGS = {
     'run.queued': '已排队：{0}',
     'run.queued.read': '已读取',
     'run.queued.sent': '已插入到正在执行的这一轮。',
+    'run.mirror.next': '这一轮已经在执行了，从下一个回答开始同步。',
     'run.stopped': '已停止。',
     'run.failed': '执行出错',
     'run.reattached': '已重新连接。',

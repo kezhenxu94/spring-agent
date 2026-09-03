@@ -40,6 +40,11 @@ export const state = {
   running: false,
   // Uploaded and waiting to be named in the next message. Cleared once that message is sent.
   attachments: [],
+  // Whether the next message's answer also goes to the chat this conversation belongs to. Here
+  // rather than private to the composer because the questions form sends messages too, and it sits
+  // in an earlier layer than the composer does — so it could not import the composer to ask.
+  // Persisted per conversation by the composer; nothing on the server remembers it.
+  mirroring: false,
 };
 
 const listeners = new Map();

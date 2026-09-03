@@ -60,7 +60,7 @@ public class FeishuUserModelsConfiguration {
       final FeishuConfigForm form,
       final JsonMapper objectMapper,
       final FeishuMessages messages,
-      @Qualifier("applicationTaskExecutor") final TaskExecutor taskExecutor) {
+      @Qualifier(FeishuAutoConfiguration.TASK_EXECUTOR) final TaskExecutor taskExecutor) {
     return new FeishuConfigHandler(
         feishu, registry, probe, builtins, form, objectMapper, messages, taskExecutor);
   }

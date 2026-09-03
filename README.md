@@ -17,7 +17,8 @@ It is also a library. If you are building your own agent on Spring Boot 4 and Sp
 [docs/sdk.md](docs/sdk.md); if you want to change this repository, read
 [docs/contributing.md](docs/contributing.md). For how the pieces fit together — the surfaces, the
 event sources, what a run is offered and where state lives — [docs/architecture.md](docs/architecture.md)
-draws it.
+draws it. [docs/advanced.md](docs/advanced.md) covers what a deployment can turn on that most do not
+need.
 
 Every property and environment variable is documented in place, with the reason for its default, in
 [`spring-agent-app-feishu/src/main/resources/application.yaml`](spring-agent-app-feishu/src/main/resources/application.yaml).
@@ -506,6 +507,14 @@ Its own switches, on top of the ones in the table above:
 `TOOLS_SHELL_TYPE` defaults to `none` here, unlike the command line. This surface is reachable by
 everyone in the tenant, and `local` would mean every one of them can run commands in the server
 process with its filesystem and its secrets; use `kubernetes` or `docker`, which sandbox per user.
+
+## Run both, and hand a conversation between them
+
+A fourth application, `spring-agent-app-web-feishu`, carries the web UI and the Feishu bot in one
+process, so a conversation started in either can be continued in the other — and an answer written
+in the browser can be posted back into the Feishu thread it came from. It is a narrower case than
+the three above and it needs both apps configured against one Feishu app, so it has a document of
+its own: [docs/advanced.md](docs/advanced.md).
 
 ## Run the command line
 

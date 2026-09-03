@@ -24,9 +24,20 @@ import tools.jackson.databind.json.JsonMapper;
  * invisibly.
  *
  * <p>{@code chatType} is what identifies this surface. A run that did not come from here is left
- * alone, so an application that somehow carried another surface too would not have its runs
- * rendered twice. {@code ScheduledTaskService} carries the chat type through to a firing, which is
- * what makes a task created in the browser show up in the browser.
+ * alone, so an application carrying a chat surface as well does not have that surface's runs
+ * rendered twice — which is the whole reason this module is publishable beside one. {@code
+ * ScheduledTaskService} carries the chat type through to a firing, which is what makes a task
+ * created in the browser show up in the browser.
+ *
+ * <p><b>Unless a deployment asks to follow them.</b> {@code app.web.follow-chat-runs} widens the
+ * gate to the chat surface's own runs, so somebody who started a conversation in a chat can open it
+ * here and watch the run as it happens instead of reading it once it is over. That is the other
+ * half of a handoff, and it cannot be done from outside this process — a journal is held in memory.
+ * It is off by default because it is not free: every chat run is then journaled for {@code
+ * app.web.journal.retention} whether or not a browser ever asks for it. Following a run does not
+ * take it over — the chat surface still renders its own card, a journal is only ever read, and both
+ * question handlers put the form up so an answer can come back from whichever one the person is
+ * looking at.
  */
 @Slf4j
 @Component
@@ -53,7 +64,7 @@ public class WebRunListener implements AgentResponseListener {
       return;
     }
 
-    if (!CHAT_TYPE.equals(request.chatType())) {
+    if (!CHAT_TYPE.equals(request.chatType()) && !following(request.chatType())) {
       return;
     }
 
@@ -98,6 +109,25 @@ public class WebRunListener implements AgentResponseListener {
         "Attached subagent {} to the journal of run {}",
         id,
         Strings.nullToEmpty(parent.requestId()));
+  }
+
+  /**
+   * Whether a run belonging to the chat surface beside this page is followed here too.
+   *
+   * <p>The chat types are the ones every chat integration in this codebase uses — Feishu and Slack
+   * both describe a conversation as {@code p2p} or {@code group}/{@code channel} — rather than a
+   * list a deployment configures. A surface that named something else would simply not be followed,
+   * which is the safe way round: an unrecognised chat type is a run this module knows nothing about
+   * and has no business opening a journal for.
+   */
+  private boolean following(final String chatType) {
+    if (!properties.followChatRuns() || chatType == null) {
+      return false;
+    }
+    return switch (chatType.toLowerCase(java.util.Locale.ROOT)) {
+      case "p2p", "group", "channel" -> true;
+      default -> false;
+    };
   }
 
   private Duration questionTtl() {

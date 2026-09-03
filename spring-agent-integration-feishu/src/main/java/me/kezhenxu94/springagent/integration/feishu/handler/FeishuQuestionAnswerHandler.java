@@ -18,6 +18,7 @@ import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuAutoConfiguration;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -60,11 +61,12 @@ public class FeishuQuestionAnswerHandler {
   private final Admins admins;
 
   /**
-   * Boot's general-purpose executor by name, since {@code taskScheduler} is a {@code TaskExecutor}
-   * too. Deliberately not that one: its four threads exist to fire scheduled tasks on time, and
-   * this work waits on Feishu.
+   * By name, since {@code taskScheduler} is a {@code TaskExecutor} too and would otherwise be a
+   * candidate. Deliberately not that one: its four threads exist to fire scheduled tasks on time,
+   * and this work waits on Feishu. This module's own pool rather than Boot's — see {@link
+   * FeishuAutoConfiguration#feishuTaskExecutor()} for why borrowing Boot's was a bug.
    */
-  @Qualifier("applicationTaskExecutor")
+  @Qualifier(FeishuAutoConfiguration.TASK_EXECUTOR)
   private final TaskExecutor taskExecutor;
 
   public P2CardActionTriggerResponse handle(final P2CardActionTrigger event) {

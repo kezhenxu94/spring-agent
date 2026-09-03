@@ -17,7 +17,7 @@ import { chatRoute, go } from './route.js';
 import { renderQuestion } from './questions.js';
 import { attachRun, closeStream } from './stream.js';
 import { appendTurn, renderEmptyTranscript } from './transcript.js';
-import { state } from './state.js';
+import { bus, state } from './state.js';
 
 export async function loadConversations() {
   // Only the list waits — the run beside it carries on being watched, and a page-wide veil over a
@@ -140,6 +140,10 @@ export async function openConversation(id) {
   state.conversationId = id;
   state.runView = null;
   state.lastSeq = 0;
+  // Over the bus rather than by calling the composer, which imports this module: the setting for
+  // whether an answer also goes to a chat is stored per conversation, so opening one is when it has
+  // to be read back. Announced rather than acted on — whether anything cares is app.js's business.
+  bus.emit('conversation:opened', id);
   // Picking a conversation is what the drawer was opened for, so it gets out of the way.
   if (onNarrowScreen()) sidebarOpen(false);
 

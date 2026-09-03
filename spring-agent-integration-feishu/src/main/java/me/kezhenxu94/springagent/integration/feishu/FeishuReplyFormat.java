@@ -16,7 +16,9 @@ import org.springframework.stereotype.Component;
  *
  * <p>Contributed as a {@link PromptVariablesContributor} rather than written into the application's
  * system prompt, so the rules travel with the integration that needs them: a deployment that swaps
- * the prompt for one of its own keeps them, and a surface that is not Feishu never sees them.
+ * the prompt for one of its own keeps them, and a surface that is not Feishu never sees them —
+ * which is what the chat-type gate in {@link #variables(AgentRequest)} is for, since a contributor
+ * bean is asked about every run in the context and not only about this surface's.
  *
  * @see <a
  *     href="https://open.feishu.cn/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-json-v2-components/content-components/rich-text">富文本组件</a>
@@ -88,7 +90,18 @@ public class FeishuReplyFormat implements PromptVariablesContributor {
 
   @Override
   public Map<String, Object> variables(final AgentRequest request) {
-    final var group = "group".equalsIgnoreCase(request.chatType());
+    final var chatType = request.chatType();
+    final var group = "group".equalsIgnoreCase(chatType);
+    if (!group && !"p2p".equalsIgnoreCase(chatType)) {
+      // Not a Feishu run, so none of this applies to it. The same gate FeishuCardListener puts on
+      // itself, and for the stronger reason: a contributor is a @Bean and is therefore asked about
+      // every run in the context, including one belonging to another surface entirely. Answering
+      // for that run would tell the model to write Feishu tags into an answer a browser renders
+      // literally, which is the whole of what this class promises not to do. Empty rather than a
+      // blank string, so core's own default fills the slot and nothing here decides for the
+      // surface that owns the run.
+      return Map.of();
+    }
     return Map.of("replyFormat", group ? COMMON + GROUP_ONLY : COMMON);
   }
 }

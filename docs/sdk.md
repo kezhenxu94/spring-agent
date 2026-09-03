@@ -450,6 +450,20 @@ for the other case, and core ships no implementation of it:
   A surface implements it as a `@Bean`; a caller takes an `ObjectProvider<Notifier>` and does nothing
   when there is none.
 
+  Two more methods, both `default` so an existing implementation keeps compiling. `surface()` names
+  the chat platform — `feishu`, `slack` — for a caller that has to name or draw it; the browser
+  surface uses it to decide which platform's icon goes on the button that mirrors an answer there.
+  `quoted(String)` is text somebody else wrote, made safe to embed in what this surface renders: the
+  counterpart of `{replyFormat}` for the same dialect read rather than written. Both Feishu's
+  `<at id=all></at>` and Slack's `<!channel>` notify everybody, so an implementation that carries
+  foreign text **must** override it — the default returns the text unchanged, which renders wrongly
+  rather than pretending to be safe.
+
+  What may be sent widened with that. It was "text the deployment wrote about its own workings";
+  it is now that *or* a run's answer arriving from a surface the run did not happen on, which is how
+  a conversation is handed between a chat and a browser. What still never travels this way is an
+  observation's payload.
+
 A transport therefore depends only on core, and nothing that consumes observations depends on a
 transport. Reporting one is a single call:
 
@@ -777,6 +791,7 @@ binary breaks at runtime while the JVM build passes.
 | `spring-agent-rag-milvus` | The knowledge base, and the only implementation of core's `KnowledgeBase` |
 | `spring-agent-integration-websocket` | A browser as an agent surface: a single-page UI, the REST endpoints behind it, and runs streamed live over STOMP/WebSocket. Contributes no `SecurityFilterChain` — the including application owns that and wires in this module's `WebAuthoritiesMapper` — and needs `@EnableScheduling` on it |
 | `spring-agent-app-webui` | The deployable that is nothing but the runtime and the module above; not published, it ships as an image |
+| `spring-agent-app-web-feishu` | The same deployable with the Feishu surface as well, so a conversation can be handed between a chat and a browser; not published, it ships as an image |
 
 **Only one chat surface may be on a classpath at a time.** `spring-agent-integration-feishu` and
 `spring-agent-integration-slack` each register a `@Bean AgentResponseListener` that claims every
@@ -798,6 +813,14 @@ reason it is published at all — as long as the application's own `SecurityFilt
 page's paths. See `spring-agent-app-webui`'s `SecurityConfigurer` for the arrangement, and note that
 CSRF must be on: a `POST /api/conversations/{id}/messages` makes the agent act with the logged-in
 person's credentials, files and MCP servers.
+
+`spring-agent-app-web-feishu` is that combination as a deployable, and it is where to look for what
+the pairing then makes possible. Two things, both needing one process: `app.web.follow-chat-runs`
+widens `WebRunListener`'s claim to the chat surface's own runs, so a browser can watch a chat run as
+it happens rather than read it afterwards; and the composer's mirror toggle sends the answer back
+through the `Notifier`, which is why that SPI grew `surface()` and `quoted(String)` rather than a new
+one being invented. The mirror is attached per request — `AgentRequest.listeners` — so nothing has to
+be persisted and no bean has to work out which runs it was wanted for.
 
 Adding a module decides nothing on its own. `app.ai.tools.shell.type` decides the shell and defaults
 to `none`; `app.events.enabled` decides the events receiver and defaults to false; `app.ai.rag.enabled`
