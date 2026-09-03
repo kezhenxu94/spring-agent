@@ -482,10 +482,17 @@ the browser: a group is a group chat, and this surface has none.
 
 Somebody listed in `ADMINS` gets one thing more, in that same menu: `Read another person` asks for a
 user id and lists
-their knowledge base — listing, searching and reading a document, and nothing else. That mirrors the admin tools
+their knowledge base — listing, searching and reading a document, and nothing else. That mirrors the
+admin tools
 (`ListOwnerKnowledgeBase`, `SearchOwnerKnowledge`) exactly, and like them it is for the person who
 maintains what the agent knows. Deleting or re-scoping somebody else's document is not offered
-anywhere, in the page or in a chat.
+anywhere, in the page or in a chat. The box suggests, as you type, the identities the deployment
+runs unattended work as — an event source's `owner.user-id`, labelled with the sources it triages —
+since those are the knowledge bases nobody logs in to and whose ids are otherwise only found by
+reading the configuration; anybody else's id is still typed or pasted in, which is what the box is
+mostly for. There are suggestions only where the application serving the page also carries
+`spring-agent-events`, which the servers shipped here do not: they keep the webhook receiver and the
+browser in separate deployments.
 
 **A run outlives the page it was started from.** The page subscribes to a run over a websocket, and
 that subscription is a reader of a run that is happening on the server, never the run itself — so refreshing, closing the tab, or coming back an

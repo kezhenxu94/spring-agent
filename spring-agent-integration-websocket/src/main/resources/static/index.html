@@ -249,10 +249,17 @@
           already named it — which is why there is no caption here.
         -->
         <div id="knowledge-owner-row" hidden class="mb-2 flex items-center gap-1">
-          <input id="knowledge-owner" type="text" autocomplete="off"
+          <input id="knowledge-owner" type="text" autocomplete="off" list="knowledge-owner-options"
                  class="min-w-0 flex-1 rounded-md border border-zinc-300 bg-transparent px-2 py-1
                         font-mono text-[12px] outline-none focus:border-signal dark:border-edge"
                  data-i18n-placeholder="knowledge.owner.placeholder">
+          <!--
+            The identities this deployment runs unattended work as, which /api/me reports. A
+            datalist rather than a select: those ids are the ones nobody can be expected to know,
+            but everybody else's is still typed or pasted, and a list that only suggests keeps both
+            in one box.
+          -->
+          <datalist id="knowledge-owner-options"></datalist>
           <button id="knowledge-owner-open" type="button" class="panel-action shrink-0"
                   data-i18n="knowledge.owner.browse">Open</button>
           <button id="knowledge-owner-clear" type="button" hidden class="tool-button shrink-0"
