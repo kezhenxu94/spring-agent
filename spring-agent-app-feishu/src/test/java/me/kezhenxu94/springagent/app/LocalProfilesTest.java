@@ -10,6 +10,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.StandardEnvironment;
 
 /**
  * That the switches in {@code application-local.yaml} are switches, and that they reach something.
@@ -35,6 +36,19 @@ class LocalProfilesTest {
         // The application's own configuration files, which an ApplicationContextRunner does not
         // load on its own — and they are the whole subject here.
         .withInitializer(new ConfigDataApplicationContextInitializer())
+        // Without the machine's environment behind them. What this file declares is placeholders
+        // over environment variables, and the assertions are about what they come to when nobody
+        // has set any — which is the state a fresh checkout is in and the state the defaults are
+        // written for. Left in, somebody who runs a mailbox of their own locally, and so has
+        // EMAIL_HOST and the rest exported in the shell that starts the build, gets their own
+        // configuration bound in here and a failure that says nothing about the code. The one test
+        // that is about a variable being set supplies it as a property of its own.
+        .withInitializer(
+            context ->
+                context
+                    .getEnvironment()
+                    .getPropertySources()
+                    .remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME))
         .withPropertyValues("spring.profiles.active=" + String.join(",", profiles))
         .withUserConfiguration(Bindings.class);
   }
@@ -83,14 +97,20 @@ class LocalProfilesTest {
               // logging block is as easy to indent wrong as any other, and one that Boot ignored
               // in silence would leave somebody troubleshooting the feature with the very output
               // this profile exists to give them.
+              //
+              // At the level the profile names for each rather than all at the loudest: the two
+              // that read the mailbox say what they have to say at INFO, and only the events
+              // module keeps the line that matters here — why a sender was trusted, and which
+              // situation the message joined — behind DEBUG. What is being checked is that the
+              // block landed at all, and a level read back from a block Boot ignored is null.
               final var environment = context.getEnvironment();
               assertThat(
                       environment.getProperty(
                           "logging.level.me.kezhenxu94.springagent.integration.email"))
-                  .isEqualTo("DEBUG");
+                  .isEqualTo("INFO");
               assertThat(
                       environment.getProperty("logging.level.org.springframework.integration.mail"))
-                  .isEqualTo("DEBUG");
+                  .isEqualTo("INFO");
               assertThat(environment.getProperty("logging.level.me.kezhenxu94.springagent.events"))
                   .isEqualTo("DEBUG");
             });

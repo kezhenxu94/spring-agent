@@ -83,6 +83,13 @@ public abstract class AbstractIntegrationTest {
     // application.yaml declares mounts[0] with its pvc-name left to an environment variable that
     // is unset here, and a mount without one is rejected outright, so name it.
     registry.add("app.ai.tools.shell.kubernetes.storage.mounts[0].pvc-name", () -> "test-pvc");
+    // Off, and said here rather than left to the yaml's default, because the yaml's default is
+    // ${RAG_ENABLED:false} and somebody who runs a knowledge base locally has that exported in the
+    // shell that starts the build. On, it puts a retriever in front of every run in this suite,
+    // backed by a Milvus nobody started and an embedding endpoint nothing is listening on — and a
+    // retrieval that fails takes the run with it, so the failure lands on whatever the test was
+    // actually asserting. The knowledge base has its own tests, which bring what it needs.
+    registry.add("app.ai.rag.enabled", () -> "false");
     registry.add("spring.ai.openai.base-url", () -> "http://127.0.0.1:8080");
     registry.add("spring.ai.openai.api-key", () -> "test-openai-key");
     registry.add("spring.ai.openai.chat.model", () -> "test-openai-model");

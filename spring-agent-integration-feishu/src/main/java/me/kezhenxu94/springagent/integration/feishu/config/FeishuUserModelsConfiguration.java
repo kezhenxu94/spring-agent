@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.io.Resource;
 import org.springframework.core.task.TaskExecutor;
@@ -22,9 +23,21 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>Conditional on the same key as the feature itself, so that a deployment which cannot store an
  * API token sealed never offers a card asking for one. Where these beans are absent, {@code
  * /config} is not a command and the message reaches the agent like any other.
+ *
+ * <p>And on Feishu being switched on, which is not the same condition and is not implied by being
+ * on the classpath: everything here is built from beans {@link FeishuAutoConfiguration} contributes
+ * — the Lark client, this module's message source — and that configuration is gated on {@code
+ * app.feishu.enabled}. An auto-configuration is still an auto-configuration on a classpath the
+ * surface has been switched off on, so without this a deployment that seals API tokens and does not
+ * talk to Feishu fails to start, asking for a {@code FeishuMessages} bean nothing declares.
  */
 @AutoConfiguration
 @ConditionalOnUserModels
+@ConditionalOnProperty(
+    prefix = "app.feishu",
+    name = "enabled",
+    havingValue = "true",
+    matchIfMissing = true)
 public class FeishuUserModelsConfiguration {
 
   @Bean
