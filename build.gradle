@@ -15,10 +15,12 @@ nmcpAggregation {
     username = providers.environmentVariable('CENTRAL_PORTAL_USERNAME')
     password = providers.environmentVariable('CENTRAL_PORTAL_PASSWORD')
     publicationName = "spring-agent ${version}"
-    // Uploaded and validated, but not released: the deployment waits in the portal until it is
-    // released by hand. Maven Central is append-only — a released version can never be replaced or
-    // withdrawn — so the last step before it becomes permanent is deliberately a human one.
-    publishingType = 'USER_MANAGED'
+    // Released as soon as the portal has validated it, with no human step. The tag is the
+    // decision: pushing `vX.Y.Z` is what starts this workflow at all, and a deployment that
+    // waits in the portal for somebody to press a button is one that quietly never ships.
+    // Maven Central is append-only, so a version published this way can never be replaced or
+    // withdrawn: the care goes into what gets tagged.
+    publishingType = 'AUTOMATIC'
   }
 }
 
