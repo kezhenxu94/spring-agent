@@ -1,5 +1,9 @@
 # spring-agent
 
+[![Build](https://github.com/kezhenxu94/spring-agent/actions/workflows/build.yaml/badge.svg)](https://github.com/kezhenxu94/spring-agent/actions/workflows/build.yaml)
+[![Maven package](https://github.com/kezhenxu94/spring-agent/actions/workflows/maven.yaml/badge.svg)](https://github.com/kezhenxu94/spring-agent/actions/workflows/maven.yaml)
+[![Docker](https://github.com/kezhenxu94/spring-agent/actions/workflows/docker.yaml/badge.svg)](https://github.com/kezhenxu94/spring-agent/actions/workflows/docker.yaml)
+[![Shell runner](https://github.com/kezhenxu94/spring-agent/actions/workflows/shell-runner.yaml/badge.svg)](https://github.com/kezhenxu94/spring-agent/actions/workflows/shell-runner.yaml)
 [![Maven Central](https://img.shields.io/maven-central/v/me.kezhenxu94/spring-agent-core?label=Maven%20Central)](https://central.sonatype.com/artifact/me.kezhenxu94/spring-agent-core)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-21%2B-orange)](#)
