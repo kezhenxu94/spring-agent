@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -140,6 +141,20 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
 
   /** Which of them are on the card, so that each is added once and streamed into thereafter. */
   private final Set<String> added = new LinkedHashSet<>();
+
+  /**
+   * How many times each element has had to be put back on the card it is on now, which is what
+   * makes the insert that puts it back a different write from the one that first put it there.
+   *
+   * <p>An idempotency key is otherwise the same on both, and the first of them <i>landed</i> — so
+   * Feishu would answer the second with the success it already gave, and the element would stay
+   * gone for the rest of the run. That is the one place the reasoning behind reusing the key does
+   * not hold: it holds for a write that was refused, and this one was not.
+   *
+   * <p>Emptied by {@link #sync()} along with {@link #added}, the count being about the card the run
+   * is writing to and not about the run.
+   */
+  private final Map<String, Integer> putBacks = new HashMap<>();
 
   /**
    * Which card of the run's the elements above are on, so that this updater notices when the card
@@ -631,7 +646,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
                 : messages.get("card-tool-calls-done", toolCalls.size()),
             hidden,
             shown);
-    if (added.contains(FeishuCardElements.TOOLS)) {
+    if (stillOnCard(FeishuCardElements.TOOLS)) {
       // A key that changes with the pane: an idempotency key is what stops a retry landing twice,
       // and reusing one across replacements would have Feishu take the first and ignore the rest.
       card.replace(
@@ -643,6 +658,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     final var generationBefore = generation;
     if (insertAbove(FeishuCardElements.TOOLS, array.toString(), "tools")) {
       added.add(FeishuCardElements.TOOLS);
+      backOnCard(FeishuCardElements.TOOLS);
       return;
     }
     if (movedOn(generationBefore)) {
@@ -884,6 +900,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     // Before anything below, which can write to the card and so come back through here.
     generation = current;
     added.clear();
+    putBacks.clear();
     firstSubagentPanelId = null;
     callsOnEarlierCards = toolCalls.size();
   }
@@ -891,7 +908,66 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   /** Whether {@code elementId} is on the card the run is writing to now. */
   private synchronized boolean onCard(final String elementId) {
     sync();
-    return added.contains(elementId);
+    return stillOnCard(elementId);
+  }
+
+  /**
+   * Whether this updater's record of having put {@code elementId} on the card is still worth
+   * anything. The card is Feishu's state and not ours, and an element can go from under a run
+   * mid-turn: a write that found it gone said so, and from then on what we last saw land is not
+   * what the card holds — see {@code FeishuCard#lost}.
+   *
+   * <p>Forgetting it here is the whole of the remedy, because everything that writes into one of
+   * these elements puts it on the card first. So the next write inserts it again, and the count of
+   * how many times that has happened goes into the insert's idempotency key: the first insert
+   * landed, and a repeat under the same key is answered with that success rather than put on the
+   * card.
+   *
+   * <p>Called from under this updater's lock, like everything else that reads {@link #added}, and
+   * after {@link #sync()} rather than before it.
+   */
+  private boolean stillOnCard(final String elementId) {
+    if (!added.contains(elementId)) {
+      return false;
+    }
+    if (!goneFromCard(elementId)) {
+      return true;
+    }
+    log.info("Card {} no longer has {}, so it goes back on", card.cardId(), elementId);
+    added.remove(elementId);
+    putBacks.merge(elementId, 1, Integer::sum);
+    return false;
+  }
+
+  /**
+   * Whether the card has reported this element, or the element written into it, as one it does not
+   * have. Both, because an element the card carries and the element a write names are not always
+   * the same one: a panel is inserted whole and streamed into by its body, and it is the body a
+   * refused streaming write names.
+   */
+  private boolean goneFromCard(final String elementId) {
+    if (card.lost(elementId)) {
+      return true;
+    }
+    if (isSubagent()) {
+      // A panel arrives with everything this writes into, so any of them going is the panel going.
+      return FeishuSubagentPanel.panelElementId(subagentId).equals(elementId)
+          && (card.lost(contentElementId) || card.lost(spendElementId));
+    }
+    return elements != null && card.lost(elements.bodyOf(elementId));
+  }
+
+  /** Says that {@code elementId}, and whatever is written into it, is back on the card. */
+  private void backOnCard(final String elementId) {
+    card.found(elementId);
+    if (isSubagent()) {
+      card.found(contentElementId);
+      card.found(spendElementId);
+      return;
+    }
+    if (elements != null) {
+      card.found(elements.bodyOf(elementId));
+    }
   }
 
   /**
@@ -906,9 +982,21 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   /** Puts {@code arrayJson} in this element's place in the card's order, once. */
   private synchronized boolean insertAbove(
       final String elementId, final String arrayJson, final String suffix) {
-    // The card's id is in the key rather than only the element's: a run may be on its third card by
-    // now, and the same element added to each of them is three inserts and not one retried.
-    return card.insertBefore(anchorOf(elementId), arrayJson, card.cardId() + ":" + suffix);
+    return card.insertBefore(anchorOf(elementId), arrayJson, keyFor(elementId, suffix));
+  }
+
+  /**
+   * The idempotency key for putting {@code elementId} on the card, which is what stops a write that
+   * only looked like a failure from leaving two copies behind.
+   *
+   * <p>The card's id is in it rather than only the element's: a run may be on its third card by
+   * now, and the same element added to each of them is three inserts and not one retried. And how
+   * many times the element has had to be put back on <i>this</i> card, for the same reason the
+   * other way round — see {@link #putBacks}.
+   */
+  private String keyFor(final String elementId, final String suffix) {
+    final var again = putBacks.getOrDefault(elementId, 0);
+    return card.cardId() + ":" + suffix + (again == 0 ? "" : ":again:" + again);
   }
 
   /**
@@ -933,13 +1021,14 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       // card is the panel and never this element.
       return insertPanel();
     }
-    if (added.contains(elementId)) {
+    if (stillOnCard(elementId)) {
       return true;
     }
     final var generationBefore = generation;
     final var inserted = insertAbove(elementId, elements.forInsert(elementId, userId), elementId);
     if (inserted) {
       added.add(elementId);
+      backOnCard(elementId);
       // The sources go in above the spend row, so from here on they are the top of the footer, and
       // anything placed above the footer has to clear them too.
       if (FeishuCardElements.REFERENCES.equals(elementId)) {
@@ -967,7 +1056,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   synchronized boolean insertPanel() {
     sync();
     final var panelElementId = FeishuSubagentPanel.panelElementId(subagentId);
-    if (added.contains(panelElementId)) {
+    if (stillOnCard(panelElementId)) {
       return true;
     }
     if (parent == null) {
@@ -980,9 +1069,10 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         card.insertBefore(
             parent.subagentPanelAnchor(),
             panels.forInsert(subagentId, description, brief, null),
-            card.cardId() + ":" + subagentId);
+            keyFor(panelElementId, subagentId));
     if (inserted) {
       added.add(panelElementId);
+      backOnCard(panelElementId);
       parent.subagentPanelAdded(panelElementId);
       return true;
     }
@@ -1102,8 +1192,11 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       return true;
     }
     if (card.replaceNow(
-        FeishuCardElements.USAGE, elements.usageRow(line), card.cardId() + ":" + spendElementId)) {
+        FeishuCardElements.USAGE,
+        elements.usageRow(line),
+        keyFor(spendElementId, spendElementId))) {
       added.add(spendElementId);
+      backOnCard(spendElementId);
     }
     return false;
   }
@@ -1334,6 +1427,10 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       // no card — the card drops a write that would not change what an element holds.
       sendContent(withFailure(lastBaseContent));
       showSpend();
+      // And what the user said while it ran, which nothing else brings onto a card the run moved
+      // onto: the rest here is re-driven by the events that write it, and this one only by the
+      // person sending another message.
+      showQueued();
       closeToolsPane();
       countReferences();
       card.finish();
