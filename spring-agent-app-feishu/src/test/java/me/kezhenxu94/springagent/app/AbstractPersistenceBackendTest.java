@@ -159,6 +159,7 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
         ScheduledTask.builder()
             .id(id)
             .userId(owner())
+            .title("Thread digest")
             .taskText("summarise the thread")
             .cronExpression("0 0 9 * * MON")
             .background(true)
@@ -175,6 +176,7 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
     assertThat(reloaded).isPresent();
     assertThat(reloaded.get().status()).isEqualTo(ScheduledTask.Status.COMPLETED);
     // The fields the update did not name must survive it.
+    assertThat(reloaded.get().title()).isEqualTo("Thread digest");
     assertThat(reloaded.get().taskText()).isEqualTo("summarise the thread");
     assertThat(reloaded.get().cronExpression()).isEqualTo("0 0 9 * * MON");
     assertThat(reloaded.get().background()).isTrue();
@@ -191,6 +193,7 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
         ScheduledTask.builder()
             .id(id)
             .userId(owner())
+            .title("Thread digest")
             .taskText("summarise the thread")
             .cronExpression("0 0 9 * * MON")
             .maxRuns(10)
@@ -206,6 +209,7 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
     // The sweeper owns these and is writing them from elsewhere; an edit that put a whole task back
     // would undo whichever of them had moved since it was read.
     assertThat(reloaded.cronExpression()).isEqualTo("0 0 9 * * MON");
+    assertThat(reloaded.title()).isEqualTo("Thread digest");
     assertThat(reloaded.runCount()).isEqualTo(3);
     assertThat(reloaded.maxRuns()).isEqualTo(10);
     assertThat(reloaded.background()).isTrue();

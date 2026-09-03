@@ -1,6 +1,8 @@
 package me.kezhenxu94.springagent.core.scheduling;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -80,6 +82,51 @@ class ScheduledTaskServiceTest {
 
     assertThat(request.groupId()).isEqualTo("oc_group");
     assertThat(request.tenantId()).isEqualTo("tenant_1");
+  }
+
+  /** Nothing here fires, so the agent is never reached. */
+  private ScheduledTaskService editService() {
+    return new ScheduledTaskService(mock(SpringAgent.class), repo, properties(null));
+  }
+
+  @Test
+  @DisplayName("an edit to the prompt alone is a partial write, leaving the schedule untouched")
+  void editingTheTextOnlyIsPartial() {
+    editService()
+        .edit(task, new ScheduledTaskEdit(null, "do something else", null, null, null, null, null));
+
+    verify(repo).updateTaskText("task-1", "do something else");
+    // The sweeper owns nextFireAt and runCount and is writing them from another thread. Rewriting
+    // the whole row here would put back the next occurrence as it was read a moment ago.
+    verify(repo, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("an edit to anything else writes the row once, with its next occurrence worked out")
+  void editingTheScheduleReschedules() {
+    editService()
+        .edit(task, new ScheduledTaskEdit(null, null, "0 0 10 * * MON", null, null, null, null));
+
+    final var captor = ArgumentCaptor.forClass(ScheduledTask.class);
+    verify(repo).save(captor.capture());
+    assertThat(captor.getValue().cronExpression()).isEqualTo("0 0 10 * * MON");
+    assertThat(captor.getValue().nextFireAt()).isNotNull();
+    verify(repo, never()).updateTaskText(any(), any());
+  }
+
+  @Test
+  @DisplayName("an edit the rules refuse writes nothing at all")
+  void aRefusedEditWritesNothing() {
+    assertThatThrownBy(
+            () ->
+                editService()
+                    .edit(
+                        task,
+                        new ScheduledTaskEdit(null, "new", "not a cron", null, null, null, null)))
+        .isInstanceOf(IllegalArgumentException.class);
+
+    verify(repo, never()).save(any());
+    verify(repo, never()).updateTaskText(any(), any());
   }
 
   @Test

@@ -21,10 +21,10 @@
  * is what makes the two panels read as one thing rather than as two panels that happen to be
  * similar. The prose is the record; the mono is the page talking about it.
  *
- * The name line is not the same fact in both, and that is deliberate rather than a compromise. A
- * document's name is its title. A scheduled task has no title — its name in every list on this page
- * is its own prompt — so repeating that prompt over the prompt would say nothing; what a person
- * opens a task to find out is when it next comes round, and that is what the line says.
+ * The name line is the same fact in both: a title somebody wrote. A task written before it had one
+ * falls back to a shortened form of its prompt, so a row is never nameless, and when it next comes
+ * round — the thing a person opens a task to find out — is the first row of its spec sheet, where a
+ * fact that changes without the task changing belongs.
  *
  * No state colour anywhere in here. Amber, teal, violet and coral say something specific about a
  * run everywhere else on this page, and spending one on a stored document or a pending task would
@@ -54,9 +54,6 @@
   line-height: 1.35;
   letter-spacing: -0.01em;
 }
-/* Where the name is a moment rather than a title. Tabular figures so a date does not shimmy as the
-   clock in it advances. */
-.detail-name-time { font-variant-numeric: tabular-nums; }
 
 /* ─────────────────────────────────────── the spec sheet ───────────────────────────────────────
  *
@@ -158,13 +155,80 @@
 .detail-panel.detail-open .detail-text-box { flex: 1; min-height: 0; }
 .detail-panel.detail-open .detail-text { flex: 1; min-height: 0; max-height: none; }
 
-/* ─────────────────────────────────────── editing the body ───────────────────────────────────────
+/* ─────────────────────────────────────── editing the record ───────────────────────────────────────
  *
- * Only the schedule has this so far: a task's text is a prompt somebody wrote, and correcting a
- * typo in it otherwise means cancelling the task and asking the agent for it again, which loses the
- * conversation its firings write into. It sits exactly where the rendered text sits, so the edit
- * happens in the place the reader was already looking rather than in a dialog over it.
+ * Only the schedule has this so far: a task is a standing instruction somebody wrote, and correcting
+ * one otherwise means cancelling it and asking the agent for a new one, which loses the conversation
+ * its firings write into. A document has nothing to correct in place — a correction replaces it.
+ *
+ * The card does not change shape when it is opened for editing. The spec sheet's values become
+ * fields on the same grid and the body's prose becomes a textarea in the same box, so the edit
+ * happens in the place the reader was already looking rather than in a dialog over it — and what a
+ * field means is the label that was already beside it.
  */
+
+.detail-form {
+  display: grid;
+  grid-template-columns: minmax(0, 6.5rem) minmax(0, 1fr);
+  gap: 0.55rem 0.85rem;
+  align-items: start;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+}
+/* Level with the text inside the field beside it rather than with the top of its box, so a field
+   that carries a hint under it does not leave its label floating between the two. */
+.detail-form > .detail-label { padding-top: 0.45rem; }
+
+.detail-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+/* A field and whatever qualifies it on one line — a time and the checkbox that says there is no
+   time, a count and the note about leaving it empty. Wrapping, because these sit in a column whose
+   width is the panel's and a narrow window would otherwise push the checkbox out of reach. */
+.detail-field-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.detail-input {
+  min-width: 0;
+  flex: 1 1 9rem;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--surface);
+  color: var(--fg);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.detail-input:disabled { opacity: 0.45; }
+/* Narrow on purpose: a firing count is one or two digits, and a field the width of the column
+   invites a paragraph. */
+.detail-input-narrow { flex: 0 0 4.5rem; }
+
+.detail-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 12px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+.detail-check input { accent-color: var(--mist); }
+
+.detail-hint {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--fg-dim);
+}
 .detail-edit {
   flex: 1;
   min-height: 8rem;
@@ -183,6 +247,7 @@
 }
 /* The composer's focus ring, for the same reason it is not amber there: a focused field is not a
    run. */
+.detail-input:focus,
 .detail-edit:focus {
   border-color: var(--mist);
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--mist) 16%, transparent);

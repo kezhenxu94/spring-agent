@@ -5,7 +5,7 @@
 // there. The same path on a first visit, a reload mid-answer, and a return an hour later.
 
 import { t } from './i18n.js';
-import { $, fullTime, scrollToEnd, shortTime } from './dom.js';
+import { $, rowMeta, scrollToEnd, timeStamp } from './dom.js';
 import { api } from './api.js';
 import { toast } from './toast.js';
 import { skeletonList, skeletonTranscript } from './busy.js';
@@ -56,11 +56,14 @@ function row(conversation) {
   item.className = 'group relative';
 
   const open = document.createElement('button');
-  open.className = 'flex w-full items-center gap-2 rounded-md py-1.5 pl-2 pr-7 text-left '
+  open.className = 'flex w-full flex-col gap-0.5 rounded-md py-1.5 pl-2 pr-7 text-left '
     + 'text-[13px] transition '
     + (current
       ? 'bg-zinc-200/70 font-medium dark:bg-rail'
       : 'text-zinc-600 hover:bg-zinc-100 dark:text-mist dark:hover:bg-rail/60');
+
+  const line = document.createElement('span');
+  line.className = 'flex w-full items-center gap-2';
   const dot = document.createElement('span');
   dot.className = conversation.live
     ? 'size-1.5 shrink-0 rounded-full bg-signal dot-live'
@@ -68,19 +71,18 @@ function row(conversation) {
   const title = document.createElement('span');
   title.className = 'min-w-0 flex-1 truncate';
   title.textContent = conversation.title || t('nav.untitled');
-  open.append(dot, title);
+  line.append(dot, title);
+  open.append(line);
 
-  // When it was last said something to, at the end of the same line rather than on a second one:
-  // the list is what you scan to find the conversation you were in an hour ago, and doubling every
-  // row's height to say so would fit half as many of them on screen. The row already reserves the
-  // width the ⋯ sits in, so this lands to the left of it and nothing moves on hover.
-  const when = shortTime(conversation.updatedAt);
-  if (when) {
-    const stamp = document.createElement('span');
-    stamp.className = 'shrink-0 font-mono text-[10px] tabular-nums text-mist';
-    stamp.textContent = when;
-    stamp.title = fullTime(conversation.updatedAt);
-    open.append(stamp);
+  // When it was last said something to, on the second line the other two lists also keep: the three
+  // of them are read in one column, and the same fact in a different place in each is read as three
+  // different ones. A title is what a conversation is found by, and it gets the whole of its line
+  // rather than sharing it with a stamp that would clip a long one.
+  const stamp = timeStamp(conversation.updatedAt);
+  if (stamp) {
+    const meta = rowMeta();
+    meta.append(stamp);
+    open.append(meta);
   }
   // Navigated to rather than opened here: the route is what decides what is on screen, and the
   // handler it reaches closes the drawer.
