@@ -1,5 +1,5 @@
 /*
- * What Tailwind's utilities do not cover, in six files.
+ * What Tailwind's utilities do not cover, in eight files.
  *
  * Still one <link> in the page: the browser resolves these imports itself, and keeping the entry
  * point single means the load order is stated here rather than left to the order the tags happen
@@ -13,5 +13,6 @@
 @import "./css/prose.css";
 @import "./css/chrome.css";
 @import "./css/composer.css";
+@import "./css/detail.css";
 @import "./css/knowledge.css";
 @import "./css/busy.css";

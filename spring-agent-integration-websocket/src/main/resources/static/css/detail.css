@@ -1,0 +1,204 @@
+/* ─────────────────────────────────────── one thing, opened ───────────────────────────────────────
+ *
+ * The two sections that are not a conversation — the knowledge base and the schedule — show the
+ * same thing: a list in the sidebar, and whichever row is selected opened in the main column. They
+ * are drawn from one set of rules here rather than each inventing its own, because a document and a
+ * scheduled task are the same kind of object to the person reading them — something the agent keeps
+ * — and reading one should teach you how to read the other.
+ *
+ * The shape is one record card, and it is the same card in both sections:
+ *
+ *   KIND · pill                                   ⋯      an eyebrow saying what sort of record
+ *   The one line that names it                           the title, or when it next runs
+ *   ─────────────────────────────────────────────────
+ *   KEY    value                                         the spec sheet
+ *   KEY    value
+ *   ─────────────────────────────────────────────────
+ *   BODY                                                 what it holds, or what it will do
+ *   …
+ *
+ * Every label in it — the kind, the fact keys, the body's caption — is the same mono eyebrow, which
+ * is what makes the two panels read as one thing rather than as two panels that happen to be
+ * similar. The prose is the record; the mono is the page talking about it.
+ *
+ * The name line is not the same fact in both, and that is deliberate rather than a compromise. A
+ * document's name is its title. A scheduled task has no title — its name in every list on this page
+ * is its own prompt — so repeating that prompt over the prompt would say nothing; what a person
+ * opens a task to find out is when it next comes round, and that is what the line says.
+ *
+ * No state colour anywhere in here. Amber, teal, violet and coral say something specific about a
+ * run everywhere else on this page, and spending one on a stored document or a pending task would
+ * make it look like something the agent is doing right now.
+ */
+
+.detail-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+/* The eyebrow row: what kind of record this is, how it is classified, and everything that can be
+   done to it. The menu rides up here rather than under the body, because a record long enough to
+   scroll would otherwise put its own actions somewhere nobody scrolls to. */
+.detail-kind {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.detail-kind > .row-menu { margin-left: auto; }
+
+.detail-name {
+  font-family: var(--font-display, sans-serif);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+/* Where the name is a moment rather than a title. Tabular figures so a date does not shimmy as the
+   clock in it advances. */
+.detail-name-time { font-variant-numeric: tabular-nums; }
+
+/* ─────────────────────────────────────── the spec sheet ───────────────────────────────────────
+ *
+ * A key column of fixed width, so the values line up in one column whatever the keys are, and a
+ * value column that wraps — the strings here are absolute paths and cron expressions, and a path is
+ * read left to right, so wrapping it beats truncating something whose whole purpose is to be looked
+ * at. Rows rather than a table: there are four of them at most.
+ */
+.detail-facts {
+  display: grid;
+  grid-template-columns: minmax(0, 6.5rem) minmax(0, 1fr);
+  gap: 0.3rem 0.85rem;
+  align-items: baseline;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+}
+.detail-facts dd { font-size: 12.5px; line-height: 1.5; }
+.detail-facts dd.detail-fact-mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+}
+
+/* The one fact that classifies the thing, as a word rather than a colour — who else can read a
+   document, how a task is scheduled. In the sidebar the same fact is a dot, because a row there has
+   no space for a word. */
+.detail-pill {
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  color: var(--fg-dim);
+}
+/* Worth picking out at a glance — shared with more people than the reader, or repeating for ever.
+   Carried by a filled surface rather than by a hue, for the reason at the top of this file. */
+.detail-pill-filled { background: var(--code-bg); color: var(--fg); }
+
+/* Every label in the card: the kind above the name, each key in the spec sheet, the caption over
+   the body. One idiom, deliberately — see the top of this file. It is the same mono eyebrow the run
+   spine uses, so a label reads the same wherever it appears on this page. */
+.detail-label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+}
+
+/* ─────────────────────────────────────── the body ─────────────────────────────────────── */
+
+.detail-text-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+}
+
+/* Scrolled rather than allowed to run: a long body would otherwise push its own heading — which
+   carries the menu of everything that can be done to it — off the top of the screen. The cap is
+   only for the case below, where the panel is not the thing. */
+.detail-text {
+  max-height: 26rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* With something open the panel *is* that thing, so it takes the whole column and the body scrolls
+   inside it. The alternative — a card as tall as its contents inside a scrolling panel — wastes the
+   bottom half of a wide screen on a short note and hides the heading on a long one. Every step of
+   the chain needs `min-height: 0`, or a flex item refuses to shrink below the height of its own
+   content and the scroller ends up on the page instead of on the body. */
+/* `:not([hidden])` is load-bearing, not defensive: these two classes together out-specify the
+   `[hidden]` rule in the browser's own stylesheet, so a `display` set here without it would put the
+   knowledge base on screen over the conversation the moment a document had ever been opened. */
+.detail-panel.detail-open:not([hidden]) { display: flex; overflow: hidden; }
+.detail-panel.detail-open > .detail-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+/* And it stops being a card. A border and an inset of its own made sense around one item in a
+   panel; around the whole panel they are a second frame just inside the first, and they spend the
+   width the thing is read at on nothing. The panel's own padding is its margin. */
+.detail-panel.detail-open > .detail-body > .detail-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+.detail-panel.detail-open .detail-text-box { flex: 1; min-height: 0; }
+.detail-panel.detail-open .detail-text { flex: 1; min-height: 0; max-height: none; }
+
+/* ─────────────────────────────────────── editing the body ───────────────────────────────────────
+ *
+ * Only the schedule has this so far: a task's text is a prompt somebody wrote, and correcting a
+ * typo in it otherwise means cancelling the task and asking the agent for it again, which loses the
+ * conversation its firings write into. It sits exactly where the rendered text sits, so the edit
+ * happens in the place the reader was already looking rather than in a dialog over it.
+ */
+.detail-edit {
+  flex: 1;
+  min-height: 8rem;
+  width: 100%;
+  resize: none;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: var(--surface);
+  color: var(--fg);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  line-height: 1.7;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+/* The composer's focus ring, for the same reason it is not amber there: a focused field is not a
+   run. */
+.detail-edit:focus {
+  border-color: var(--mist);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--mist) 16%, transparent);
+}
+
+.detail-edit-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+/* How much of the room the store has is left, said only once it is worth saying — see
+   tasks-detail.js. It sits at the end of the row, away from the buttons. */
+.detail-edit-count {
+  margin-left: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--fg-dim);
+}
+.detail-edit-count[data-over="true"] { color: var(--alarm-fg); }

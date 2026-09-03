@@ -53,11 +53,16 @@
   to { opacity: 0; transform: translateY(0.35rem); }
 }
 
-/* ─────────────────────────────── the theme and language controls ───────────────────────────────
+/* ─────────────────────────────── the segmented control ───────────────────────────────
  *
- * Neither uses a state colour. Amber, teal, violet and coral say something specific about a run
- * everywhere else on this page, and spending one on a settings row would make the chrome look like
- * something the agent is doing. Selection here is carried by contrast and a raised surface instead.
+ * One of a small fixed set, where seeing the alternatives is worth the width — which in this page
+ * is the sidebar's tab strip and nothing else. The theme and the language are chosen from a menu
+ * instead: they are set once and then never again, and a strip standing open for them spends the
+ * sidebar's last inch on a decision nobody is making.
+ *
+ * No state colour. Amber, teal, violet and coral say something specific about a run everywhere else
+ * on this page, and spending one here would make the chrome look like something the agent is doing.
+ * Selection is carried by contrast and a raised surface instead.
  */
 
 .seg {
@@ -124,6 +129,24 @@
   outline-offset: -2px;
 }
 
+/* What the set of choices under it answers. Not focusable and not a menu item: it is the question,
+   and a menu of two sets of radio rows is unreadable without it. */
+.menu-heading {
+  padding: 0.4rem 0.45rem 0.2rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-dim);
+}
+.menu-heading:first-child { padding-top: 0.15rem; }
+
+.menu-separator {
+  height: 1px;
+  margin: 0.25rem 0.2rem;
+  background: var(--line);
+}
+
 /* A fixed-width column for the tick, so the labels line up whether or not one is checked. */
 .menu-tick {
   width: 0.8rem;
@@ -139,6 +162,44 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--fg-dim);
+}
+
+/* ─────────────────────────────────────── the user id ───────────────────────────────────────
+ *
+ * The id under the name is shortened from the middle to fit the sidebar, which makes it something
+ * to recognise rather than something to use — so the way to get the whole of it is next to it. It
+ * stays out of the way until the footer is hovered, the way a row's menu does, because the id is
+ * there to be read far more often than it is there to be copied.
+ *
+ * Where there is no pointer to hover with, it is simply always there: a control that appears on
+ * hover is a control that does not exist on a phone.
+ */
+.id-copy {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 0.25rem;
+  color: var(--fg-dim);
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease, background 120ms ease;
+}
+.group:hover .id-copy,
+.id-copy:focus-visible { opacity: 1; }
+.id-copy:hover { color: var(--fg); background: var(--code-bg); }
+/* The `display` above is an author rule, and the only thing saying `[hidden]` means invisible is
+   the browser's own stylesheet, which every author rule beats regardless of specificity — the same
+   trap as .tool-button. Nothing to copy where the server reported no id. */
+.id-copy[hidden] { display: none; }
+.id-copy:focus-visible { outline: 2px solid var(--mist); outline-offset: 1px; }
+/* Confirmed on the control itself as well as in a toast: the toast says it worked, the tick says
+   which of the two things on this row it worked on. Teal is a run's "settled" and this is not a
+   run — but it is the same idea, and the alternative is a second green. */
+.id-copy[data-copied="true"] { opacity: 1; color: var(--settled-fg); }
+
+@media (hover: none) {
+  .id-copy { opacity: 1; }
 }
 
 /* ─────────────────────────────────────── the sidebar drawer ───────────────────────────────────────

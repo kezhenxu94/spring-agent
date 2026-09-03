@@ -1,62 +1,119 @@
+/* ─────────────────────────────────────── the person's own turn ───────────────────────────────────────
+ *
+ * Here rather than in a file of its own because a transcript has two halves and they are laid out
+ * against each other: the bubble's right edge and the answer's left edge are the two sides of the
+ * same column, and moving one without the other is what made them stop lining up before.
+ *
+ * The text is drawn as markdown, the same way the answer is. What somebody types into the composer
+ * is prose with backticks, lists and pasted code in it — a path, a stack trace, a snippet they are
+ * asking about — and read as plain text those are punctuation rather than shape. It goes through
+ * the same sanitiser on the way, which is not ceremony: a replayed transcript is whatever chat
+ * memory holds, which includes turns another surface wrote.
+ */
+
+.turn-user {
+  max-width: 85%;
+  /* Square-ish at the corner nearest the composer it came from, round everywhere else. */
+  border-radius: 1rem 1rem 0.35rem 1rem;
+  padding: 0.55rem 0.9rem;
+  background: var(--bubble);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* The bubble is already a raised surface, so code inside it needs a ground of its own — see the
+   --bubble-code note in base.css. */
+.turn-user code { background: var(--bubble-code); }
+.turn-user pre {
+  background: var(--bubble-code);
+  border-color: color-mix(in oklch, var(--fg) 12%, transparent);
+}
+
 /* ─────────────────────────────────────── the run spine ───────────────────────────────────────
  *
  * A run is drawn as a rail with stations on it. The gutter holds the journal's sequence number for
  * the event, which is the same number the browser sends back as Last-Event-ID to resume — so the
- * rail is a picture of how far this page has got, not an ornament. Everything else hangs to the
- * right of it and lines up on one column.
+ * rail is a picture of how far this page has got, not an ornament.
+ *
+ * The answer is not on the rail, and that is the whole layout decision here. It sits flush in the
+ * column, on the same left edge the person's own message is bounded by, so the two halves of a
+ * conversation line up as a conversation. Everything else a run emits — what it thought, what it
+ * called, what it cost — is an account of how the answer was arrived at rather than part of it, and
+ * hangs off the spine in the gutter to the left.
+ *
+ * Which is why the rail is drawn per row rather than as one element down the whole run: adjacent
+ * stations touch and read as one continuous spine, and an answer breaks it, which is true.
  */
 
 .run {
   position: relative;
-  padding-left: 3.25rem;
 }
 
 .run + .run { margin-top: 2rem; }
-
-.run-rail {
-  position: absolute;
-  left: 2.55rem;
-  top: 0.55rem;
-  bottom: 0.55rem;
-  width: 1px;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in oklch, var(--line), transparent 100%),
-    var(--line) 8%,
-    var(--line) 92%,
-    color-mix(in oklch, var(--line), transparent 100%)
-  );
-}
-
-/* While the run is going the rail carries a slow travelling highlight — the one piece of ambient
-   motion in the page, and it means something: this is still moving. */
-.run:not([data-outcome]) .run-rail::after {
-  content: "";
-  position: absolute;
-  inset-inline: -0.5px;
-  height: 22%;
-  background: linear-gradient(to bottom, transparent, var(--signal), transparent);
-  opacity: 0.55;
-  animation: rail-travel 2.8s ease-in-out infinite;
-}
-
-@keyframes rail-travel {
-  0%   { top: -22%; }
-  100% { top: 100%; }
-}
-
-.run[data-outcome="CANCELLED"] .run-rail,
-.run[data-outcome="FAILED"] .run-rail { opacity: 0.5; }
 
 .run-row {
   position: relative;
   padding-block: 0.35rem;
 }
 
+/* One station on the spine: its own length of rail, and a tick pinning the content to it. */
+.run-row:not(.run-row-answer) {
+  padding-left: 3.25rem;
+}
+.run-row:not(.run-row-answer)::before {
+  content: "";
+  position: absolute;
+  left: 2.55rem;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+}
+.run-row:not(.run-row-answer)::after {
+  content: "";
+  position: absolute;
+  left: 2.55rem;
+  top: 1.05rem;
+  width: 0.45rem;
+  height: 1px;
+  background: var(--line);
+}
+
+/* The spine fades in and out at the ends rather than stopping dead, which is what the single rail
+   element used to do with a gradient over its whole height. */
+.run-row:not(.run-row-answer):first-child::before {
+  background: linear-gradient(to bottom, transparent, var(--line) 1rem);
+}
+.run-row:not(.run-row-answer):last-child::before {
+  background: linear-gradient(to top, transparent, var(--line) 1rem);
+}
+
+/* While the run is going the rail carries a slow travelling highlight — the one piece of ambient
+   motion in the page, and it means something: this is still moving. Every station animates in step,
+   so the signal reads as travelling down one spine rather than as each row blinking for itself. */
+.run:not([data-outcome]) .run-row:not(.run-row-answer)::before {
+  background: linear-gradient(
+    to bottom,
+    var(--line) 0%,
+    color-mix(in oklch, var(--signal) 85%, var(--line)) 50%,
+    var(--line) 100%
+  );
+  background-size: 100% 400%;
+  animation: rail-travel 2.8s linear infinite;
+}
+
+@keyframes rail-travel {
+  from { background-position: 0 100%; }
+  to   { background-position: 0 -300%; }
+}
+
+.run[data-outcome="CANCELLED"] .run-row::before,
+.run[data-outcome="FAILED"] .run-row::before { opacity: 0.5; }
+
 /* The number itself. Quiet enough to read as texture until you look for it. */
 .run-seq {
   position: absolute;
-  left: -3.25rem;
+  left: 0;
   top: 0.75rem;
   width: 2rem;
   text-align: right;
@@ -67,18 +124,8 @@
   color: var(--fg-dim);
   opacity: 0.55;
 }
-
-/* Each station pins to the rail with a small tick, so a row reads as attached to it. */
-.run-row::before {
-  content: "";
-  position: absolute;
-  left: -0.7rem;
-  top: 1.05rem;
-  width: 0.45rem;
-  height: 1px;
-  background: var(--line);
-}
-.run-row-answer::before { display: none; }
+/* The answer carries no number, because it is not a station: it is what the stations were for. */
+.run-row-answer .run-seq { display: none; }
 
 .run-row-answer { padding-block: 0.75rem; }
 

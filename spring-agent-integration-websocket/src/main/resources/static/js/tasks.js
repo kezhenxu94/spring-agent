@@ -52,9 +52,15 @@ export function showTasks(taskId) {
 
 function renderDetail() {
   const task = state.tasks.find((it) => it.id === state.taskId);
-  // The panel is handed what cancelling means rather than importing it: this module already owns
-  // the dialog and the reload, and a detail that imported them back would close the loop.
-  renderTaskDetail(task, { cancel: () => cancelTask(task, true) });
+  // The panel is handed what cancelling and reloading mean rather than importing them: this module
+  // already owns the dialog and the fetch, and a detail that imported them back would close the
+  // loop. `redraw` is how the panel switches itself between reading and editing without owning the
+  // question of which task is open.
+  renderTaskDetail(task, {
+    cancel: () => cancelTask(task, true),
+    redraw: renderDetail,
+    saved: loadTasks,
+  });
   headline(task ? task.text : t('tasks.title'));
 }
 

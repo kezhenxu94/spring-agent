@@ -41,6 +41,7 @@ const STRINGS = {
     'composer.attach.done': 'Uploaded {0} file(s) to your artifacts.',
     'composer.attach.note': 'I have put these in my artifacts directory: {0}',
     'composer.stop': 'Stop run',
+    'composer.scroll.end': 'Jump to the latest',
 
     'status.idle': 'Idle',
     'status.attached': 'Running',
@@ -89,6 +90,16 @@ const STRINGS = {
     'task.cancelled': 'Scheduled task cancelled.',
     'task.actions': 'What can be done with this task',
     'task.open': 'Open its conversation',
+    'task.kind': 'Scheduled task',
+    'task.next.unknown': 'Next run not worked out yet',
+    'task.repeats': 'Repeats',
+    'task.once': 'Once',
+    'task.what': 'What it will do',
+    'task.edit': 'Edit what it does',
+    'task.edit.save': 'Save changes',
+    'task.edit.saving': 'Saving…',
+    'task.edit.saved': 'Saved.',
+    'task.edit.left': '{0} characters left',
 
     'delete.title': 'Delete this conversation?',
     'delete.confirm': 'What was said in it goes too. This cannot be undone.',
@@ -99,6 +110,11 @@ const STRINGS = {
     'confirm.cancel': 'Keep it',
     'confirm.working': 'Working…',
     'confirm.ok': 'Go ahead',
+
+    'settings': 'Preferences',
+    'identity.copy': 'Copy user id',
+    'identity.copied': 'User id copied.',
+    'identity.copy.failed': 'This browser will not let the page copy. The id is in the tooltip.',
 
     'theme': 'Theme',
     'theme.auto': 'Match system',
@@ -120,6 +136,7 @@ const STRINGS = {
     'nav.sections': 'What the sidebar shows',
 
     'knowledge.title': 'Knowledge base',
+    'knowledge.kind': 'Document',
     'knowledge.add': 'Add to the knowledge base',
     'knowledge.source': 'From',
     'knowledge.chunks.label': 'Chunks',
@@ -200,6 +217,7 @@ const STRINGS = {
     'composer.attach.done': '已上传 {0} 个文件到你的 artifacts 目录。',
     'composer.attach.note': '我已经把这些文件放到 artifacts 目录：{0}',
     'composer.stop': '停止执行',
+    'composer.scroll.end': '回到最新消息',
 
     'status.idle': '空闲',
     'status.attached': '执行中',
@@ -247,6 +265,16 @@ const STRINGS = {
     'task.cancelled': '定时任务已取消。',
     'task.actions': '这个任务可以做的操作',
     'task.open': '打开所属对话',
+    'task.kind': '定时任务',
+    'task.next.unknown': '下次执行时间尚未计算',
+    'task.repeats': '重复',
+    'task.once': '一次',
+    'task.what': '它要做的事',
+    'task.edit': '修改它要做的事',
+    'task.edit.save': '保存修改',
+    'task.edit.saving': '保存中…',
+    'task.edit.saved': '已保存。',
+    'task.edit.left': '还可以输入 {0} 个字符',
 
     'delete.title': '删除这个对话？',
     'delete.confirm': '其中的内容也会一并删除，且无法恢复。',
@@ -257,6 +285,11 @@ const STRINGS = {
     'confirm.cancel': '再想想',
     'confirm.working': '处理中…',
     'confirm.ok': '确定',
+
+    'settings': '偏好设置',
+    'identity.copy': '复制用户 ID',
+    'identity.copied': '用户 ID 已复制。',
+    'identity.copy.failed': '当前浏览器不允许页面复制，ID 在悬浮提示中。',
 
     'theme': '主题',
     'theme.auto': '跟随系统',
@@ -277,6 +310,7 @@ const STRINGS = {
     'nav.sections': '侧栏显示的内容',
 
     'knowledge.title': '知识库',
+    'knowledge.kind': '文档',
     'knowledge.add': '添加到知识库',
     'knowledge.source': '来源',
     'knowledge.chunks.label': '片段数',

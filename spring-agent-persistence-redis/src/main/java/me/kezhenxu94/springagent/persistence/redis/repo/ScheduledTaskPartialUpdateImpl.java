@@ -52,6 +52,12 @@ public class ScheduledTaskPartialUpdateImpl implements ScheduledTaskPartialUpdat
     template.update(PartialUpdate.newPartialUpdate(id, ScheduledTask.class).set("status", status));
   }
 
+  @Override
+  public void updateTaskText(final String id, final String taskText) {
+    template.update(
+        PartialUpdate.newPartialUpdate(id, ScheduledTask.class).set("taskText", taskText));
+  }
+
   /**
    * Redis has no {@code $inc} reachable through this API, so the count is read back before it is
    * written. Safe without a transaction because a task's run count still has exactly one writer:
