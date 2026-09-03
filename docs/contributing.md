@@ -52,8 +52,9 @@ with it.
 Formatting is Spotless with `googleJavaFormat().reflowLongStrings()`, and `spotlessCheck` runs as
 part of `build`. Run `make lint` before committing.
 
-There is **no CI workflow that builds or tests** — the three workflows publish only. Verification is
-local; run `make` before pushing.
+[`.github/workflows/build.yaml`](../.github/workflows/build.yaml) runs `./gradlew build` on every
+push to `main` and every pull request against it; the other three workflows publish only. Run `make`
+before pushing anyway — the same failure costs a minute locally and ten in CI.
 
 Other tasks:
 
