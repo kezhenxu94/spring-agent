@@ -60,6 +60,9 @@ export function initKnowledge() {
   bus.on('language:changed', () => {
     renderList();
     renderDetail();
+    // The suggestions carry a sentence of the page's own beside each id, so they are drawn again
+    // too — a list built in JavaScript otherwise stays in the language the page started in.
+    if (state.me?.knowledge?.admin) renderOwnerOptions();
     // The note bar is a sentence this page wrote, so it is the page's job to say it again in the
     // language that was just chosen.
     describe();
@@ -294,6 +297,7 @@ function mark() {
 
 function initAdmin() {
   const input = $('knowledge-owner');
+  renderOwnerOptions();
 
   const open = () => {
     const owner = input.value.trim();
@@ -316,6 +320,30 @@ function initAdmin() {
     }
   });
   $('knowledge-owner-clear').addEventListener('click', leaveOwner);
+}
+
+/**
+ * The ids worth suggesting in that box: the identities this deployment runs unattended work as,
+ * reported by `/api/me`.
+ *
+ * They are suggestions and never the whole of what may be typed — most of what an admin reads is
+ * an ordinary person's knowledge base, and no server-side list can enumerate those — which is why
+ * this is a datalist behind a plain input rather than a picker. What each identity is for is said
+ * beside it, because an id like `agent-triage` says nothing on its own about which source's events
+ * it has been remembering.
+ */
+function renderOwnerOptions() {
+  const list = $('knowledge-owner-options');
+  const owners = state.me?.knowledge?.owners || [];
+  list.replaceChildren(
+    ...owners.map((owner) => {
+      const option = document.createElement('option');
+      option.value = owner.userId;
+      const sources = (owner.sources || []).join(', ');
+      if (sources) option.label = t('knowledge.owner.triage', sources);
+      return option;
+    }),
+  );
 }
 
 /** Back to your own, from either the × on the row or the menu entry. */

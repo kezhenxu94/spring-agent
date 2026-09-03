@@ -540,6 +540,27 @@ the filter and a fixed query, and `AgentToolsProvider` builds the run's `Retriev
 from them. The query steers retrieval only — the advisor augments the *original* user message with
 what it found — so pinning it does not replace what the model is asked.
 
+## Identities of the agent's own
+
+Some runs are nobody's: an event source's triage runs act as an identity a deployment configured
+rather than as somebody who signed in. Such an identity still owns files, memories and a knowledge
+base, and nothing that lists people will ever mention it — which leaves anybody wanting to read what
+those runs have remembered with no way to learn the id except reading the deployment's
+configuration.
+
+`core/identity/` is the contract that closes that: a `SystemIdentityProvider` bean answers with
+`SystemIdentity(userId, sources)` — the id, and the names of whatever it is used for, in that
+configurer's own vocabulary. `spring-agent-events` ships the one implementation here,
+`TriageIdentities`, which reports each configured source's resolved `owner.user-id` once, labelled
+with the sources sharing it; a disabled source, or a disabled feature, reports nothing, since an
+identity nothing runs as is not one worth offering.
+
+Answering grants nothing. A provider says which ids exist, and every caller decides for itself what
+may be done with one — the browser's knowledge page draws them only for a member of `app.ai.admins`,
+and `/api/knowledge` checks that again before reading anything. Implement one if you configure
+unattended runs of your own; a surface asking for them depends on this package and never on the
+module that answers.
+
 ## The system prompt and other prose
 
 `app.ai.system-prompt` has a surface-neutral default that lives in core as
@@ -657,6 +678,13 @@ offering a section this deployment does not have.
 body carries it as `from`, beside the `scope` it is moving to. That is not a filter but half of what
 names the document, for the reason the SPI's `delete` explains. A listing row carries the base it is
 in, so the page always has it, and the document route (`#/kb/<scope>/<docId>`) carries it too.
+
+`/api/me` also reports, for a caller who is an admin, `knowledge.owners`: the identities this
+deployment runs unattended work as, each as a `userId` and the `sources` it is used for. They come
+from every `SystemIdentityProvider` bean in the context — see [identities of the agent's
+own](#identities-of-the-agents-own) — and the page offers them as suggestions in that `owner` box,
+which still takes any id typed into it. Nothing is granted by being listed: the endpoints check
+`app.ai.admins` again, and they check it for a suggested id exactly as for a typed one.
 
 Two rules there are worth knowing if you build against it. The scope a document is read and written
 under comes from the session and never from the request — the same `userId`/`tenantId` a run on this

@@ -14,6 +14,7 @@ import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
+import me.kezhenxu94.springagent.core.identity.SystemIdentityProvider;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
 import me.kezhenxu94.springagent.integration.websocket.config.WebLocaleConfiguration;
 import me.kezhenxu94.springagent.integration.websocket.config.WebMessages;
@@ -55,6 +56,7 @@ public class ChatController {
   private final SpringAgent springAgent;
   private final ObjectProvider<KnowledgeBase> knowledgeBases;
   private final Admins admins;
+  private final ObjectProvider<SystemIdentityProvider> systemIdentities;
   private final ChatSessions sessions;
   private final RunJournals journals;
   private final PendingQuestionRepo pendingQuestionRepo;
@@ -135,6 +137,16 @@ public class ChatController {
     knowledge.put("enabled", knowledgeBases.getIfAvailable() != null);
     knowledge.put("admin", admins.isAdmin(user.id()));
     knowledge.put("tenant", !Strings.isNullOrEmpty(user.tenantId()));
+    // And, for an admin, the ids that box can usefully be filled with: the identities this
+    // deployment runs unattended work as. Nobody signs in as one of those and no directory lists
+    // them, so an administrator who wanted to read what a triage run has remembered would
+    // otherwise have to go and read app.events.sources to find the id to type.
+    //
+    // Suggestions and nothing more — the box still takes anything typed or pasted, because the
+    // people this is for are ordinary users whose ids no server-side list could enumerate. Only
+    // for an admin, and not because the ids are secret but because nobody else is ever allowed to
+    // name one: the endpoint refuses it, so offering it would be offering a refusal.
+    knowledge.put("owners", admins.isAdmin(user.id()) ? systemIdentityJson() : List.of());
     out.put("knowledge", knowledge);
     // Whether an answer written here can also be put on a chat, and on which platform. The page
     // draws that platform's own icon on the button, so a name it does not recognise is a button it
@@ -144,6 +156,26 @@ public class ChatController {
     final var surface = mirrors.surface();
     out.put(
         "mirror", Map.of("enabled", surface != null, "surface", surface == null ? "" : surface));
+    return out;
+  }
+
+  /**
+   * The identities of the agent's own, from whoever configured any — see {@code
+   * SystemIdentityProvider}. Failing to list them is not worth failing the one request the page
+   * cannot start without, so a provider that throws costs its own rows and nothing else.
+   */
+  private List<Map<String, Object>> systemIdentityJson() {
+    final var out = new ArrayList<Map<String, Object>>();
+    systemIdentities.forEach(
+        provider -> {
+          try {
+            for (final var identity : provider.identities()) {
+              out.add(Map.of("userId", identity.userId(), "sources", identity.sources()));
+            }
+          } catch (final RuntimeException e) {
+            log.warn("Could not list the system identities of {}", provider.getClass(), e);
+          }
+        });
     return out;
   }
 

@@ -201,6 +201,7 @@ const STRINGS = {
     'knowledge.owner.browse': 'Open',
     'knowledge.owner.mine': 'Back to mine',
     'knowledge.owner.reading': 'Reading {0} — read only.',
+    'knowledge.owner.triage': 'Event triage · {0}',
 
     'toast.dismiss': 'Dismiss',
     'error.generic': 'That did not work.',
@@ -390,6 +391,7 @@ const STRINGS = {
     'knowledge.owner.browse': '打开',
     'knowledge.owner.mine': '回到我的',
     'knowledge.owner.reading': '正在查看 {0} 的知识库，只读。',
+    'knowledge.owner.triage': '事件分诊 · {0}',
 
     'toast.dismiss': '关闭',
     'error.generic': '操作失败。',
