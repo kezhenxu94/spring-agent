@@ -423,17 +423,33 @@ In the Feishu app's console, add `http://localhost:8080/login/oauth2/code/feishu
 under your real host) as a redirect URI, and grant the app the profile scopes it needs to return
 `open_id` and `tenant_key`.
 
+**A conversation reads as a conversation.** Both halves are drawn as markdown, so a message you
+typed with backticks, a pasted path or a bulleted list of what you already tried arrives looking like
+what you wrote, and your turn's bubble and the agent's answer are bounded by the same column. What
+the run did on the way to that answer — what it thought, what it called, its to-do list, what it
+cost — hangs off a hairline rail in the margin, numbered with the journal's own sequence, which is
+the number the browser sends back to resume. Scroll up out of a long conversation and a button
+appears over the composer to take you back to the end.
+
 **The sidebar is three tabs**, an icon each: the conversations, what the agent has been asked to do
 later, and — wherever a deployment has one — the knowledge base. Each is a list read the same way,
 and each has an address, so `#/chat/<conversation>`, `#/tasks/<task>` and
 `#/kb/<scope>/<document>` are links worth keeping and the back button works between them. Picking a
-row opens it in the main column: a conversation is its transcript, a document is what it says and
-who else can read it, a scheduled task is what it will do and when. A task is drawn as markdown,
-since a prompt somebody wrote has lists and code in it, and comes with the way to open the
-conversation its answers go into, or to call it off. Anything that cannot be undone — deleting a conversation or a document,
-calling off a scheduled task — asks first, and the asking is where the work happens, so the button
-you pressed says so until it is done. Nothing on that screen creates a task, because nothing can: a schedule
-comes from asking the agent for one.
+row opens it in the main column: a conversation is its transcript, while a document and a scheduled
+task open into the same card — what kind of record it is, the one line that names it, its facts, and
+then what it holds. For a document that line is its title; for a task it is when the task next comes
+round, since a task's name everywhere else on the page is already its own prompt. A task's prompt is
+drawn as markdown, since a prompt somebody wrote has lists and code in it, and the ⋯ menu beside it
+opens the conversation its answers go into, **rewrites what it will do**, or calls it off. Editing
+is the text only: when a task fires stays the agent's to set, so that there is one set of rules
+about what a schedule may be rather than two. Anything that cannot be undone — deleting a
+conversation or a document, calling off a scheduled task — asks first, and the asking is where the
+work happens, so the button you pressed says so until it is done. Nothing on that screen creates a
+task, because nothing can: a schedule comes from asking the agent for one.
+
+**The foot of the sidebar is who you are signed in as**: your name, your user id under it shortened
+from the middle with a button to copy the whole of it, and two controls — the theme and the language
+behind one preferences menu, and the way out.
 
 **The knowledge base is the third of those tabs**, wherever a deployment has one at all
 (`RAG_ENABLED`, plus a Milvus to point it at — see the knowledge base above). Documents are listed

@@ -184,6 +184,38 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
   }
 
   @Test
+  @DisplayName("updateTaskText rewrites the prompt, leaving the schedule and the count alone")
+  void updateTaskTextIsAPartialUpdate() {
+    final var id = owner() + "-task-6";
+    scheduledTaskRepo.save(
+        ScheduledTask.builder()
+            .id(id)
+            .userId(owner())
+            .taskText("summarise the thread")
+            .cronExpression("0 0 9 * * MON")
+            .maxRuns(10)
+            .runCount(3)
+            .background(true)
+            .status(ScheduledTask.Status.ACTIVE)
+            .build());
+
+    scheduledTaskRepo.updateTaskText(id, "summarise the thread and post it to #ops");
+
+    final var reloaded = scheduledTaskRepo.findById(id).orElseThrow();
+    assertThat(reloaded.taskText()).isEqualTo("summarise the thread and post it to #ops");
+    // The sweeper owns these and is writing them from elsewhere; an edit that put a whole task back
+    // would undo whichever of them had moved since it was read.
+    assertThat(reloaded.cronExpression()).isEqualTo("0 0 9 * * MON");
+    assertThat(reloaded.runCount()).isEqualTo(3);
+    assertThat(reloaded.maxRuns()).isEqualTo(10);
+    assertThat(reloaded.background()).isTrue();
+    assertThat(reloaded.status()).isEqualTo(ScheduledTask.Status.ACTIVE);
+    assertThat(scheduledTaskRepo.findByUserIdAndStatus(owner(), ScheduledTask.Status.ACTIVE))
+        .extracting(ScheduledTask::id)
+        .contains(id);
+  }
+
+  @Test
   @DisplayName(
       "incrementRunCount counts a firing from nothing, and leaves the rest of the task alone")
   void incrementRunCountCountsFromNothing() {

@@ -23,6 +23,48 @@
 .question-option:hover { background: color-mix(in oklch, var(--waiting) 14%, transparent); }
 .question-option input { margin-top: 0.28rem; accent-color: var(--waiting); }
 
+/* ─────────────────────────────────────── back to the end ───────────────────────────────────────
+ *
+ * Centred over the composer rather than tucked into a corner: it is the way back to the one thing
+ * this page exists to show, and a control that only appears when it is needed can afford to appear
+ * where it will be seen. Chrome colours only — an answer still arriving is what amber means, and
+ * this button is as likely to be pressed on a conversation that finished an hour ago.
+ */
+.scroll-end {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  /* Clear of the divider, measured from the top of the composer bar — see the note in index.html
+     for why it is anchored there and not to the column inside it. */
+  margin-bottom: 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--fg-dim);
+  box-shadow: 0 6px 18px -8px rgb(0 0 0 / 0.45);
+  transform: translateX(-50%);
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+  animation: scroll-end-in 180ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+:root:not(.dark) .scroll-end { background: #fff; }
+.scroll-end:hover { color: var(--fg); border-color: var(--fg-dim); }
+.scroll-end:focus-visible { outline: 2px solid var(--mist); outline-offset: 2px; }
+/* The `display` above is an author rule and `[hidden]` is only the browser's, which every author
+   rule beats regardless of specificity — the same trap as .tool-button next door. */
+.scroll-end[hidden] { display: none; }
+
+/* Rising from the composer it belongs to, so it reads as coming from there rather than as landing
+   on the transcript. `translateX` is repeated in both frames because a transform replaces rather
+   than adds to the one on the rule. */
+@keyframes scroll-end-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(0.4rem); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 /* ─────────────────────────────────────── the composer ───────────────────────────────────────
  *
  * A toolbar of what can be added to a message, then the box the message is typed in with the one
@@ -47,6 +89,18 @@
    stay on screen. Here rather than beside those buttons, because it is a fact about this class
    rather than about them, and .drawer-only next door is the same lesson learnt the hard way. */
 .tool-button[hidden] { display: none; }
+
+/* The size the sidebar's footer uses, where two of these sit beside a name and an id in 270px. */
+.tool-button-sm { width: 1.65rem; height: 1.65rem; }
+
+/* Signing out, and nothing else so far. Coral is the alarm colour and this is the one control in
+   the chrome that ends something, but it is also a control nobody is looking for until they are —
+   so it says so on hover and on focus rather than sitting there in red. */
+.tool-button-danger:hover {
+  color: var(--alarm-fg);
+  background: color-mix(in oklch, var(--alarm) 10%, transparent);
+}
+.tool-button-danger:focus-visible { color: var(--alarm-fg); }
 
 .composer-box {
   position: relative;

@@ -214,9 +214,9 @@ stylesheet never reaches it, so `@apply` and `@import "tailwindcss"` in `css/` s
 and the design tokens are restated there as custom properties.
 
 **Modules are layered, and the layering is the one rule to keep.** `js/state.js` writes it down: the
-core (`state`, `dom`, `i18n`, `render`, `api`, `toast`, `route`), then `status`, `theme` and
-`sidebar`, then the features, and `js/app.js` last as the only file that imports across the whole
-set. A module imports only ones earlier than itself; an edge that would point backwards goes over
+core (`state`, `dom`, `i18n`, `render`, `api`, `toast`, `route`, `theme`), then the pieces every
+section reuses (`confirm`, `menu`, `detail`), then `status`, `sidebar` and `language`, then the
+features, and `js/app.js` last as the only file that imports across the whole set. A module imports only ones earlier than itself; an edge that would point backwards goes over
 the small `bus` in `state.js` instead. This matters more than tidiness: an ES module cycle does not
 fail, it resolves the binding to `undefined` and throws at the call, on whichever path nobody
 clicked.
@@ -230,6 +230,14 @@ thing that hides and shows the main column's panels, so a section never has to r
 composer back. Adding a sidebar section is five small edits: a tab button and a panel in
 `index.html`, a route in `route.js`, an arm in `dispatch`, a case in `selectTab`, and a line in
 `showPanel`.
+
+**A section that opens one item uses the shared record card**, `js/detail.js` over `css/detail.css`:
+an eyebrow saying what kind of record it is with its classifying pill and its ⋯ menu, the one line
+that names it, a spec sheet of facts, then the body. The knowledge base and the schedule are both
+drawn from it, and they are meant to stay indistinguishable in shape — a document and a scheduled
+task are the same sort of object to the person reading them. Every label in the card is the same
+mono eyebrow (`.detail-label`), which is what carries that; the prose is the record, the mono is the
+page talking about it.
 
 **CSS import order is load-bearing.** `styles.css` is the single linked entry and does nothing but
 `@import` the files in `css/` in a stated order. Rules there routinely tie on specificity with

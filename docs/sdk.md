@@ -663,6 +663,14 @@ Adding a model or a query means updating all three implementations in
 `spring-agent-persistence-*`, and on Redis an `@Indexed` field is the *definition* of what can be
 filtered on rather than a tuning knob — it has no query planner.
 
+Several methods write *one property* of a row rather than saving the whole of it —
+`ScheduledTaskRepo.updateStatus`/`updateTaskText`/`incrementRunCount`,
+`PendingQuestionRepo.updateStatus`. That is a requirement rather than an optimisation: the caller
+holds a copy read some time ago, and something else — the sweeper, another replica — is writing the
+rest of that row meanwhile, so saving the whole of it would put a stale next occurrence or run count
+back. A fourth backend implements them as a partial write (an `@Modifying` update naming one column,
+a Mongo `$set`, a Redis `PartialUpdate`), never as read-modify-write.
+
 Two methods on those contracts are not queries at all but *conditional writes*, and a fourth backend
 has to implement them as such. `ProcessedMessageRepo.claim` takes a unit of work for the caller, and
 `ScheduledTaskRepo.claimNextFireAt`/`initNextFireAt` move a scheduled task on from one occurrence to

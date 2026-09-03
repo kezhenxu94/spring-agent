@@ -11,7 +11,7 @@ import { api, csrfToken } from './api.js';
 import { attempt, toast } from './toast.js';
 import { skeletonList, skeletonTranscript } from './busy.js';
 import { bus, state } from './state.js';
-import { initTheme, relabelTheme } from './theme.js';
+import { initTheme } from './theme.js';
 import { renderStatus } from './status.js';
 import { initSidebar, initTabs, onNarrowScreen, selectTab, sidebarOpen } from './sidebar.js';
 import { chatRoute, current, go, onRoute } from './route.js';
@@ -19,7 +19,7 @@ import { attachRun } from './stream.js';
 import {
   loadConversations, openConversation, renderConversationList, renderConversationTitle,
 } from './conversations.js';
-import { renderEmptyTranscript } from './transcript.js';
+import { initScrollToEnd, renderEmptyTranscript } from './transcript.js';
 import { initAttachments } from './attachments.js';
 import { initComposer, refreshSendState, setRunning } from './composer.js';
 import { loadTasks, showTasks } from './tasks.js';
@@ -27,6 +27,8 @@ import { initKnowledge, knowledgeAvailable, scopesAvailable, showKnowledge } fro
 import { showPanel } from './panels.js';
 import { initKnowledgeAdd } from './knowledge-upload.js';
 import { initLanguage } from './language.js';
+import { initSettings } from './settings.js';
+import { renderIdentity } from './identity.js';
 import { renderDenied } from './denied.js';
 
 function wire() {
@@ -42,7 +44,6 @@ function wire() {
   // Everything already on screen, in the language just chosen. Anything drawn from a template in
   // the markup is handled by applyTranslations; these are the lists built in JavaScript.
   bus.on('language:changed', () => {
-    relabelTheme();
     renderConversationList();
     renderStatus();
     // And whatever the main column is showing, by asking the route what that is — which is cheaper
@@ -143,8 +144,10 @@ async function start() {
   wire();
   initComposer();
   initAttachments();
+  initScrollToEnd();
   initSidebar();
   initLanguage(state.me);
+  initSettings();
   // Only where this deployment has one at all — see the knowledge block in /api/me.
   if (knowledgeAvailable()) {
     initKnowledge();
@@ -152,8 +155,7 @@ async function start() {
   }
   initTabs({ knowledge: knowledgeAvailable() });
   renderStatus('idle');
-  $('me-name').textContent = state.me.name || state.me.userId;
-  if (state.me.avatar) $('me-avatar').src = state.me.avatar;
+  renderIdentity(state.me);
   $('logout-csrf').value = csrfToken();
 
   await attempt(async () => {

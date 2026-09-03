@@ -49,6 +49,11 @@ final class InMemoryScheduledTaskRepo implements ScheduledTaskRepo {
   }
 
   @Override
+  public synchronized void updateTaskText(final String id, final String taskText) {
+    tasks.computeIfPresent(id, (key, task) -> task.toBuilder().taskText(taskText).build());
+  }
+
+  @Override
   public synchronized void incrementRunCount(final String id) {
     tasks.computeIfPresent(
         id,

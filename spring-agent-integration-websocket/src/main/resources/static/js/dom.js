@@ -1,23 +1,10 @@
 // The small things every part of the page uses to draw itself.
 
 import { locale } from './i18n.js';
+import { bus } from './state.js';
 
 /** By id, because that is how this page addresses everything it did not just create. */
 export const $ = (id) => document.getElementById(id);
-
-// Icons, at 16 and stroked in currentColor so they take the button's own state.
-const ICONS = {
-  auto: '<rect x="2.4" y="2.8" width="11.2" height="8.2" rx="1.5"/><path d="M6 13.6h4"/>',
-  light: '<circle cx="8" cy="8" r="2.9"/><path d="M8 1.6v1.4M8 13v1.4M3.5 3.5l1 1M11.5 11.5l1 1'
-    + 'M1.6 8H3M13 8h1.4M3.5 12.5l1-1M11.5 4.5l1-1"/>',
-  dark: '<path d="M13.4 9.7A5.8 5.8 0 0 1 6.3 2.6a5.8 5.8 0 1 0 7.1 7.1Z"/>',
-};
-
-export function icon(name, size = 15) {
-  return `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
-    stroke-linecap="round" stroke-linejoin="round" class="size-[${size}px]"
-    aria-hidden="true">${ICONS[name]}</svg>`;
-}
 
 /** Long enough to cover a commit's own keydown arriving after it, short enough to feel absent. */
 const COMPOSITION_TAIL = 80;
@@ -52,6 +39,23 @@ export const submits = (event) => event.key === 'Enter'
 document.addEventListener('compositionend', () => {
   composedAt = performance.now();
 }, true);
+
+/**
+ * A long identifier shortened from the middle.
+ *
+ * The strings this shortens are OAuth subjects and tenant ids: a long constant prefix and a short
+ * tail that is the only part telling one person from another. Clipping the end — which is all CSS
+ * can do — shows every user the same string, so the two ends are kept and the middle goes. Whatever
+ * calls this puts the whole of it on the element's `title`, because the point of an id is to be
+ * copied and compared.
+ */
+export function middleTruncate(value, keep = 16) {
+  const text = String(value ?? '');
+  if (text.length <= keep) return text;
+  // Biased towards the tail, which is the half that distinguishes.
+  const head = Math.ceil((keep - 1) / 2);
+  return `${text.slice(0, head)}…${text.slice(text.length - (keep - 1 - head))}`;
+}
 
 export function humanSize(bytes) {
   if (bytes < 1024) return `${bytes}B`;
@@ -88,9 +92,20 @@ export function shortTime(value) {
   return when.toLocaleDateString(tag, { year: 'numeric', month: 'numeric', day: 'numeric' });
 }
 
+/**
+ * A moment in full, to the minute.
+ *
+ * Explicit fields rather than the default `toLocaleString`, which appends seconds: nothing this
+ * page shows a time for happens to the second — a conversation was last spoken to, a document was
+ * added, a task comes round next — and a trailing `:00` on a heading reads as precision that is not
+ * there.
+ */
 export function fullTime(value) {
   const when = moment(value);
-  return when ? when.toLocaleString(locale() === 'zh' ? 'zh-CN' : 'en') : '';
+  if (!when) return '';
+  return when.toLocaleString(locale() === 'zh' ? 'zh-CN' : 'en', {
+    year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
 }
 
 /**
@@ -106,10 +121,27 @@ function moment(value) {
   return Number.isNaN(when.getTime()) ? null : when;
 }
 
+/**
+ * Close enough to the bottom to count as being there.
+ *
+ * One number for both questions this page asks — whether a delta may scroll the reader, and whether
+ * to offer the way back down — so the button cannot appear while the transcript is still following
+ * the answer, which is the one combination that would look broken.
+ */
+const AT_END = 140;
+
+export function transcriptAtEnd() {
+  const transcript = $('transcript');
+  return transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < AT_END;
+}
+
 export function scrollToEnd(force) {
   const transcript = $('transcript');
   // Only when the reader is already at the bottom, so scrolling up to read something earlier is not
   // undone by the next delta.
-  const atBottom = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 140;
-  if (force || atBottom) transcript.scrollTop = transcript.scrollHeight;
+  if (force || transcriptAtEnd()) transcript.scrollTop = transcript.scrollHeight;
+  // Said even where nothing moved, and that is the point: emptying the transcript for another
+  // conversation leaves scrollTop at zero, so the browser fires no scroll event and whatever was
+  // watching would still be showing the last conversation's answer.
+  bus.emit('transcript:scrolled');
 }

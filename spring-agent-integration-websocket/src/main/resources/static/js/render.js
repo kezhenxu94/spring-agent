@@ -1,10 +1,11 @@
 // Turning run events into DOM.
 //
-// The shape is a spine: a hairline rail down the left of a run, with the journal's own sequence
-// number beside each thing that happened and the content hanging off to the right. The numbers are
-// not decoration — that sequence is the cursor the browser sends back as Last-Event-ID, so what the
-// rail draws is literally how far this page has got through the run. On a reattach you watch it
-// rebuild to where you were.
+// The shape is a spine: a hairline rail in the gutter to the left of the column, with the journal's
+// own sequence number beside each thing that happened. The numbers are not decoration — that
+// sequence is the cursor the browser sends back as Last-Event-ID, so what the rail draws is
+// literally how far this page has got through the run. On a reattach you watch it rebuild to where
+// you were. The answer itself is not on that spine but flush in the column, level with the person's
+// own message; see run.css.
 //
 // One RunView per run. Panels are created on first use, so a plain answer stays a plain answer.
 // Every event carries a subagentId, null for the run itself, which routes a delta to the right card.
@@ -35,11 +36,8 @@ export class RunView {
   constructor(container) {
     this.root = el('div', 'run mx-auto max-w-[46rem]');
 
-    // The rail. A single element rather than a border on each row, so it reads as one continuous
-    // spine even where a panel is tall.
-    this.rail = el('div', 'run-rail');
     this.body = el('div', 'run-body');
-    this.root.append(this.rail, this.body);
+    this.root.append(this.body);
     container.append(this.root);
 
     // Accumulated rather than appended as HTML: markdown is not a stream format, and re-parsing the

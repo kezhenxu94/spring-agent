@@ -53,7 +53,7 @@ export function skeletonTranscript(host) {
   [['right', [40]], ['left', [92, 84, 60]]].forEach(([side, widths]) => {
     const turn = document.createElement('div');
     turn.className = side === 'right'
-      ? 'flex justify-end' : 'space-y-2 pl-[3.25rem]';
+      ? 'flex justify-end' : 'space-y-2';
     widths.forEach((width) => {
       const bar = document.createElement('span');
       bar.className = 'skeleton block h-3.5';

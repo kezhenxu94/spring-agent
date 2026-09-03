@@ -15,6 +15,8 @@ public interface ScheduledTaskPartialUpdate {
 
   void updateStatus(String id, ScheduledTask.Status status);
 
+  void updateTaskText(String id, String taskText);
+
   void incrementRunCount(String id);
 
   boolean claimNextFireAt(String id, Instant expected, Instant next);

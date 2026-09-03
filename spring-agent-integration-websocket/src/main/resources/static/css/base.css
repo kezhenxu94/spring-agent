@@ -31,6 +31,11 @@
   --line: #E4E7EC;
   --surface: #FAFAFB;
   --code-bg: #F4F5F7;
+  /* The person's own turn, and the ground code sits on inside it. Two tokens rather than one
+     because the bubble is itself a raised surface: a code span on --code-bg inside a bubble that is
+     also --code-bg is invisible, which is exactly what a backtick is there to prevent. */
+  --bubble: #F1F3F6;
+  --bubble-code: #E1E5EB;
   --signal-fg: #B26A00;
   --settled-fg: #0F766E;
   --alarm-fg: #C03434;
@@ -42,6 +47,8 @@
   --line: #1F2736;
   --surface: #121722;
   --code-bg: #161C28;
+  --bubble: #1F2736;
+  --bubble-code: #10151F;
   --signal-fg: #FFB020;
   --settled-fg: #4FD1C5;
   --alarm-fg: #FF6B6B;

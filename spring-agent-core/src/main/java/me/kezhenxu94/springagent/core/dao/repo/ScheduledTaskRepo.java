@@ -30,6 +30,19 @@ public interface ScheduledTaskRepo {
   void updateStatus(String id, ScheduledTask.Status status);
 
   /**
+   * Rewrites the prompt a task will run, without touching the rest of it.
+   *
+   * <p>Partial for the reason {@link #updateStatus} is, and more sharply: the sweeper owns {@code
+   * runCount} and {@code nextFireAt} and is writing them from another thread — or another replica —
+   * while somebody is editing the text here. Saving a whole task read before the edit would put a
+   * stale next occurrence back and fire the task again at a time it has already passed.
+   *
+   * <p>Only the text. When a task fires is the agent's to decide through its tools, which is where
+   * the rules about what a schedule may be live; there is no second set of them here.
+   */
+  void updateTaskText(String id, String taskText);
+
+  /**
    * Counts one firing of the task, for the sake of {@code maxRuns}. Partial for the same reason
    * {@link #updateStatus} is: the caller is the sweeper, holding the copy of the task it read at
    * the start of this sweep, and writing that back would undo whatever has been edited since.

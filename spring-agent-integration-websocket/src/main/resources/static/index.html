@@ -268,59 +268,70 @@
       </div>
     </nav>
 
-    <div class="space-y-2.5 border-t border-zinc-200 p-3 dark:border-rail">
+    <!--
+      Who is signed in, and the two things that belong to them rather than to the agent.
+
+      One row, because that is all it is worth: a name, the id underneath it in the mono face so it
+      reads as the machine handle it is, and two quiet controls. Preferences are behind one button
+      rather than laid out here — the theme and the language are set once and then never again, and
+      a settings strip standing open at the bottom of every session spends the sidebar's last inch
+      on a decision nobody is making. Sign out is an icon for the opposite reason: it is one word,
+      it is next to nothing it could be confused with, and its name is on its tooltip.
+
+      Neither control uses a state colour. Amber, teal, violet and coral mean something specific
+      about a run everywhere else in this page, and spending one on chrome would make a settings row
+      look like something the agent is doing. Signing out is the exception the alarm colour exists
+      for, and only on hover.
+    -->
+    <div class="group flex items-center gap-1.5 border-t border-zinc-200 p-2.5 dark:border-rail">
+      <img id="me-avatar" alt=""
+           class="size-7 shrink-0 rounded-full bg-zinc-200 object-cover dark:bg-rail">
       <!--
-        Neither control uses a state colour for "selected". Amber, teal, violet and coral mean
-        something specific about a run everywhere else in this page, and spending one on chrome
-        would make a settings row look like something the agent is doing.
+        The name and the id, stacked. The id is elided in the middle rather than at the end, by the
+        page — an OAuth subject is a long constant prefix and a short distinguishing tail, so a
+        truncation that keeps the head shows every user the same string. See middleTruncate in
+        dom.js; the whole of it is on the title, and the button beside it puts the whole of it on
+        the clipboard, which is what an id shortened for display is otherwise no longer good for.
       -->
-      <div class="flex items-center justify-between gap-2">
-
-        <!-- Language: a menu rather than a segmented control, because the list is whatever the
-             server reports and adding a language is meant to be one file on each side. -->
-        <div class="relative">
-          <button id="language-button" type="button"
-                  class="flex items-center gap-1.5 rounded-lg border border-zinc-300 py-1.5 pl-2 pr-1.5
-                         text-mist transition hover:border-zinc-400 hover:text-ink
-                         focus-visible:outline-2 focus-visible:outline-offset-2
-                         focus-visible:outline-mist dark:border-edge dark:hover:border-mist
-                         dark:hover:text-paper"
-                  aria-haspopup="menu" aria-expanded="false" data-i18n-title="language">
-            <svg viewBox="0 0 16 16" fill="none" class="size-[15px]" aria-hidden="true">
-              <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/>
-              <path d="M2.3 6.2h11.4M2.3 9.8h11.4" stroke="currentColor" stroke-width="1.3"
-                    stroke-linecap="round"/>
-              <ellipse cx="8" cy="8" rx="2.9" ry="6" stroke="currentColor" stroke-width="1.3"/>
+      <span class="min-w-0 flex-1 leading-tight">
+        <span id="me-name" class="block truncate text-[12.5px] font-medium"></span>
+        <span class="flex items-center gap-1">
+          <span id="me-id"
+                class="min-w-0 truncate font-mono text-[10px] tracking-wide text-mist"></span>
+          <button id="me-id-copy" type="button" class="id-copy" data-i18n-title="identity.copy">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+                 stroke-linejoin="round" class="size-[11px]" aria-hidden="true">
+              <rect x="5.6" y="5.6" width="7.4" height="7.4" rx="1.6"/>
+              <path d="M10.4 3.6a1.6 1.6 0 0 0-1.6-1.6H4.6A1.6 1.6 0 0 0 3 3.6v4.2a1.6 1.6 0 0 0 1.6 1.6"/>
             </svg>
-            <span id="language-current" class="font-mono text-[10px] uppercase tracking-wider"></span>
-            <svg viewBox="0 0 16 16" fill="none" class="size-3 opacity-60" aria-hidden="true">
-              <path d="M4.5 6.5 8 10l3.5-3.5" stroke="currentColor" stroke-width="1.4"
-                    stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span class="sr-only" data-i18n="language">Language</span>
+            <span class="sr-only" data-i18n="identity.copy">Copy user id</span>
           </button>
-          <ul id="language-menu" role="menu"
-              class="menu absolute bottom-full left-0 mb-1.5 hidden min-w-[9.5rem]"></ul>
-        </div>
+        </span>
+      </span>
 
-        <!-- Theme: a segmented control, because there are exactly three and "match system" is worth
-             seeing rather than finding. -->
-        <div id="theme-switch" role="group" data-i18n-label="theme"
-             class="flex items-center gap-0.5 rounded-lg border border-zinc-300 p-0.5
-                    dark:border-edge"></div>
-      </div>
-      <div class="flex items-center gap-2">
-        <img id="me-avatar" alt=""
-             class="size-6 shrink-0 rounded-full bg-zinc-200 object-cover dark:bg-rail">
-        <span id="me-name" class="min-w-0 flex-1 truncate text-[12px] text-mist"></span>
-        <form method="post" action="/logout">
-          <input type="hidden" id="logout-csrf" name="_csrf">
-          <button type="submit"
-                  class="font-mono text-[10px] uppercase tracking-wider text-mist transition
-                         hover:text-alarm focus-visible:outline-2 focus-visible:outline-signal"
-                  data-i18n="nav.signout">Sign out</button>
-        </form>
-      </div>
+      <!-- The theme and the language, in one menu. Filled in by settings.js. -->
+      <button id="settings-button" type="button" class="tool-button tool-button-sm shrink-0"
+              aria-haspopup="menu" aria-expanded="false" data-i18n-title="settings">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+             stroke-linecap="round" class="size-[15px]" aria-hidden="true">
+          <path d="M2.4 4.6h1.6M8 4.6h5.6M2.4 11.4h6.2M12.5 11.4h1.1"/>
+          <circle cx="6" cy="4.6" r="1.9"/>
+          <circle cx="10.5" cy="11.4" r="1.9"/>
+        </svg>
+        <span class="sr-only" data-i18n="settings">Preferences</span>
+      </button>
+
+      <form method="post" action="/logout" class="shrink-0">
+        <input type="hidden" id="logout-csrf" name="_csrf">
+        <button type="submit" class="tool-button tool-button-sm tool-button-danger"
+                data-i18n-title="nav.signout">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+               stroke-linecap="round" stroke-linejoin="round" class="size-[15px]" aria-hidden="true">
+            <path d="M6.2 2.8H3.6v10.4h2.6M9.4 5.2 12.6 8l-3.2 2.8M12.2 8H6.6"/>
+          </svg>
+          <span class="sr-only" data-i18n="nav.signout">Sign out</span>
+        </button>
+      </form>
     </div>
   </aside>
 
@@ -359,8 +370,9 @@
       a conversation, and leaving it under a list of tasks was the tell that this section had been
       hung off the chat rather than built as a peer of it.
     -->
-    <section id="tasks-panel" hidden class="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-      <div class="mx-auto max-w-[46rem] space-y-5">
+    <section id="tasks-panel" hidden
+             class="detail-panel flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+      <div id="tasks-body" class="detail-body mx-auto max-w-[46rem] space-y-5">
 
         <div id="tasks-intro" class="space-y-1">
           <h2 class="font-display text-[20px] font-semibold tracking-tight"
@@ -369,9 +381,11 @@
              data-i18n="tasks.subtitle"></p>
         </div>
 
-        <!-- One task: what it will do and when. Filled in by the page. -->
+        <!-- One task: what it will do, when, and how it can be corrected. Filled in by the page,
+             in the shape a document opens in — see detail.css. -->
         <article id="task-detail" hidden
-                 class="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-rail"></article>
+                 class="detail-card space-y-3 rounded-xl border border-zinc-200 p-4
+                        dark:border-rail"></article>
       </div>
     </section>
 
@@ -383,8 +397,9 @@
       Hidden with the `hidden` attribute rather than a class, so nothing in the utility layer can
       out-specify it, the same reason the composer toggles display explicitly.
     -->
-    <section id="knowledge-panel" hidden class="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-      <div id="knowledge-body" class="mx-auto max-w-[46rem] space-y-5">
+    <section id="knowledge-panel" hidden
+             class="detail-panel flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+      <div id="knowledge-body" class="detail-body mx-auto max-w-[46rem] space-y-5">
 
         <div id="knowledge-intro" class="space-y-1">
           <h2 class="font-display text-[20px] font-semibold tracking-tight"
@@ -396,7 +411,8 @@
         <!-- One document: what it is, where it came from, and the two things that can be done to
              it. Filled in by the page; empty and hidden until the sidebar selects one. -->
         <article id="knowledge-detail" hidden
-                 class="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-rail"></article>
+                 class="detail-card space-y-3 rounded-xl border border-zinc-200 p-4
+                        dark:border-rail"></article>
 
         <!-- Adding to it. Both halves write through the endpoints the chat tools write through. -->
         <div id="knowledge-add" class="space-y-2 rounded-xl border border-zinc-200 p-3 dark:border-rail">
@@ -436,7 +452,31 @@
       </div>
     </section>
 
-    <div id="composer-bar" class="shrink-0 border-t border-zinc-200 px-4 py-3 sm:px-6 dark:border-rail">
+    <div id="composer-bar"
+         class="relative shrink-0 border-t border-zinc-200 px-4 py-3 sm:px-6 dark:border-rail">
+
+      <!--
+        The way back to the end of a conversation somebody has scrolled up out of.
+
+        Here rather than pinned to the transcript, because the composer bar is what the transcript
+        ends at: the button sits just above the frame the answer is arriving into, which is where
+        the eye already is. Positioned against the bar itself rather than against the column inside
+        it — the bar has padding of its own, and measuring from the column put the button half over
+        the divider, straddling the line instead of clearing it.
+
+        It appears only while the transcript is not near its end — see AT_END in dom.js, which is
+        the same number that decides whether a delta may scroll the reader, so the button cannot
+        show up while the page is still following the answer.
+      -->
+      <button id="scroll-end" type="button" hidden class="scroll-end"
+              data-i18n-title="composer.scroll.end">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"
+             stroke-linecap="round" stroke-linejoin="round" class="size-[15px]" aria-hidden="true">
+          <path d="M8 3.4v9.2M4.4 9l3.6 3.6L11.6 9"/>
+        </svg>
+        <span class="sr-only" data-i18n="composer.scroll.end">Jump to the latest</span>
+      </button>
+
       <div class="mx-auto max-w-[46rem]">
 
         <!-- What has been uploaded but not yet sent. Empty and hidden until there is something. -->

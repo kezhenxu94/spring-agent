@@ -8,6 +8,10 @@
   letter-spacing: -0.01em;
   margin-top: 1.5em;
 }
+/* A heading arriving as the very first thing has nothing to be spaced away from, and the margin
+   would otherwise open a gap at the top of whatever holds it — an answer, a stored document, a
+   message in a bubble. */
+.prose > :first-child { margin-top: 0; }
 .prose h1 { font-size: 1.3em; }
 .prose h2 { font-size: 1.15em; }
 .prose h3 { font-size: 1.02em; }
