@@ -529,7 +529,7 @@ make lint     # spotlessApply
 ```
 
 Java bytecode targets 21, built with a GraalVM 25 toolchain because `native-image` ships with it.
-There is no CI that builds or tests — the workflows only publish, so run `make` before pushing. See
+CI builds and tests every push to `main` and every pull request; run `make` before pushing anyway. See
 [docs/contributing.md](docs/contributing.md) for the rest.
 
 ## License

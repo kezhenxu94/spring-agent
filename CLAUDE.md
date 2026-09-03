@@ -35,7 +35,7 @@ Other tasks:
 
 Tests need a running Docker daemon — `AbstractIntegrationTest` starts MongoDB and Redis containers via Testcontainers. Unit tests sit beside the class they cover; cross-cutting integration tests live in `spring-agent-app-feishu/src/test`. A behaviour that must hold for every persistence backend goes in `AbstractPersistenceBackendTest`, which is run once per backend by `PersistenceJpaTest`/`PersistenceMongoTest`/`PersistenceRedisTest` — add the assertion there rather than to one backend's test. That class also covers Spring AI's conversation-memory repository, which is not one of core's contracts but is selected by the same switch — `chatMemoryPreservesTheOrderOfATurn` is what caught MongoDB returning a turn answer-first.
 
-There is **no CI workflow that builds or tests**. The three workflows publish only. Verification is local; run `make build` before pushing.
+`.github/workflows/build.yaml` runs `./gradlew build` on every push to `main` and every pull request against it, on a GitHub-hosted Ubuntu runner for the Docker daemon Testcontainers needs. The other three workflows publish only. It carries no path filters on purpose, so that it can be made a required check — read the comment at the top of the file before adding one. Verification is still cheapest locally: run `make build` before pushing.
 
 ## Tech stack
 

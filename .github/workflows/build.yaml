@@ -1,0 +1,44 @@
+name: Build
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+# Deliberately no path filters, unlike the three publishing workflows. This is the gate a pull
+# request is judged by, so it is the one workflow that may become a required check on `main` — and
+# a required check that a path filter skips is never reported at all, which leaves the pull request
+# waiting for a run that will never arrive. Rebuilding on a documentation-only commit is the
+# cheaper mistake.
+permissions:
+  contents: read
+concurrency:
+  # Cancellable, unlike maven.yaml: this workflow publishes nothing, so an obsolete run has nothing
+  # half-finished to leave behind. Keyed by ref so pushing again to a branch supersedes its own run
+  # rather than somebody else's.
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    name: Build and test
+    # Testcontainers needs a Docker daemon — AbstractPersistenceBackendTest and friends start
+    # MongoDB, Redis and (for the knowledge base) Milvus — and the GitHub-hosted Ubuntu images are
+    # the runners that ship one.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6
+      # `build`, not `test`: it also runs spotlessCheck and checkRuntimeClasspathIsolation, which
+      # are the two ways a change breaks the project without any test noticing. A plain JDK is
+      # enough because the GraalVM plugin is applied only under -Pnative, so no native task runs
+      # here.
+      #
+      # CI is exported by GitHub Actions itself and springagent.java-common-conventions reads it to
+      # turn on test retries — a container that loses a race to start is not a broken change.
+      - name: Build
+        run: ./gradlew build --console=plain
