@@ -25,8 +25,10 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -124,6 +126,18 @@ public class FeishuCard {
    */
   private static final int CODE_NO_SUCH_ELEMENT = 300315;
 
+  /**
+   * The same thing said by the streaming write, which answers with a code of its own: {@code
+   * 300313} where creating or replacing an element answers {@code 300315}. One situation, two
+   * codes, because it is two APIs.
+   *
+   * <p>There is no putting the element back from here, though. A streaming write carries content
+   * and nothing else — the element it goes into is the writer's to build, and this class has never
+   * known what any of the card's elements look like. So the element is written down as gone (see
+   * {@link #missing}) and the writer puts it back the next time it has something to say into it.
+   */
+  private static final int CODE_NO_SUCH_ELEMENT_STREAMING = 300313;
+
   private static final Pattern IMAGE_PATTERN = Pattern.compile("!\\[(.*?)\\]\\(([^)\\s]+)\\)");
 
   private static final String FILE_SCHEME = "file:";
@@ -204,6 +218,22 @@ public class FeishuCard {
    * a card fills up, and is one a write that was refused must not be counted towards.
    */
   private final Map<String, String> sent = new HashMap<>();
+
+  /**
+   * The elements a write has found the card does not have, which is what a writer's record of what
+   * it put there is worth checking against: the card is Feishu's state, and an element can go from
+   * under a run mid-turn — see {@link #CODE_NO_SUCH_ELEMENT}.
+   *
+   * <p>Kept because the writer is the only thing that can put an element back, and a fire-and-
+   * forget streaming write tells it nothing: it is refused on the worker's thread, long after the
+   * caller has gone. So the card writes down what it could not find and the writer reads it before
+   * its next write, rather than being called back into while it holds a lock over a write of its
+   * own.
+   *
+   * <p>Emptied along with {@link #sent} when the run moves onto another card: a card that has just
+   * been created has lost nothing, never having carried anything.
+   */
+  private final Set<String> missing = new HashSet<>();
 
   /**
    * Where each element's content picks up on this card, in characters of what its writer hands us:
@@ -318,6 +348,25 @@ public class FeishuCard {
     return messages.get("card-continued") + said.substring(from);
   }
 
+  /**
+   * Whether a write has found this element is not on the card, which makes a writer's record of
+   * having put it there worth nothing: it has to be put back before anything can be written into it
+   * again — see {@link #missing}.
+   *
+   * <p>Answers false for a null element, so a caller asking about the body of an element that has
+   * none does not have to check first.
+   */
+  public synchronized boolean lost(final String elementId) {
+    return elementId != null && missing.contains(elementId);
+  }
+
+  /** Says that a writer has put {@code elementId} back on the card. */
+  public synchronized void found(final String elementId) {
+    if (elementId != null) {
+      missing.remove(elementId);
+    }
+  }
+
   /** Says that {@code elementId} has joined the footer, above whatever was its top until now. */
   void footerGrewTo(final String elementId) {
     this.footerElementId = elementId;
@@ -417,29 +466,102 @@ public class FeishuCard {
 
     /** The caller waiting to hear whether this landed, or null when nobody is. */
     CompletableFuture<Boolean> landed();
+
+    /**
+     * Which of the run's cards this change was queued for. Stamped as it goes into the queue and
+     * checked as it comes out, because the card can fill up in between: see {@link #send}.
+     */
+    long generation();
+
+    /** The same change, stamped with the card it is being queued for. */
+    Op forCard(long generation);
   }
 
   private record Stream(
-      String elementId, String content, boolean continuing, CompletableFuture<Boolean> landed)
-      implements Op {}
+      String elementId,
+      String content,
+      boolean continuing,
+      CompletableFuture<Boolean> landed,
+      long generation)
+      implements Op {
+
+    Stream(
+        final String elementId,
+        final String content,
+        final boolean continuing,
+        final CompletableFuture<Boolean> landed) {
+      this(elementId, content, continuing, landed, 0);
+    }
+
+    @Override
+    public Op forCard(final long generation) {
+      return new Stream(elementId, content, continuing, landed, generation);
+    }
+  }
 
   private record Replace(
-      String elementId, String elementJson, String uuid, CompletableFuture<Boolean> landed)
-      implements Op {}
+      String elementId,
+      String elementJson,
+      String uuid,
+      CompletableFuture<Boolean> landed,
+      long generation)
+      implements Op {
+
+    Replace(
+        final String elementId,
+        final String elementJson,
+        final String uuid,
+        final CompletableFuture<Boolean> landed) {
+      this(elementId, elementJson, uuid, landed, 0);
+    }
+
+    @Override
+    public Op forCard(final long generation) {
+      return new Replace(elementId, elementJson, uuid, landed, generation);
+    }
+  }
 
   private record Insert(
-      String targetElementId, String elementsJson, String uuid, CompletableFuture<Boolean> landed)
+      String targetElementId,
+      String elementsJson,
+      String uuid,
+      CompletableFuture<Boolean> landed,
+      long generation)
       implements Op {
+
+    Insert(
+        final String targetElementId,
+        final String elementsJson,
+        final String uuid,
+        final CompletableFuture<Boolean> landed) {
+      this(targetElementId, elementsJson, uuid, landed, 0);
+    }
+
     @Override
     public String elementId() {
       return uuid;
     }
+
+    @Override
+    public Op forCard(final long generation) {
+      return new Insert(targetElementId, elementsJson, uuid, landed, generation);
+    }
   }
 
-  private record Finish(CompletableFuture<Boolean> landed) implements Op {
+  private record Finish(CompletableFuture<Boolean> landed, long generation) implements Op {
+
+    Finish(final CompletableFuture<Boolean> landed) {
+      this(landed, 0);
+    }
+
     @Override
     public String elementId() {
       return FeishuCardElements.STOP;
+    }
+
+    @Override
+    public Op forCard(final long generation) {
+      return new Finish(landed, generation);
     }
   }
 
@@ -479,8 +601,13 @@ public class FeishuCard {
    *
    * <p>A change someone is waiting on is never superseded and never superseded into — the caller is
    * owed an answer about the change it asked for, not about a later one.
+   *
+   * <p>Stamped with the card it is being queued for on the way in, which is what {@link #send}
+   * checks on the way out. Superseding is unaffected: a change that replaces an earlier one is the
+   * newer of the two and carries the newer stamp, which is the card it should be written to.
    */
-  private void add(final Op op) {
+  private void add(final Op queueing) {
+    final var op = queueing.forCard(generation);
     if (op.landed() != null) {
       urgent = true;
       queued.add(op);
@@ -656,8 +783,31 @@ public class FeishuCard {
    * Makes one queued change, on the worker's thread. A failure is the change's own — logged, and
    * reported to whoever was waiting — and never the batch's: the writes after it are about other
    * elements and have a card to land on.
+   *
+   * <p>Unless the card it was queued for is not the card any more. A batch is taken whole and sent
+   * one call at a time, so the first write in it that fills the card takes the run onto another —
+   * and everything behind it names elements that were on the card left behind, since a new card is
+   * created carrying the spend row and nothing else. Sent anyway, each of those is refused for want
+   * of the element it names, which used to be the run's answer lost on every chunk until it next
+   * had something to say. So they are dropped here instead, and whoever was waiting is told they
+   * did not land — which is the answer that sends a writer round its {@code movedOn} path, to put
+   * its elements on the new card and write to them there.
+   *
+   * <p>Finishing is the exception, being about the card rather than about an element of it: the run
+   * is over whichever card it ended on, and a card left in streaming mode goes on saying it is
+   * being written to for ever.
    */
   private void send(final Op op) {
+    if (!(op instanceof Finish) && op.generation() != generation) {
+      log.debug(
+          "Dropping a write of {} queued for a card the run has left: cardId={}",
+          op.elementId(),
+          cardId);
+      if (op.landed() != null) {
+        op.landed().complete(false);
+      }
+      return;
+    }
     var landed = false;
     try {
       landed =
@@ -735,6 +885,9 @@ public class FeishuCard {
       // sent it.
       sequence.set(2);
       sent.clear();
+      // A card that has just been created has lost nothing, never having carried anything: what
+      // the card left behind was missing is not this one's business.
+      missing.clear();
       footerElementId = FeishuCardElements.USAGE;
       wroteSinceContinuation = false;
       generation++;
@@ -804,6 +957,15 @@ public class FeishuCard {
       // yet, and putting it there is the writer's to do — see continueOnNewCard().
       if (full(response.getCode())) {
         continueOnNewCard();
+        return false;
+      }
+      if (response.getCode() == CODE_NO_SUCH_ELEMENT_STREAMING) {
+        // All this can do is write down that the element has gone. Content is all a streaming write
+        // carries, so there is nothing here to put back on the card — the writer reads this before
+        // its next write and puts the element back itself.
+        synchronized (this) {
+          missing.add(elementId);
+        }
       }
       return false;
     }
@@ -879,6 +1041,11 @@ public class FeishuCard {
         return false;
       }
       if (response.getCode() == CODE_NO_SUCH_ELEMENT) {
+        // Written down whether or not there is somewhere else to put these: the anchor is the
+        // element that has gone, and it is its own writer that has to put it back.
+        synchronized (this) {
+          missing.add(target);
+        }
         final var anchor = recoveryAnchorFor(target);
         if (anchor != null) {
           log.info(
@@ -932,8 +1099,15 @@ public class FeishuCard {
         final var anchor = recoveryAnchorFor(change.elementId());
         if (anchor != null) {
           log.info("Card {} has no {} to replace, so it is put back", cardId, change.elementId());
-          return insert(
-              new Insert(anchor, "[" + change.elementJson() + "]", change.uuid(), null), anchor);
+          if (insert(
+              new Insert(anchor, "[" + change.elementJson() + "]", change.uuid(), null), anchor)) {
+            return true;
+          }
+        }
+        // It is gone and this could not put it back, so the writer is told: it holds the element
+        // and can build it again, which is more than is left here to try.
+        synchronized (this) {
+          missing.add(change.elementId());
         }
       }
       return false;

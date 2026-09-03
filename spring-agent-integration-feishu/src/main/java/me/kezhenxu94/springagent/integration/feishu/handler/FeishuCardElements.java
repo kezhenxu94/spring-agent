@@ -174,6 +174,15 @@ public class FeishuCardElements {
   UserChatClients userChatClients;
 
   /**
+   * The element written into, for one the card carries and an insert names, or null where the two
+   * are the same element. A panel is inserted whole and streamed into by its body, so a body that
+   * has gone from the card is a panel that has to be put back.
+   */
+  String bodyOf(final String elementId) {
+    return BODY_IDS.get(elementId);
+  }
+
+  /**
    * The element {@code elementId} is added above: the first element below it in {@link #ORDER} that
    * the card already has, which is what puts it in its place whatever order the run built the card
    * in.
