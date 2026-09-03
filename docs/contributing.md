@@ -110,6 +110,7 @@ spring-agent-app-feishu               deployable server, Feishu surface; depends
 spring-agent-app-slack                the same server, Slack surface
 spring-agent-app-cli                  laptop command line; jpa + local shell only
 spring-agent-app-webui                the same runtime with the browser surface and nothing else
+spring-agent-app-web-feishu           both surfaces in one process, so a conversation can be handed between them
 ```
 
 `spring-agent-core` must stay free of any persistence backend. This is enforced by
@@ -182,6 +183,32 @@ Its run streaming is also the one place a surface is not simply a listener: a `R
 what a run emitted so a browser can join late, and a subscription is only a reader of one. See
 `docs/architecture.md` for the shape and `RunStreamSubscriptions` for why frames go to the asking
 session rather than to a topic.
+
+`spring-agent-app-web-feishu` is that pairing as an application, and it is the reference for what to
+do when a feature needs both surfaces at once. Two rules came out of building it.
+
+**Neither surface may answer for the other's runs, and `chatType` is the only thing that decides.**
+That is not new machinery — both listeners already gated on it — but a `PromptVariablesContributor`
+is a bean too, and `FeishuReplyFormat` filled `{replyFormat}` unconditionally until this application
+existed, which would have had every browser answer written in Feishu card markdown and rendered
+literally. If you add a bean that answers for "a run", say which runs, and assert it:
+`OneChatSurfacePlusWebTest` checks all three singletons and that the two listeners' claims are
+disjoint.
+
+**Do not depend on a bean whose existence is conditional on the rest of the application.** Four
+classes in each chat module asked for Boot's `applicationTaskExecutor` by name. That bean is
+`@ConditionalOnMissingBean(Executor.class)`, and a STOMP application registers four executors before
+anything else is created — so combining a chat surface with the browser meant no
+`applicationTaskExecutor` and a startup failure naming a Boot bean, in an application that had done
+nothing wrong. Each module now declares its own (`FeishuAutoConfiguration.TASK_EXECUTOR`,
+`SlackAutoConfiguration.TASK_EXECUTOR`). A module has to work in a context it does not control.
+
+**And a feature spanning two surfaces belongs in neither module.** Putting a browser's answer back
+on a chat looks like it needs an SPI shared between them, but core already had one: `Notifier` is
+"say something to a chat with no run behind it", both chat modules implement it, and a deployment
+has at most one — which is what makes "the chat surface beside this page" resolvable at all. It grew
+two `default` methods rather than gaining a sibling interface. Look there before adding an SPI whose
+implementors would be the same two classes.
 
 What a surface owns:
 

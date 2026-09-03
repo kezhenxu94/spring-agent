@@ -65,8 +65,8 @@ public class ChatSessionTrackingListener implements AgentResponseListener {
           (existing == null
                   ? ChatSession.builder().id(conversationId).userId(userId).createdAt(now)
                   : existing.toBuilder())
-              .groupId(groupId)
-              .tenantId(tenantId)
+              .groupId(kept(groupId, existing == null ? null : existing.groupId()))
+              .tenantId(kept(tenantId, existing == null ? null : existing.tenantId()))
               .updatedAt(now)
               .build());
     } catch (final RuntimeException e) {
@@ -74,5 +74,22 @@ public class ChatSessionTrackingListener implements AgentResponseListener {
       // run — not worth failing the run over.
       log.warn("Failed to index conversation {} for {}", conversationId, userId, e);
     }
+  }
+
+  /**
+   * What a run says about a scope, unless it says nothing and the row already knows better.
+   *
+   * <p>A surface that has no concept of a group leaves {@code groupId} empty, and this index is
+   * shared by every surface — so overwriting with what a run happened to carry lets a run on one
+   * surface un-group a conversation that belongs to a group on another. That is not cosmetic:
+   * {@code groupId} is what scopes the knowledge base and picks the group's home directory, so the
+   * next run in that conversation would quietly go without both.
+   *
+   * <p>The consequence, said plainly: a conversation's group and tenant are settled by the first
+   * run that named them and are never taken away, only replaced by another run that names them.
+   * Nothing here needs a conversation to change groups, and a blank is not a request to.
+   */
+  private static String kept(final String said, final String known) {
+    return said == null || said.isBlank() ? known : said;
   }
 }

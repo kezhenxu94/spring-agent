@@ -47,4 +47,14 @@ class FeishuReplyFormatTest {
   void fillsTheReplyFormatSlot() {
     assertThat(format.variables(request("group"))).containsOnlyKeys("replyFormat");
   }
+
+  @Test
+  @DisplayName("says nothing about a run belonging to another surface")
+  void staysOutOfAnotherSurfacesRun() {
+    // A contributor is a @Bean, so it is asked about every run in the context. An application
+    // carrying this module beside a browser would otherwise have every page answer written in
+    // Feishu tags and rendered literally.
+    assertThat(format.variables(request("web"))).isEmpty();
+    assertThat(format.variables(request("channel"))).isEmpty();
+  }
 }

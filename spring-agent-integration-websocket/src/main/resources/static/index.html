@@ -483,9 +483,10 @@
         <ul id="attachments" class="mb-2 hidden flex-wrap gap-1.5"></ul>
 
         <!--
-          A toolbar of things you can add to a message, above the box you type it in. One button so
-          far; it is a strip rather than a lone button because the next one — a screenshot, a
-          reference to a file the agent already has — belongs beside it and not somewhere else.
+          A toolbar of things you can add to a message, above the box you type it in, and of the
+          things that change where it goes. It was always a strip rather than a lone button because
+          the next one — a screenshot, a reference to a file the agent already has — belongs beside
+          it and not somewhere else.
         -->
         <div class="mb-1.5 flex items-center gap-0.5" role="toolbar" data-i18n-label="composer.tools">
           <button id="attach" type="button" class="tool-button" data-i18n-title="composer.attach">
@@ -497,6 +498,29 @@
             <span class="sr-only" data-i18n="composer.attach">Attach files</span>
           </button>
           <input id="file-input" type="file" multiple class="hidden">
+          <!--
+            Also put this answer on the chat this conversation belongs to. Hidden until /api/me says
+            there is a chat surface to put it on and names one this page has a mark for, so a
+            deployment with no chat surface never sees a control that would do nothing.
+
+            aria-pressed rather than a checkbox: it is a button whose effect is on the message about
+            to be sent, and a screen reader saying "pressed" is exactly what the background is
+            saying to everyone else. The mark keeps its own colours — it stands for somebody else's
+            product, and a monochrome version of it would read as an icon we invented — so the
+            pressed state is carried by the background alone, which is why .tool-button-on exists.
+          -->
+          <button id="mirror" type="button" class="tool-button" hidden
+                  aria-pressed="false" data-i18n-title="composer.mirror">
+            <svg viewBox="0 0 48 48" fill="none" class="size-[17px]" aria-hidden="true">
+              <path d="M10 8c0 1 7 3.5 14.745 16.744 0 0 4.184-4.363 6.255-5.744 1.5-1 2.712-1.332 2.712-1.332C33.712 15.156 29.5 8 28 8z"
+                    fill="#00d6b9"/>
+              <path d="M43.5 18.5c-1-.667-3.65-1.771-6.5-1.5a15 15 0 0 0-3.288.668S32.5 18 31 19c-2.07 1.38-6.255 5.744-6.255 5.744-1.428 1.397-3.05 2.732-5.245 3.756 0 0 7 3 11.5 3 5.063 0 7-3.5 7-3.5 1.5-3.305 3.5-7 5.5-9.5"
+                    fill="#163c9a"/>
+              <path d="M4 17.5v17c0 1 6 5.5 15 5.5 10 0 17.05-7.705 19-12 0 0-1.937 3.5-7 3.5-4.5 0-11.5-3-11.5-3-5.117-2.239-10.03-6.577-12.906-9.117C4.974 17.953 4 17.093 4 17.5"
+                    fill="#3370ff"/>
+            </svg>
+            <span class="sr-only" data-i18n="composer.mirror">Also send to the chat</span>
+          </button>
         </div>
 
         <!--

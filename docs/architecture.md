@@ -103,6 +103,14 @@ applications. `spring-agent-integration-websocket` is the exception rather than 
 listener claims a run only when the request's `chatType` is `web`, and it contributes no
 `{replyFormat}` and no `Notifier`, so a Feishu bot can add a browser to read its conversations in.
 
+**`spring-agent-app-web-feishu` is what that exception is for**: one process carrying both the
+browser and Feishu, so a conversation can be handed between them. Both directions need the two in
+one JVM — a run journal is held in memory, and putting a browser's answer back on the chat needs a
+Feishu client in the process that produced it. `chatType` is the discriminator that makes it safe:
+each surface's listener declines the other's runs, Feishu's reply format answers only for `p2p` and
+`group`, and only Feishu ships a `Notifier`, which is also what the mirror sends through. A second
+*chat* surface there would still be the bug above.
+
 ## How a run starts
 
 Two ways, and the second is the one that surprises people.

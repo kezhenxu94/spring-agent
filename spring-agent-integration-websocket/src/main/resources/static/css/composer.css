@@ -151,3 +151,21 @@
 }
 .composer-action-stop:hover { background: color-mix(in oklch, var(--signal) 26%, transparent); }
 
+
+/* A toolbar button that is on, for the one that toggles rather than acts.
+ *
+ * Takes its treatment from .seg-on in chrome.css rather than inventing a second way to look
+ * selected, and for the reason given there: a state colour would read as a status — something
+ * succeeded, something needs attention — where all this says is "this is switched on". A raised
+ * surface says that without claiming anything.
+ *
+ * The dim when off is here rather than on .tool-button because it is only wanted for a button
+ * carrying somebody else's brand mark: at full saturation beside a monochrome paperclip, a
+ * three-colour logo reads as already active. */
+.tool-button[aria-pressed="false"] { opacity: 0.55; }
+.tool-button[aria-pressed="false"]:hover { opacity: 1; }
+.tool-button-on { background: var(--edge); }
+:root:not(.dark) .tool-button-on {
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.07), inset 0 0 0 1px var(--line);
+}

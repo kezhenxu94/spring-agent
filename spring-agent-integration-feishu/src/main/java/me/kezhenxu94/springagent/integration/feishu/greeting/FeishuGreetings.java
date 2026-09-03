@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.SeenUpdate;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
 import me.kezhenxu94.springagent.core.dao.repo.SeenUpdateRepo;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuAutoConfiguration;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Component;
@@ -53,7 +54,7 @@ public class FeishuGreetings {
    * bounded by anything this code controls. See {@code FeishuQuestionAnswerHandler} for why this
    * pool and not the scheduler's.
    */
-  @Qualifier("applicationTaskExecutor")
+  @Qualifier(FeishuAutoConfiguration.TASK_EXECUTOR)
   private final TaskExecutor taskExecutor;
 
   /** Called from the event thread; returns as soon as the work is handed off. */

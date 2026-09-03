@@ -12,6 +12,7 @@ import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.integration.websocket.config.WebMessages;
+import me.kezhenxu94.springagent.integration.websocket.run.ChatMirrors;
 import me.kezhenxu94.springagent.integration.websocket.run.WebRunListener;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springframework.http.HttpStatus;
@@ -46,11 +47,19 @@ public class QuestionController {
   private final SpringAgent springAgent;
   private final PendingQuestionRepo pendingQuestionRepo;
   private final ChatSessions sessions;
+  private final ChatMirrors mirrors;
   private final WebMessages messages;
   private final JsonMapper om;
 
-  /** What the form submits: one entry per question, by index. */
-  public record Answers(List<WebQuestions.Submitted> answers) {}
+  /**
+   * What the form submits: one entry per question, by index.
+   *
+   * <p>{@code mirror} is the composer's toggle, sent again here for the same reason the composer
+   * sends it: answering a question is a turn like any other, and a conversation being followed on a
+   * chat should not go quiet just because the last thing the person did was press submit rather
+   * than type. Nothing is stored, so the page has to say so each time.
+   */
+  public record Answers(List<WebQuestions.Submitted> answers, Boolean mirror) {}
 
   @PostMapping("/{id}/answers")
   public Map<String, Object> answer(
@@ -92,21 +101,35 @@ public class QuestionController {
 
     final var text = asMessage(answers);
     final var requestId = UUID.randomUUID().toString();
-    springAgent.fire(
+    final var session = sessions.ownedBy(pending.conversationId(), user).orElse(null);
+    final var builder =
         AgentRequest.builder()
             .requestId(requestId)
             .scenario(BuiltInScenarios.CHAT)
             .userId(user.id())
             .chatId(pending.conversationId())
             .chatType(WebRunListener.CHAT_TYPE)
+            // The same reason ChatController gives: groupId scopes the knowledge base and picks
+            // the group's home directory, so an answering run without it answers outside the group
+            // the conversation is about. Null where the index has no row, which the builder takes
+            // as no group — the same as before this line existed.
+            .groupId(session == null ? null : session.groupId())
             .tenantId(user.tenantId())
             .conversationId(pending.conversationId())
             .rootMessageId(pending.rootMessageId())
             .replyMessageId(requestId)
-            .userMessage(spec -> spec.text(text))
-            .build());
+            .userMessage(spec -> spec.text(text));
+    if (Boolean.TRUE.equals(body == null ? null : body.mirror())) {
+      final var mirror = mirrors.forRun(session, user, text);
+      if (mirror != null) {
+        builder.listener(mirror);
+      }
+    }
+    springAgent.fire(builder.build());
 
-    sessions.ownedBy(pending.conversationId(), user).ifPresent(sessions::touch);
+    if (session != null) {
+      sessions.touch(session);
+    }
     log.info("Question {} answered by {}, continuing as run {}", id, user.id(), requestId);
 
     return Map.of("requestId", requestId);

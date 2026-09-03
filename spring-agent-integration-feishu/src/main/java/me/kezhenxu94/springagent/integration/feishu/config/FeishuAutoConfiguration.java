@@ -48,6 +48,38 @@ import org.springframework.context.annotation.ImportRuntimeHints;
     matchIfMissing = true)
 public class FeishuAutoConfiguration {
 
+  /** The bean name the handlers that hand work off to Feishu ask for. */
+  public static final String TASK_EXECUTOR = "feishuTaskExecutor";
+
+  /**
+   * Somewhere to put work that waits on Feishu.
+   *
+   * <p><b>Its own, rather than Boot's {@code applicationTaskExecutor}.</b> That bean is declared
+   * {@code @ConditionalOnMissingBean(Executor.class)}, so it exists only in an application that
+   * registers no executor of its own — and a STOMP application registers four before anything here
+   * is created. So an application combining this module with a browser surface simply has no {@code
+   * applicationTaskExecutor}, and the four classes here that asked for it by name failed to be
+   * created at all: a startup failure naming a Boot bean, in an application that had done nothing
+   * wrong. Borrowing a conditional bean of somebody else's is what was wrong.
+   *
+   * <p>Not {@code taskScheduler} either, which is a {@code TaskExecutor} too and would otherwise be
+   * the obvious candidate: its threads exist to fire scheduled tasks on time, and this work sits
+   * blocked on a Feishu call.
+   *
+   * <p>Virtual threads, because that is exactly what this work is — a card update or a run start
+   * waiting on a network call — and a concurrency limit anyway, so a burst of callbacks cannot
+   * start unbounded work. {@code @ConditionalOnMissingBean} by name, so a deployment that wants its
+   * own pool here declares one and this backs off.
+   */
+  @Bean(TASK_EXECUTOR)
+  @ConditionalOnMissingBean(name = TASK_EXECUTOR)
+  public org.springframework.core.task.TaskExecutor feishuTaskExecutor() {
+    final var executor = new org.springframework.core.task.SimpleAsyncTaskExecutor("feishu-");
+    executor.setVirtualThreads(true);
+    executor.setConcurrencyLimit(64);
+    return executor;
+  }
+
   /**
    * This module's tool translations, which core applies along with its own.
    *

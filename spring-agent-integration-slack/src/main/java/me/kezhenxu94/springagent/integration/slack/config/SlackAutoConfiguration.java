@@ -54,6 +54,32 @@ import org.springframework.context.annotation.ImportRuntimeHints;
     matchIfMissing = true)
 public class SlackAutoConfiguration {
 
+  /** The bean name the handlers that hand work off to Slack ask for. */
+  public static final String TASK_EXECUTOR = "slackTaskExecutor";
+
+  /**
+   * Somewhere to put work that waits on Slack.
+   *
+   * <p>Its own, rather than Boot's {@code applicationTaskExecutor}, which is declared
+   * {@code @ConditionalOnMissingBean(Executor.class)} and so exists only in an application that
+   * registers no executor of its own. That is not a property this module can assume of whoever
+   * embeds it — a STOMP application registers four — and borrowing it means failing to start,
+   * naming a Boot bean, in an application that had done nothing wrong. The same fix, for the same
+   * reason, as {@code FeishuAutoConfiguration.feishuTaskExecutor}.
+   *
+   * <p>Not {@code taskScheduler} either: its threads exist to fire scheduled tasks on time, and
+   * this work sits blocked on a Slack call. Virtual threads because that is what this work is, with
+   * a concurrency limit so a burst cannot start unbounded work.
+   */
+  @Bean(TASK_EXECUTOR)
+  @org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean(name = TASK_EXECUTOR)
+  public org.springframework.core.task.TaskExecutor slackTaskExecutor() {
+    final var executor = new org.springframework.core.task.SimpleAsyncTaskExecutor("slack-");
+    executor.setVirtualThreads(true);
+    executor.setConcurrencyLimit(64);
+    return executor;
+  }
+
   /**
    * This module's tool translations, which core applies along with its own — keyed to {@code
    * app.slack.locale} rather than {@code app.locale}, as everything else this module writes is.

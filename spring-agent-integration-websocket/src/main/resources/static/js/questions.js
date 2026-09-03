@@ -51,7 +51,7 @@ export function renderQuestion(pending) {
       }));
       const result = await api(`/api/questions/${pending.pendingQuestionId}/answers`, {
         method: 'POST',
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify({ answers, mirror: state.mirroring }),
       });
       form.remove();
       state.runView = null;

@@ -60,6 +60,7 @@ spring-agent-app-feishu                           deployable server whose surfac
 spring-agent-app-slack                            the same server, with Slack as its surface instead
 spring-agent-app-cli                              laptop command line; jpa + local shell only
 spring-agent-app-webui                            the same server, with a browser as its surface
+spring-agent-app-web-feishu                       both surfaces at once, so a conversation is handed between chat and browser
 ```
 
 `spring-agent-core` must stay free of any persistence backend. This is enforced by `checkRuntimeClasspathIsolation` (wired into `check`, defined in `buildSrc/.../springagent.classpath-isolation.gradle`, configured at the bottom of `spring-agent-core/build.gradle`): it fails the build if Hibernate, the Mongo driver, Jedis, Milvus, fabric8 and friends reach core's runtime classpath. If that task fails, a dependency became `api` or grew a new transitive — fix the dependency, do not widen the allow-list.
@@ -111,7 +112,7 @@ Text the agent writes itself (as opposed to what the model produced) is localize
 
 ## Documentation
 
-`README.md` at the root, everything else under `docs/`. Four documents, four audiences, and a
+`README.md` at the root, everything else under `docs/`. Five documents, five audiences, and a
 change that alters behaviour updates the relevant one in the same commit:
 
 - **`README.md`** — somebody running the prebuilt server or CLI. Features as an end user meets them,
@@ -131,6 +132,12 @@ change that alters behaviour updates the relevant one in the same commit:
 - **`docs/contributing.md`** — somebody changing this repository. Build/test/lint, module layout and
   the classpath rules, how to add each kind of integration, conventions. Update it when the build,
   the test layout or the module rules change, or when a new *kind* of integration becomes possible.
+- **`docs/advanced.md`** — a deployment doing something most deployments do not. What is off by
+  default, what turning it on costs, and what it cannot do. A feature belongs here rather than in
+  the README when it needs more than one application configured together, or when the ordinary way
+  to run the agent never meets it — handing a conversation between a chat and the browser is the
+  first entry. Keep the README's mention of one to a paragraph and a link: the README is for
+  somebody getting the thing running.
 
 None of them duplicates `application.yaml`, which stays the configuration reference — they link to
 it. Same for the code: link to the class that explains itself rather than copying its reasoning into
@@ -148,7 +155,14 @@ Configuration is documented in place. `spring-agent-app-feishu/src/main/resource
 
 `spring-agent-integration-websocket` is deliberately not a third entry in that count. It does register a `@Bean AgentResponseListener`, so that a scheduled task firing or a subagent starting is still visible in the page, but that one claims a run only when the request's `chatType` is `web` — which no other surface sets — and it contributes no `PromptVariablesContributor` and no `Notifier`. So it may sit beside a chat surface, which is the point of publishing it.
 
-**`spring-agent-app-slack`'s and `spring-agent-app-webui`'s `application.yaml` are derived from `spring-agent-app-feishu`'s and have to stay in step with it.** The two applications run the same runtime, so a setting must mean the same thing in both — a deployment that moves between them should not silently get different tool limits, a different subagent budget or a different sandbox. A knob added to the Feishu server's file belongs in the other two as well, with the same default and the same rationale.
+`spring-agent-app-web-feishu` is that pairing, and the only application here carrying two surfaces. It exists because a handoff between them cannot be done from two processes: a `RunJournal` is held in memory, so a browser can only watch a chat run live if that run is in the same JVM, and putting a browser's answer back on the chat needs a Feishu client in the process that produced it. `chatType` is the whole of what makes it safe, so anything added there has to say which runs it answers for — `OneChatSurfacePlusWebTest` asserts the three singletons and that the two listeners' claims are disjoint. Two traps found while building it, both worth remembering:
+
+- `FeishuReplyFormat` filled `{replyFormat}` **unconditionally** until then, ignoring `chatType`, which would have had every browser answer written in Feishu card markdown and rendered as literal `<at>` tags. A contributor is a bean; it is asked about every run in the context.
+- Four classes in each chat module asked for Boot's `applicationTaskExecutor` by name. That bean is `@ConditionalOnMissingBean(Executor.class)` and a STOMP application registers four executors, so the combination had no such bean and failed to start. Each module now declares its own — `FeishuAutoConfiguration.TASK_EXECUTOR`, `SlackAutoConfiguration.TASK_EXECUTOR`. Do not depend on a bean whose existence is conditional on the rest of the application.
+
+**Handing a conversation between the two is `Notifier`, not an SPI of its own.** `core/notify/Notifier` is already "say something to a chat with no run behind it", both chat modules implement it, and a deployment has at most one — which is what makes "the chat surface beside this page" resolvable. It carries two `default` methods for this: `surface()` names the platform so the page can draw its icon, and `quoted(String)` escapes text somebody else wrote into that platform's dialect. `quoted` is load-bearing rather than tidy — `<at id=all></at>` typed into the web composer would otherwise have the bot notify a whole Feishu group — and an implementation carrying foreign text must override it. `ChatMirrors` builds the mirror as a **per-request** listener, so nothing is persisted and no bean has to work out which runs it was wanted for.
+
+**`spring-agent-app-slack`'s, `spring-agent-app-webui`'s and `spring-agent-app-web-feishu`'s `application.yaml` are derived from `spring-agent-app-feishu`'s and have to stay in step with it.** They all run the same runtime, so a setting must mean the same thing in each — a deployment that moves between them should not silently get different tool limits, a different subagent budget or a different sandbox. A knob added to the Feishu server's file belongs in the others as well, with the same default and the same rationale. `spring-agent-app-web-feishu`'s is derived from `spring-agent-app-webui`'s in turn, and adds `app.feishu.*` (the same block as the Feishu server's), `app.web.base-url` and `app.web.follow-chat-runs`, and carries no `slack-login` profile — it matches a signed-in person to their Feishu chat by `open_id`, so `FeishuIdentityCheck` refuses to start on any other provider.
 
 Only these kinds of difference are legitimate, and each is stated in the header comment at the top of the derived file rather than left to be found by diffing:
 

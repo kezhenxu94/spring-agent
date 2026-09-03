@@ -10,6 +10,7 @@ import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuAutoConfiguration;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskExecutor;
@@ -51,7 +52,7 @@ public class FeishuSuggestions {
   private final ProcessedMessageRepo processedMessageRepo;
 
   /** See {@code FeishuQuestionAnswerHandler} for why this pool and not the scheduler's. */
-  @Qualifier("applicationTaskExecutor")
+  @Qualifier(FeishuAutoConfiguration.TASK_EXECUTOR)
   private final TaskExecutor taskExecutor;
 
   public P2CardActionTriggerResponse handle(final P2CardActionTrigger event) {

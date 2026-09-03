@@ -12,6 +12,68 @@ import { attachRun } from './stream.js';
 import { renderAttachments } from './attachments.js';
 import { state } from './state.js';
 
+// Which conversation's toggle is stored where. Per conversation rather than one setting for the
+// page: whether an answer belongs in a group chat is a fact about that conversation, and carrying
+// one conversation's choice into the next would put somebody's private question in front of a
+// group. Nothing on the server remembers it — see ChatController.Send.
+const MIRROR_KEY = 'spring-agent-mirror';
+
+function storedMirror(id) {
+  if (!id) return false;
+  try { return localStorage.getItem(`${MIRROR_KEY}:${id}`) === 'on'; } catch (e) { return false; }
+}
+
+function storeMirror(id, on) {
+  if (!id) return;
+  try { localStorage.setItem(`${MIRROR_KEY}:${id}`, on ? 'on' : 'off'); } catch (e) { /* private mode */ }
+}
+
+/** Whether the button can be offered at all, and what the chat it sends to is called. */
+function mirrorSurface() {
+  const mirror = state.me?.mirror;
+  if (!mirror?.enabled) return null;
+  // A surface this page has no mark for is not offered. The button *is* the platform's logo, so
+  // there is nothing to draw for a name we do not recognise — and a generic icon standing in for
+  // "some chat platform" would tell the reader less than no button at all. Adding one is adding
+  // its mark to index.html and its name here.
+  const name = t(`composer.mirror.surface.${mirror.surface}`);
+  return name === `composer.mirror.surface.${mirror.surface}` ? null : name;
+}
+
+function paintMirror(surface) {
+  const button = $('mirror');
+  button.setAttribute('aria-pressed', state.mirroring ? 'true' : 'false');
+  button.classList.toggle('tool-button-on', state.mirroring);
+  button.title = t(state.mirroring ? 'composer.mirror.on' : 'composer.mirror.off', surface);
+}
+
+/**
+ * Draws the toggle for the conversation now on screen.
+ *
+ * Called when the conversation changes, when /api/me lands, and when the language changes — the
+ * title names the chat platform, so it has to be rewritten like any other label.
+ */
+export function refreshMirror() {
+  const button = $('mirror');
+  if (!button) return;
+  const surface = mirrorSurface();
+  button.hidden = !surface;
+  // Off, not merely undrawn. Whatever is in state is what gets sent, so a page with no button must
+  // not be able to leave a stale true behind it.
+  state.mirroring = surface ? storedMirror(state.conversationId) : false;
+  if (surface) paintMirror(surface);
+}
+
+function toggleMirror() {
+  state.mirroring = !state.mirroring;
+  storeMirror(state.conversationId, state.mirroring);
+  paintMirror(mirrorSurface());
+  // Turned on while a run is going, the run already going cannot be mirrored: a listener belongs to
+  // a request, and that request has already been assembled. Said plainly rather than left to look
+  // like a control that did nothing.
+  if (state.mirroring && state.running) toast(t('run.mirror.next'), 'waiting', 4000);
+}
+
 /** Send is inert until there is something to send — a message, or a file to talk about. */
 export function refreshSendState() {
   const send = $('send');
@@ -47,6 +109,9 @@ export async function send() {
     if (!state.conversationId) {
       const created = await api('/api/conversations', { method: 'POST' });
       state.conversationId = created.id;
+      // The toggle was set before this conversation existed, so it has nowhere stored yet. Written
+      // now rather than left for the next click, or a reload would forget it.
+      storeMirror(created.id, state.mirroring);
       await loadConversations();
     }
     // Cleared only once the request is on its way, so a failure does not also lose what they typed.
@@ -64,7 +129,7 @@ export async function send() {
     try {
       result = await api(`/api/conversations/${state.conversationId}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ text: pending }),
+        body: JSON.stringify({ text: pending, mirror: state.mirroring }),
       });
     } catch (error) {
       // Give it back rather than swallow it: retyping a long message because the network blinked is
@@ -115,6 +180,8 @@ export function initComposer() {
   });
   $('send').addEventListener('click', send);
   $('stop').addEventListener('click', stop);
+  $('mirror').addEventListener('click', toggleMirror);
+  refreshMirror();
   setRunning(false);
   $('new-conversation').addEventListener('click', () => attempt(newConversation));
 }

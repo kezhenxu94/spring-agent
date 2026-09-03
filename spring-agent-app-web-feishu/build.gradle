@@ -1,0 +1,117 @@
+// Derived from spring-agent-app-webui/build.gradle. The two run the same runtime and differ only
+// in that this one also carries the Feishu chat surface, so a dependency added there belongs here
+// too — see the same rule for the application.yaml files in CLAUDE.md.
+plugins {
+  alias(libs.plugins.spring.boot)
+  alias(libs.plugins.spring.dependency.management)
+  id 'springagent.java-common-conventions'
+  id 'springagent.docker'
+  id 'springagent.native'
+  id 'application'
+  // Applied below instead of here, see the conditional in spring-agent-app-feishu/build.gradle for why the
+  // gate exists. `apply false` still makes the plugin resolvable by id, which is what
+  // pluginManager.apply needs.
+  alias(libs.plugins.graalvm) apply false
+}
+
+// Read by springagent.docker.gradle and springagent.native.gradle, so they have to be set before
+// either configures anything. Names of its own rather than the defaults, for the reason
+// spring-agent-app-webui gives: two applications pushing the same image reference would mean
+// whichever built last is what a deployment pulls.
+ext.imageBaseName = 'spring-agent-web-feishu'
+ext.nativeImageName = 'spring-agent-web-feishu'
+
+if (providers.gradleProperty('native').present) {
+  pluginManager.apply('org.graalvm.buildtools.native')
+}
+
+// spring-boot-dependencies manages jedis below the version Spring AI's Redis chat memory needs, and
+// the mismatch turns that memory off without logging anything. The same override spring-agent-app
+// carries, for the same reason and with the same caveat: this must be a BOM property rather than a
+// resolutionStrategy force, because io.spring.dependency-management re-applies its managed versions
+// after Gradle's own rules.
+ext['jedis.version'] = libs.versions.jedis.get()
+
+def patchJvmArgs = [
+  // sqlite-jdbc loads its bundled native library through System::load.
+  "--enable-native-access=ALL-UNNAMED",
+  "--add-opens=java.base/java.io=ALL-UNNAMED",
+  "--add-opens=java.base/java.lang=ALL-UNNAMED",
+  "--add-opens=java.base/java.time=ALL-UNNAMED",
+  "--add-opens=java.base/java.util=ALL-UNNAMED",
+  "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED"
+]
+
+dependencies {
+  implementation project(':spring-agent-core')
+
+  // All three, like spring-agent-app-feishu: a web server is a deployed thing, and a deployment running
+  // more than one instance needs a store they share, which SQLite under a container's filesystem is
+  // not. app.persistence.type chooses; it defaults to jpa so a laptop needs no server.
+  implementation project(':spring-agent-persistence-jpa')
+  implementation project(':spring-agent-persistence-mongodb')
+  implementation project(':spring-agent-persistence-redis')
+
+  // Not integrations, so they do not contradict what this module is for. Taking them decides
+  // nothing — app.ai.tools.shell.type does, and it defaults to none — but without them on the
+  // classpath there is no value of that switch that would give the agent a shell at all.
+  implementation project(':spring-agent-tools-shell-kubernetes')
+  implementation project(':spring-agent-tools-shell-docker')
+
+  // The knowledge base, so the UI has something to put in its sources pane: retrieval happens
+  // without the model asking and without appearing among the tool calls, and this surface is the
+  // one that can show a reader what an answer was actually built on. app.ai.rag.enabled turns it
+  // back off, and defaults to false.
+  implementation project(':spring-agent-rag-milvus')
+
+  // Both surfaces, which is the whole point of this module existing beside spring-agent-app-webui.
+  // The browser: the pages, the REST endpoints and the STOMP broker a run streams over.
+  implementation project(':spring-agent-integration-websocket')
+
+  // And the chat. Two surfaces in one application is legal here and nowhere else in this
+  // repository, and it is legal for a reason rather than by omission: the three singletons that
+  // OneChatSurfaceTest guards are each answered by exactly one of the two. Feishu's card listener
+  // and reply-format contributor both gate themselves on chatType and decline a browser's run; the
+  // browser's listener claims only its own runs unless app.web.follow-chat-runs says to follow the
+  // chat's as well; and only Feishu ships a Notifier, so nothing resolves two. A second *chat*
+  // surface here would still be the bug that test describes. See OneChatSurfacePlusWebTest.
+  //
+  // Both in one process because that is what the handoff needs and not for packaging convenience: a
+  // run journal is held in memory, so a browser can only follow a chat run happening in the same
+  // JVM, and mirroring an answer back needs a Feishu client in the process that produced it.
+  implementation project(':spring-agent-integration-feishu')
+
+  // Declared rather than inherited: spring-agent-core keeps it as `implementation`, so a consumer
+  // that serves HTTP of its own has to ask for it. This application is nothing but HTTP.
+  implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+  implementation 'org.springframework.boot:spring-boot-starter-actuator'
+  implementation 'org.springframework.boot:spring-boot-starter-security'
+  implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'
+  implementation 'io.micrometer:micrometer-registry-prometheus'
+
+  implementation platform(libs.spring.ai.bom)
+  implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+  // The tool-search index, not the knowledge base — the two are separate stores and the module
+  // above carries its own client. See the same dependency in spring-agent-app for the full reason.
+  implementation 'org.springframework.ai:spring-ai-starter-vector-store-milvus'
+
+  implementation libs.spring.ai.agent.utils
+  implementation libs.guava
+
+  testImplementation 'org.springframework.boot:spring-boot-starter-test'
+  // MockMvc moved out of spring-boot-test-autoconfigure in Boot 4; it now lives in the per-stack
+  // test module, which the starter does not pull in.
+  testImplementation 'org.springframework.boot:spring-boot-webmvc-test'
+  testImplementation 'org.springframework.security:spring-security-test'
+  // Only so a test can stand in for the Lark SDK's ws Client, whose bean is declared with
+  // initMethod = "start" — left real, refreshing this context would open a long connection to
+  // Feishu. The same declaration, for the same reason, as spring-agent-app-feishu's.
+  testImplementation libs.larksuite.oapi
+}
+
+application {
+  mainClass = 'me.kezhenxu94.springagent.appwebfeishu.SpringAgentWebFeishuApplication'
+  applicationDefaultJvmArgs += patchJvmArgs
+}
+
+bootRun { jvmArgs += patchJvmArgs }

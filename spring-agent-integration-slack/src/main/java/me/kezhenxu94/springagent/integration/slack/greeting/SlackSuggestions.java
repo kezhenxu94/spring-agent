@@ -11,6 +11,7 @@ import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
+import me.kezhenxu94.springagent.integration.slack.config.SlackAutoConfiguration;
 import me.kezhenxu94.springagent.integration.slack.config.SlackIdentity;
 import me.kezhenxu94.springagent.integration.slack.config.SlackMessages;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -50,7 +51,7 @@ public class SlackSuggestions {
   private final SlackIdentity identity;
   private final ProcessedMessageRepo processedMessageRepo;
 
-  @Qualifier("applicationTaskExecutor")
+  @Qualifier(SlackAutoConfiguration.TASK_EXECUTOR)
   private final TaskExecutor taskExecutor;
 
   public Response handle(final BlockActionRequest request, final ActionContext ctx)

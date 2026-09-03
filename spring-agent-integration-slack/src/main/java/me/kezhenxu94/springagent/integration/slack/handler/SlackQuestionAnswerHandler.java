@@ -17,6 +17,7 @@ import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
+import me.kezhenxu94.springagent.integration.slack.config.SlackAutoConfiguration;
 import me.kezhenxu94.springagent.integration.slack.config.SlackMessages;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -57,7 +58,7 @@ public class SlackQuestionAnswerHandler {
    * too. Deliberately not that one: its four threads exist to fire scheduled tasks on time, and
    * this work waits on Slack.
    */
-  @Qualifier("applicationTaskExecutor")
+  @Qualifier(SlackAutoConfiguration.TASK_EXECUTOR)
   private final TaskExecutor taskExecutor;
 
   public Response handle(final BlockActionRequest request, final ActionContext ctx)
