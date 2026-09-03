@@ -379,6 +379,19 @@ app:
     # changes it along with everything else. A deployment whose name IS written differently in each
     # language leaves this unset and overrides that key instead, through `messages` below.
     title: ${WEB_TITLE:}
+    # And what it looks like: the mark drawn beside that name in the sidebar. Anything a browser can
+    # fetch — a path this deployment serves (/brand/logo.svg), an absolute address, or a data: URI.
+    # Unset, the page keeps the mark the module ships. There is no per-language form of this, unlike
+    # the name above: an image is not something a message bundle can hold.
+    #
+    # A path is served by this application like any other static file, which means a directory of
+    # its own needs a permitAll rule beside /js/** and /css/** in SecurityConfigurer — without one
+    # the mark is missing only for somebody who is not signed in yet.
+    logo: ${WEB_LOGO:}
+    # The browser tab's icon, in the same forms. Unset it is `logo`, which is the common case: one
+    # square mark, said once. Set it apart from the logo where that logo is a wordmark, since what
+    # reads on a sidebar row is rarely legible at sixteen pixels.
+    favicon: ${WEB_FAVICON:}
     # Message bundles consulted before this application's own, in order, as basenames on the
     # classpath (comma-separated: com/acme/messages,com/acme/more). The extension point for
     # somebody embedding this server in their own: naming one key in a bundle of their own

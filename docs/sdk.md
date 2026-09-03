@@ -607,8 +607,8 @@ Four things it needs from you:
    conversation's `userId` is the same identity every other surface uses, so history lines up across
    them.
 
-`app.web.*` is the module's own configuration: `title` (what the deployment calls itself),
-`messages` (below), `auth.provider` and `auth.tenant-id`, `journal.retention`/`journal.max-runs`
+`app.web.*` is the module's own configuration: `title` (what the deployment calls itself), `logo`
+and `favicon` (what it looks like), `messages` (below), `auth.provider` and `auth.tenant-id`, `journal.retention`/`journal.max-runs`
 (how long and how much of a finished run stays replayable — it is memory, so it is bounded twice
 over), `question.ttl` and `locale`.
 
@@ -634,6 +634,16 @@ a name somebody chose is not something this server can translate. `/api/me` repo
 name for every supported language at once, because the language switcher in the page never asks the
 server again. In a native image, register your bundle as a resource — the module registers only its
 own (`WebRuntimeHints`).
+
+**Looking like your own product.** `app.web.logo` is the mark drawn beside that name in the
+sidebar and `app.web.favicon` the browser tab's icon, each anything a browser can fetch — a path
+this deployment serves, an absolute address, or a `data:` URI. `favicon` unset *is* `logo`, so one
+square mark is said once; a wordmark that is illegible at sixteen pixels is why the two can be set
+apart. Neither has a per-language form, unlike the name: an image is not something a message bundle
+can hold. Both reach the page on `/api/me` and a blank one leaves the shipped mark alone, so a
+deployment replaces one, both or neither. Serve the image from a path of your own and it is a static
+file like any other — give its prefix a `permitAll` beside `/js/**` and `/css/**`, or the mark is
+missing for exactly as long as somebody is not signed in yet.
 
 **The knowledge base, where the application has one.** `/api/knowledge` is a thin HTTP face on
 core's `KnowledgeBase` SPI — list, `GET /search`, `GET /document` (one document with its stored

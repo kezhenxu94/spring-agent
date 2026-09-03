@@ -498,6 +498,8 @@ Its own switches, on top of the ones in the table above:
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `WEB_TITLE` | translated per language | What the deployment calls itself: the browser tab, the sidebar brand, the heading before a conversation has a title. One name for every language; unset, each reader gets the shipped name in their own language |
+| `WEB_LOGO` | the shipped mark | The mark drawn beside that name in the sidebar: a path this deployment serves, an absolute address, or a `data:` URI. A path of its own needs a `permitAll` rule beside `/js/**` in the application's `SecurityConfigurer` |
+| `WEB_FAVICON` | `WEB_LOGO` | The browser tab's icon, in the same forms. Worth setting apart from the logo only where that logo is a wordmark, which rarely reads at sixteen pixels |
 | `WEB_MESSAGES` | none | Comma-separated basenames of message bundles consulted before the server's own, so a deployment can reword any of its text — including `app-title`, which is how it gives itself a different name in each language |
 | `WEB_JOURNAL_RETENTION` | `30m` | How long a finished run's detail — its tool calls, its subagents, its thinking — is kept for a browser that comes back to it. Past this the conversation is still there; how it was reached is not |
 | `WEB_JOURNAL_MAX_RUNS` | `500` | How many runs are held in memory at all. Finished ones are dropped first; a live run never is |

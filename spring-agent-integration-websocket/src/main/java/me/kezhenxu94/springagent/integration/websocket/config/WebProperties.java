@@ -19,6 +19,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     other — {@code app-title}, resolved per reader — which is also how a name that <em>is</em>
  *     written differently in each language is given: a bundle of the consumer's own in {@code
  *     messages}, naming that one key
+ * @param logo the image drawn as the brand in the sidebar, as something a browser can fetch: a path
+ *     on this deployment ({@code /brand/logo.svg}), an absolute address, or a {@code data:} URI.
+ *     Blank keeps the mark this module ships. It reaches the page through {@code /api/me}, for the
+ *     same reason the name above does — a caller with no session is redirected straight to the
+ *     identity provider, so there is nowhere earlier it could be shown. Unlike the name it has no
+ *     per-language form: an image is not something a message bundle can hold
+ * @param favicon the browser tab's icon, in the same forms as {@code logo}. Unset it <em>is</em>
+ *     {@code logo}, which is the common case — one square mark, said once. A deployment whose logo
+ *     is a wordmark, unreadable at sixteen pixels, is the reason this can be set apart from it
  * @param messages basenames of message bundles consulted before this module's own, in order. The
  *     extension point for a consumer embedding this module: naming one key in a bundle of their own
  *     overrides that string and leaves every other one alone, so they never take a copy of this
@@ -45,6 +54,8 @@ public record WebProperties(
     Auth auth,
     Locale locale,
     String title,
+    String logo,
+    String favicon,
     String baseUrl,
     boolean followChatRuns,
     List<String> messages) {
@@ -56,6 +67,14 @@ public record WebProperties(
     // Blank is null rather than a name: it means nobody renamed this deployment, which is what
     // sends the caller to the bundle for a name in the reader's own language.
     title = title == null || title.isBlank() ? null : title.trim();
+    // Blank is null for the same reason as the name: nobody set it, and the caller is to keep the
+    // mark this module ships rather than draw an empty image.
+    logo = logo == null || logo.isBlank() ? null : logo.trim();
+    favicon = favicon == null || favicon.isBlank() ? null : favicon.trim();
+    // One mark is the common case, so the tab follows the sidebar unless a deployment said
+    // otherwise. Done here rather than at the caller, so that anybody reading either value gets
+    // the same answer.
+    favicon = favicon == null ? logo : favicon;
     // Trailing slash taken here rather than at each use, since the callers append a path and two
     // slashes in a URL a person clicks is the kind of thing that gets reported as a bug.
     baseUrl = baseUrl == null ? "" : baseUrl.trim().replaceAll("/+$", "");

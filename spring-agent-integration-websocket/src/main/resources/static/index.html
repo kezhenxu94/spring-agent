@@ -16,7 +16,12 @@
   <meta name="viewport"
         content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>Spring Agent</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230B0E14'/><rect x='9' y='7' width='2.5' height='18' rx='1.25' fill='%23FFB020'/><circle cx='19' cy='11' r='2.5' fill='%234FD1C5'/><circle cx='19' cy='19' r='2.5' fill='%23FFB020'/></svg>">
+  <!--
+    The shipped mark, and the one a deployment replaces through app.web.favicon — which arrives
+    with /api/me and is swapped onto this element by brand.js. It stays a data URI rather than a
+    file so that the tab has an icon before any request is answered.
+  -->
+  <link rel="icon" id="favicon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230B0E14'/><rect x='9' y='7' width='2.5' height='18' rx='1.25' fill='%23FFB020'/><circle cx='19' cy='11' r='2.5' fill='%234FD1C5'/><circle cx='19' cy='19' r='2.5' fill='%23FFB020'/></svg>">
 
   <!--
     Theme before first paint. A class added afterwards is a white flash on a dark desktop, which is
@@ -104,7 +109,8 @@
                 bg-zinc-50 md:static dark:border-rail dark:bg-panel">
 
     <div class="flex items-center gap-2.5 px-4 pt-4 pb-3">
-      <svg viewBox="0 0 32 32" class="size-6 shrink-0" aria-hidden="true">
+      <!-- Replaced wholesale by an <img> where app.web.logo names one; see brand.js. -->
+      <svg id="brand-mark" viewBox="0 0 32 32" class="size-6 shrink-0" aria-hidden="true">
         <rect x="9" y="7" width="2.5" height="18" rx="1.25" class="fill-zinc-400 dark:fill-edge"/>
         <circle cx="19" cy="11" r="2.5" class="fill-settled"/>
         <circle cx="19" cy="19" r="2.5" class="fill-signal"/>
@@ -188,7 +194,7 @@
       <!-- No heading over any of the three: the strip above them says which one this is, and a
            label repeating it is a line of chrome that pushes the list itself further down. -->
       <div id="tab-conversations" role="tabpanel" aria-labelledby="tab-conversations-button">
-        <ul id="conversation-list" class="space-y-px"></ul>
+        <ul id="conversation-list" class="space-y-1.5"></ul>
       </div>
 
       <!--
@@ -260,7 +266,7 @@
         </div>
 
         <p id="knowledge-note-bar" hidden class="px-1 pb-1.5 text-[11px] leading-snug text-mist"></p>
-        <ul id="knowledge-list" class="space-y-px"></ul>
+        <ul id="knowledge-list" class="space-y-1.5"></ul>
         <button id="knowledge-more" type="button" hidden
                 class="mt-2 w-full rounded-md px-2 py-1.5 font-mono text-[10px] uppercase
                        tracking-wider text-mist transition hover:bg-zinc-100 dark:hover:bg-rail/60"

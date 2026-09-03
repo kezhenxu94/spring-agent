@@ -103,6 +103,19 @@ public class ChatController {
               : properties.title());
     }
     out.put("title", titles);
+    // And what it looks like: the mark in the sidebar and the icon on the tab. Reported alongside
+    // the name and for the same reason, but as one value rather than one per language — an image
+    // is not something a message bundle can hold, so a deployment gets one either way.
+    //
+    // Empty rather than absent where nothing was configured, so the page's rule is one rule: a
+    // blank value leaves the shipped mark alone.
+    out.put(
+        "brand",
+        Map.of(
+            "logo",
+            Strings.nullToEmpty(properties.logo()),
+            "favicon",
+            Strings.nullToEmpty(properties.favicon())));
     out.put("userId", user.id());
     out.put("name", user.name());
     out.put("avatar", user.avatar());
