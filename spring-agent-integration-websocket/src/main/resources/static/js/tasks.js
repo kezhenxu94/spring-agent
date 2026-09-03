@@ -13,7 +13,7 @@ import { confirmAction } from './confirm.js';
 import { menuButton } from './menu.js';
 import { chatRoute, tasksRoute, go } from './route.js';
 import { headline } from './panels.js';
-import { renderTaskDetail, taskName } from './tasks-detail.js';
+import { editTask, renderTaskDetail, taskName } from './tasks-detail.js';
 import { state } from './state.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -98,6 +98,17 @@ function row(task) {
   item.append(open);
 
   const actions = menuButton(t('task.actions'), [
+    // The row's own copy of what the open card offers, so correcting a task does not mean opening
+    // it first and then finding the menu again. The edit itself belongs to the panel, so this
+    // leaves word that the draw is to open a form and then navigates as any other row does — the
+    // task being edited is the task on screen, whether or not it was before the press.
+    {
+      label: t('task.edit'),
+      onSelect: () => {
+        editTask(task.id);
+        go(tasksRoute(task.id));
+      },
+    },
     task.conversationId && {
       label: t('task.open'),
       onSelect: () => go(chatRoute(task.conversationId)),

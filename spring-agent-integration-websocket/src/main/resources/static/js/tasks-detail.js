@@ -56,6 +56,21 @@ let editing = null;
  */
 let revalidate = () => {};
 
+/**
+ * A task the sidebar asked to be opened *for editing*, waiting for the panel that will draw it.
+ *
+ * The row's menu cannot start an edit itself: the panel owns the draft, and the task the row names
+ * may not be the one on screen yet. So the row leaves the id here and navigates, and the draw that
+ * navigation causes picks it up — which makes one path of it whether the task was already open or
+ * is being opened by the same press.
+ */
+let opening = null;
+
+/** Says the next draw of `taskId` should open its form rather than the spec sheet. */
+export function editTask(taskId) {
+  opening = taskId;
+}
+
 export function renderTaskDetail(task, options) {
   const host = $('task-detail');
   host.replaceChildren();
@@ -73,6 +88,13 @@ export function renderTaskDetail(task, options) {
   // The task on screen has changed underneath an edit — cancelled from its row, say. The draft
   // belonged to the other one.
   if (editing && editing.id !== task.id) editing = null;
+  // Read once, whichever task this draw is of: an intent left behind for a task that has since been
+  // cancelled has nothing to open and must not wait around for the next one.
+  const wanted = opening;
+  opening = null;
+  // Never over an edit already in progress on this task — pressing Edit on the row of the task you
+  // are editing is a press that should change nothing, not one that discards the draft.
+  if (wanted === task.id && !editing) draft(task);
 
   host.append(detailHead({
     kind: t('task.kind'),
@@ -356,6 +378,12 @@ function complete() {
 }
 
 function startEditing(task, options) {
+  draft(task);
+  options.redraw();
+}
+
+/** The draft a form is drawn from, taken from the task as it stands. */
+function draft(task) {
   editing = {
     id: task.id,
     // The name it will keep if nothing is typed, which for a task written before titles existed is
@@ -374,7 +402,6 @@ function startEditing(task, options) {
     background: Boolean(task.background),
     maxRuns: task.maxRuns ? String(task.maxRuns) : '',
   };
-  options.redraw();
 }
 
 /**
