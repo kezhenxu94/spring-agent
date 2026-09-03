@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.core.config;
 
+import com.google.common.base.Strings;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
@@ -259,6 +260,29 @@ public class SpringAgentCoreAutoConfiguration {
     return builder.build();
   }
 
+  /**
+   * What the vision client authenticates with when a deployment configured nothing for it to
+   * authenticate against. Never sent: {@code VisionTools} refuses such a call — see the bean below
+   * for why the client is nevertheless built.
+   */
+  private static final String UNCONFIGURED_VISION_API_KEY = "no-vision-endpoint-configured";
+
+  /**
+   * The model {@link me.kezhenxu94.springagent.core.tools.VisionTools} asks about an image.
+   *
+   * <p>Built here rather than by Spring AI because it is a second endpoint — see {@link
+   * SpringAgentProperties.Dashscope}, and {@code UserChatClients} for the same reasoning applied to
+   * a user's own.
+   *
+   * <p>The credential is spelled out even when there is none, and that is the load-bearing part.
+   * The OpenAI SDK behind this model refuses to be built without one, so an application that
+   * configures no vision endpoint — the command line configures none — would fail to start rather
+   * than starting with a tool that cannot be called, which is what {@code Dashscope.NONE} promises.
+   * Worse, handed nothing the SDK goes looking in the environment: on a machine that exports {@code
+   * OPENAI_API_KEY} it would quietly build a client onto <em>that</em> endpoint and send somebody's
+   * images there. So the placeholder below is deliberate: the client exists, its credential is
+   * plainly not one, and {@code VisionTools} refuses the call before it is ever sent.
+   */
   @Bean
   @ConditionalOnMissingBean(name = "visionChatClient")
   @Qualifier("vision")
@@ -274,7 +298,10 @@ public class SpringAgentCoreAutoConfiguration {
             .options(
                 OpenAiChatOptions.builder()
                     .baseUrl(vision.baseUrl())
-                    .apiKey(vision.apiKey())
+                    .apiKey(
+                        Strings.isNullOrEmpty(vision.apiKey())
+                            ? UNCONFIGURED_VISION_API_KEY
+                            : vision.apiKey())
                     .model(vision.model())
                     .build())
             .httpClientBuilderCustomizers(httpClientCustomizers)

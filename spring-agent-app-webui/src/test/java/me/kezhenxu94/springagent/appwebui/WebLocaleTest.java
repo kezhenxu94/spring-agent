@@ -37,6 +37,11 @@ import tools.jackson.databind.json.JsonMapper;
       "spring.ai.openai.embedding.base-url=http://localhost:1",
       "spring.ai.openai.embedding.api-key=test",
       "spring.ai.openai.embedding.model=test-embedding",
+      // And the transcription endpoint, which application.yaml points at
+      // ${TRANSCRIPTION_OPENAI_BASE_URL} with no default: without these the context only refreshes
+      // on a machine that happens to export it.
+      "spring.ai.openai.audio.transcription.base-url=http://localhost:1",
+      "spring.ai.openai.audio.transcription.api-key=test",
       "spring.security.oauth2.client.registration.feishu.client-id=test",
       "spring.security.oauth2.client.registration.feishu.client-secret=test",
       "spring.datasource.url=jdbc:sqlite:${java.io.tmpdir}/spring-agent-web-locale-test.db",
