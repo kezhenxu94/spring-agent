@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.integration.websocket.web;
 
+import com.google.common.base.Strings;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -8,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
+import me.kezhenxu94.springagent.core.scheduling.ScheduledTaskEdit;
+import me.kezhenxu94.springagent.core.scheduling.ScheduledTaskService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -29,11 +32,16 @@ import org.springframework.web.server.ResponseStatusException;
  * and nothing to a surface. The row is the only account of it there is, and it outlives every run
  * involved — the one that created it and each one that fires from it.
  *
- * <p>What a task will do can be edited here; when it will do it cannot. Creating a task and
- * rescheduling one belong to the agent, which has tools for both, and a second way to set a
- * schedule in the UI would be a second set of rules about what a schedule may be. The prompt has no
- * such rules — it is prose — and correcting it is otherwise a matter of cancelling the task and
- * asking for it again, which loses the conversation its firings write into.
+ * <p>A task's whole definition can be edited here — what it does, when, until when, how many times
+ * and whether anybody is expected to be there — and none of the rules about what those may be live
+ * in this class. They are {@code ScheduledTaskEdit}'s, which is also what the agent's {@code
+ * UpdateScheduledTask} goes through, so the cron floor and the text cap hold whichever route
+ * somebody took. This controller's own job is smaller than it looks: work out who is asking, refuse
+ * a task that is not theirs, and turn a JSON body into that edit.
+ *
+ * <p>What cannot be changed is who owns the task and which conversation its firings write into —
+ * that is a different task rather than an edit — nor how many times it has run and when it next
+ * will, which belong to the sweeper and are the only account of what has actually happened.
  */
 @Slf4j
 @RestController
@@ -41,10 +49,8 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 public class TaskController {
 
-  /** The length {@code ScheduledTask#taskText} is declared at, which is what actually stores it. */
-  private static final int MAX_TASK_TEXT = 8192;
-
   private final ScheduledTaskRepo tasks;
+  private final ScheduledTaskService schedules;
 
   @GetMapping
   public List<Map<String, Object>> list(@AuthenticationPrincipal final OAuth2User principal) {
@@ -59,12 +65,16 @@ public class TaskController {
   private static Map<String, Object> item(final ScheduledTask task) {
     final var item = new LinkedHashMap<String, Object>();
     item.put("id", task.id());
+    // Null for a task written before titles existed, which the page shows by falling back to the
+    // prompt rather than by drawing a nameless row.
+    item.put("title", task.title());
     item.put("text", task.taskText());
     item.put("cron", task.cronExpression());
     // Null rather than the string "null", which is what String.valueOf makes of an absent Instant
     // and which the page would then try to read as a date.
     item.put("scheduledAt", task.scheduledAt() == null ? null : task.scheduledAt().toString());
     item.put("nextFireAt", task.nextFireAt() == null ? null : task.nextFireAt().toString());
+    item.put("expiresAt", task.expiresAt() == null ? null : task.expiresAt().toString());
     item.put("runCount", task.runCount());
     item.put("maxRuns", task.maxRuns());
     item.put("background", Boolean.TRUE.equals(task.background()));
@@ -75,14 +85,15 @@ public class TaskController {
   }
 
   /**
-   * Rewrites what a task will do.
+   * Changes a task's definition, in whole or in part.
    *
-   * <p>The write is partial — see {@code ScheduledTaskRepo#updateTaskText} — because the sweeper is
-   * writing {@code runCount} and {@code nextFireAt} on this same row from another thread, or
-   * another replica, while this edit is in flight.
+   * <p>A key that is absent leaves that part of the task alone, which is what makes the page able
+   * to send only what a person actually touched. Present-but-null is a value rather than an
+   * omission for the two fields where absence means something — an expiry and a firing count — and
+   * says the task no longer has one.
    *
-   * <p>The cap is the column's: {@code taskText} is declared 8192 characters, and a longer prompt
-   * would be a truncation on JPA and a silent difference between backends everywhere else.
+   * <p>Everything after that, including which writes are partial and whether the next occurrence
+   * has to be worked out again, is {@code ScheduledTaskService#edit}'s.
    */
   @PatchMapping("/{id}")
   public Map<String, Object> edit(
@@ -91,17 +102,77 @@ public class TaskController {
       @RequestBody final Map<String, Object> body) {
     final var user = ChatController.user(principal);
     final var task = mine(user.id(), id);
-    final var text = String.valueOf(body.getOrDefault("text", "")).trim();
-    if (text.isEmpty()) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A task needs something to do.");
-    }
-    if (text.length() > MAX_TASK_TEXT) {
+    if (task.status() != ScheduledTask.Status.ACTIVE) {
       throw new ResponseStatusException(
-          HttpStatus.BAD_REQUEST, "A task's text is limited to " + MAX_TASK_TEXT + " characters.");
+          HttpStatus.CONFLICT, "This task is " + task.status() + " and can no longer be changed.");
     }
-    tasks.updateTaskText(task.id(), text);
-    log.info("Scheduled task {} edited by {}", id, user.id());
-    return item(task.toBuilder().taskText(text).build());
+    final var edit =
+        new ScheduledTaskEdit(
+            text(body, "title"),
+            text(body, "text"),
+            text(body, "cron"),
+            text(body, "scheduledAt"),
+            // Null is the request, not a missing field: the page sends it when somebody clears the
+            // expiry, and the edit spells that as the word rather than as an absence it could not
+            // tell from "leave it".
+            body.containsKey("expiresAt") && body.get("expiresAt") == null
+                ? ScheduledTaskEdit.NEVER
+                : text(body, "expiresAt"),
+            flag(body, "background"),
+            body.containsKey("maxRuns") && body.get("maxRuns") == null
+                ? ScheduledTaskEdit.UNLIMITED
+                : count(body, "maxRuns"));
+
+    final ScheduledTaskEdit.Result result;
+    try {
+      result = schedules.edit(task, edit);
+    } catch (IllegalArgumentException e) {
+      // The same message the model is given, which reads as a sentence to a person too — the rules
+      // are about what a schedule may be, not about how it was asked for.
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
+    }
+    log.info("Scheduled task {} edited by {}: {}", id, user.id(), result.changes());
+    return item(result.task());
+  }
+
+  /**
+   * A string field, or null where the body did not name it.
+   *
+   * <p>Blank counts as absent for every field but the two a task is read by, whose own emptiness is
+   * refused — a task with no name, or with nothing to do. Everywhere else a cleared input arrives
+   * as "" and clearing the schedule box is not a request to run on no schedule at all.
+   */
+  private static String text(final Map<String, Object> body, final String key) {
+    final var value = body.get(key);
+    if (value == null) {
+      return null;
+    }
+    if (!(value instanceof String string)) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, key + " must be text.");
+    }
+    return "text".equals(key) || "title".equals(key) ? string : Strings.emptyToNull(string.trim());
+  }
+
+  private static Boolean flag(final Map<String, Object> body, final String key) {
+    final var value = body.get(key);
+    if (value == null) {
+      return null;
+    }
+    if (!(value instanceof Boolean bool)) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, key + " must be true or false.");
+    }
+    return bool;
+  }
+
+  private static Integer count(final Map<String, Object> body, final String key) {
+    final var value = body.get(key);
+    if (value == null) {
+      return null;
+    }
+    if (!(value instanceof Number number)) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, key + " must be a number.");
+    }
+    return number.intValue();
   }
 
   @DeleteMapping("/{id}")

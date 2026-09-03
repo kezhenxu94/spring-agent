@@ -75,7 +75,7 @@ export function humanSize(bytes) {
  * The full moment goes in the title, because the short form is a hint and somebody looking twice
  * wants the answer.
  */
-export function shortTime(value) {
+function shortTime(value) {
   const when = moment(value);
   if (!when) return '';
   const tag = locale() === 'zh' ? 'zh-CN' : 'en';
@@ -144,4 +144,45 @@ export function scrollToEnd(force) {
   // conversation leaves scrollTop at zero, so the browser fires no scroll event and whatever was
   // watching would still be showing the last conversation's answer.
   bus.emit('transcript:scrolled');
+}
+
+/**
+ * The second line of a sidebar row: what is true about the thing named on the line above.
+ *
+ * One builder for all three lists, because they are read in one column and have to agree. A row's
+ * first line is a dot and a name; everything a list has to add about its own kind of thing — when,
+ * how often, how many — goes here, quiet and small, in the order the lists share.
+ *
+ * Indented past the dot so it hangs under the name rather than under the dot's own column, which is
+ * what keeps two lines reading as one row.
+ */
+export function rowMeta() {
+  const meta = document.createElement('span');
+  meta.className = 'flex w-full items-center gap-1.5 pl-3.5 text-[10px] text-mist';
+  return meta;
+}
+
+/**
+ * When something happened, as a sidebar row says it: the short form on the row, the full one on
+ * hover.
+ *
+ * One builder rather than a copy per list, and it leads every {@link rowMeta} for the same reason —
+ * a conversation last spoken to, a document stored, a task next due are the same kind of fact about
+ * three different things, and a stamp that moved between lists would read as a different one.
+ *
+ * Sized and coloured by the line it goes in rather than by itself, so a row cannot end up with a
+ * stamp in one type and everything beside it in another.
+ *
+ * Nothing at all where there is no moment to show. A row may legitimately carry none — a
+ * conversation nobody has spoken to, a task whose next occurrence has not been worked out — and an
+ * empty element would still take the gap after it.
+ */
+export function timeStamp(value) {
+  const short = shortTime(value);
+  if (!short) return null;
+  const stamp = document.createElement('span');
+  stamp.className = 'shrink-0 font-mono tabular-nums';
+  stamp.textContent = short;
+  stamp.title = fullTime(value);
+  return stamp;
 }

@@ -437,12 +437,16 @@ and each has an address, so `#/chat/<conversation>`, `#/tasks/<task>` and
 `#/kb/<scope>/<document>` are links worth keeping and the back button works between them. Picking a
 row opens it in the main column: a conversation is its transcript, while a document and a scheduled
 task open into the same card — what kind of record it is, the one line that names it, its facts, and
-then what it holds. For a document that line is its title; for a task it is when the task next comes
-round, since a task's name everywhere else on the page is already its own prompt. A task's prompt is
-drawn as markdown, since a prompt somebody wrote has lists and code in it, and the ⋯ menu beside it
-opens the conversation its answers go into, **rewrites what it will do**, or calls it off. Editing
-is the text only: when a task fires stays the agent's to set, so that there is one set of rules
-about what a schedule may be rather than two. Anything that cannot be undone — deleting a
+then what it holds. Every row is two lines: what it is called, and under that the moment it belongs
+to — when a conversation was last spoken to, when a document was stored — with a task's row showing
+its schedule there instead, next to how many times it has fired and whether it runs unattended. A
+task's prompt is drawn as markdown, since a prompt somebody wrote has lists and code in it, and the
+⋯ menu beside it opens the conversation its answers go into, **edits the task**, or calls it off.
+Editing covers the whole definition — its name, its prompt, whether it repeats and on what schedule,
+when it stops, how many times it fires in total, and whether it runs unattended — and it is held to
+exactly the rules the agent's own `UpdateScheduledTask` is, so there is one answer to what a
+schedule may be rather than two. How many times it *has* fired is not editable anywhere: that is a
+record of what happened. Anything that cannot be undone — deleting a
 conversation or a document, calling off a scheduled task — asks first, and the asking is where the
 work happens, so the button you pressed says so until it is done. Nothing on that screen creates a
 task, because nothing can: a schedule comes from asking the agent for one.

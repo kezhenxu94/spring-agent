@@ -57,6 +57,16 @@ public class ScheduledTask {
   private String groupId;
   private String tenantId;
 
+  // What the task is called: a short line somebody wrote to be read in a list, as against the
+  // prompt below, which is written to be read by the model. They are different jobs — a prompt runs
+  // to paragraphs and says how, a title says what — and before there was one, every list on every
+  // surface showed the first however-many characters of the prompt and each of them showed a
+  // different amount of the same preamble.
+  //
+  // Nullable, and read as "fall back to the prompt": the schema is ddl-auto with no migrations, so
+  // this column arrives on a table that already has rows, and those tasks are still worth listing.
+  private String title;
+
   // The prompt to run; longer than the default varchar a JPA schema would otherwise generate.
   @Column(length = 8192)
   private String taskText;

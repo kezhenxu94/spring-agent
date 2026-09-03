@@ -84,6 +84,42 @@ public class ScheduledTaskService {
   }
 
   /**
+   * Applies an edit to a task and puts it on whatever schedule it now has.
+   *
+   * <p>The one place a task's definition is changed, reached both by the agent's {@code
+   * UpdateScheduledTask} and by a person editing one in the browser. The rules live in {@link
+   * ScheduledTaskEdit}; what is here is the write, which is not the same for every edit.
+   *
+   * <p>A change to the prompt alone is a partial write and nothing else — see {@code
+   * ScheduledTaskRepo#updateTaskText}. The sweeper owns {@code runCount} and {@code nextFireAt} and
+   * is writing them from another thread, or another replica, while somebody is editing; rewriting
+   * the whole row would put a stale next occurrence back and fire the task at a time it has already
+   * passed. And nothing needs rescheduling, because a firing reads the stored prompt when it fires
+   * rather than a copy taken when the task was written.
+   *
+   * <p>Anything else goes through {@link #schedule}, which writes the whole row, because the next
+   * occurrence has to be worked out again from a schedule that may have just changed. That write
+   * does race the sweeper, and it is the same race {@link #schedule} itself has always had — losing
+   * a firing's count to an edit made in the same instant is the price of the edit being applied at
+   * all.
+   *
+   * @throws IllegalArgumentException when the edit is not one this task can take, with a message
+   *     meant to be read by whoever asked
+   */
+  public ScheduledTaskEdit.Result edit(final ScheduledTask task, final ScheduledTaskEdit edit) {
+    final var result = edit.applyTo(task);
+    if (edit.textOnly()) {
+      scheduledTaskRepo.updateTaskText(task.id(), result.task().taskText());
+      log.info("Scheduled task {} had its prompt rewritten", task.id());
+    } else {
+      // One write, not a save followed by schedule's own: schedule writes the whole row anyway, so
+      // saving first would store the task twice and store it once without its new next occurrence.
+      schedule(result.task());
+    }
+    return result;
+  }
+
+  /**
    * Works out when the task next fires and writes it down. Nothing is armed: the sweeper reads
    * {@code nextFireAt} out of the database, so a task is scheduled the moment that field is set, on
    * every replica at once and across a restart.

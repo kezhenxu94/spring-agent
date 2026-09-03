@@ -3,7 +3,7 @@
 // they are read the same way.
 
 import { t } from './i18n.js';
-import { $ } from './dom.js';
+import { $, rowMeta, timeStamp } from './dom.js';
 import { menuButton } from './menu.js';
 import { documentActions } from './knowledge-actions.js';
 import { knowledgeRoute, go } from './route.js';
@@ -35,12 +35,14 @@ function row(entry, options) {
 
   const open = document.createElement('button');
   open.type = 'button';
-  open.className = 'flex w-full items-center gap-2 rounded-md py-1.5 pl-2 pr-7 text-left '
+  open.className = 'flex w-full flex-col gap-0.5 rounded-md py-1.5 pl-2 pr-7 text-left '
     + 'text-[13px] transition '
     + (current
       ? 'bg-zinc-200/70 font-medium dark:bg-rail'
       : 'text-zinc-600 hover:bg-zinc-100 dark:text-mist dark:hover:bg-rail/60');
 
+  const line = document.createElement('span');
+  line.className = 'flex w-full items-center gap-2';
   // Where a conversation's dot says it is live, a document's says who else can read it — the one
   // thing about a stored document worth seeing without opening it. Hollow for your own, filled for
   // something the whole company can read.
@@ -53,7 +55,18 @@ function row(entry, options) {
   const title = document.createElement('span');
   title.className = 'min-w-0 flex-1 truncate';
   title.textContent = entry.title || entry.docId;
-  open.append(dot, title);
+  line.append(dot, title);
+  open.append(line);
+
+  // When it was stored, on the second line the other two lists keep their own moment on. A document
+  // is never rewritten in place — correcting one replaces it — so the moment it arrived is the whole
+  // of its history. A search hit carries none, and then the row simply has one line.
+  const stamp = timeStamp(entry.createdAt);
+  if (stamp) {
+    const meta = rowMeta();
+    meta.append(stamp);
+    open.append(meta);
+  }
   open.addEventListener('click', () => go(knowledgeRoute(entry.docId, entry.scope)));
   item.append(open);
 

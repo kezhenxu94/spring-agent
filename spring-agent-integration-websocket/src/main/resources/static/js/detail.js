@@ -15,7 +15,7 @@ import { menuButton } from './menu.js';
  * `actions` is the label and the item builder for the menu, or nothing where there is nothing this
  * reader may do — an admin reading somebody else's knowledge base, say.
  */
-export function detailHead({ kind, pill, pillFilled, name, nameIsTime, actions }) {
+export function detailHead({ kind, pill, pillFilled, name, actions }) {
   const host = document.createElement('div');
   host.className = 'detail-head';
 
@@ -37,7 +37,7 @@ export function detailHead({ kind, pill, pillFilled, name, nameIsTime, actions }
   if (actions && actions.items().length) line.append(menuButton(actions.label, actions.items));
 
   const title = document.createElement('h2');
-  title.className = 'detail-name' + (nameIsTime ? ' detail-name-time' : '');
+  title.className = 'detail-name';
   title.textContent = name;
   host.append(line, title);
   return host;

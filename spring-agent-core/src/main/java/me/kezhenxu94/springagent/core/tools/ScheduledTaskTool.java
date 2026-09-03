@@ -3,7 +3,6 @@ package me.kezhenxu94.springagent.core.tools;
 import com.google.common.base.Strings;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -11,11 +10,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
+import me.kezhenxu94.springagent.core.scheduling.CronSchedules;
+import me.kezhenxu94.springagent.core.scheduling.ScheduledTaskEdit;
 import me.kezhenxu94.springagent.core.scheduling.ScheduledTaskService;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
-import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Component;
 
 @Slf4j
@@ -40,8 +40,17 @@ Resolve anything relative ("tomorrow morning") with CurrentDateTime first, since
 times here are absolute. Give either cronExpression or scheduledAt, never both.
 For a task that runs a set number of times ("remind me every 10 minutes, 10 times"), give maxRuns \
 rather than working out when it would stop: the scheduler keeps the count, so it is exact.
+Give a title as well as the prompt: the title is what the user sees in their list of scheduled \
+tasks, so write it as a person would name the job rather than as an instruction to you.
 """)
   public String createScheduledTask(
+      @ToolParam(
+              description =
+                  "A short name for the task, a few words, as it will be listed for the user — for"
+                      + " example \"Morning deploy check\" or \"Weekly numbers to #ops\". Not an"
+                      + " instruction and not a sentence: the prompt below is where what to do"
+                      + " goes.")
+          final String title,
       @ToolParam(description = "The prompt to send to the agent when the task fires")
           final String taskText,
       @ToolParam(
@@ -124,6 +133,22 @@ rather than working out when it would stop: the scheduler keeps the count, so it
       return "Error: maxRuns must be at least 1, or null for a task nothing counts.";
     }
 
+    // The column's own limit. Checked here rather than left to the database, which on JPA would
+    // truncate the prompt to something that still fires and does the wrong thing.
+    if (Strings.nullToEmpty(taskText).trim().length() > ScheduledTaskEdit.MAX_TASK_TEXT) {
+      return "Error: a task's text is limited to "
+          + ScheduledTaskEdit.MAX_TASK_TEXT
+          + " characters.";
+    }
+    if (Strings.isNullOrEmpty(title) || title.isBlank()) {
+      return "Error: give the task a short title, which is what the user sees it listed as.";
+    }
+    if (title.trim().length() > ScheduledTaskEdit.MAX_TITLE) {
+      return "Error: a task's title is limited to "
+          + ScheduledTaskEdit.MAX_TITLE
+          + " characters. Put the detail in taskText, which is what you are handed when it fires.";
+    }
+
     final var runsNote = maxRuns == null ? "" : " It fires " + maxRuns + " times in all.";
 
     final var expiryNote =
@@ -138,12 +163,12 @@ rather than working out when it would stop: the scheduler keeps the count, so it
             : "";
 
     if (hasCron) {
+      final String validated;
       try {
-        CronExpression.parse(cronExpression);
-      } catch (Exception e) {
-        return "Error: cron expression '" + cronExpression + "' is invalid: " + e.getMessage();
+        validated = CronSchedules.validated(cronExpression);
+      } catch (IllegalArgumentException e) {
+        return "Error: " + e.getMessage();
       }
-      final var validated = enforceMinimumInterval(cronExpression);
       final var task =
           scheduledTaskRepo.save(
               ScheduledTask.builder()
@@ -154,6 +179,7 @@ rather than working out when it would stop: the scheduler keeps the count, so it
                   .groupId(groupId)
                   .tenantId(tenantId)
                   .rootMessageId(rootMessageId)
+                  .title(title.trim())
                   .taskText(taskText)
                   .cronExpression(validated)
                   .expiresAt(resolvedExpiresAt)
@@ -167,7 +193,7 @@ rather than working out when it would stop: the scheduler keeps the count, so it
               ? ""
               : " The interval was raised to the smallest one allowed, " + validated + ".";
       return "Created the recurring task \""
-          + taskText
+          + title.trim()
           + "\" ("
           + validated
           + "), id "
@@ -200,6 +226,7 @@ rather than working out when it would stop: the scheduler keeps the count, so it
                   .groupId(groupId)
                   .tenantId(tenantId)
                   .rootMessageId(rootMessageId)
+                  .title(title.trim())
                   .taskText(taskText)
                   .scheduledAt(fireAt)
                   .expiresAt(resolvedExpiresAt)
@@ -209,7 +236,7 @@ rather than working out when it would stop: the scheduler keeps the count, so it
                   .build());
       scheduledTaskService.schedule(task);
       return "Created the one-off task \""
-          + taskText
+          + title.trim()
           + "\", firing at "
           + fireAt
           + ", id "
@@ -238,6 +265,8 @@ rather than working out when it would stop: the scheduler keeps the count, so it
             t ->
                 "- id="
                     + t.id()
+                    + " | title="
+                    + name(t)
                     + " | task="
                     + t.taskText()
                     + " | schedule="
@@ -248,6 +277,9 @@ rather than working out when it would stop: the scheduler keeps the count, so it
                             + (t.runCount() == null ? 0 : t.runCount())
                             + "/"
                             + t.maxRuns())
+                    // Listed because it is editable: a model asked to "keep it going a bit longer"
+                    // otherwise has to guess whether the task has an expiry to move at all.
+                    + (t.expiresAt() == null ? "" : " | expires=" + t.expiresAt())
                     + (Boolean.TRUE.equals(t.background()) ? " | background" : ""))
         .collect(Collectors.joining("\n"));
   }
@@ -256,7 +288,7 @@ rather than working out when it would stop: the scheduler keeps the count, so it
       name = "UpdateScheduledTask",
       description =
 """
-Change a scheduled task that already exists: what it does, when it fires, or both.
+Change a scheduled task that already exists: what it does, when it fires, how long for, how many times, whether it runs unattended, or any combination of those.
 
 Usage:
 - taskId comes from ListScheduledTasks.
@@ -265,6 +297,8 @@ Usage:
 - The schedule is either cronExpression or scheduledAt, never both, and giving one replaces the
   other: a recurring task given a scheduledAt becomes a one-off, and a one-off given a
   cronExpression becomes recurring.
+- Two fields need a word for "no longer has one", since leaving them out means "keep": pass
+  expiresAt as "never" to take an expiry off, and maxRuns as 0 to stop counting the firings.
 - Resolve anything relative ("move it to tomorrow morning") with CurrentDateTime first, since the
   times here are absolute.
 - Only an active task the current user created can be changed. Use CreateScheduledTask for a new
@@ -273,6 +307,12 @@ Usage:
   public String updateScheduledTask(
       @ToolParam(description = "The task ID to change, as shown by ListScheduledTasks")
           final String taskId,
+      @ToolParam(
+              description =
+                  "The new short name for the task, as the user sees it listed; null to keep the"
+                      + " current one",
+              required = false)
+          final String title,
       @ToolParam(
               description = "The new prompt to send when the task fires; null to keep the current",
               required = false)
@@ -289,6 +329,28 @@ Usage:
                       + " \"2025-01-15T10:00:00+08:00\"); null to keep the current schedule",
               required = false)
           final String scheduledAt,
+      @ToolParam(
+              description =
+                  "The new time the task stops firing, ISO-8601 with an offset; \"never\" to take"
+                      + " its expiry off altogether; null to keep the current one",
+              required = false)
+          final String expiresAt,
+      @ToolParam(
+              description =
+                  "Whether each firing now runs unattended — true to stop it posting anything of"
+                      + " its own, false to make it reply in the conversation it was created in;"
+                      + " null to leave that as it is. See CreateScheduledTask for what background"
+                      + " firing means.",
+              required = false)
+          final Boolean background,
+      @ToolParam(
+              description =
+                  "The new total number of firings, after which the task stops by itself; 0 to let"
+                      + " it fire until it expires or is cancelled; null to keep the current"
+                      + " ceiling. Counted against the firings it has already had, so lowering it"
+                      + " below those ends the task.",
+              required = false)
+          final Integer maxRuns,
       final ToolContext context) {
 
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
@@ -308,65 +370,33 @@ Usage:
           + " and can no longer be changed. Create a new one instead.";
     }
 
-    final var hasText = !Strings.isNullOrEmpty(taskText);
-    final var hasCron = !Strings.isNullOrEmpty(cronExpression);
-    final var hasScheduledAt = !Strings.isNullOrEmpty(scheduledAt);
+    // Empty strings mean the same as absent here. A model that has been told "null to keep the
+    // current" reliably sends "" for some of them instead, and an empty cron would otherwise be a
+    // schedule it never meant to set.
+    final var edit =
+        new ScheduledTaskEdit(
+            Strings.emptyToNull(title),
+            Strings.emptyToNull(taskText),
+            Strings.emptyToNull(cronExpression),
+            Strings.emptyToNull(scheduledAt),
+            Strings.emptyToNull(expiresAt),
+            background,
+            maxRuns);
 
-    if (hasCron && hasScheduledAt) {
-      return "Error: give either cronExpression or scheduledAt, not both.";
+    final ScheduledTaskEdit.Result result;
+    try {
+      result = scheduledTaskService.edit(task, edit);
+    } catch (IllegalArgumentException e) {
+      // Nothing was written: the edit is validated whole before any of it is applied, so a task is
+      // never left saying something new on a schedule the caller thinks it no longer has.
+      return "Error: " + e.getMessage();
     }
-    if (!hasText && !hasCron && !hasScheduledAt) {
-      return "Error: nothing to change. Give taskText, cronExpression or scheduledAt.";
-    }
-
-    final var updated = task.toBuilder();
-    final var changes = new ArrayList<String>();
-
-    if (hasText) {
-      updated.taskText(taskText);
-      changes.add("it now says \"" + taskText + "\"");
-    }
-
-    var overrideNote = "";
-    if (hasCron) {
-      try {
-        CronExpression.parse(cronExpression);
-      } catch (Exception e) {
-        return "Error: cron expression '" + cronExpression + "' is invalid: " + e.getMessage();
-      }
-      final var validated = enforceMinimumInterval(cronExpression);
-      // Both fields written, not only the one given: a task carries one schedule, and leaving the
-      // old scheduledAt on a task that has just been made recurring is a second one that
-      // ScheduledTaskService would have to choose between.
-      updated.cronExpression(validated).scheduledAt(null);
-      changes.add("it now runs on " + validated);
-      overrideNote =
-          validated.equals(cronExpression)
-              ? ""
-              : " The interval was raised to the smallest one allowed, " + validated + ".";
-    } else if (hasScheduledAt) {
-      final Instant fireAt;
-      try {
-        fireAt = Instant.parse(scheduledAt);
-      } catch (Exception e) {
-        return "Error: scheduledAt must be ISO-8601 with an offset (for example"
-            + " 2025-01-15T10:00:00+08:00).";
-      }
-      if (fireAt.isBefore(Instant.now())) {
-        return "Error: scheduledAt must be in the future.";
-      }
-      updated.cronExpression(null).scheduledAt(fireAt);
-      changes.add("it now fires once, at " + fireAt);
-    }
-
-    final var saved = scheduledTaskRepo.save(updated.build());
-    // Called even when only the text changed, and harmless then: the sweeper reads the stored task
-    // at every firing, so the new text is already in effect. What this is for is a changed
-    // cronExpression or scheduledAt, where the next occurrence has to be worked out again — and
-    // recomputing an unchanged schedule costs nothing, since a cron's next firing comes from the
-    // expression and a one-off's is the same absolute instant.
-    scheduledTaskService.reschedule(saved);
-    return "Updated task " + taskId + ": " + String.join(", ", changes) + "." + overrideNote;
+    return "Updated task "
+        + taskId
+        + ": "
+        + String.join(", ", result.changes())
+        + "."
+        + result.note();
   }
 
   @Tool(name = "CancelScheduledTask", description = "Cancel a scheduled task by ID")
@@ -391,45 +421,28 @@ Usage:
   }
 
   /**
+   * What to call a task in a listing.
+   *
+   * <p>A task written before {@code title} existed has none — the schema is {@code ddl-auto} with
+   * no migrations — and is still worth listing, so its prompt stands in. Shortened, because a
+   * prompt runs to paragraphs and a listing is one line per task.
+   */
+  private static String name(final ScheduledTask task) {
+    if (!Strings.isNullOrEmpty(task.title())) {
+      return task.title();
+    }
+    final var text = Strings.nullToEmpty(task.taskText()).strip().replaceAll("\\s+", " ");
+    return text.length() <= ScheduledTaskEdit.MAX_TITLE
+        ? text
+        : text.substring(0, ScheduledTaskEdit.MAX_TITLE) + "…";
+  }
+
+  /**
    * {@code ScheduledTask} declares no id generation strategy on either backend, so every task has
    * to arrive with one: JPA rejects a null identifier outright, and anything downstream that keys a
    * task by its id (see {@code ScheduledTaskService#schedule}) would otherwise fail on a null key.
    */
   private static String newTaskId() {
     return UUID.randomUUID().toString().replace("-", "");
-  }
-
-  private String enforceMinimumInterval(final String expr) {
-    final var parts = expr.trim().split("\\s+");
-    if (parts.length != 6) {
-      return expr;
-    }
-    final var seconds = parts[0];
-    final var minutes = parts[1];
-
-    // Reject sub-minute intervals on seconds field (e.g. */10, */30)
-    if (seconds.startsWith("*/")) {
-      parts[0] = "0";
-    }
-
-    // Enforce minimum 5-minute interval on minutes field
-    if (parts[1].startsWith("*/")) {
-      try {
-        final var n = Integer.parseInt(parts[1].substring(2));
-        if (n < 5) {
-          parts[1] = "*/5";
-          log.info("Cron '{}' interval too frequent, adjusted minutes field to */5", expr);
-        }
-      } catch (NumberFormatException ignored) {
-      }
-    }
-
-    // If seconds was sub-minute but minutes is 0, treat as every-minute — enforce */5 minutes
-    if (seconds.startsWith("*/") && parts[1].equals("*")) {
-      parts[1] = "*/5";
-      log.info("Cron '{}' had sub-minute seconds with wildcard minutes, adjusted to */5", expr);
-    }
-
-    return String.join(" ", parts);
   }
 }
