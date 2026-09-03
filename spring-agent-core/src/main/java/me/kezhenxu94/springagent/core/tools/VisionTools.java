@@ -9,6 +9,8 @@ import java.util.Objects;
 import java.util.stream.IntStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
+import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.content.Media;
@@ -26,6 +28,8 @@ import org.springframework.web.client.RestTemplate;
 public class VisionTools {
   private final RestTemplate restTemplate;
   private final UserWorkspaceFactory userWorkspaceFactory;
+  private final SpringAgentProperties appConfiguration;
+  private final CoreMessages messages;
 
   @Qualifier("vision")
   private final ChatClient visionChatClient;
@@ -48,6 +52,13 @@ public class VisionTools {
     if (images == null || images.isEmpty()) {
       log.warn("RecognizeImage called with no images");
       return "Error: give at least one image.";
+    }
+    // Said here rather than left to the call, because the call would reach an endpoint this
+    // deployment never chose and come back as a credential rejection from it — which reads to the
+    // agent as a broken key to be retried rather than as a feature that is switched off.
+    if (Strings.isNullOrEmpty(appConfiguration.dashscope().vision().apiKey())) {
+      log.warn("RecognizeImage called with no vision endpoint configured");
+      return messages.get("vision-not-configured");
     }
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
     log.info(

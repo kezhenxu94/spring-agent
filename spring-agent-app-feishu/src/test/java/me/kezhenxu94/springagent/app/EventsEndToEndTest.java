@@ -242,6 +242,11 @@ class EventsEndToEndTest extends AbstractIntegrationTest {
    * <p>Polling on the stored assessment rather than on the model having been called: the run is
    * asynchronous by design and the write-back happens after it finishes, so anything that waited on
    * the earlier step would pass while the last and least tested step was broken.
+   *
+   * <p>And on the phase as well as the decision, because those are two writes rather than one: the
+   * decision is written by the tool while the run is still going, and the phase is written when the
+   * sweeper's evaluation finishes. Waiting on the decision alone is a race that a machine under
+   * load loses — the situation is read back mid-run and still says INVESTIGATING.
    */
   private Situation awaitAssessed(final String correlationKey) {
     Awaitility.await()
@@ -252,11 +257,16 @@ class EventsEndToEndTest extends AbstractIntegrationTest {
                 assertThat(
                         situations.findByCorrelationKeyAndStatus(
                             correlationKey, Situation.Status.OPEN))
-                    .anyMatch(s -> s.decision() != null));
+                    .anyMatch(EventsEndToEndTest::assessed));
     return situations.findByCorrelationKeyAndStatus(correlationKey, Situation.Status.OPEN).stream()
-        .filter(s -> s.decision() != null)
+        .filter(EventsEndToEndTest::assessed)
         .findFirst()
         .orElseThrow();
+  }
+
+  /** A situation the triage run has both concluded about and finished with. */
+  private static boolean assessed(final Situation situation) {
+    return situation.decision() != null && situation.phase() != Situation.Phase.INVESTIGATING;
   }
 
   private static List<String> toolNames(final Prompt prompt) {
