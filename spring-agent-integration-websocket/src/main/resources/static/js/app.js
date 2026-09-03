@@ -12,6 +12,7 @@ import { attempt, toast } from './toast.js';
 import { skeletonList, skeletonTranscript } from './busy.js';
 import { bus, state } from './state.js';
 import { initTheme } from './theme.js';
+import { applyBrand } from './brand.js';
 import { renderStatus } from './status.js';
 import { initSidebar, initTabs, onNarrowScreen, selectTab, sidebarOpen } from './sidebar.js';
 import { chatRoute, current, go, onRoute } from './route.js';
@@ -139,6 +140,9 @@ async function start() {
   // and the heading a conversation title later replaces all read the same key.
   setAppName(state.me.title);
   applyTranslations();
+  // The mark and the tab icon, which unlike the name are one value rather than one per language,
+  // so nothing here has to run again when the reader switches language.
+  applyBrand(state.me.brand);
 
   if (state.me.allowed === false) {
     settle();

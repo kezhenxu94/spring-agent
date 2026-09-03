@@ -33,7 +33,16 @@ class FeishuIdentityCheckTest {
 
   private static WebProperties web(final String provider, final String tenantId) {
     return new WebProperties(
-        null, null, new WebProperties.Auth(provider, tenantId), null, null, null, false, List.of());
+        null,
+        null,
+        new WebProperties.Auth(provider, tenantId),
+        null,
+        null,
+        null,
+        null,
+        null,
+        false,
+        List.of());
   }
 
   private static FeishuIdentityCheck check(

@@ -58,7 +58,8 @@ class RunStreamSubscriptionsTest {
   private final JsonMapper om = JsonMapper.builder().build();
   private final Outbound outbound = new Outbound();
   private final RunJournals journals =
-      new RunJournals(new WebProperties(null, null, null, null, null, null, false, null));
+      new RunJournals(
+          new WebProperties(null, null, null, null, null, null, null, null, false, null));
   private final RunStreamSubscriptions subscriptions =
       new RunStreamSubscriptions(journals, om, outbound);
 

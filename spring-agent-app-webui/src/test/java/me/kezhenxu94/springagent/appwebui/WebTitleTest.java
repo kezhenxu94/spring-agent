@@ -20,11 +20,13 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * That a deployment which renamed itself is called that whatever language it is read in.
+ * That a deployment which made this page its own — a name, a mark — is served as such.
  *
- * <p>The failure is silent in both directions: a name that reaches only the language the page
- * started in goes back to Spring Agent the moment somebody uses the switcher, and one that is
- * translated is a deployment being called something it never chose.
+ * <p>The naming failure is silent in both directions: a name that reaches only the language the
+ * page started in goes back to Spring Agent the moment somebody uses the switcher, and one that is
+ * translated is a deployment being called something it never chose. The mark's is silent too: it
+ * arrives on the one response the page renders from, so a value that does not reach {@code /api/me}
+ * is simply the shipped mark, with nothing anywhere saying the configuration was read.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -46,6 +48,9 @@ import tools.jackson.databind.json.JsonMapper;
       "spring.datasource.url=jdbc:sqlite:${java.io.tmpdir}/spring-agent-web-title-test.db",
       "app.web.auth.tenant-id=tenant-under-test",
       "app.web.title=Acme Agent",
+      // Only the logo, so that the tab icon falling back to it is covered here rather than
+      // asserted of the record alone.
+      "app.web.logo=/brand/acme.svg",
       "app.ai.tools.shell.type=none"
     })
 class WebTitleTest {
@@ -71,6 +76,14 @@ class WebTitleTest {
     // Every supported language, not only the reader's: the switcher never asks the server again, so
     // a language missing here is a language the tab would go back to Spring Agent in.
     assertThat(me().get("title")).isEqualTo(Map.of("en", "Acme Agent", "zh", "Acme Agent"));
+  }
+
+  @Test
+  @DisplayName("the mark a deployment configured reaches the page, and the tab follows it")
+  void aConfiguredLogoIsAlsoTheTabIcon() throws Exception {
+    // One value rather than one per language: an image is not something a message bundle holds.
+    assertThat(me().get("brand"))
+        .isEqualTo(Map.of("logo", "/brand/acme.svg", "favicon", "/brand/acme.svg"));
   }
 
   private static DefaultOAuth2User user() {

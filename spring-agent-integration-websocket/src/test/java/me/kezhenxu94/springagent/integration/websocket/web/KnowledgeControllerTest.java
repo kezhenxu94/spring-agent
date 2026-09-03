@@ -407,7 +407,7 @@ class KnowledgeControllerTest {
 
   private static WebMessages messages() {
     return new WebMessages(
-        new WebProperties(null, null, null, Locale.ENGLISH, null, null, false, null));
+        new WebProperties(null, null, null, Locale.ENGLISH, null, null, null, null, false, null));
   }
 
   private static SpringAgentProperties properties() {
