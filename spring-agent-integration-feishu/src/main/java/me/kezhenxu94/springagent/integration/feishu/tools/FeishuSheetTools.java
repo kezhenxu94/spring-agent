@@ -36,6 +36,7 @@ public class FeishuSheetTools {
   final Client feishu;
   final FeishuSheetsService feishuSheetsService;
   final FeishuPermissionTools feishuPermissionTools;
+  final FeishuUserFolders userFolders;
   final JsonMapper objectMapper;
 
   /** The reference pages this class hands back, in the workspace's language. */
@@ -73,14 +74,16 @@ public class FeishuSheetTools {
   public CreatedSpreadsheet createSpreadsheet(
       @ToolParam(description = "Title of the new spreadsheet") String title,
       @ToolParam(
-              description = "Token of the folder to create it in; the default folder when left out",
+              description =
+                  "Token of the folder to create it in; the folder belonging to whoever you"
+                      + " are talking to when left out",
               required = false)
           String folderToken,
       ToolContext toolContext) {
 
     final var targetFolderToken =
         folderToken == null || folderToken.isBlank()
-            ? FeishuFiles.DEFAULT_FOLDER_TOKEN
+            ? userFolders.folderFor(toolContext)
             : folderToken;
 
     final var createdRes =

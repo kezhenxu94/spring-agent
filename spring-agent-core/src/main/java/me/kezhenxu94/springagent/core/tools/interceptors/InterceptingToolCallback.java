@@ -39,13 +39,34 @@ public class InterceptingToolCallback implements ToolCallback {
 
   @Override
   public String call(String toolInput) {
-    var input = applyBefore(toolInput, null);
-    return applyAfter(input, invoke(input, null), null);
+    return handle(toolInput, null);
   }
 
   @Override
   public String call(String toolInput, ToolContext toolContext) {
-    var input = applyBefore(toolInput, toolContext);
+    return handle(toolInput, toolContext);
+  }
+
+  /**
+   * The chain, either side of the call.
+   *
+   * <p>A {@link ToolCallInterceptor.CallRefused} takes the place of the call rather than ending the
+   * turn, and {@link #applyAfter} still runs: the interceptors that got as far as {@code
+   * beforeCall} have already put something on a surface — a line on a card saying this call is out
+   * — and only their {@code afterCall} takes it down again. The arguments handed on are the ones
+   * the model wrote, since the transform that was in progress when the refusal came did not finish.
+   */
+  private String handle(final String toolInput, final ToolContext toolContext) {
+    final String input;
+    try {
+      input = applyBefore(toolInput, toolContext);
+    } catch (ToolCallInterceptor.CallRefused e) {
+      log.info(
+          "Tool '{}' was refused before it was called: {}",
+          getToolDefinition().name(),
+          e.getMessage());
+      return applyAfter(toolInput, e.getMessage(), toolContext);
+    }
     return applyAfter(input, invoke(input, toolContext), toolContext);
   }
 

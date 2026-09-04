@@ -35,6 +35,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Which of Feishu's two upload flows a file takes, and what the chunked one actually sends.
@@ -65,7 +66,7 @@ class FeishuDriveUploadTest {
     lenient().when(feishu.drive()).thenReturn(driveService);
     lenient().when(driveService.v1()).thenReturn(driveV1);
     lenient().when(driveV1.file()).thenReturn(fileResource);
-    service = new FeishuDriveService(feishu);
+    service = new FeishuDriveService(feishu, new JsonMapper());
   }
 
   /** Bytes a wrong block boundary cannot be mistaken for the right one in. */

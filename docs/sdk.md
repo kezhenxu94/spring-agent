@@ -322,7 +322,16 @@ set is small: it retrieves the few tools a turn needs instead of sending the mod
 For anything that has to wrap every tool call — auditing, rate limiting, rewriting or truncating a
 result, updating a progress card — implement `ToolCallInterceptor` (`core/tools/interceptors/`)
 rather than touching the tools. The custom `ToolCallingManager` wires every such bean in.
-`LargeResponseInterceptor` is the shipped example: over `app.ai.tools.max-result-chars` it writes
+An interceptor may also *answer* a call instead of letting it happen: throw
+`ToolCallInterceptor.CallRefused` from `beforeCall` and its message becomes the tool's result. Use
+that rather than an ordinary exception, which leaves `ToolCallback.call` by a path Spring AI's
+exception processor does not cover and so ends the turn instead of telling the model why. The
+`afterCall` half still runs, so a surface that showed the call starting is told it finished.
+`FeishuAccessInterceptor` in the Feishu integration is the shipped example: it refuses a call naming
+a Feishu document the person behind the run has no access to, and refuses outright any Feishu tool
+nobody has written an access rule for.
+
+`LargeResponseInterceptor` is the other shipped example: over `app.ai.tools.max-result-chars` it writes
 the result to the user's workspace and hands the model the path, for every tool alike, so a tool of
 your own should return what it has rather than cap it first. It writes JSON indented, because the
 `Read` tool truncates a line past 2000 characters and a serialized tree is one line.
