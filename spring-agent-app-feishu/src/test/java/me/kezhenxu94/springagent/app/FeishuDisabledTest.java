@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mockingDetails;
 
 import com.lark.oapi.Client;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuAutoConfiguration;
@@ -23,6 +24,10 @@ class FeishuDisabledTest extends AbstractIntegrationTest {
     assertThat(context.getBeansOfType(Client.class)).isEmpty();
     assertThat(context.getBeanNamesForType(Object.class))
         .filteredOn(name -> name.toLowerCase().contains("feishu"))
+        // Except the suite's own stand-ins: a @MockitoBean is registered even where there is no
+        // definition to override, so the mock keeping every other test off Feishu's network is
+        // here too, named after the class it replaces. Only a real one would be a failure.
+        .filteredOn(name -> !mockingDetails(context.getBean(name)).isMock())
         .isEmpty();
   }
 }

@@ -26,10 +26,10 @@ import org.springframework.context.annotation.ImportRuntimeHints;
  * me.kezhenxu94.springagent.integration.feishu}.
  *
  * <p>Set {@code app.feishu.enabled=false} to leave all of it out — importantly including {@link
- * FeishuEventHandler}, which opens a websocket to Feishu as soon as it is created. The switch is a
- * dedicated flag rather than a check on {@code app.feishu.app-id} because conditions are evaluated
- * against raw property values, and the credentials are configured as {@code ${FEISHU_APP_ID}}
- * placeholders that fail to resolve precisely when Feishu is not set up.
+ * FeishuLongConnection}, which opens a websocket to Feishu as soon as it is created. The switch is
+ * a dedicated flag rather than a check on {@code app.feishu.app-id} because conditions are
+ * evaluated against raw property values, and the credentials are configured as {@code
+ * ${FEISHU_APP_ID}} placeholders that fail to resolve precisely when Feishu is not set up.
  */
 @AutoConfiguration
 @ComponentScan(

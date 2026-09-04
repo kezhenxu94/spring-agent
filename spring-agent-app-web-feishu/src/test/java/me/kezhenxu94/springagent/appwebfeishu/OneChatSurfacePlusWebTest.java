@@ -2,7 +2,6 @@ package me.kezhenxu94.springagent.appwebfeishu;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.lark.oapi.ws.Client;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
@@ -10,6 +9,7 @@ import me.kezhenxu94.springagent.core.agent.AgentRunRegistry;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.agent.PromptVariablesContributor;
 import me.kezhenxu94.springagent.core.notify.Notifier;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuLongConnection;
 import me.kezhenxu94.springagent.integration.websocket.run.WebRunListener;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -43,7 +43,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 class OneChatSurfacePlusWebTest {
 
   /** Not started, so no long connection to Feishu is opened by a test. */
-  @MockitoBean Client feishuClient;
+  @MockitoBean FeishuLongConnection feishuLongConnection;
 
   @Autowired ApplicationContext context;
 

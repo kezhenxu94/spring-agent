@@ -162,12 +162,15 @@ public class SlackEventHandler {
   }
 
   /**
-   * The connection itself, started once the context is up and closed with it.
+   * The connection itself, started once the context is up.
    *
    * <p>{@code startAsync} rather than {@code start}: the latter blocks the calling thread for the
    * life of the connection, and that thread is the one finishing Spring's startup.
+   *
+   * <p>No {@code destroyMethod}, deliberately — {@link SlackSocketConnection} closes it, early
+   * enough in the shutdown to matter, and that class says why.
    */
-  @Bean(initMethod = "startAsync", destroyMethod = "close")
+  @Bean(initMethod = "startAsync")
   public SocketModeApp slackSocketModeApp(final App app) throws Exception {
     return new SocketModeApp(properties.appToken(), app);
   }

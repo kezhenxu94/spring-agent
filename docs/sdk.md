@@ -151,6 +151,15 @@ working: the message joins the run in flight rather than starting a second one, 
 through the `QUEUED_MESSAGES` tool-context key. `cancel(requestId)` stops a run; `onShutdown()` lets
 in-flight runs finish on a graceful shutdown.
 
+That last one has an ordering contract worth knowing if your surface holds a connection of its own.
+`onShutdown()` is a `ContextClosedEvent` listener ordered `LOWEST_PRECEDENCE`, and it *blocks* for
+up to `app.shutdown.in-flight-wait-timeout` (30 minutes by default) while the runs already going
+finish. Bean destruction happens after that, so a connection closed in `@PreDestroy` or a bean's
+`destroyMethod` stays open for the whole wait — and everything delivered on it in the meantime is
+refused, because `accepting()` is already false. Close it from a `ContextClosedEvent` listener
+ordered `HIGHEST_PRECEDENCE` instead, so that whatever arrives next reaches a replica that can still
+answer it. `FeishuLongConnection` and `SlackSocketConnection` are the two worked examples.
+
 ## Listeners: how a surface follows a run
 
 `AgentResponseListener` is the whole of the reporting contract. Every method has a default, so

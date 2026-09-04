@@ -428,6 +428,23 @@ app:
       # so this is genuinely how long the user has: the run is over and only the form is waiting,
       # which is why it is hours rather than the seconds a held-open run would allow.
       ttl: ${WEB_QUESTION_TTL:24h}
+  shutdown:
+    # How long a shutdown waits for the runs already going before giving up on them. A replica
+    # taking SIGTERM answers what it has taken on rather than dropping half-written turns, and this
+    # is the ceiling on that patience.
+    #
+    # Pair it with the grace period of whatever is stopping the process, because that is the real
+    # limit: Kubernetes SIGKILLs at terminationGracePeriodSeconds (30 seconds unless the deployment
+    # says otherwise) and Docker at stop_grace_period (10 seconds), and neither has any idea this
+    # number exists. Left longer than the grace period, the extra is not patience but a promise
+    # that is not kept — the runs are killed mid-answer anyway.
+    #
+    # What it does not do is keep a request out. This wait happens on ContextClosedEvent, which is
+    # published before server.shutdown drains the connector, so the page is still reachable while it
+    # runs — a run started in that window is refused by the agent itself, with the "shutting down"
+    # error rather than silence. On a surface carrying a chat as well, that surface's connection is
+    # let go of before this wait begins, so what arrives next reaches another replica instead.
+    in-flight-wait-timeout: ${SHUTDOWN_IN_FLIGHT_WAIT_TIMEOUT:30m}
   scheduling:
     # The timers behind scheduled tasks and, where spring-agent-events is carried, situation triage.
     # Nothing here is a model setting, which is why it sits beside app.ai rather than inside it.
