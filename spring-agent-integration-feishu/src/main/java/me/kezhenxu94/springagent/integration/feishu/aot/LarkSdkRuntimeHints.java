@@ -81,6 +81,8 @@ import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberReq;
 import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberReqBody;
 import com.lark.oapi.service.drive.v1.model.CreateExportTaskReq;
 import com.lark.oapi.service.drive.v1.model.CreateExportTaskResp;
+import com.lark.oapi.service.drive.v1.model.CreateFolderFileReq;
+import com.lark.oapi.service.drive.v1.model.CreateFolderFileResp;
 import com.lark.oapi.service.drive.v1.model.CreateImportTaskReq;
 import com.lark.oapi.service.drive.v1.model.CreateImportTaskResp;
 import com.lark.oapi.service.drive.v1.model.DownloadExportTaskReq;
@@ -93,6 +95,10 @@ import com.lark.oapi.service.drive.v1.model.GetImportTaskReq;
 import com.lark.oapi.service.drive.v1.model.GetImportTaskResp;
 import com.lark.oapi.service.drive.v1.model.ListFileReq;
 import com.lark.oapi.service.drive.v1.model.ListFileResp;
+import com.lark.oapi.service.drive.v1.model.ListPermissionMemberReq;
+import com.lark.oapi.service.drive.v1.model.ListPermissionMemberResp;
+import com.lark.oapi.service.drive.v1.model.TransferOwnerPermissionMemberReq;
+import com.lark.oapi.service.drive.v1.model.TransferOwnerPermissionMemberResp;
 import com.lark.oapi.service.drive.v1.model.UploadAllFileReq;
 import com.lark.oapi.service.drive.v1.model.UploadAllFileReqBody;
 import com.lark.oapi.service.drive.v1.model.UploadAllFileResp;
@@ -137,6 +143,8 @@ import com.lark.oapi.service.sheets.v3.model.CreateSpreadsheetReq;
 import com.lark.oapi.service.sheets.v3.model.QuerySpreadsheetSheetReq;
 import com.lark.oapi.service.sheets.v3.model.Spreadsheet;
 import com.lark.oapi.service.wiki.v2.model.GetNodeSpaceReq;
+import com.lark.oapi.service.wiki.v2.model.ListSpaceMemberReq;
+import com.lark.oapi.service.wiki.v2.model.ListSpaceMemberResp;
 import com.lark.oapi.service.wiki.v2.model.ListSpaceNodeReq;
 import com.lark.oapi.service.wiki.v2.model.ListSpaceNodeResp;
 import java.lang.reflect.Field;
@@ -253,6 +261,14 @@ public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
           BaseMember.class,
           BatchCreatePermissionMemberReq.class,
           BatchCreatePermissionMemberReqBody.class,
+          CreateFolderFileReq.class,
+          CreateFolderFileResp.class,
+          ListPermissionMemberReq.class,
+          ListPermissionMemberResp.class,
+          TransferOwnerPermissionMemberReq.class,
+          TransferOwnerPermissionMemberResp.class,
+          ListSpaceMemberReq.class,
+          ListSpaceMemberResp.class,
           DownloadFileReq.class,
           // Import and export, request and response both: the ticket a task is started with and
           // the status it is polled for are read back out of the responses by Gson, so a response

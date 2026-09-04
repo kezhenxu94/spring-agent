@@ -63,6 +63,7 @@ public class FeishuImportExportTools {
 
   final FeishuDriveService driveService;
   final UserWorkspaceFactory userWorkspaceFactory;
+  final FeishuUserFolders userFolders;
 
   /**
    * @param truncationCodes what Feishu dropped to fit its own limits, empty when it dropped nothing
@@ -107,7 +108,8 @@ public class FeishuImportExportTools {
       @ToolParam(
               description =
                   "Token of the drive folder to put it in, as FeishuListDriveFolder's link"
-                      + " carries; the default folder is used when left out",
+                      + " carries; the folder belonging to whoever you are talking to is used"
+                      + " when left out",
               required = false)
           final String folderToken,
       final ToolContext toolContext) {
@@ -156,7 +158,7 @@ public class FeishuImportExportTools {
             normalisedType,
             fileName == null || fileName.isBlank() ? file.getName() : fileName,
             folderToken == null || folderToken.isBlank()
-                ? FeishuFiles.DEFAULT_FOLDER_TOKEN
+                ? userFolders.folderFor(toolContext)
                 : folderToken);
 
     final var result = driveService.awaitImport(ticket);

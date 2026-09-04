@@ -8,8 +8,6 @@ import me.kezhenxu94.springagent.core.tools.HomeDir;
 /** Where the Feishu tools put files, and where they take them from when nobody says. */
 final class FeishuFiles {
 
-  static final String DEFAULT_FOLDER_TOKEN = "V2wjfOTZFluEQedLAG8csJwwnvg";
-
   /**
    * Where a file a tool brings back from Feishu is written, under the requester's own artifacts
    * directory.

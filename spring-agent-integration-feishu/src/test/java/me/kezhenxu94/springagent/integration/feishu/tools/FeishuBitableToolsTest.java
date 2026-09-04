@@ -50,6 +50,7 @@ class FeishuBitableToolsTest {
   @Mock private DriveService driveService;
   @Mock private V1 driveV1;
   @Mock private PermissionMember permissionMember;
+  @Mock private FeishuUserFolders userFolders;
 
   private FeishuBitableTools tools;
 
@@ -65,6 +66,9 @@ class FeishuBitableToolsTest {
 
   @BeforeEach
   void setUp() throws Exception {
+    lenient()
+        .when(userFolders.folderFor(org.mockito.ArgumentMatchers.any()))
+        .thenReturn("ou_userOwnFolder");
     lenient().when(feishu.drive()).thenReturn(driveService);
     lenient().when(driveService.v1()).thenReturn(driveV1);
     lenient().when(driveV1.permissionMember()).thenReturn(permissionMember);
@@ -77,18 +81,19 @@ class FeishuBitableToolsTest {
             feishuBitableService,
             feishuDriveService,
             new FeishuPermissionTools(feishu),
+            userFolders,
             new JsonMapper(),
             new FeishuGuides(null));
   }
 
   @Test
-  @DisplayName("createBitable falls back to the default folder token when none is given")
-  void createBitableUsesDefaultFolder() {
+  @DisplayName("createBitable falls back to the folder belonging to the requester")
+  void createBitableUsesTheRequestersOwnFolder() {
     stubAppCreation();
 
     tools.createBitable("My Base", null, null, TOOL_CONTEXT);
 
-    verify(feishuBitableService).createApp(FeishuFiles.DEFAULT_FOLDER_TOKEN, "My Base", null);
+    verify(feishuBitableService).createApp("ou_userOwnFolder", "My Base", null);
   }
 
   @Test

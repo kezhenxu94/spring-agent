@@ -48,6 +48,7 @@ public class FeishuBitableTools {
   final FeishuBitableService feishuBitableService;
   final FeishuDriveService feishuDriveService;
   final FeishuPermissionTools feishuPermissionTools;
+  final FeishuUserFolders userFolders;
   final JsonMapper objectMapper;
 
   /** The reference pages this class hands back, in the workspace's language. */
@@ -98,7 +99,9 @@ public class FeishuBitableTools {
   public CreatedBitable createBitable(
       @ToolParam(description = "Title of the new bitable") String title,
       @ToolParam(
-              description = "Token of the folder to create it in; the default folder when left out",
+              description =
+                  "Token of the folder to create it in; the folder belonging to whoever you"
+                      + " are talking to when left out",
               required = false)
           String folderToken,
       @ToolParam(
@@ -111,7 +114,7 @@ public class FeishuBitableTools {
 
     final var targetFolderToken =
         folderToken == null || folderToken.isBlank()
-            ? FeishuFiles.DEFAULT_FOLDER_TOKEN
+            ? userFolders.folderFor(toolContext)
             : folderToken;
 
     final var app = feishuBitableService.createApp(targetFolderToken, title, timeZone);

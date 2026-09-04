@@ -7,7 +7,6 @@ import com.lark.oapi.service.wiki.v2.model.Node;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Pattern;
 import lombok.Builder;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
@@ -38,10 +37,6 @@ public class FeishuWikiTools {
    * has seen the whole space.
    */
   private static final int MAX_NODES_PER_WALK = 500;
-
-  private static final Pattern URL_TOKEN_PATTERN =
-      Pattern.compile(
-          "/(?<objType>wiki|doc|docx|sheets|base|mindnote|file|slides)/(?<token>[^/?#]+)");
 
   final Client feishu;
 
@@ -353,28 +348,21 @@ public class FeishuWikiTools {
 
   record ResolvedToken(String token, String objType) {}
 
+  /**
+   * The token and type an argument names.
+   *
+   * <p>The resolution itself lives in {@link FeishuGuardedTools}, which is also what {@link
+   * FeishuAccessInterceptor} checks this call against. One implementation on purpose: two would let
+   * the guard rule on one document while this opened another, which is the only way past the check
+   * that would not show up as an error.
+   */
   ResolvedToken resolveTokenAndObjType(final String urlOrToken, final String objType) {
     if (urlOrToken == null || urlOrToken.isBlank()) {
       throw new IllegalArgumentException("urlOrToken is required");
     }
-    final var trimmed = urlOrToken.trim();
-
-    final var matcher = URL_TOKEN_PATTERN.matcher(trimmed);
-    if (!matcher.find()) {
-      return new ResolvedToken(trimmed, objType);
-    }
-    final var urlObjType = matcher.group("objType");
-    final var token = matcher.group("token");
-    if (objType != null && !objType.isBlank()) {
-      return new ResolvedToken(token, objType);
-    }
-    // The API's obj_type values don't match the URL path segments for every doc type.
-    final var inferredObjType =
-        switch (urlObjType) {
-          case "sheets" -> "sheet";
-          case "base" -> "bitable";
-          default -> urlObjType;
-        };
-    return new ResolvedToken(token, inferredObjType);
+    final var resolved =
+        FeishuGuardedTools.resolve(
+            urlOrToken, objType == null || objType.isBlank() ? null : objType);
+    return new ResolvedToken(resolved.token(), resolved.type());
   }
 }

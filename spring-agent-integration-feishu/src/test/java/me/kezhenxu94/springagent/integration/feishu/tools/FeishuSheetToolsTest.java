@@ -55,6 +55,7 @@ class FeishuSheetToolsTest {
   @Mock private V3 sheetsV3;
   @Mock private com.lark.oapi.service.sheets.v3.resource.Spreadsheet spreadsheetResource;
   @Mock private com.lark.oapi.service.sheets.v3.resource.SpreadsheetSheet spreadsheetSheetResource;
+  @Mock private FeishuUserFolders userFolders;
 
   private FeishuSheetTools tools;
 
@@ -70,6 +71,9 @@ class FeishuSheetToolsTest {
 
   @BeforeEach
   void setUp() throws Exception {
+    lenient()
+        .when(userFolders.folderFor(org.mockito.ArgumentMatchers.any()))
+        .thenReturn("ou_userOwnFolder");
     lenient().when(feishu.drive()).thenReturn(driveService);
     lenient().when(driveService.v1()).thenReturn(driveV1);
     lenient().when(driveV1.permissionMember()).thenReturn(permissionMember);
@@ -86,6 +90,7 @@ class FeishuSheetToolsTest {
             feishu,
             feishuSheetsService,
             new FeishuPermissionTools(feishu),
+            userFolders,
             new JsonMapper(),
             new FeishuGuides(null));
   }
@@ -402,8 +407,7 @@ class FeishuSheetToolsTest {
     final var captor =
         ArgumentCaptor.forClass(com.lark.oapi.service.sheets.v3.model.CreateSpreadsheetReq.class);
     verify(spreadsheetResource).create(captor.capture());
-    assertThat(captor.getValue().getSpreadsheet().getFolderToken())
-        .isEqualTo(FeishuFiles.DEFAULT_FOLDER_TOKEN);
+    assertThat(captor.getValue().getSpreadsheet().getFolderToken()).isEqualTo("ou_userOwnFolder");
   }
 
   @Test

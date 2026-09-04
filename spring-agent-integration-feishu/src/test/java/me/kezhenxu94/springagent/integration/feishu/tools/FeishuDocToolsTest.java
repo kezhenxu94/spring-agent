@@ -40,6 +40,7 @@ class FeishuDocToolsTest {
   @Mock private DriveService driveService;
   @Mock private V1 driveV1;
   @Mock private PermissionMember permissionMember;
+  @Mock private FeishuUserFolders userFolders;
 
   private FeishuDocTools tools;
 
@@ -55,6 +56,9 @@ class FeishuDocToolsTest {
 
   @BeforeEach
   void setUp() throws Exception {
+    lenient()
+        .when(userFolders.folderFor(org.mockito.ArgumentMatchers.any()))
+        .thenReturn("ou_userOwnFolder");
     lenient().when(feishu.drive()).thenReturn(driveService);
     lenient().when(driveService.v1()).thenReturn(driveV1);
     lenient().when(driveV1.permissionMember()).thenReturn(permissionMember);
@@ -64,10 +68,11 @@ class FeishuDocToolsTest {
     tools =
         new FeishuDocTools(
             feishuDocxService,
-            new FeishuDocumentBodyWriter(feishuDocxService, new FeishuDriveService(feishu)),
+            new FeishuDocumentBodyWriter(
+                feishuDocxService, new FeishuDriveService(feishu, new JsonMapper())),
             new UserWorkspaceFactory(
                 FileSystemStorageProperties.builder().location("build/tmp/doc-tools-test").build()),
-            new FeishuDriveService(feishu),
+            new FeishuDriveService(feishu, new JsonMapper()),
             new JsonMapper(),
             new FeishuProperties(
                 null,
@@ -82,6 +87,7 @@ class FeishuDocToolsTest {
                 null,
                 null),
             new FeishuPermissionTools(feishu),
+            userFolders,
             new FeishuGuides(null));
   }
 
@@ -106,16 +112,15 @@ class FeishuDocToolsTest {
   }
 
   @Test
-  @DisplayName("createDocument falls back to the default folder token when none is given")
-  void createDocumentUsesDefaultFolder() {
+  @DisplayName("createDocument falls back to the folder belonging to the requester")
+  void createDocumentUsesTheRequestersOwnFolder() {
     final var document =
         Document.newBuilder().documentId("doxDefaultFolder").revisionId(1).title("My Doc").build();
-    when(feishuDocxService.createDocument(FeishuFiles.DEFAULT_FOLDER_TOKEN, "My Doc"))
-        .thenReturn(document);
+    when(feishuDocxService.createDocument("ou_userOwnFolder", "My Doc")).thenReturn(document);
 
     tools.createDocument("My Doc", null, TOOL_CONTEXT);
 
-    verify(feishuDocxService).createDocument(FeishuFiles.DEFAULT_FOLDER_TOKEN, "My Doc");
+    verify(feishuDocxService).createDocument("ou_userOwnFolder", "My Doc");
   }
 
   @Test

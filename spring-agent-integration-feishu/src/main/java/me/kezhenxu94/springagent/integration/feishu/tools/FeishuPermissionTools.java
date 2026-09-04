@@ -4,7 +4,9 @@ import com.lark.oapi.Client;
 import com.lark.oapi.service.drive.v1.model.BaseMember;
 import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberReq;
 import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberReqBody;
+import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberResp;
 import java.util.ArrayList;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
@@ -49,7 +51,23 @@ class FeishuPermissionTools {
               .type("user")
               .build());
 
-      final var resp =
+      grant(token, docType, members.toArray(new BaseMember[0]));
+    } catch (Exception e) {
+      log.error("Failed to grant default permissions on {} {}", docType, token, e);
+    }
+  }
+
+  /**
+   * Adds collaborators to one node, and says so when it does not work.
+   *
+   * <p>Unlike {@link #grantDefaultPermissions} this raises: its callers are the ones for which a
+   * grant that silently did nothing leaves something worse than an over-private document — a folder
+   * whose ownership is about to be handed to somebody who is not on it yet.
+   */
+  void grant(final String token, final String docType, final BaseMember... members) {
+    final BatchCreatePermissionMemberResp resp;
+    try {
+      resp =
           feishu
               .drive()
               .v1()
@@ -59,22 +77,27 @@ class FeishuPermissionTools {
                       .token(token)
                       .type(docType)
                       .batchCreatePermissionMemberReqBody(
-                          BatchCreatePermissionMemberReqBody.newBuilder()
-                              .members(members.toArray(new BaseMember[0]))
-                              .build())
+                          BatchCreatePermissionMemberReqBody.newBuilder().members(members).build())
                       .build());
-      if (resp == null || !resp.success()) {
-        log.error(
-            "Failed to grant default permissions on {} {}: {}, {}",
-            docType,
-            token,
-            resp == null ? null : resp.getCode(),
-            resp == null ? null : resp.getMsg());
-        return;
-      }
-      log.info("Granted default permissions on {} {} to {}", docType, token, members);
     } catch (Exception e) {
-      log.error("Failed to grant default permissions on {} {}", docType, token, e);
+      throw new IllegalStateException(
+          "Failed to grant permissions on " + docType + " " + token + ": " + e.getMessage(), e);
     }
+    if (resp == null || !resp.success()) {
+      log.error(
+          "Failed to grant permissions on {} {}: {}, {}",
+          docType,
+          token,
+          resp == null ? null : resp.getCode(),
+          resp == null ? null : resp.getMsg());
+      throw new IllegalStateException(
+          "Failed to grant permissions on "
+              + docType
+              + " "
+              + token
+              + ": "
+              + (resp == null ? "no response" : resp.getCode() + " " + resp.getMsg()));
+    }
+    log.info("Granted permissions on {} {} to {}", docType, token, List.of(members));
   }
 }
