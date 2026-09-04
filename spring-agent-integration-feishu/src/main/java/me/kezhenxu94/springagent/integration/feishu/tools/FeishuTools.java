@@ -583,8 +583,9 @@ public class FeishuTools {
     final var name = Strings.isNullOrEmpty(fileName) ? file.getName() : fileName;
     final var fileToken = feishuDriveService.uploadFile(name, targetFolderToken, file);
     // Without this the upload is visible to the bot alone, which makes the link useless to the very
-    // person it is about to be given to.
-    feishuPermissionTools.grantDefaultPermissions(toolContext, fileToken, "file");
+    // person it is about to be given to — and owned by the bot, which makes it theirs only for as
+    // long as the application is installed.
+    feishuPermissionTools.handOverToAsker(toolContext, fileToken, "file");
 
     return UploadedDriveFile.builder()
         .fileToken(fileToken)

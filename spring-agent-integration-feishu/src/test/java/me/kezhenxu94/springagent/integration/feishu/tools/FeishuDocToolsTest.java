@@ -12,6 +12,7 @@ import com.lark.oapi.service.drive.DriveService;
 import com.lark.oapi.service.drive.v1.V1;
 import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberReq;
 import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberResp;
+import com.lark.oapi.service.drive.v1.model.TransferOwnerPermissionMemberResp;
 import com.lark.oapi.service.drive.v1.resource.PermissionMember;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
@@ -65,6 +66,9 @@ class FeishuDocToolsTest {
     lenient()
         .when(permissionMember.batchCreate(org.mockito.ArgumentMatchers.any()))
         .thenReturn(new BatchCreatePermissionMemberResp());
+    lenient()
+        .when(permissionMember.transferOwner(org.mockito.ArgumentMatchers.any()))
+        .thenReturn(new TransferOwnerPermissionMemberResp());
     tools =
         new FeishuDocTools(
             feishuDocxService,
@@ -86,7 +90,7 @@ class FeishuDocToolsTest {
                 null,
                 null,
                 null),
-            new FeishuPermissionTools(feishu),
+            new FeishuPermissionTools(feishu, new FeishuDriveService(feishu, new JsonMapper())),
             userFolders,
             new FeishuGuides(null));
   }

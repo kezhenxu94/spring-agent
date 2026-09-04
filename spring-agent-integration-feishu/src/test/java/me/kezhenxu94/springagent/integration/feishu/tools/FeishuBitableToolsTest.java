@@ -80,7 +80,7 @@ class FeishuBitableToolsTest {
         new FeishuBitableTools(
             feishuBitableService,
             feishuDriveService,
-            new FeishuPermissionTools(feishu),
+            new FeishuPermissionTools(feishu, feishuDriveService),
             userFolders,
             new JsonMapper(),
             new FeishuGuides(null));
@@ -110,7 +110,7 @@ class FeishuBitableToolsTest {
   }
 
   @Test
-  @DisplayName("createBitable grants the requesting user full_access on the base after creation")
+  @DisplayName("createBitable grants the requester full_access and then hands the base over")
   void createBitableGrantsPermissions() throws Exception {
     stubAppCreation();
 
@@ -125,6 +125,7 @@ class FeishuBitableToolsTest {
     final var member = req.getBatchCreatePermissionMemberReqBody().getMembers()[0];
     assertThat(member.getMemberId()).isEqualTo("user1");
     assertThat(member.getPerm()).isEqualTo("full_access");
+    verify(feishuDriveService).transferOwner("appToken", "bitable", "user1");
   }
 
   @Test

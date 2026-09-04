@@ -77,7 +77,7 @@ public class FeishuDocTools {
             ? userFolders.folderFor(toolContext)
             : folderToken;
     final var document = feishuDocxService.createDocument(targetFolderToken, title);
-    feishuPermissionTools.grantDefaultPermissions(toolContext, document.getDocumentId(), "docx");
+    feishuPermissionTools.handOverToAsker(toolContext, document.getDocumentId(), "docx");
     return CreatedDocument.builder()
         .documentId(document.getDocumentId())
         .revisionId(document.getRevisionId())

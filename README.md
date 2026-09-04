@@ -262,8 +262,12 @@ rather than stopping partway; the stop button is always on the one still being w
 **What the agent makes in Feishu belongs to the person who asked for it.** The first time somebody
 has the agent create a document, a spreadsheet, a base or a file, it makes them a folder of their
 own in the bot's drive space, hands them its ownership, and puts that and everything after it in
-there — so one person's work is not sitting in a shared folder beside everybody else's. Ask the
-agent where your files are and it will give you the link.
+there — so one person's work is not sitting in a shared folder beside everybody else's. Each
+document, spreadsheet, base, uploaded file and imported document is handed over the same way as it
+is made, so it counts against your drive and stays yours if the bot is ever uninstalled; in a group
+chat the chat itself is left able to view it. The bot keeps full access to everything it hands over,
+which is what lets it go on editing what it made for you. Ask the agent where your files are and it
+will give you the link.
 
 **And it will only open what Feishu would have shown you.** Every call the bot makes carries its own
 credentials, not yours, so left alone it would read out any document it can see to whoever asked.
