@@ -10,6 +10,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.stereotype.Component;
 
@@ -19,15 +20,28 @@ import org.springframework.stereotype.Component;
 class FeishuPermissionTools {
 
   final Client feishu;
+  final FeishuDriveService feishuDriveService;
 
   /**
-   * Grants the requesting user full_access, and (for group chats) grants the chat itself view
-   * access, so a newly created doc/sheet isn't left visible only to the bot. Best-effort: the
-   * doc/sheet has already been created by the time this runs, so any failure here is logged rather
-   * than propagated, to avoid failing an otherwise-successful creation.
+   * Hands a newly created node to the person the run belongs to: they become a collaborator, then
+   * its owner, and in a group chat the chat itself is left able to view it.
+   *
+   * <p>Ownership rather than {@code full_access} alone, because the two differ in the places that
+   * only show up later — the node counts against whoever owns it, and a node still owned by the bot
+   * is a node with no owner left once the application is uninstalled or its tenant token revoked.
+   * The bot stays a {@code full_access} collaborator either way (see {@link
+   * FeishuDriveService#transferOwner}), so every tool that edits the node afterwards is unaffected.
+   *
+   * <p>The grant has to land before the handover: Feishu refuses to transfer ownership to somebody
+   * who is not a collaborator yet.
+   *
+   * <p>Best-effort, unlike {@link #grant}: the node exists by the time this runs, so failing the
+   * tool call would report a document that was in fact created as an error and have the model make
+   * a second one. A node left owned by the bot is still readable and writable by the person, which
+   * is the difference between this and the folder handover in {@link FeishuUserFolders}, where a
+   * silent failure would leave a folder nobody but the bot can see.
    */
-  void grantDefaultPermissions(
-      final ToolContext toolContext, final String token, final String docType) {
+  void handOverToAsker(final ToolContext toolContext, final String token, final String docType) {
     try {
       final var userId = ToolContexts.require(toolContext, ToolContexts.USER_ID);
       final var chatId = ToolContexts.get(toolContext, ToolContexts.CHAT_ID);
@@ -52,17 +66,21 @@ class FeishuPermissionTools {
               .build());
 
       grant(token, docType, members.toArray(new BaseMember[0]));
+      feishuDriveService.transferOwner(token, docType, userId);
     } catch (Exception e) {
-      log.error("Failed to grant default permissions on {} {}", docType, token, e);
+      log.error("Failed to hand {} {} over to whoever asked for it", docType, token, e);
     }
   }
 
   /**
    * Adds collaborators to one node, and says so when it does not work.
    *
-   * <p>Unlike {@link #grantDefaultPermissions} this raises: its callers are the ones for which a
-   * grant that silently did nothing leaves something worse than an over-private document — a folder
-   * whose ownership is about to be handed to somebody who is not on it yet.
+   * <p>This raises rather than logging, because both of its callers hand ownership over next and
+   * Feishu refuses to transfer a node to somebody who is not a collaborator on it: a grant that
+   * silently did nothing would turn into a second, more confusing failure. What each caller does
+   * with the exception differs — {@link FeishuUserFolders} lets it out, since a folder nobody but
+   * the bot can see is worse than no folder, while {@link #handOverToAsker} logs it and leaves the
+   * node as it was created.
    */
   void grant(final String token, final String docType, final BaseMember... members) {
     final BatchCreatePermissionMemberResp resp;

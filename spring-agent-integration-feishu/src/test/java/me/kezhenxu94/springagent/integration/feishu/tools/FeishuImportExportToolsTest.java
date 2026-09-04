@@ -29,6 +29,7 @@ class FeishuImportExportToolsTest {
   @Mock private FeishuDriveService driveService;
   @Mock private UserWorkspaceFactory userWorkspaceFactory;
   @Mock private FeishuUserFolders userFolders;
+  @Mock private FeishuPermissionTools permissionTools;
 
   private FeishuImportExportTools tools;
 
@@ -39,7 +40,9 @@ class FeishuImportExportToolsTest {
     lenient()
         .when(userFolders.folderFor(org.mockito.ArgumentMatchers.any()))
         .thenReturn("ou_userOwnFolder");
-    tools = new FeishuImportExportTools(driveService, userWorkspaceFactory, userFolders);
+    tools =
+        new FeishuImportExportTools(
+            driveService, userWorkspaceFactory, userFolders, permissionTools);
   }
 
   private void workspaceIsTheTempDir() {
@@ -76,6 +79,9 @@ class FeishuImportExportToolsTest {
     assertThat(imported.token()).isEqualTo("doccnTOKEN");
     assertThat(imported.url()).isEqualTo("https://example.feishu.cn/docx/doccnTOKEN");
     assertThat(imported.truncationCodes()).isEmpty();
+    // Nothing else grants on this path: an imported document the bot alone can open is one the
+    // person who asked for the import cannot read.
+    verify(permissionTools).handOverToAsker(null, "doccnTOKEN", "docx");
   }
 
   @Test

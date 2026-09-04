@@ -119,7 +119,7 @@ public class FeishuBitableTools {
 
     final var app = feishuBitableService.createApp(targetFolderToken, title, timeZone);
 
-    feishuPermissionTools.grantDefaultPermissions(toolContext, app.getAppToken(), "bitable");
+    feishuPermissionTools.handOverToAsker(toolContext, app.getAppToken(), "bitable");
 
     return CreatedBitable.builder()
         .appToken(app.getAppToken())

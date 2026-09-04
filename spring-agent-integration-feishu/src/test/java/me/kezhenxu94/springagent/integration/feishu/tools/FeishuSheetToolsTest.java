@@ -14,6 +14,7 @@ import com.lark.oapi.service.drive.DriveService;
 import com.lark.oapi.service.drive.v1.V1;
 import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberReq;
 import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberResp;
+import com.lark.oapi.service.drive.v1.model.TransferOwnerPermissionMemberResp;
 import com.lark.oapi.service.drive.v1.resource.PermissionMember;
 import com.lark.oapi.service.sheets.SheetsService;
 import com.lark.oapi.service.sheets.v3.V3;
@@ -25,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuGuides;
+import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
 import me.kezhenxu94.springagent.integration.feishu.model.spreadsheet.GetValueRangeBatchDTOV2;
 import me.kezhenxu94.springagent.integration.feishu.model.spreadsheet.GetValueRangeDTOV2;
 import me.kezhenxu94.springagent.integration.feishu.model.spreadsheet.ProtectedRange;
@@ -80,6 +82,9 @@ class FeishuSheetToolsTest {
     lenient()
         .when(permissionMember.batchCreate(org.mockito.ArgumentMatchers.any()))
         .thenReturn(new BatchCreatePermissionMemberResp());
+    lenient()
+        .when(permissionMember.transferOwner(org.mockito.ArgumentMatchers.any()))
+        .thenReturn(new TransferOwnerPermissionMemberResp());
     lenient().when(feishu.sheets()).thenReturn(sheetsService);
     lenient().when(sheetsService.v3()).thenReturn(sheetsV3);
     lenient().when(sheetsV3.spreadsheet()).thenReturn(spreadsheetResource);
@@ -89,7 +94,7 @@ class FeishuSheetToolsTest {
         new FeishuSheetTools(
             feishu,
             feishuSheetsService,
-            new FeishuPermissionTools(feishu),
+            new FeishuPermissionTools(feishu, new FeishuDriveService(feishu, new JsonMapper())),
             userFolders,
             new JsonMapper(),
             new FeishuGuides(null));

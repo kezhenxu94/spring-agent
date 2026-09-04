@@ -135,7 +135,7 @@ public class FeishuSheetTools {
     final var defaultSheetId = sheets[0].getSheetId();
     log.info(
         "Created spreadsheet '{}': token={}, sheetId={}", title, spreadsheetToken, defaultSheetId);
-    feishuPermissionTools.grantDefaultPermissions(toolContext, spreadsheetToken, "sheet");
+    feishuPermissionTools.handOverToAsker(toolContext, spreadsheetToken, "sheet");
     return CreatedSpreadsheet.builder()
         .spreadsheetToken(spreadsheetToken)
         .url(url)

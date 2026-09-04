@@ -64,6 +64,7 @@ public class FeishuImportExportTools {
   final FeishuDriveService driveService;
   final UserWorkspaceFactory userWorkspaceFactory;
   final FeishuUserFolders userFolders;
+  final FeishuPermissionTools permissionTools;
 
   /**
    * @param truncationCodes what Feishu dropped to fit its own limits, empty when it dropped nothing
@@ -162,6 +163,9 @@ public class FeishuImportExportTools {
                 : folderToken);
 
     final var result = driveService.awaitImport(ticket);
+    // An imported document is created by the bot like any other, so without this it is one the
+    // person who asked for the import cannot open at all.
+    permissionTools.handOverToAsker(toolContext, result.getToken(), normalisedType);
     final var truncationCodes =
         result.getExtra() == null ? List.<String>of() : List.of(result.getExtra());
     log.info(
