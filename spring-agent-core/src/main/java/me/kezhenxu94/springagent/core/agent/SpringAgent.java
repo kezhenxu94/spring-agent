@@ -49,6 +49,8 @@ import org.springframework.ai.chat.prompt.SystemPromptTemplate;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
@@ -276,6 +278,23 @@ public class SpringAgent {
     return true;
   }
 
+  /**
+   * Waits out the runs already going, so that a replica being replaced answers what it has taken on
+   * rather than dropping it half-written.
+   *
+   * <p>Last of the shutdown listeners, deliberately. Draining is only the right thing to do once
+   * nothing more is arriving, and what stops things arriving is each surface letting go of its
+   * connection — which is a listener of its own, ordered {@link Ordered#HIGHEST_PRECEDENCE}. Left
+   * unordered this one is sequenced arbitrarily against those, and losing that race means the
+   * surface stays connected for the whole wait below: Feishu and Slack go on delivering messages to
+   * a replica that answers every one of them by throwing, while the replica that could have
+   * answered them is passed over.
+   *
+   * <p>Note that this runs while the web server is still up — {@code ContextClosedEvent} is
+   * published before {@code server.shutdown: graceful} drains the connector — so the wait here is
+   * not a wait for HTTP traffic to stop.
+   */
+  @Order(Ordered.LOWEST_PRECEDENCE)
   @EventListener(ContextClosedEvent.class)
   public void onShutdown() throws InterruptedException {
     accepting = false;

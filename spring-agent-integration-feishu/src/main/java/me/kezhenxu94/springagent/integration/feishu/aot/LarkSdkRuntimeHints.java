@@ -501,6 +501,17 @@ public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
               MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
               MemberCategory.INVOKE_DECLARED_METHODS);
     }
+    // What FeishuLongConnection reaches into: the websocket client's own conn and executor fields
+    // and its disconnect() method, all protected with no accessor and no public equivalent. Read
+    // that class for why. Missing this is a native image that starts, connects, and then fails on
+    // the first supervision check — the JVM build says nothing about it.
+    hints
+        .reflection()
+        .registerTypeIfPresent(
+            classLoader,
+            "com.lark.oapi.ws.Client",
+            MemberCategory.ACCESS_DECLARED_FIELDS,
+            MemberCategory.INVOKE_DECLARED_METHODS);
     for (final String name : SHADED_OKHTTP_PLATFORMS) {
       hints
           .reflection()
