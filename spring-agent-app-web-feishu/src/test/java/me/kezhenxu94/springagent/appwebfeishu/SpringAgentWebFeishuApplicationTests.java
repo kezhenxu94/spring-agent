@@ -38,7 +38,7 @@ class SpringAgentWebFeishuApplicationTests {
 
   /** Not started, so no long connection to Feishu is opened by a test. */
   @org.springframework.test.context.bean.override.mockito.MockitoBean
-  com.lark.oapi.ws.Client feishuClient;
+  me.kezhenxu94.springagent.integration.feishu.config.FeishuLongConnection feishuLongConnection;
 
   @Autowired ApplicationContext context;
   @Autowired MockMvc mvc;

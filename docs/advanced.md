@@ -95,3 +95,36 @@ Four things worth knowing before you rely on it:
 Across tenants it refuses outright. A signed-in person's tenant is pinned by the login gate, so this
 only arises where the bot serves more than one enterprise — and posting one enterprise's answer into
 another's chat is a leak rather than a mis-delivery.
+
+## Running more than one replica, and replacing them
+
+Two replicas of a chat server share one thing that is not in any store: the connection the chat
+platform delivers on. Feishu and Slack both hand an event to *one* of an app's connections, so
+whether a message is answered during a rolling update is a question about which replica is holding a
+connection at that moment — and nothing else about scaling out is unusual.
+
+Two things make that work, and neither needs configuring:
+
+- **A replica lets go of its connection first thing on shutdown**, before it waits for the runs
+  already going ([`app.shutdown.in-flight-wait-timeout`](../spring-agent-app-feishu/src/main/resources/application.yaml),
+  30 minutes by default). So the messages that arrive next go to a replica that can answer them,
+  while the one on its way out finishes what it had already started and never reconnects. Pair that
+  timeout with the deployment's own grace period — `terminationGracePeriodSeconds` is 30 seconds
+  unless a manifest says otherwise, and past it the process is killed mid-answer whatever this says.
+- **A replica with no connection says so on its readiness probe.** `/actuator/health/readiness`
+  turns `OUT_OF_SERVICE` while the Feishu long connection is gone and back to `UP` once it returns,
+  which is the difference between a deployment noticing and a replica sitting there healthy and
+  deaf. It is worth knowing why: a Feishu handshake refused for good — the app's connection limit
+  reached, which is what two replicas overlapping risks — is not an error the SDK reports or
+  retries, so `FeishuLongConnection` watches the connection itself and reopens it. Slack's own
+  client already does this, so nothing here duplicates it.
+
+Readiness is one signal for the whole process, so on `spring-agent-app-web-feishu` — the application
+carrying a chat *and* the browser — a lost Feishu connection takes the page out of rotation as well.
+That is the right default for a replica that is half deaf, but it is a choice: a deployment that
+would rather keep serving the page turns `management.health.readinessState.enabled` off and watches
+the log line instead.
+
+What is *not* shared is the run journal a browser reads: it lives in the heap of whichever replica
+is running the turn, so a page can only follow a run in its own process. That is a constraint on
+handing a conversation between a chat and the browser rather than on replicas as such — see above.

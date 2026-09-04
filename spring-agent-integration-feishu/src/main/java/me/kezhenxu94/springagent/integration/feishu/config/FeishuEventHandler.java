@@ -8,7 +8,6 @@ import com.lark.oapi.service.im.ImService;
 import com.lark.oapi.service.im.v1.model.P1P2PChatCreatedV1;
 import com.lark.oapi.service.im.v1.model.P2ChatAccessEventBotP2pChatEnteredV1;
 import com.lark.oapi.service.im.v1.model.P2MessageReadV1;
-import com.lark.oapi.ws.Client;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -46,9 +45,10 @@ public class FeishuEventHandler {
   final ObjectProvider<FeishuConfigHandler> feishuConfigHandler;
 
   /**
-   * Every event this application does something with. Everything else Feishu pushes is dropped by
-   * {@link LenientEventDispatcher} rather than logged as a failure, which is why this list is short
-   * and why adding to it is the only thing needed to start handling something new.
+   * Every event this application does something with. {@link FeishuLongConnection} is what hands it
+   * to Feishu. Everything else Feishu pushes is dropped by {@link LenientEventDispatcher} rather
+   * than logged as a failure, which is why this list is short and why adding to it is the only
+   * thing needed to start handling something new.
    */
   @Bean
   public EventDispatcher eventDispatcher() {
@@ -139,13 +139,5 @@ public class FeishuEventHandler {
                     return new P2CardActionTriggerResponse();
                   }
                 }));
-  }
-
-  @Bean(initMethod = "start", destroyMethod = "disconnect")
-  public Client client() {
-    return new Client.Builder(feishuProperties.appId(), feishuProperties.appSecret())
-        .domain(feishuProperties.baseUrl().getUrl())
-        .eventHandler(eventDispatcher())
-        .build();
   }
 }

@@ -1,11 +1,11 @@
 package me.kezhenxu94.springagent.app;
 
-import com.lark.oapi.ws.Client;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuLongConnection;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -50,7 +50,7 @@ public abstract class AbstractIntegrationTest {
    */
   static final Path VECTOR_STORE_FILE = tempVectorStoreFile();
 
-  @MockitoBean Client feishuClient;
+  @MockitoBean FeishuLongConnection feishuLongConnection;
   @MockitoBean KubernetesClient kubernetesClient;
 
   @DynamicPropertySource

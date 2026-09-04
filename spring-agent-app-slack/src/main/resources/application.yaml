@@ -338,6 +338,22 @@ app:
     # This selects which repositories exist, so it is a build-time decision in a native image: see
     # -PnativeBackends in springagent.native.gradle. Changing it does not migrate existing data.
     type: ${PERSISTENCE_TYPE:jpa}
+  shutdown:
+    # How long a shutdown waits for the runs already going before giving up on them. A replica
+    # taking SIGTERM answers what it has taken on rather than dropping half-written turns, and this
+    # is the ceiling on that patience.
+    #
+    # Pair it with the grace period of whatever is stopping the process, because that is the real
+    # limit: Kubernetes SIGKILLs at terminationGracePeriodSeconds (30 seconds unless the deployment
+    # says otherwise) and Docker at stop_grace_period (10 seconds), and neither has any idea this
+    # number exists. Left longer than the grace period, the extra is not patience but a promise
+    # that is not kept — the runs are killed mid-answer anyway.
+    #
+    # New messages are not what this protects. The chat surface lets go of its connection first
+    # thing on shutdown, before this wait begins, so whatever arrives next is delivered to another
+    # replica and not to this one — see SlackSocketConnection. So a short grace period costs
+    # unfinished runs, never messages nobody answers.
+    in-flight-wait-timeout: ${SHUTDOWN_IN_FLIGHT_WAIT_TIMEOUT:30m}
   scheduling:
     # The timers behind scheduled tasks and, where spring-agent-events is carried, situation triage.
     # Nothing here is a model setting, which is why it sits beside app.ai rather than inside it.
