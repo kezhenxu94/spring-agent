@@ -1,16 +1,10 @@
 package me.kezhenxu94.springagent.integration.feishu.tools;
 
 import com.google.common.base.Strings;
-import com.google.common.collect.ImmutableList;
 import com.lark.oapi.Client;
 import com.lark.oapi.core.token.AccessTokenType;
 import com.lark.oapi.core.utils.UnmarshalRespUtil;
-import com.lark.oapi.service.drive.v1.enums.ListFileDirectionEnum;
-import com.lark.oapi.service.drive.v1.enums.ListFileOrderByEnum;
-import com.lark.oapi.service.drive.v1.enums.ListFileUserIdTypeEnum;
 import com.lark.oapi.service.drive.v1.model.DownloadFileReq;
-import com.lark.oapi.service.drive.v1.model.ListFileReq;
-import com.lark.oapi.service.drive.v1.model.ListFileResp;
 import com.lark.oapi.service.im.v1.enums.CreateFileFileTypeEnum;
 import com.lark.oapi.service.im.v1.model.CreateFileReq;
 import com.lark.oapi.service.im.v1.model.CreateFileReqBody;
@@ -23,9 +17,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import lombok.Builder;
 import lombok.RequiredArgsConstructor;
@@ -60,6 +52,7 @@ public class FeishuTools {
   final FeishuDriveService feishuDriveService;
   final FeishuPermissionTools feishuPermissionTools;
   final FeishuProperties feishuProperties;
+  final FeishuUserFolders userFolders;
 
   @Builder
   @Jacksonized
@@ -75,6 +68,11 @@ public class FeishuTools {
   @Builder
   @Jacksonized
   public static record UploadedDriveFile(String fileToken, String fileName, String url) {}
+
+  @Builder
+  @Jacksonized
+  public static record MyDriveFolder(
+      String folderToken, String folderUrl, String botRootFolderToken) {}
 
   @Builder
   @Jacksonized
@@ -125,6 +123,8 @@ public class FeishuTools {
       targetReceiveId = currentChatId;
       targetReceiveIdType = "chat_id";
     }
+
+    requireMemberOfTarget(toolContext, targetReceiveId, targetReceiveIdType);
 
     final var file = new File(filePath);
     if (!file.exists()) {
@@ -190,6 +190,25 @@ public class FeishuTools {
     return "File sent successfully to " + targetReceiveId + ": " + file.getName();
   }
 
+  /**
+   * Refuses to speak into a chat the person this run belongs to is not in.
+   *
+   * <p>Without it, a chat id is all it takes to have the bot post into any group it was ever
+   * invited to, in somebody else's name and as far as that group can tell on their behalf. That is
+   * the same hole {@link FeishuChatAccess} closes on the reading side, and the same answer.
+   *
+   * <p>Only a chat is checked. The other id kinds name a <em>person</em>, and a chat between the
+   * bot and one person has no member list to be outside of — the bot messaging somebody directly is
+   * the bot's own conversation with them, which is a thing the agent is for rather than a way into
+   * anybody's private room.
+   */
+  private void requireMemberOfTarget(
+      final ToolContext toolContext, final String receiveId, final String receiveIdType) {
+    if ("chat_id".equalsIgnoreCase(receiveIdType) && !Strings.isNullOrEmpty(receiveId)) {
+      access.requireMember(toolContext, receiveId);
+    }
+  }
+
   static String resolveCurrentChatId(ToolContext toolContext) {
     if (toolContext == null) {
       return null;
@@ -212,7 +231,10 @@ public class FeishuTools {
                   "What kind of id receiveId is: open_id, user_id, union_id, email or chat_id")
           String receiveIdType,
       @ToolParam(description = "The markdown body, dropped into the message template")
-          String content) {
+          String content,
+      final ToolContext toolContext) {
+
+    requireMemberOfTarget(toolContext, receiveId, receiveIdType);
 
     final var cardContent = messageCard.render(content);
 
@@ -253,6 +275,10 @@ public class FeishuTools {
     try {
       final var dest =
           FeishuFiles.artifactPath(fileName, userWorkspaceFactory.forRequest(toolContext));
+      // A message id names no chat, so whose conversation this file is in only becomes knowable by
+      // reading the message — and an id and a key are otherwise all it would take to pull a file
+      // out of a chat the asker is not in. Checked before a byte is fetched.
+      access.requireMember(toolContext, chatOfMessage(messageId));
       log.info("Downloading file: fileKey={}", fileKey);
       final var response =
           feishu
@@ -375,6 +401,24 @@ public class FeishuTools {
           final String messageId,
       final ToolContext toolContext) {
 
+    final var message = readOneMessage(messageId);
+    // A message id names no chat, so whose conversation this is only becomes knowable here — and
+    // an id is all it would otherwise take to read a message out of a chat the asker is not in.
+    access.requireMember(toolContext, message.getChatId());
+    log.info("Read message {}", messageId);
+    return toHistoryItem(message);
+  }
+
+  /**
+   * The chat one message belongs to, which is the only thing that says whose conversation it is.
+   */
+  @SneakyThrows
+  String chatOfMessage(final String messageId) {
+    return readOneMessage(messageId).getChatId();
+  }
+
+  @SneakyThrows
+  private com.lark.oapi.service.im.v1.model.Message readOneMessage(final String messageId) {
     final var query = GetMessageQuery.builder().cardMsgContentType("user_card_content").build();
 
     final var raw =
@@ -399,11 +443,7 @@ public class FeishuTools {
     if (items == null || items.length == 0) {
       throw new IllegalStateException("Failed to read message: no message returned");
     }
-    // A message id names no chat, so whose conversation this is only becomes knowable here — and
-    // an id is all it would otherwise take to read a message out of a chat the asker is not in.
-    access.requireMember(toolContext, items[0].getChatId());
-    log.info("Read message {}", messageId);
-    return toHistoryItem(items[0]);
+    return items[0];
   }
 
   MessageHistoryItem toHistoryItem(final com.lark.oapi.service.im.v1.model.Message msg) {
@@ -445,45 +485,10 @@ public class FeishuTools {
       return List.of();
     }
 
-    final var files = ImmutableList.<com.lark.oapi.service.drive.v1.model.File>builder();
-
-    ListFileResp folderResponse = null;
-    while (folderResponse == null || folderResponse.getData().getHasMore()) {
-      for (final var retry : IntStream.range(0, 3).toArray()) {
-        folderResponse =
-            feishu
-                .drive()
-                .v1()
-                .file()
-                .list(
-                    ListFileReq.newBuilder()
-                        .pageSize(200)
-                        .folderToken(folderToken)
-                        .orderBy(ListFileOrderByEnum.CREATEDTIME)
-                        .direction(ListFileDirectionEnum.ASC)
-                        .userIdType(ListFileUserIdTypeEnum.OPEN_ID)
-                        .pageToken(
-                            folderResponse == null || folderResponse.getData() == null
-                                ? null
-                                : folderResponse.getData().getNextPageToken())
-                        .build());
-        if (!folderResponse.success()) {
-          log.warn(
-              "Failed to list files in folder {}: {}, retry: {}",
-              folderToken,
-              folderResponse.getCode() + " " + folderResponse.getMsg(),
-              retry);
-          Thread.sleep(3000);
-          continue;
-        }
-        files.addAll(Stream.of(folderResponse.getData().getFiles()).toList());
-        break;
-      }
-    }
-
-    final var allFiles = files.build();
     final var fileInfoList =
-        allFiles.stream().map(file -> buildFileInfo(file)).collect(Collectors.toList());
+        feishuDriveService.listFolderFiles(folderToken).stream()
+            .map(this::buildFileInfo)
+            .collect(Collectors.toList());
 
     log.info("Listed {} files from folder {}", fileInfoList.size(), folderToken);
     return fileInfoList;
@@ -548,7 +553,8 @@ public class FeishuTools {
       @ToolParam(
               description =
                   "Token of the drive folder to put it in, as FeishuListDriveFolder's link"
-                      + " carries; the default folder is used when left out",
+                      + " carries; the folder belonging to whoever you are talking to is used"
+                      + " when left out",
               required = false)
           final String folderToken,
       @ToolParam(
@@ -573,7 +579,7 @@ public class FeishuTools {
     }
 
     final var targetFolderToken =
-        Strings.isNullOrEmpty(folderToken) ? FeishuFiles.DEFAULT_FOLDER_TOKEN : folderToken;
+        Strings.isNullOrEmpty(folderToken) ? userFolders.folderFor(toolContext) : folderToken;
     final var name = Strings.isNullOrEmpty(fileName) ? file.getName() : fileName;
     final var fileToken = feishuDriveService.uploadFile(name, targetFolderToken, file);
     // Without this the upload is visible to the bot alone, which makes the link useless to the very
@@ -587,13 +593,36 @@ public class FeishuTools {
         .build();
   }
 
+  @Tool(
+      name = "FeishuMyDriveFolder",
+      description =
+          "Where this person's Feishu files go: the token and link of the drive folder that belongs"
+              + " to whoever you are talking to, and the token of the bot's own space that folder"
+              + " sits in. The folder is made the first time it is needed and its ownership is"
+              + " handed to them, so it is theirs rather than the bot's.\n"
+              + "Use it to answer \"where did you put that\" or \"where do my documents live\","
+              + " and to give the person a link to everything the agent has made for them. Nothing"
+              + " needs it before creating a document, a spreadsheet or a base: leaving folderToken"
+              + " out of those tools already puts the result here.")
+  public MyDriveFolder myDriveFolder(final ToolContext toolContext) {
+    final var folderToken = userFolders.folderFor(toolContext);
+    return MyDriveFolder.builder()
+        .folderToken(folderToken)
+        .folderUrl("https://" + feishuProperties.tenantDomain() + "/drive/folder/" + folderToken)
+        .botRootFolderToken(feishuDriveService.rootFolderToken())
+        .build();
+  }
+
+  /**
+   * The folder a link names, or the token itself when that is what was given.
+   *
+   * <p>Through {@link FeishuGuardedTools#resolve}, which is what {@link FeishuAccessInterceptor}
+   * checked this call against: resolving it a second way here could list a folder other than the
+   * one that was allowed.
+   */
   String extractFolderToken(final String url) {
-    final var pattern = Pattern.compile("/drive/folder/(?<token>[^/?]+)");
-    final var matcher = pattern.matcher(url);
-    if (matcher.find()) {
-      return matcher.group("token");
-    }
-    return null;
+    final var token = FeishuGuardedTools.resolve(url, FeishuGuardedTools.FOLDER).token();
+    return Strings.isNullOrEmpty(token) ? null : token;
   }
 
   FeishuFileInfo buildFileInfo(final com.lark.oapi.service.drive.v1.model.File file) {

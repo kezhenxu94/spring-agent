@@ -37,6 +37,7 @@ public class FeishuDocTools {
   final JsonMapper objectMapper;
   final FeishuProperties feishuProperties;
   final FeishuPermissionTools feishuPermissionTools;
+  final FeishuUserFolders userFolders;
 
   /** The reference pages this class hands back, in the workspace's language. */
   final FeishuGuides guides;
@@ -65,13 +66,15 @@ public class FeishuDocTools {
   public CreatedDocument createDocument(
       @ToolParam(description = "Document title") String title,
       @ToolParam(
-              description = "Token of the folder to create it in; the default folder when left out",
+              description =
+                  "Token of the folder to create it in; the folder belonging to whoever you"
+                      + " are talking to when left out",
               required = false)
           String folderToken,
       ToolContext toolContext) {
     final var targetFolderToken =
         folderToken == null || folderToken.isBlank()
-            ? FeishuFiles.DEFAULT_FOLDER_TOKEN
+            ? userFolders.folderFor(toolContext)
             : folderToken;
     final var document = feishuDocxService.createDocument(targetFolderToken, title);
     feishuPermissionTools.grantDefaultPermissions(toolContext, document.getDocumentId(), "docx");
@@ -525,9 +528,13 @@ public class FeishuDocTools {
               + " in the document. This is step two of inserting an image or attachment: step one"
               + " is getting the real block_id of that block, and step three is"
               + " FeishuUpdateDocBlock with replaceImage or replaceFile, putting the fileToken this"
-              + " returns into the token field. FeishuDocBlockGuide has the whole workflow.")
+              + " returns into the token field. FeishuDocBlockGuide has the whole workflow.\n"
+              + "documentId names the document the block belongs to. The upload itself does not"
+              + " need it — a block_id is enough for that — but it is what says whose document is"
+              + " being written to, and a call that leaves it out is refused.")
   @SneakyThrows
   public String uploadDocBlockMedia(
+      @ToolParam(description = "The document_id of the document the block is in") String documentId,
       @ToolParam(
               description =
                   "Real block_id of the target Image or File block, which becomes the upload's"

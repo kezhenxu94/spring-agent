@@ -1,8 +1,15 @@
 package me.kezhenxu94.springagent.integration.feishu.drive;
 
+import com.google.common.base.Strings;
 import com.google.gson.JsonObject;
 import com.lark.oapi.Client;
+import com.lark.oapi.core.token.AccessTokenType;
+import com.lark.oapi.service.drive.v1.enums.ListFileDirectionEnum;
+import com.lark.oapi.service.drive.v1.enums.ListFileOrderByEnum;
+import com.lark.oapi.service.drive.v1.enums.ListFileUserIdTypeEnum;
 import com.lark.oapi.service.drive.v1.model.CreateExportTaskReq;
+import com.lark.oapi.service.drive.v1.model.CreateFolderFileReq;
+import com.lark.oapi.service.drive.v1.model.CreateFolderFileReqBody;
 import com.lark.oapi.service.drive.v1.model.CreateImportTaskReq;
 import com.lark.oapi.service.drive.v1.model.DownloadExportTaskReq;
 import com.lark.oapi.service.drive.v1.model.ExportTask;
@@ -11,6 +18,12 @@ import com.lark.oapi.service.drive.v1.model.GetExportTaskReq;
 import com.lark.oapi.service.drive.v1.model.GetImportTaskReq;
 import com.lark.oapi.service.drive.v1.model.ImportTask;
 import com.lark.oapi.service.drive.v1.model.ImportTaskMountPoint;
+import com.lark.oapi.service.drive.v1.model.ListFileReq;
+import com.lark.oapi.service.drive.v1.model.ListFileResp;
+import com.lark.oapi.service.drive.v1.model.ListPermissionMemberReq;
+import com.lark.oapi.service.drive.v1.model.Member;
+import com.lark.oapi.service.drive.v1.model.Owner;
+import com.lark.oapi.service.drive.v1.model.TransferOwnerPermissionMemberReq;
 import com.lark.oapi.service.drive.v1.model.UploadAllFileReq;
 import com.lark.oapi.service.drive.v1.model.UploadAllFileReqBody;
 import com.lark.oapi.service.drive.v1.model.UploadAllMediaReq;
@@ -22,9 +35,12 @@ import com.lark.oapi.service.drive.v1.model.UploadPartFileReqBody;
 import com.lark.oapi.service.drive.v1.model.UploadPrepareFileReq;
 import java.io.File;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.zip.Adler32;
@@ -32,6 +48,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Drive calls that belong to no one document type.
@@ -110,7 +127,237 @@ public class FeishuDriveService {
    */
   private static final Duration MAX_WAIT = Duration.ofMinutes(3);
 
+  /**
+   * How many pages of one folder's contents a listing will read. At the page size below that is
+   * 20,000 entries — past any folder this application has business walking, and the bound is here
+   * so that one folder token cannot turn a listing into an unbounded number of requests.
+   */
+  private static final int MAX_FOLDER_PAGES = 100;
+
+  private static final int FOLDER_PAGE_SIZE = 200;
+
+  /** How many times a failing page of a folder listing is asked for again before giving up. */
+  private static final int LIST_RETRIES = 3;
+
+  private static final Duration LIST_RETRY_DELAY = Duration.ofSeconds(3);
+
   private final Client feishu;
+
+  private final JsonMapper objectMapper;
+
+  /**
+   * The bot's own space, resolved once.
+   *
+   * <p>Held for the life of the process rather than asked for each time: the root of a drive space
+   * is minted with the space and never changes, and every folder this application resolves hangs
+   * off it. Not {@code final} only because resolving it is a network call that must not happen
+   * during construction.
+   */
+  private volatile String rootFolderToken;
+
+  /**
+   * The token of the bot's own "my space" root folder — the folder every per-person folder is
+   * created in.
+   *
+   * <p>Through the raw endpoint because the SDK has no binding for it, the way {@code
+   * FeishuBotTools} and {@code FeishuSheetsService} reach the endpoints it also lacks. The bot is
+   * what the tenant token authorises, so what comes back is the application's own space and not
+   * anybody else's.
+   */
+  @SneakyThrows
+  public String rootFolderToken() {
+    final var cached = rootFolderToken;
+    if (cached != null) {
+      return cached;
+    }
+    final var raw =
+        feishu.get("/open-apis/drive/explorer/v2/root_folder/meta", null, AccessTokenType.Tenant);
+    final var body = objectMapper.readTree(new String(raw.getBody(), StandardCharsets.UTF_8));
+    final var code = body.path("code").asInt(-1);
+    if (code != 0) {
+      log.error(
+          "Failed to read the bot's root folder: code={}, msg={}",
+          code,
+          body.path("msg").asString(""));
+      throw new IllegalStateException(
+          "Failed to read the bot's root folder: " + code + " " + body.path("msg").asString(""));
+    }
+    final var token = body.path("data").path("token").asString("");
+    if (token.isBlank()) {
+      throw new IllegalStateException("The bot's root folder came back without a token");
+    }
+    log.info("The bot's root folder is {}", token);
+    rootFolderToken = token;
+    return token;
+  }
+
+  /** Creates a folder under {@code parentFolderToken} and returns its token. */
+  @SneakyThrows
+  public String createFolder(final String parentFolderToken, final String name) {
+    final var resp =
+        feishu
+            .drive()
+            .v1()
+            .file()
+            .createFolder(
+                CreateFolderFileReq.newBuilder()
+                    .createFolderFileReqBody(
+                        CreateFolderFileReqBody.newBuilder()
+                            .name(name)
+                            .folderToken(parentFolderToken)
+                            .build())
+                    .build());
+    if (!resp.success()) {
+      log.error(
+          "Failed to create folder '{}' under {}: {}, {}",
+          name,
+          parentFolderToken,
+          resp.getCode(),
+          resp.getMsg());
+      throw new IllegalStateException("Failed to create folder: " + resp.getMsg());
+    }
+    final var token = resp.getData().getToken();
+    log.info("Created folder '{}' under {}: {}", name, parentFolderToken, token);
+    return token;
+  }
+
+  /**
+   * Everything in one folder, every page of it.
+   *
+   * <p>Here rather than in the tool that lists a folder for a person, because resolving somebody's
+   * own folder walks the same listing and neither should be the other's caller.
+   */
+  @SneakyThrows
+  public List<com.lark.oapi.service.drive.v1.model.File> listFolderFiles(final String folderToken) {
+    final var files = new ArrayList<com.lark.oapi.service.drive.v1.model.File>();
+    String pageToken = null;
+    for (var page = 0; page < MAX_FOLDER_PAGES; page++) {
+      final var resp = listFolderPage(folderToken, pageToken);
+      final var data = resp.getData();
+      if (data.getFiles() != null) {
+        files.addAll(List.of(data.getFiles()));
+      }
+      if (!Boolean.TRUE.equals(data.getHasMore())
+          || Strings.isNullOrEmpty(data.getNextPageToken())) {
+        return files;
+      }
+      pageToken = data.getNextPageToken();
+    }
+    // Not silently truncated: a caller deciding whether somebody's folder exists would read a
+    // partial listing as "it does not" and create a second one.
+    throw new IllegalStateException(
+        "Folder "
+            + folderToken
+            + " has more than "
+            + MAX_FOLDER_PAGES * FOLDER_PAGE_SIZE
+            + " entries");
+  }
+
+  @SneakyThrows
+  private ListFileResp listFolderPage(final String folderToken, final String pageToken) {
+    ListFileResp last = null;
+    for (var retry = 0; retry < LIST_RETRIES; retry++) {
+      last =
+          feishu
+              .drive()
+              .v1()
+              .file()
+              .list(
+                  ListFileReq.newBuilder()
+                      .pageSize(FOLDER_PAGE_SIZE)
+                      .folderToken(folderToken)
+                      .orderBy(ListFileOrderByEnum.CREATEDTIME)
+                      .direction(ListFileDirectionEnum.ASC)
+                      .userIdType(ListFileUserIdTypeEnum.OPEN_ID)
+                      .pageToken(pageToken)
+                      .build());
+      if (last.success()) {
+        return last;
+      }
+      log.warn(
+          "Failed to list files in folder {}: {} {}, retry {}",
+          folderToken,
+          last.getCode(),
+          last.getMsg(),
+          retry);
+      Thread.sleep(LIST_RETRY_DELAY.toMillis());
+    }
+    throw new IllegalStateException(
+        "Failed to list folder "
+            + folderToken
+            + ": "
+            + (last == null ? "no response" : last.getMsg()));
+  }
+
+  /**
+   * The collaborators of one document, spreadsheet, base, file or folder.
+   *
+   * <p>{@code type} is a plain string rather than the SDK's enum on purpose: that enum has no
+   * {@code folder}, the endpoint does, and a folder's collaborator list is the only way to tell
+   * whether somebody may go into one.
+   */
+  @SneakyThrows
+  public List<Member> listCollaborators(final String token, final String type) {
+    final var resp =
+        feishu
+            .drive()
+            .v1()
+            .permissionMember()
+            .list(ListPermissionMemberReq.newBuilder().token(token).type(type).build());
+    if (!resp.success()) {
+      log.warn(
+          "Failed to list the collaborators of {} {}: {}, {}",
+          type,
+          token,
+          resp.getCode(),
+          resp.getMsg());
+      throw new IllegalStateException("Failed to list collaborators: " + resp.getMsg());
+    }
+    final var items = resp.getData() == null ? null : resp.getData().getItems();
+    return items == null ? List.of() : List.of(items);
+  }
+
+  /**
+   * Hands ownership of a node to a person, without moving it and without the bot losing its own way
+   * in.
+   *
+   * <p>Three of the four flags are load-bearing. {@code stayPut} keeps the node where it is: the
+   * per-person folders are found again by listing the bot's own space, so one that moved into the
+   * new owner's space would be invisible on the next run and made a second time. {@code
+   * oldOwnerPerm} is what leaves the bot a {@code full_access} collaborator on a folder it no
+   * longer owns — without it the very next document the agent creates for that person fails. {@code
+   * needNotification} off because the transfer is bookkeeping the person did not ask for and a
+   * notification about it explains nothing.
+   */
+  @SneakyThrows
+  public void transferOwner(final String token, final String type, final String openId) {
+    final var resp =
+        feishu
+            .drive()
+            .v1()
+            .permissionMember()
+            .transferOwner(
+                TransferOwnerPermissionMemberReq.newBuilder()
+                    .token(token)
+                    .type(type)
+                    .stayPut(true)
+                    .removeOldOwner(false)
+                    .oldOwnerPerm("full_access")
+                    .needNotification(false)
+                    .owner(Owner.newBuilder().memberType("openid").memberId(openId).build())
+                    .build());
+    if (!resp.success()) {
+      log.error(
+          "Failed to transfer ownership of {} {} to {}: {}, {}",
+          type,
+          token,
+          openId,
+          resp.getCode(),
+          resp.getMsg());
+      throw new IllegalStateException("Failed to transfer ownership: " + resp.getMsg());
+    }
+    log.info("Transferred ownership of {} {} to {}", type, token, openId);
+  }
 
   /**
    * Uploads a file and returns the {@code file_token} that whatever will hold it refers to it by.

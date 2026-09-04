@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -27,6 +28,7 @@ class FeishuImportExportToolsTest {
 
   @Mock private FeishuDriveService driveService;
   @Mock private UserWorkspaceFactory userWorkspaceFactory;
+  @Mock private FeishuUserFolders userFolders;
 
   private FeishuImportExportTools tools;
 
@@ -34,7 +36,10 @@ class FeishuImportExportToolsTest {
 
   @BeforeEach
   void setUp() {
-    tools = new FeishuImportExportTools(driveService, userWorkspaceFactory);
+    lenient()
+        .when(userFolders.folderFor(org.mockito.ArgumentMatchers.any()))
+        .thenReturn("ou_userOwnFolder");
+    tools = new FeishuImportExportTools(driveService, userWorkspaceFactory, userFolders);
   }
 
   private void workspaceIsTheTempDir() {
@@ -62,8 +67,7 @@ class FeishuImportExportToolsTest {
     final var file = aFileNamed("notes.md");
     when(driveService.uploadImportSource("notes.md", "docx", "md", file.toFile()))
         .thenReturn("boxcnSOURCE");
-    when(driveService.createImportTask(
-            "boxcnSOURCE", "md", "docx", "Notes", FeishuFiles.DEFAULT_FOLDER_TOKEN))
+    when(driveService.createImportTask("boxcnSOURCE", "md", "docx", "Notes", "ou_userOwnFolder"))
         .thenReturn("7369583175086912356");
     when(driveService.awaitImport("7369583175086912356")).thenReturn(finishedImport());
 

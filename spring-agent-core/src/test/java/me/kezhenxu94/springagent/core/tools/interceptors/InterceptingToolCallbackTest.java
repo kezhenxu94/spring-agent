@@ -100,6 +100,108 @@ class InterceptingToolCallbackTest {
     assertThat(seen).hasSize(2).allSatisfy(input -> assertThat(input).contains("Write the file"));
   }
 
+  @Test
+  @DisplayName("a refusal from beforeCall answers the call instead of ending the turn")
+  void aRefusalAnswersTheCall() {
+    // The whole point of CallRefused. An interceptor that decided the call must not happen has
+    // nowhere else to put that: an ordinary exception thrown here leaves ToolCallback.call by a
+    // path Spring AI's exception processor does not cover, so the run stops rather than the model
+    // being told why.
+    final var delegate = new RecordingCallback(ToolMetadata.builder().build());
+
+    final var result =
+        new InterceptingToolCallback(delegate, List.of(refusing("Refused: not yours")), refs())
+            .call("{\"path\":\"/tmp/x\"}", CONTEXT);
+
+    assertThat(result).isEqualTo("Refused: not yours");
+    assertThat(delegate.received).as("the tool ran anyway").isNull();
+  }
+
+  @Test
+  @DisplayName("and the after-half still runs, so a card that said the call started is cleared")
+  void aRefusalStillRunsTheAfterHalf() {
+    final var seen = new ArrayList<String>();
+    final var results = new ArrayList<String>();
+
+    final var result =
+        new InterceptingToolCallback(
+                new RecordingCallback(ToolMetadata.builder().build()),
+                List.of(recording(seen, results), refusing("Refused: not yours")),
+                refs())
+            .call("{\"path\":\"/tmp/x\"}", CONTEXT);
+
+    assertThat(result).isEqualTo("Refused: not yours");
+    assertThat(seen).as("beforeCall of the interceptor ahead of the refusal").hasSize(1);
+    assertThat(results)
+        .as("its afterCall, with the refusal as the result")
+        .containsExactly("Refused: not yours");
+  }
+
+  @Test
+  @DisplayName("an interceptor after the refusing one is not asked, since there is no call left")
+  void aRefusalStopsTheRestOfTheBeforeHalf() {
+    final var seen = new ArrayList<String>();
+    final var results = new ArrayList<String>();
+
+    new InterceptingToolCallback(
+            new RecordingCallback(ToolMetadata.builder().build()),
+            List.of(refusing("Refused"), recording(seen, results)),
+            refs())
+        .call("{\"path\":\"/tmp/x\"}", CONTEXT);
+
+    assertThat(seen).isEmpty();
+    // afterCall still reaches it: the chain is unwound in full so nothing is left half-shown.
+    assertThat(results).containsExactly("Refused");
+  }
+
+  @Test
+  @DisplayName("an ordinary exception from beforeCall is still an exception, not a quiet answer")
+  void anOrdinaryExceptionIsNotSwallowed() {
+    final var callback =
+        new InterceptingToolCallback(
+            new RecordingCallback(ToolMetadata.builder().build()),
+            List.of(
+                new ToolCallInterceptor() {
+                  @Override
+                  public String beforeCall(String name, String input, ToolContext context) {
+                    throw new IllegalStateException("broken interceptor");
+                  }
+                }),
+            refs());
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> callback.call("{\"path\":\"/tmp/x\"}", CONTEXT))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("broken interceptor");
+  }
+
+  private static ToolCallInterceptor refusing(final String message) {
+    return new ToolCallInterceptor() {
+      @Override
+      public String beforeCall(String toolName, String toolInput, ToolContext toolContext) {
+        throw new CallRefused(message);
+      }
+    };
+  }
+
+  private static ToolCallInterceptor recording(
+      final List<String> inputs, final List<String> results) {
+    return new ToolCallInterceptor() {
+      @Override
+      public String beforeCall(String toolName, String toolInput, ToolContext toolContext) {
+        inputs.add(toolInput);
+        return toolInput;
+      }
+
+      @Override
+      public String afterCall(
+          String toolName, String toolInput, String toolResult, ToolContext toolContext) {
+        results.add(toolResult);
+        return toolResult;
+      }
+    };
+  }
+
   private static ToolCallInterceptor watching(final List<String> seen) {
     return new ToolCallInterceptor() {
       @Override

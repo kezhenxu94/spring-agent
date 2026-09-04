@@ -259,6 +259,22 @@ when a card fills up the agent finishes it and replies another onto the same mes
 where it left off, as many times as the turn needs. A very long answer arrives as a run of cards
 rather than stopping partway; the stop button is always on the one still being written.
 
+**What the agent makes in Feishu belongs to the person who asked for it.** The first time somebody
+has the agent create a document, a spreadsheet, a base or a file, it makes them a folder of their
+own in the bot's drive space, hands them its ownership, and puts that and everything after it in
+there — so one person's work is not sitting in a shared folder beside everybody else's. Ask the
+agent where your files are and it will give you the link.
+
+**And it will only open what Feishu would have shown you.** Every call the bot makes carries its own
+credentials, not yours, so left alone it would read out any document it can see to whoever asked.
+Instead each call naming a document, spreadsheet, base, file, folder or wiki space is checked
+against that thing's collaborators first: you are let in if you are on the list, or if it is shared
+with a chat you are in, and refused in so many words otherwise. A document shared only by link is
+refused as well — add yourself or the chat as a collaborator. The same rule already covered reading
+a conversation and now covers writing to one: the agent will not post a message or a file into a
+group you are not in, and will not fetch a file out of one. The people in `ADMINS` are exempt, as
+they are everywhere else.
+
 Everything else is optional and set in
 [`application.yaml`](spring-agent-app-feishu/src/main/resources/application.yaml). Two switches decide what
 the deployment actually is:
