@@ -4,12 +4,16 @@ import com.google.common.base.Strings;
 import com.lark.oapi.Client;
 import com.lark.oapi.service.im.v1.model.GetChatMembersReq;
 import com.lark.oapi.service.im.v1.model.GetChatMembersResp;
+import com.lark.oapi.service.im.v1.model.IsInChatChatMembersReq;
+import com.lark.oapi.service.im.v1.model.IsInChatChatMembersResp;
 import com.lark.oapi.service.im.v1.model.ListMember;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.stereotype.Component;
 
@@ -25,6 +29,17 @@ import org.springframework.stereotype.Component;
  * <p>Two ways in. The run's own chat needs no check: the request was built from a message that
  * person sent in it, so they were in it as of that message — and it costs nothing, which matters
  * because it is nearly every call. Any other chat is checked against its member list.
+ *
+ * <p>With one exception, and it is not a loophole but the same question asked where the answer is
+ * written down. A member list holds people; a bot is in a chat without ever appearing in it. So an
+ * identity that <em>is</em> this bot — {@code app.feishu.bot-open-id}, which is what a deployment
+ * names as the owner of an unattended run so that it acts as the agent rather than as a person — is
+ * never found in any list and would be refused every chat but the run's own. That is not "this
+ * identity may not see the chat", it is "this list does not record identities of that kind", and
+ * the endpoint that does record it is {@code members/is_in_chat}: it answers for whoever the token
+ * represents, which for every call this application makes is exactly the bot. It is asked instead
+ * of the walk, so the bot is allowed the chats it is in and no others — an unattended run keeps the
+ * same bound as a person's, drawn where its own membership actually lives.
  *
  * <p>Fails closed. A member list that cannot be read to the end leaves the answer unknown, and
  * unknown is refused: a group too large to walk is exactly the kind whose membership is worth
@@ -55,6 +70,8 @@ public class FeishuChatAccess {
 
   final Client feishu;
   final Admins admins;
+  final FeishuProperties feishuProperties;
+  final FeishuMessages messages;
 
   /**
    * @param member true, false, or null where the member list could not be read to the end and so
@@ -93,16 +110,16 @@ public class FeishuChatAccess {
       return;
     }
     log.warn("Refused {} access to chat {}: {}", userId, chatId, membership.note());
+    // Four sentences rather than two, because the identity behind the run decides which of them is
+    // true: told "you are not in that chat", an unattended run owned by the bot has nobody to be,
+    // and what gets it fixed — somebody adding the bot to the group — goes unsaid. The message the
+    // model reads is the whole of what it can explain the refusal from, so it says which it is.
     throw new ChatAccessDeniedException(
-        membership.member() == null
-            ? "Refused: whether you are in chat "
-                + chatId
-                + " could not be established, and this only answers for chats you are in. Say so"
-                + " rather than trying another way."
-            : "Refused: you are not in chat "
-                + chatId
-                + ", and this only answers for chats you are in. Say so rather than trying another"
-                + " way.");
+        messages.get(
+            isBot(userId)
+                ? membership.member() == null ? "access-unknown-chat-bot" : "access-denied-chat-bot"
+                : membership.member() == null ? "access-unknown-chat" : "access-denied-chat",
+            chatId));
   }
 
   /**
@@ -143,8 +160,15 @@ public class FeishuChatAccess {
    *
    * <p>Hence the walk, and hence the page bounds: the member list is the only place a third party's
    * membership is written down.
+   *
+   * <p>Unless the {@code userId} is the bot itself, in which case that endpoint is not the wrong
+   * question but the only one that has an answer, and {@link #botMembership} asks it — see the
+   * class comment.
    */
   public Membership membership(final String chatId, final String userId, final int maxPages) {
+    if (isBot(userId)) {
+      return botMembership(chatId);
+    }
     String pageToken = null;
     for (int page = 0; page < maxPages; page++) {
       final GetChatMembersReq req =
@@ -170,24 +194,75 @@ public class FeishuChatAccess {
         // Not an exception: "the bot is not in this chat" comes back this way, and the caller's
         // question — may this person see it — is answered by that, not derailed by it.
         return new Membership(
-            null, "The member list could not be read: " + resp.getCode() + " " + resp.getMsg());
+            null,
+            // The code as text, not as a number: an error code put through MessageFormat comes out
+            // grouped — 232011 as "232,011" — which is not a code anybody can look up.
+            messages.get(
+                "chat-membership-unreadable", String.valueOf(resp.getCode()), resp.getMsg()));
       }
       final var data = resp.getData();
       final var items = data.getItems() == null ? new ListMember[0] : data.getItems();
       if (Stream.of(items).anyMatch(member -> userId.equals(member.getMemberId()))) {
-        return new Membership(true, "Found in the member list of " + chatId + ".");
+        return new Membership(true, messages.get("chat-membership-found", chatId));
       }
       if (!Boolean.TRUE.equals(data.getHasMore()) || Strings.isNullOrEmpty(data.getPageToken())) {
-        return new Membership(false, "Not in the member list of " + chatId + ", read in full.");
+        return new Membership(false, messages.get("chat-membership-absent", chatId));
       }
       pageToken = data.getPageToken();
     }
     return new Membership(
-        null,
-        "Unknown, not no: chat "
-            + chatId
-            + " has more than "
-            + maxPages * MEMBER_PAGE_SIZE
-            + " members and its list was not read to the end.");
+        null, messages.get("chat-membership-too-many", chatId, maxPages * MEMBER_PAGE_SIZE));
+  }
+
+  /**
+   * Whether {@code userId} is the identity this application itself acts as.
+   *
+   * <p>Blank or absent where a deployment never configured one, and then this is false for
+   * everybody: the check falls back to the member list, which is what it did before, rather than
+   * matching a blank user id against a blank property and letting an anonymous run into every chat.
+   */
+  boolean isBot(final String userId) {
+    final var botOpenId = feishuProperties == null ? null : feishuProperties.botOpenId();
+    return !Strings.isNullOrEmpty(botOpenId) && botOpenId.equals(userId);
+  }
+
+  /**
+   * Whether the bot is in {@code chatId}, which is the one membership question a tenant token can
+   * answer directly.
+   *
+   * <p>Fails closed like the walk does: a call that could not be made, or one Feishu refused,
+   * leaves the answer unknown rather than yes.
+   */
+  private Membership botMembership(final String chatId) {
+    final IsInChatChatMembersResp resp;
+    try {
+      resp =
+          feishu
+              .im()
+              .v1()
+              .chatMembers()
+              .isInChat(IsInChatChatMembersReq.newBuilder().chatId(chatId).build());
+    } catch (Exception e) {
+      throw new IllegalStateException(
+          "Failed to check whether this bot is in chat " + chatId + ": " + e.getMessage(), e);
+    }
+    if (!resp.success() || resp.getData() == null) {
+      log.warn(
+          "Failed to check whether this bot is in chat {}: code={}, msg={}",
+          chatId,
+          resp.getCode(),
+          resp.getMsg());
+      return new Membership(
+          null,
+          messages.get(
+              "chat-membership-bot-unreadable",
+              chatId,
+              String.valueOf(resp.getCode()),
+              resp.getMsg()));
+    }
+    final var member = Boolean.TRUE.equals(resp.getData().getIsInChat());
+    return new Membership(
+        member,
+        messages.get(member ? "chat-membership-bot-in" : "chat-membership-bot-out", chatId));
   }
 }

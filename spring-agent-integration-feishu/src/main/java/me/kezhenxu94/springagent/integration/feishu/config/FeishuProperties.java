@@ -16,6 +16,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     product, open.feishu.cn) or {@code LarkSuite} (the international one, open.larksuite.com). An
  *     app id/secret pair is only valid against the product it was created on, so this must match
  *     where the app was registered. Defaults to {@code FeiShu}.
+ * @param botOpenId the bot's own open_id, which is an identity two decisions turn on: whether a
+ *     group message mentioned the bot rather than somebody else ({@code
+ *     FeishuMessageReceiveHandler}), and whether a run asking to reach a chat belongs to the bot
+ *     rather than to a person ({@link
+ *     me.kezhenxu94.springagent.integration.feishu.tools.FeishuChatAccess}) — the second is what
+ *     lets a run owned by the agent itself, an event triage run, write to the chats the bot is in,
+ *     since a member list never holds a bot.
  * @param locale which language the cards speak. Defaults to the host's, so setting it is for a
  *     workspace whose language differs from the machine the agent runs on. See {@link
  *     FeishuMessages} for what it selects.

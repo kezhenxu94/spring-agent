@@ -24,11 +24,14 @@ import com.lark.oapi.service.im.v1.resource.MessageResource;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.FeishuMessageCard;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
 import me.kezhenxu94.springagent.integration.feishu.tools.FeishuChatAccess.ChatAccessDeniedException;
 import org.junit.jupiter.api.BeforeEach;
@@ -94,7 +97,9 @@ class FeishuMessagingAccessTest {
             new UserWorkspaceFactory(
                 FileSystemStorageProperties.builder().location(storage.toString()).build()),
             new JsonMapper(),
-            null,
+            new FeishuMessages(
+                new FeishuProperties(
+                    null, null, null, null, null, null, null, Locale.ENGLISH, null, null, null)),
             messageCard,
             new FeishuDriveService(feishu, new JsonMapper()),
             null,
@@ -222,5 +227,26 @@ class FeishuMessagingAccessTest {
     final var home = storage.resolve("ou_asker").resolve("workspace");
     Files.createDirectories(home);
     return Files.writeString(home.resolve(name), "hello");
+  }
+
+  @Test
+  @DisplayName("messages naming no chat at all are refused in a sentence, not with a bundle key")
+  void historyThatNamesNoChatIsRefused() throws Exception {
+    final var body =
+        "{\"code\":0,\"msg\":\"ok\",\"data\":{\"items\":[{\"message_id\":\"om_1\"}]}}"
+            .getBytes(StandardCharsets.UTF_8);
+    final var raw = new RawResponse();
+    raw.setStatusCode(200);
+    raw.setContentType("application/json");
+    raw.setBody(body);
+    when(feishu.get(eq("/open-apis/im/v1/messages"), any(), eq(AccessTokenType.Tenant), any()))
+        .thenReturn(raw);
+
+    // A thread, so nothing is checked up front: a thread_id says nothing about the chat it is in,
+    // and the messages coming back naming none is exactly the case that has to fail closed.
+    assertThatThrownBy(() -> tools.readMessageHistory("thread", "omt_1", null, context))
+        .isInstanceOf(ChatAccessDeniedException.class)
+        .hasMessageContaining("which conversation these messages belong to could not be");
+    verify(access, never()).requireMember(any(), any());
   }
 }

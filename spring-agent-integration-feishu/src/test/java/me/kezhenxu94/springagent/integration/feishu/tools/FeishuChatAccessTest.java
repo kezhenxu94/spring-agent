@@ -12,6 +12,8 @@ import com.lark.oapi.service.im.ImService;
 import com.lark.oapi.service.im.v1.V1;
 import com.lark.oapi.service.im.v1.model.GetChatMembersResp;
 import com.lark.oapi.service.im.v1.model.GetChatMembersRespBody;
+import com.lark.oapi.service.im.v1.model.IsInChatChatMembersResp;
+import com.lark.oapi.service.im.v1.model.IsInChatChatMembersRespBody;
 import com.lark.oapi.service.im.v1.model.ListMember;
 import com.lark.oapi.service.im.v1.resource.ChatMembers;
 import java.util.Locale;
@@ -20,6 +22,8 @@ import java.util.Set;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import me.kezhenxu94.springagent.integration.feishu.tools.FeishuChatAccess.ChatAccessDeniedException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -44,6 +48,11 @@ class FeishuChatAccessTest {
   @Mock private V1 v1;
   @Mock private ChatMembers chatMembers;
 
+  /** What {@code app.feishu.bot-open-id} names: the identity an unattended run is given. */
+  private static final String BOT = "ou_bot";
+
+  private static final Locale CHINESE = Locale.of("zh", "CN");
+
   private FeishuChatAccess access;
 
   @BeforeEach
@@ -55,6 +64,16 @@ class FeishuChatAccessTest {
   }
 
   private FeishuChatAccess accessWithAdmins(final Set<String> admins) {
+    return accessWith(admins, BOT, Locale.ENGLISH);
+  }
+
+  private FeishuChatAccess accessWith(
+      final Set<String> admins, final String botOpenId, final Locale locale) {
+    // The bot's own open_id and the language the refusals are written in are all this class reads
+    // of that record; English so that the sentences asserted below are the ones it answers with.
+    final var properties =
+        new FeishuProperties(
+            null, null, null, null, null, botOpenId, null, locale, null, null, null);
     return new FeishuChatAccess(
         feishu,
         new Admins(
@@ -63,7 +82,9 @@ class FeishuChatAccessTest {
                 new SpringAgentProperties.Ai(admins, Map.of(), null, null, null, null, null, null),
                 Locale.ENGLISH,
                 null,
-                null)));
+                null)),
+        properties,
+        new FeishuMessages(properties));
   }
 
   private static ToolContext context(final String userId, final String chatId) {
@@ -164,5 +185,108 @@ class FeishuChatAccessTest {
     // The tighter bound: a listing pays this per chat, so it stops far sooner than a direct check.
     verify(chatMembers, org.mockito.Mockito.times(FeishuChatAccess.MAX_MEMBER_PAGES_WHEN_FILTERING))
         .get(any());
+  }
+
+  private static IsInChatChatMembersResp isInChat(final boolean member) {
+    final var body = new IsInChatChatMembersRespBody();
+    body.setIsInChat(member);
+    final var resp = new IsInChatChatMembersResp();
+    resp.setData(body);
+    resp.setCode(0);
+    return resp;
+  }
+
+  @Test
+  @DisplayName("the bot's own identity is asked of is_in_chat, since no member list ever holds it")
+  void theBotIsAnsweredByIsInChat() throws Exception {
+    when(chatMembers.isInChat(any())).thenReturn(isInChat(true));
+
+    access.requireMember(context(BOT, "oc_current"), "oc_other");
+
+    verify(chatMembers).isInChat(any());
+    verify(chatMembers, never()).get(any());
+    // And what FeishuIsInChat hands the model with it: a rendered sentence rather than a bundle
+    // key, with its apostrophe intact — which is what MessageFormat eats where a bundle forgets to
+    // double it, and nothing else here would notice.
+    assertThat(access.membership("oc_other", BOT, 1).note())
+        .isEqualTo(
+            "This bot is in oc_other, which is where a bot's membership is written down: it never"
+                + " appears in a member list.");
+  }
+
+  @Test
+  @DisplayName("and is still bounded by it: a chat the bot is not in is refused as anybody's is")
+  void theBotIsRefusedAChatItIsNotIn() throws Exception {
+    when(chatMembers.isInChat(any())).thenReturn(isInChat(false));
+
+    assertThatThrownBy(() -> access.requireMember(context(BOT, "oc_current"), "oc_other"))
+        .isInstanceOf(ChatAccessDeniedException.class)
+        // Said as the bot's own problem, since an unattended run has no "you" to be told about.
+        .hasMessageContaining("this bot is not in chat oc_other")
+        .hasMessageContaining("added to that group");
+    verify(chatMembers, never()).get(any());
+  }
+
+  @Test
+  @DisplayName("an unanswerable is_in_chat is unknown, and unknown is refused for the bot too")
+  void theBotFailsClosed() throws Exception {
+    final var refused = new IsInChatChatMembersResp();
+    refused.setCode(232011);
+    refused.setMsg("Operator can NOT be out of the chat.");
+    when(chatMembers.isInChat(any())).thenReturn(refused);
+
+    assertThatThrownBy(() -> access.requireMember(context(BOT, "oc_current"), "oc_other"))
+        .isInstanceOf(ChatAccessDeniedException.class)
+        .hasMessageContaining("could not be established");
+  }
+
+  @Test
+  @DisplayName("nobody else gets the bot's answer: a person is still read from the member list")
+  void aPersonIsStillWalked() throws Exception {
+    when(chatMembers.get(any())).thenReturn(page(false, null, "ou_someone"));
+
+    assertThatThrownBy(() -> access.requireMember(context("ou_1", "oc_current"), "oc_other"))
+        .isInstanceOf(ChatAccessDeniedException.class);
+    verify(chatMembers, never()).isInChat(any());
+  }
+
+  @Test
+  @DisplayName("a deployment that named no bot open_id matches nobody, blank user ids included")
+  void anUnconfiguredBotOpenIdMatchesNobody() throws Exception {
+    when(chatMembers.get(any())).thenReturn(page(false, null, "ou_someone"));
+
+    assertThatThrownBy(
+            () ->
+                accessWith(Set.of(), null, Locale.ENGLISH)
+                    .requireMember(context("ou_1", "oc_current"), "oc_o"))
+        .isInstanceOf(ChatAccessDeniedException.class);
+    verify(chatMembers, never()).isInChat(any());
+  }
+
+  @Test
+  @DisplayName(
+      "a refusal speaks the workspace's language, since the model repeats it to whoever asked")
+  void refusalsAreTranslated() throws Exception {
+    when(chatMembers.isInChat(any())).thenReturn(isInChat(false));
+
+    assertThatThrownBy(
+            () ->
+                accessWith(Set.of(), BOT, CHINESE)
+                    .requireMember(context(BOT, "oc_current"), "oc_other"))
+        .isInstanceOf(ChatAccessDeniedException.class)
+        .hasMessageContaining("机器人不在群 oc_other 中");
+  }
+
+  @Test
+  @DisplayName("a Feishu error code reaches the model as a code, not as a grouped number")
+  void errorCodesAreNotNumbersToFormat() throws Exception {
+    final var refused = new GetChatMembersResp();
+    refused.setCode(232011);
+    refused.setMsg("Operator can NOT be out of the chat.");
+    when(chatMembers.get(any())).thenReturn(refused);
+
+    assertThat(access.membership("oc_other", "ou_1", 1).note())
+        .contains("232011")
+        .doesNotContain("232,011");
   }
 }

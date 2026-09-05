@@ -980,6 +980,13 @@ app:
     # attacker-authored text their workspace and their credentials. See SituationTriageScenario,
     # which also explains what a scenario cannot withhold.
     #
+    # On this deployment that identity is most naturally the bot itself: app.feishu.bot-open-id
+    # names it, and it is an account nobody signs in as. A chat tool asked to write somewhere then
+    # checks that identity's membership like any other's, except that Feishu's member list holds
+    # people and never bots — so FeishuChatAccess asks members/is_in_chat for it instead, which is
+    # the same bound read where a bot's membership is actually written down. Without that a run
+    # owned by the bot would be refused every chat but the one it was woken in.
+    #
     # group-id and tenant-id under it are optional and say what else that identity belongs to, which
     # is what gives a run the group's and the tenant's shared workspaces alongside its own. Stated
     # here rather than taken from whatever the event named: a situation's group and tenant come from
@@ -1202,6 +1209,10 @@ app:
     encrypt-key: ${FEISHU_ENCRYPT_KEY}
     tenant-id: ${FEISHU_TENANT_ID}
     tenant-domain: ${FEISHU_TENANT_DOMAIN}
+    # The bot's own open_id. Two things read it: whether a group message actually mentioned the
+    # bot (FeishuMessageReceiveHandler), and whether an identity asking to reach a chat is the bot
+    # itself rather than a person (FeishuChatAccess) — which is how an unattended run owned by the
+    # bot, see app.events.sources.<name>.owner above, is allowed the chats the bot is in.
     bot-open-id: ${FEISHU_BOT_OPEN_ID}
     # Which of the two products this app is registered with: FeiShu (the Chinese product,
     # open.feishu.cn) or LarkSuite (the international one, open.larksuite.com). An app id/secret
