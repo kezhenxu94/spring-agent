@@ -379,8 +379,7 @@ public class FeishuTools {
     // and an unanswerable question about access is a refusal, not a pass.
     if (chats.isEmpty() && items.length > 0) {
       throw new FeishuChatAccess.ChatAccessDeniedException(
-          "Refused: which conversation these messages belong to could not be established, and this"
-              + " only reads conversations you are in.");
+          messages.get("access-unknown-chat-of-messages"));
     }
     chats.forEach(chat -> access.requireMember(toolContext, chat));
     log.info("Read {} message(s) from {} {}", items.length, containerIdType, containerId);

@@ -26,6 +26,8 @@ import java.util.Set;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import me.kezhenxu94.springagent.integration.feishu.tools.FeishuChatAccess.ChatAccessDeniedException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -50,6 +52,14 @@ class FeishuBotToolsTest {
 
   private FeishuBotTools tools;
 
+  /**
+   * The bot's own open_id and the language its refusals are written in, which is all of this record
+   * the chat access check reads; the rest is credentials.
+   */
+  private static final FeishuProperties FEISHU =
+      new FeishuProperties(
+          null, null, null, null, null, "ou_bot", null, Locale.ENGLISH, null, null, null);
+
   @BeforeEach
   void setUp() {
     when(feishu.im()).thenReturn(im);
@@ -68,7 +78,9 @@ class FeishuBotToolsTest {
                             Set.of(), Map.of(), null, null, null, null, null, null),
                         Locale.ENGLISH,
                         null,
-                        null))));
+                        null)),
+                FEISHU,
+                new FeishuMessages(FEISHU)));
   }
 
   private static RawResponse raw(final String body) {

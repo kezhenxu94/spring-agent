@@ -561,6 +561,10 @@ app:
     encrypt-key: ${FEISHU_ENCRYPT_KEY}
     tenant-id: ${FEISHU_TENANT_ID}
     tenant-domain: ${FEISHU_TENANT_DOMAIN}
+    # The bot's own open_id. Two things read it: whether a group message actually mentioned the
+    # bot (FeishuMessageReceiveHandler), and whether an identity asking to reach a chat is the bot
+    # itself rather than a person (FeishuChatAccess) — which is how a run owned by the bot rather
+    # than by a person is allowed the chats the bot is in.
     bot-open-id: ${FEISHU_BOT_OPEN_ID}
     # Which of the two products this app is registered with: FeiShu (the Chinese product,
     # open.feishu.cn) or LarkSuite (the international one, open.larksuite.com). An app id/secret
