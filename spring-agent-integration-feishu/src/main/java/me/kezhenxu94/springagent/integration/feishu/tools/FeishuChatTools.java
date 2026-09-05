@@ -315,8 +315,10 @@ public class FeishuChatTools {
           .build();
     }
 
-    // No endpoint answers this for anybody but the token holder, so the member list is the answer.
-    // Bots are not in that list, which is why the bot's own case above cannot be served this way.
+    // No endpoint answers this for anybody but the token holder, so the member list is the answer
+    // for a person. Bots are not in that list, which is why the bot's own case above is asked of
+    // is_in_chat instead — and why FeishuChatAccess asks the same thing when the named open_id is
+    // this bot's own, rather than reporting it absent from a list it could never appear in.
     final var membership = access.membership(chatId, userId, FeishuChatAccess.MAX_MEMBER_PAGES);
     log.info("User {} in chat {}: {}", userId, chatId, membership.member());
     return ChatMembership.builder()
