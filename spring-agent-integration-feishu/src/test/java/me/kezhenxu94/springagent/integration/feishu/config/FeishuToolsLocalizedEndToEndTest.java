@@ -59,7 +59,7 @@ class FeishuToolsLocalizedEndToEndTest {
   private static List<ToolDefinition> everyFeishuTool() {
     return localizedDefinitionsOf(
         new FeishuTools(null, null, null, null, null, null, null, null, null, null),
-        new FeishuChatTools(null, null),
+        new FeishuChatTools(null, null, null),
         new FeishuWikiTools(null),
         new FeishuSheetTools(null, null, null, null, null, null),
         new FeishuDocTools(null, null, null, null, null, null, null, null, null),

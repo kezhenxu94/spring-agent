@@ -26,6 +26,7 @@ import java.util.Set;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import me.kezhenxu94.springagent.integration.feishu.tools.FeishuChatAccess.ChatAccessDeniedException;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,6 +52,14 @@ class FeishuBotToolsTest {
 
   private FeishuBotTools tools;
 
+  /**
+   * The bot's own open_id and the language its refusals are written in, which is all of this record
+   * the chat access check reads; the rest is credentials.
+   */
+  private static final FeishuProperties FEISHU =
+      new FeishuProperties(
+          null, null, null, null, null, "ou_bot", null, Locale.ENGLISH, null, null, null);
+
   @BeforeEach
   void setUp() {
     when(feishu.im()).thenReturn(im);
@@ -70,7 +79,8 @@ class FeishuBotToolsTest {
                         Locale.ENGLISH,
                         null,
                         null)),
-                botOpenId("ou_bot")));
+                FEISHU,
+                new FeishuMessages(FEISHU)));
   }
 
   private static RawResponse raw(final String body) {
@@ -201,13 +211,5 @@ class FeishuBotToolsTest {
     assertThatThrownBy(() -> tools.searchBots("a", null, null, null, null, toolContext()))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("could not be run");
-  }
-
-  /**
-   * The bot's own open_id, which is all of this record {@link FeishuChatAccess} reads; the rest is
-   * credentials.
-   */
-  private static FeishuProperties botOpenId(final String openId) {
-    return new FeishuProperties(null, null, null, null, null, openId, null, null, null, null, null);
   }
 }

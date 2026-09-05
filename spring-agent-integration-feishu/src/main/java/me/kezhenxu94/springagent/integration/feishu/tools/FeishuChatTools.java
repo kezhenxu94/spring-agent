@@ -19,6 +19,7 @@ import lombok.extern.jackson.Jacksonized;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -57,6 +58,7 @@ public class FeishuChatTools {
 
   final Client feishu;
   final FeishuChatAccess access;
+  final FeishuMessages messages;
 
   @Builder
   @Jacksonized
@@ -311,7 +313,7 @@ public class FeishuChatTools {
           .chatId(chatId)
           .subject("bot")
           .member(member)
-          .note("Answered for this bot, which is the identity this application acts as.")
+          .note(messages.get("chat-membership-bot-subject"))
           .build();
     }
 
@@ -327,7 +329,7 @@ public class FeishuChatTools {
         .member(membership.member())
         .note(
             membership.member() == null
-                ? membership.note() + " Say you could not tell rather than reporting them absent."
+                ? messages.get("chat-membership-unknown-hint", membership.note())
                 : membership.note())
         .build();
   }

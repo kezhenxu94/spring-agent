@@ -22,6 +22,7 @@ import java.util.Set;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import me.kezhenxu94.springagent.integration.feishu.tools.FeishuChatAccess.ChatAccessDeniedException;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,6 +51,8 @@ class FeishuChatAccessTest {
   /** What {@code app.feishu.bot-open-id} names: the identity an unattended run is given. */
   private static final String BOT = "ou_bot";
 
+  private static final Locale CHINESE = Locale.of("zh", "CN");
+
   private FeishuChatAccess access;
 
   @BeforeEach
@@ -61,10 +64,16 @@ class FeishuChatAccessTest {
   }
 
   private FeishuChatAccess accessWithAdmins(final Set<String> admins) {
-    return accessWith(admins, BOT);
+    return accessWith(admins, BOT, Locale.ENGLISH);
   }
 
-  private FeishuChatAccess accessWith(final Set<String> admins, final String botOpenId) {
+  private FeishuChatAccess accessWith(
+      final Set<String> admins, final String botOpenId, final Locale locale) {
+    // The bot's own open_id and the language the refusals are written in are all this class reads
+    // of that record; English so that the sentences asserted below are the ones it answers with.
+    final var properties =
+        new FeishuProperties(
+            null, null, null, null, null, botOpenId, null, locale, null, null, null);
     return new FeishuChatAccess(
         feishu,
         new Admins(
@@ -74,9 +83,8 @@ class FeishuChatAccessTest {
                 Locale.ENGLISH,
                 null,
                 null)),
-        // The bot's own open_id is the only part of that record this class reads.
-        new FeishuProperties(
-            null, null, null, null, null, botOpenId, null, null, null, null, null));
+        properties,
+        new FeishuMessages(properties));
   }
 
   private static ToolContext context(final String userId, final String chatId) {
@@ -197,6 +205,13 @@ class FeishuChatAccessTest {
 
     verify(chatMembers).isInChat(any());
     verify(chatMembers, never()).get(any());
+    // And what FeishuIsInChat hands the model with it: a rendered sentence rather than a bundle
+    // key, with its apostrophe intact — which is what MessageFormat eats where a bundle forgets to
+    // double it, and nothing else here would notice.
+    assertThat(access.membership("oc_other", BOT, 1).note())
+        .isEqualTo(
+            "This bot is in oc_other, which is where a bot's membership is written down: it never"
+                + " appears in a member list.");
   }
 
   @Test
@@ -241,8 +256,37 @@ class FeishuChatAccessTest {
     when(chatMembers.get(any())).thenReturn(page(false, null, "ou_someone"));
 
     assertThatThrownBy(
-            () -> accessWith(Set.of(), null).requireMember(context("ou_1", "oc_current"), "oc_o"))
+            () ->
+                accessWith(Set.of(), null, Locale.ENGLISH)
+                    .requireMember(context("ou_1", "oc_current"), "oc_o"))
         .isInstanceOf(ChatAccessDeniedException.class);
     verify(chatMembers, never()).isInChat(any());
+  }
+
+  @Test
+  @DisplayName(
+      "a refusal speaks the workspace's language, since the model repeats it to whoever asked")
+  void refusalsAreTranslated() throws Exception {
+    when(chatMembers.isInChat(any())).thenReturn(isInChat(false));
+
+    assertThatThrownBy(
+            () ->
+                accessWith(Set.of(), BOT, CHINESE)
+                    .requireMember(context(BOT, "oc_current"), "oc_other"))
+        .isInstanceOf(ChatAccessDeniedException.class)
+        .hasMessageContaining("机器人不在群 oc_other 中");
+  }
+
+  @Test
+  @DisplayName("a Feishu error code reaches the model as a code, not as a grouped number")
+  void errorCodesAreNotNumbersToFormat() throws Exception {
+    final var refused = new GetChatMembersResp();
+    refused.setCode(232011);
+    refused.setMsg("Operator can NOT be out of the chat.");
+    when(chatMembers.get(any())).thenReturn(refused);
+
+    assertThat(access.membership("oc_other", "ou_1", 1).note())
+        .contains("232011")
+        .doesNotContain("232,011");
   }
 }

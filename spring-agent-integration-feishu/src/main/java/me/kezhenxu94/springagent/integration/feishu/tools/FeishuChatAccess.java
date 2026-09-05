@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.stereotype.Component;
@@ -70,6 +71,7 @@ public class FeishuChatAccess {
   final Client feishu;
   final Admins admins;
   final FeishuProperties feishuProperties;
+  final FeishuMessages messages;
 
   /**
    * @param member true, false, or null where the member list could not be read to the end and so
@@ -108,31 +110,16 @@ public class FeishuChatAccess {
       return;
     }
     log.warn("Refused {} access to chat {}: {}", userId, chatId, membership.note());
-    // Said as what it is when the identity is the bot's own: an unattended run told "you are not
-    // in that chat" has nobody to be, and reporting that it needs adding to the group is the one
-    // thing that gets it fixed.
-    if (isBot(userId)) {
-      throw new ChatAccessDeniedException(
-          membership.member() == null
-              ? "Refused: whether this bot is in chat "
-                  + chatId
-                  + " could not be established, and it only acts in chats it is in. Say so rather"
-                  + " than trying another way."
-              : "Refused: this bot is not in chat "
-                  + chatId
-                  + ", so it cannot act there. Say that it has to be added to that group rather"
-                  + " than trying another way.");
-    }
+    // Four sentences rather than two, because the identity behind the run decides which of them is
+    // true: told "you are not in that chat", an unattended run owned by the bot has nobody to be,
+    // and what gets it fixed — somebody adding the bot to the group — goes unsaid. The message the
+    // model reads is the whole of what it can explain the refusal from, so it says which it is.
     throw new ChatAccessDeniedException(
-        membership.member() == null
-            ? "Refused: whether you are in chat "
-                + chatId
-                + " could not be established, and this only answers for chats you are in. Say so"
-                + " rather than trying another way."
-            : "Refused: you are not in chat "
-                + chatId
-                + ", and this only answers for chats you are in. Say so rather than trying another"
-                + " way.");
+        messages.get(
+            isBot(userId)
+                ? membership.member() == null ? "access-unknown-chat-bot" : "access-denied-chat-bot"
+                : membership.member() == null ? "access-unknown-chat" : "access-denied-chat",
+            chatId));
   }
 
   /**
@@ -207,25 +194,24 @@ public class FeishuChatAccess {
         // Not an exception: "the bot is not in this chat" comes back this way, and the caller's
         // question — may this person see it — is answered by that, not derailed by it.
         return new Membership(
-            null, "The member list could not be read: " + resp.getCode() + " " + resp.getMsg());
+            null,
+            // The code as text, not as a number: an error code put through MessageFormat comes out
+            // grouped — 232011 as "232,011" — which is not a code anybody can look up.
+            messages.get(
+                "chat-membership-unreadable", String.valueOf(resp.getCode()), resp.getMsg()));
       }
       final var data = resp.getData();
       final var items = data.getItems() == null ? new ListMember[0] : data.getItems();
       if (Stream.of(items).anyMatch(member -> userId.equals(member.getMemberId()))) {
-        return new Membership(true, "Found in the member list of " + chatId + ".");
+        return new Membership(true, messages.get("chat-membership-found", chatId));
       }
       if (!Boolean.TRUE.equals(data.getHasMore()) || Strings.isNullOrEmpty(data.getPageToken())) {
-        return new Membership(false, "Not in the member list of " + chatId + ", read in full.");
+        return new Membership(false, messages.get("chat-membership-absent", chatId));
       }
       pageToken = data.getPageToken();
     }
     return new Membership(
-        null,
-        "Unknown, not no: chat "
-            + chatId
-            + " has more than "
-            + maxPages * MEMBER_PAGE_SIZE
-            + " members and its list was not read to the end.");
+        null, messages.get("chat-membership-too-many", chatId, maxPages * MEMBER_PAGE_SIZE));
   }
 
   /**
@@ -268,21 +254,15 @@ public class FeishuChatAccess {
           resp.getMsg());
       return new Membership(
           null,
-          "Whether this bot is in "
-              + chatId
-              + " could not be read: "
-              + resp.getCode()
-              + " "
-              + resp.getMsg());
+          messages.get(
+              "chat-membership-bot-unreadable",
+              chatId,
+              String.valueOf(resp.getCode()),
+              resp.getMsg()));
     }
     final var member = Boolean.TRUE.equals(resp.getData().getIsInChat());
     return new Membership(
         member,
-        member
-            ? "This bot is in "
-                + chatId
-                + ", which is what a bot's membership is read from: it"
-                + " never appears in a member list."
-            : "This bot is not in " + chatId + ", so it cannot read or write there.");
+        messages.get(member ? "chat-membership-bot-in" : "chat-membership-bot-out", chatId));
   }
 }
