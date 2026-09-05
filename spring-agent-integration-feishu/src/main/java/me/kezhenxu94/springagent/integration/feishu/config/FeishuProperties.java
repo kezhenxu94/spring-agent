@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.integration.feishu.config;
 
+import com.google.common.base.Strings;
 import com.lark.oapi.core.enums.BaseUrlEnum;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -18,11 +19,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     where the app was registered. Defaults to {@code FeiShu}.
  * @param botOpenId the bot's own open_id, which is an identity two decisions turn on: whether a
  *     group message mentioned the bot rather than somebody else ({@code
- *     FeishuMessageReceiveHandler}), and whether a run asking to reach a chat belongs to the bot
- *     rather than to a person ({@link
- *     me.kezhenxu94.springagent.integration.feishu.tools.FeishuChatAccess}) — the second is what
- *     lets a run owned by the agent itself, an event triage run, write to the chats the bot is in,
- *     since a member list never holds a bot.
+ *     FeishuMessageReceiveHandler}), and whether the identity behind a run is the bot rather than a
+ *     person, which is {@link #isBot} and what both access checks ask — a run owned by the agent
+ *     itself, an event triage run, reaches the chats the bot is in and the documents Feishu grants
+ *     it, neither of which any member or collaborator list records.
  * @param locale which language the cards speak. Defaults to the host's, so setting it is for a
  *     workspace whose language differs from the machine the agent runs on. See {@link
  *     FeishuMessages} for what it selects.
@@ -69,6 +69,23 @@ public record FeishuProperties(
     if (observedChatIds == null) {
       observedChatIds = Set.of();
     }
+  }
+
+  /**
+   * Whether {@code openId} is the bot itself rather than a person.
+   *
+   * <p>Here rather than in either access check because both ask it and the answer is a property of
+   * the deployment, not of chats or of documents: {@link
+   * me.kezhenxu94.springagent.integration.feishu.tools.FeishuChatAccess} asks it to read the bot's
+   * membership off {@code is_in_chat} instead of a member list that never holds a bot, and {@link
+   * me.kezhenxu94.springagent.integration.feishu.tools.FeishuDriveAccess} to ask Feishu what it
+   * grants the bot instead of a collaborator list. Both are the same identity question.
+   *
+   * <p>False for everybody where no bot open_id was configured, blank ids included: matching a
+   * blank against a blank would let a run with no identity through both checks.
+   */
+  public boolean isBot(final String openId) {
+    return !Strings.isNullOrEmpty(botOpenId) && botOpenId.equals(openId);
   }
 
   @SneakyThrows
