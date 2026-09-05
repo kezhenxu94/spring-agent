@@ -5,7 +5,8 @@ for the Java developer embedding it: what to depend on, what to configure, how t
 what the extension points are. If you only want to run the applications that ship here, read the
 [README](../README.md) instead; if you want to change this repository, read
 [contributing.md](contributing.md). [architecture.md](architecture.md) draws what the paragraphs
-below describe, if a picture first is easier.
+below describe, if a picture first is easier, and each module carries a `README.md` of its own —
+[integrations.md](integrations.md) is the index.
 
 Artifacts are published to Maven Central under the `me.kezhenxu94` group. Java 21 is the floor —
 the modules target bytecode 21 and use nothing newer.
@@ -831,23 +832,23 @@ binary breaks at runtime while the JVM build passes.
 
 | Module | What it adds |
 | --- | --- |
-| `spring-agent-core` | The runtime, the built-in tools, the SPIs. Backend-agnostic |
-| `spring-agent-persistence-jpa` | Relational storage, SQLite by default |
-| `spring-agent-persistence-mongodb` | MongoDB storage |
-| `spring-agent-persistence-redis` | Redis storage; needs Redis 8 or Redis Stack |
-| `spring-agent-tools-shell-kubernetes` | A disposable per-user sandbox Pod for the shell tools |
-| `spring-agent-tools-shell-docker` | The same sandbox on a local Docker daemon |
-| `spring-agent-events` | Correlates observations into situations and wakes the agent for the ones worth an opinion; serves `/events/webhooks/<source>` |
-| `spring-agent-integration-github` | Reads GitHub webhook deliveries as observations |
-| `spring-agent-integration-gitlab` | The same for GitLab |
-| `spring-agent-integration-grafana` | The same for Grafana alert notifications |
-| `spring-agent-integration-email` | A watched IMAP mailbox as observations. Not a webhook: it dials out and holds the connection, so it carries its own `app.email.enabled` on top of `app.events.enabled`. Reports every message it reads, with an `actor` only where DKIM vouched for the sender, so an intake of your own can hear about mail from a stranger; refuses to start without a `trusted-actors` list, which is what keeps such a message out of a triage run |
-| `spring-agent-integration-feishu` | Feishu/Lark chats and cards as an agent surface, plus its docs, sheets, base and wiki tools, and drive import/export |
-| `spring-agent-integration-slack` | Slack channels and Block Kit messages as an agent surface: streaming replies, a stop button, an asynchronous question form, greetings, chat observation and the message/channel/file tools. Written against Bolt, the Slack SDK's own application framework, over a Socket Mode connection |
-| `spring-agent-rag-milvus` | The knowledge base, and the only implementation of core's `KnowledgeBase` |
-| `spring-agent-integration-websocket` | A browser as an agent surface: a single-page UI, the REST endpoints behind it, and runs streamed live over STOMP/WebSocket. Contributes no `SecurityFilterChain` — the including application owns that and wires in this module's `WebAuthoritiesMapper` — and needs `@EnableScheduling` on it |
-| `spring-agent-app-webui` | The deployable that is nothing but the runtime and the module above; not published, it ships as an image |
-| `spring-agent-app-web-feishu` | The same deployable with the Feishu surface as well, so a conversation can be handed between a chat and a browser; not published, it ships as an image |
+| [`spring-agent-core`](../spring-agent-core/README.md) | The runtime, the built-in tools, the SPIs. Backend-agnostic |
+| [`spring-agent-persistence-jpa`](../spring-agent-persistence-jpa/README.md) | Relational storage, SQLite by default |
+| [`spring-agent-persistence-mongodb`](../spring-agent-persistence-mongodb/README.md) | MongoDB storage |
+| [`spring-agent-persistence-redis`](../spring-agent-persistence-redis/README.md) | Redis storage; needs Redis 8 or Redis Stack |
+| [`spring-agent-tools-shell-kubernetes`](../spring-agent-tools-shell-kubernetes/README.md) | A disposable per-user sandbox Pod for the shell tools |
+| [`spring-agent-tools-shell-docker`](../spring-agent-tools-shell-docker/README.md) | The same sandbox on a local Docker daemon |
+| [`spring-agent-events`](../spring-agent-events/README.md) | Correlates observations into situations and wakes the agent for the ones worth an opinion; serves `/events/webhooks/<source>` |
+| [`spring-agent-integration-github`](../spring-agent-integration-github/README.md) | Reads GitHub webhook deliveries as observations |
+| [`spring-agent-integration-gitlab`](../spring-agent-integration-gitlab/README.md) | The same for GitLab |
+| [`spring-agent-integration-grafana`](../spring-agent-integration-grafana/README.md) | The same for Grafana alert notifications |
+| [`spring-agent-integration-email`](../spring-agent-integration-email/README.md) | A watched IMAP mailbox as observations. Not a webhook: it dials out and holds the connection, so it carries its own `app.email.enabled` on top of `app.events.enabled`. Reports every message it reads, with an `actor` only where DKIM vouched for the sender, so an intake of your own can hear about mail from a stranger; refuses to start without a `trusted-actors` list, which is what keeps such a message out of a triage run |
+| [`spring-agent-integration-feishu`](../spring-agent-integration-feishu/README.md) | Feishu/Lark chats and cards as an agent surface, plus its docs, sheets, base and wiki tools, and drive import/export |
+| [`spring-agent-integration-slack`](../spring-agent-integration-slack/README.md) | Slack channels and Block Kit messages as an agent surface: streaming replies, a stop button, an asynchronous question form, greetings, chat observation and the message/channel/file tools. Written against Bolt, the Slack SDK's own application framework, over a Socket Mode connection |
+| [`spring-agent-rag-milvus`](../spring-agent-rag-milvus/README.md) | The knowledge base, and the only implementation of core's `KnowledgeBase` |
+| [`spring-agent-integration-websocket`](../spring-agent-integration-websocket/README.md) | A browser as an agent surface: a single-page UI, the REST endpoints behind it, and runs streamed live over STOMP/WebSocket. Contributes no `SecurityFilterChain` — the including application owns that and wires in this module's `WebAuthoritiesMapper` — and needs `@EnableScheduling` on it |
+| [`spring-agent-app-webui`](../spring-agent-app-webui/README.md) | The deployable that is nothing but the runtime and the module above; not published, it ships as an image |
+| [`spring-agent-app-web-feishu`](../spring-agent-app-web-feishu/README.md) | The same deployable with the Feishu surface as well, so a conversation can be handed between a chat and a browser; not published, it ships as an image |
 
 **Only one chat surface may be on a classpath at a time.** `spring-agent-integration-feishu` and
 `spring-agent-integration-slack` each register a `@Bean AgentResponseListener` that claims every

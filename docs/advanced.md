@@ -21,8 +21,8 @@ client in the process that produced the answer.
 ./gradlew :spring-agent-app-web-feishu:bootRun
 ```
 
-Everything [the web UI](../README.md#run-the-web-ui) takes, plus everything
-[the Feishu server](../README.md#run-the-server) takes — with one Feishu app serving both, which is
+Everything [the web UI](../spring-agent-app-webui/README.md) takes, plus everything
+[the Feishu server](../spring-agent-app-feishu/README.md) takes — with one Feishu app serving both, which is
 what `FEISHU_APP_ID` and `FEISHU_APP_SECRET` already give you.
 
 ### It refuses to start if the two halves are not the same Feishu app

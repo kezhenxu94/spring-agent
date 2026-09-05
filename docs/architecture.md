@@ -1,9 +1,10 @@
 # Architecture
 
 One picture per question, for anybody orienting themselves in this repository — before reading
-[`sdk.md`](sdk.md) to embed it or [`contributing.md`](contributing.md) to change it. Every box below
-is a real type or module; nothing here is aspirational. Where a diagram simplifies, the prose under
-it says what it left out.
+[`sdk.md`](sdk.md) to embed it, [`contributing.md`](contributing.md) to change it, or
+[`integrations.md`](integrations.md) to find the module that does one particular thing (every module
+has a README of its own). Every box below is a real type or module; nothing here is aspirational.
+Where a diagram simplifies, the prose under it says what it left out.
 
 The diagrams are Mermaid, which GitHub renders in place, so they diff like the rest of the
 repository. They describe *structure* — what talks to what, and what is deliberately not allowed to.

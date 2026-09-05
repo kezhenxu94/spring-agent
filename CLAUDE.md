@@ -112,32 +112,49 @@ Text the agent writes itself (as opposed to what the model produced) is localize
 
 ## Documentation
 
-`README.md` at the root, everything else under `docs/`. Five documents, five audiences, and a
-change that alters behaviour updates the relevant one in the same commit:
+Documentation is split by audience, and **every module carries a `README.md` of its own** stating
+whose it is in the first line. A change that alters behaviour updates the relevant page in the same
+commit.
 
-- **`README.md`** — somebody running the prebuilt server or CLI. Features as an end user meets them,
-  how to start each application, the switches and the environment variables. Update it when a
-  feature becomes user-visible, when starting or configuring either application changes, or when a
-  switch gains or loses a value.
+Root documents:
+
+- **`README.md`** — somebody deciding whether to run this at all. An overview and an index: the
+  feature story, one quick start, the table of applications, the two switches. Per-application setup
+  belongs in that application's README, not here. Update it when a feature becomes user-visible, when
+  the set of applications changes, or when a switch gains or loses a value.
+- **`docs/integrations.md`** — anybody looking for a module or writing one. What an integration *is*
+  here, the kinds there are, the contract every module keeps, the one-chat-surface rule, and the index
+  of every module README. Update it when a module is added or removed, or when something becomes true
+  of every integration.
+- **`docs/events.md`** — an operator turning event sources on. The observing SPIs, how a source is
+  configured, playbooks, trusted actors, and what a triage run may do. Update it when the observing
+  path, a source's configuration, or a triage run's identity changes.
 - **`docs/sdk.md`** — a Java developer embedding the published modules. Dependencies, minimum
   configuration, `SpringAgent`/`AgentRequest`/`AgentResponseListener`, scenarios, tools and tool
   context, the observing and knowledge SPIs, persistence, native image, the module table. Update it
-  when a public API, SPI or extension point changes, when a module is published or removed, or when
-  a scenario, listener hook or tool-context key is added.
-- **`docs/architecture.md`** — anybody orienting themselves, before they pick one of the three
-  below. Mermaid diagrams of the surfaces, the two ways a run starts, what a run is offered, where
-  state lives, and which module may depend on which. Update it when a module, a surface, an event
-  source or a store is added or removed, or when one of those relationships changes. Keep it
-  structural: it is not a configuration reference and must not grow into one.
+  when a public API, SPI or extension point changes, when a module is published or removed, or when a
+  scenario, listener hook or tool-context key is added.
+- **`docs/architecture.md`** — anybody orienting themselves, before picking one of the others. Mermaid
+  diagrams of the surfaces, the two ways a run starts, what a run is offered, where state lives, and
+  which module may depend on which. Keep it structural: it is not a configuration reference and must
+  not grow into one.
 - **`docs/contributing.md`** — somebody changing this repository. Build/test/lint, module layout and
-  the classpath rules, how to add each kind of integration, conventions. Update it when the build,
-  the test layout or the module rules change, or when a new *kind* of integration becomes possible.
+  the classpath rules, how to add each kind of integration, conventions. Update it when the build, the
+  test layout or the module rules change, or when a new *kind* of integration becomes possible.
 - **`docs/advanced.md`** — a deployment doing something most deployments do not. What is off by
-  default, what turning it on costs, and what it cannot do. A feature belongs here rather than in
-  the README when it needs more than one application configured together, or when the ordinary way
-  to run the agent never meets it — handing a conversation between a chat and the browser is the
-  first entry. Keep the README's mention of one to a paragraph and a link: the README is for
-  somebody getting the thing running.
+  default, what turning it on costs, and what it cannot do. A feature belongs here when it needs more
+  than one application configured together, or when the ordinary way to run the agent never meets it.
+
+Module READMEs:
+
+- A **library module** (`spring-agent-core`, `spring-agent-integration-*`, `spring-agent-persistence-*`,
+  `spring-agent-tools-shell-*`, `spring-agent-rag-*`, `spring-agent-events`) is written for the
+  **developer** depending on it or changing it: what it contributes, the load-bearing design
+  decisions, the gotchas, and a pointer to the switch an operator sets — not the operator's procedure.
+- An **application module** (`spring-agent-app-*`) is written for whoever **deploys** it: how to start
+  it, the variables it needs, the console setup on the platform it talks to, and what it carries,
+  linking down to each carried module rather than restating it.
+- A new module gets its README in the commit that adds it, plus a row in `docs/integrations.md`.
 
 None of them duplicates `application.yaml`, which stays the configuration reference — they link to
 it. Same for the code: link to the class that explains itself rather than copying its reasoning into
