@@ -1210,9 +1210,13 @@ app:
     tenant-id: ${FEISHU_TENANT_ID}
     tenant-domain: ${FEISHU_TENANT_DOMAIN}
     # The bot's own open_id. Two things read it: whether a group message actually mentioned the
-    # bot (FeishuMessageReceiveHandler), and whether an identity asking to reach a chat is the bot
-    # itself rather than a person (FeishuChatAccess) — which is how an unattended run owned by the
-    # bot, see app.events.sources.<name>.owner above, is allowed the chats the bot is in.
+    # bot (FeishuMessageReceiveHandler), and whether the identity behind a run is the bot itself
+    # rather than a person — which both access checks ask, because a chat's member list and a
+    # document's collaborator list record people and never the bot. FeishuChatAccess then reads
+    # its membership off members/is_in_chat and FeishuDriveAccess off permissions/members/auth,
+    # both of which answer for whoever the token represents, which is always this bot. That is
+    # how an unattended run owned by the bot, see app.events.sources.<name>.owner above, reaches
+    # the chats it is in and the documents Feishu grants it, and nothing else.
     bot-open-id: ${FEISHU_BOT_OPEN_ID}
     # Which of the two products this app is registered with: FeiShu (the Chinese product,
     # open.feishu.cn) or LarkSuite (the international one, open.larksuite.com). An app id/secret
