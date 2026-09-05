@@ -8,17 +8,18 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-21%2B-orange)](#)
 
-A tool-using agent you can run as it is: a server whose surface is a Feishu/Lark bot, and a command
-line for your own machine. Both give the agent a shell sandbox, MCP servers, skills, memories,
-credentials, scheduled tasks, subagents, a knowledge base and file publishing — and let it pick up
-new abilities in conversation, without a redeploy.
+A tool-using agent you can run as it is: one runtime behind a Feishu/Lark bot, a Slack bot, a
+browser, or a command line for your own machine. Each gives the agent a shell sandbox, MCP servers,
+skills, memories, credentials, scheduled tasks, subagents, a knowledge base and file publishing — and
+lets it pick up new abilities in conversation, without a redeploy.
 
 It is also a library. If you are building your own agent on Spring Boot 4 and Spring AI, read
 [docs/sdk.md](docs/sdk.md); if you want to change this repository, read
 [docs/contributing.md](docs/contributing.md). For how the pieces fit together — the surfaces, the
 event sources, what a run is offered and where state lives — [docs/architecture.md](docs/architecture.md)
-draws it. [docs/advanced.md](docs/advanced.md) covers what a deployment can turn on that most do not
-need.
+draws it. [docs/integrations.md](docs/integrations.md) indexes every module and its own README,
+[docs/events.md](docs/events.md) covers the agent watching rather than waiting, and
+[docs/advanced.md](docs/advanced.md) what a deployment can turn on that most do not need.
 
 Every property and environment variable is documented in place, with the reason for its default, in
 [`spring-agent-app-feishu/src/main/resources/application.yaml`](spring-agent-app-feishu/src/main/resources/application.yaml).
@@ -154,413 +155,71 @@ Other knobs, all optional: `USER_MODELS_MAX_PER_USER` (default 10), `USER_MODELS
 ## It can also speak first
 
 Given `app.events.enabled`, the agent watches instead of waiting: alerts and code-hosting webhooks
-arrive at `/events/webhooks/<source>`, group chat messages it was not addressed in arrive through
-the Feishu integration. Related events are correlated into one *situation* and left to settle — a
-thousand alerts from one outage become one run, not a thousand — and only then is the agent woken to
-decide whether it has anything worth saying. Silence is a normal answer.
+arrive at `/events/webhooks/<source>`, mail arrives in a watched mailbox, group chat messages it was
+not addressed in arrive through the chat integration. Related events are correlated into one
+*situation* and left to settle — a thousand alerts from one outage become one run, not a thousand —
+and only then is the agent woken to decide whether it has anything worth saying. Silence is a normal
+answer.
 
-GitHub, GitLab and Grafana ship as sources. Each authenticates its own deliveries, and a source
-nobody configured a secret for refuses everything, so the endpoint is safe to expose but useless
-until somebody sets it up. Timings — how long to wait, how often at most, when to close a situation
-— are per source, because an alert and a chat want very different manners. See the `app.events`
-block in `application.yaml`.
+GitHub, GitLab, Grafana and a mailbox ship as sources. Each authenticates its own deliveries, and a
+source nobody configured a secret for refuses everything, so the endpoint is safe to expose but
+useless until somebody sets it up. What the agent should actually *do* about a source's events is not
+a setting but a **playbook**: documents you write into the knowledge base and edit like any other,
+without a deployment.
 
-Who a source *runs as* is `app.events.sources.<name>.owner`. Its `user-id` must be an identity of
-the agent's own and never a person's, since a triage run assumes it along with that identity's files,
-credentials and MCP servers. `group-id` and `tenant-id` beside it are optional and say what else that
-identity belongs to, which is what gives the run the group's and the tenant's shared workspaces as
-well as its own — configured rather than taken from whatever the event named, so a surface that
-reports a tenant cannot pick the shared workspace an unattended run writes into.
+It is all off by default, and there is more to decide here than anywhere else in the agent — who a
+source runs as, who it will listen to, and what any of that is worth against text a stranger wrote.
+**[docs/events.md](docs/events.md) is the whole of it.**
 
-Who a source will listen to is `app.events.sources.<name>.trusted-actors`: a list of regular
-expressions, matched whole and without regard to case against an identity the source authenticated —
-a GitHub login inside a body the signature already covered, say. Anything else is dropped before it
-is recorded, and the sender is told nothing, since an answer that distinguished the two would let
-anybody read the list back. Leave it out and everybody is heard, which is what an existing
-deployment keeps on upgrading; every source without one is named in the log at startup. A private
-repository or an internal GitLab where everybody is already trusted says so as `['.*']`.
+## Run it
 
-It is worth being plain about what this does and does not buy. Everything an event carries was
-written by whoever caused it, and the triage prompts say so at length — but a model has no privilege
-separation between the parts of what it is shown, so that framing raises the cost of an attack
-rather than making it impossible. Bounding who can send at all is the part that can actually be
-decided, and this is where it is decided.
+Five applications, one runtime. Pick the surface you want; each has its own page with the setup steps,
+its variables and what it carries.
 
-Mail is a source too, and the only one that dials out rather than being dialled: `app.email.*`
-watches an IMAP mailbox and reads what arrives as observations. It is the strictest of the sources
-and refuses to start unless told whose mail to accept, because unlike a signed webhook a mailbox is
-reachable by anybody who learns the address. A sender counts as somebody only where DKIM verified
-their domain, which this reads from the `Authentication-Results` header your own mail server writes
-— so it works only where the mailbox is fed by a server you control that verifies DKIM and strips
-inbound forgeries of that header. Nothing ever replies to a sender.
+| | | |
+| --- | --- | --- |
+| [`spring-agent-app-feishu`](spring-agent-app-feishu/README.md) | A Feishu/Lark bot | The published image; carries every optional module |
+| [`spring-agent-app-slack`](spring-agent-app-slack/README.md) | A Slack bot | The same server, Slack instead |
+| [`spring-agent-app-webui`](spring-agent-app-webui/README.md) | A browser | The runtime with everything a run does made visible, and no chat platform |
+| [`spring-agent-app-web-feishu`](spring-agent-app-web-feishu/README.md) | Both at once | So a conversation can be handed between a Feishu chat and the browser |
+| [`spring-agent-app-cli`](spring-agent-app-cli/README.md) | Your own terminal | SQLite under `~/.spring-agent`, and a shell on your own machine |
 
-What the agent should actually *do* about a source's events — what matters, what to check first, who
-to tell and where — is not a setting. It is a **playbook**: documents you write into the knowledge
-base and then edit like any other document, without a deployment. Each source names which of them
-are its playbook and what to look them up with (`playbook.query` and `playbook.filter`), and a
-triage run is given them before it decides anything. The base is always the one owned by that
-source's `owner.user-id` — never a group or tenant, whether an incoming event named it or the owner
-was configured with it — so what the agent is
-told to do can never be chosen by whoever sent the event. A source with no playbook triages on the
-shipped prompt alone, as before.
-
-Nothing routes a run's output any more: `app.events.sources.<name>.route` is now only where a triage
-run's **failure** is reported. Those runs are unattended, so nothing else would ever mention one that
-broke; the notice is sent by the application rather than by the agent, since the failure most worth
-hearing about is the one where the model is what broke. It needs a surface that can send — the
-Feishu integration can — and is otherwise logged.
-
-## Run the server
+The quickest of them:
 
 ```sh
 docker run --env-file .env -p 8080:8080 ghcr.io/kezhenxu94/spring-agent:latest
 ```
 
-Or from a clone: `./gradlew :spring-agent-app-feishu:bootRun`.
+Six variables have no defaults and nothing starts without them — `OPENAI_BASE_URL`, `OPENAI_API_KEY`,
+`OPENAI_MODEL`, `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`. Any OpenAI-compatible
+endpoint will do; the embedding model is needed even if you index nothing, since tool search is built
+by embedding tool descriptions. Each application's page lists what else it needs.
 
-These have no defaults and the application will not start without them — `OPENAI_BASE_URL`,
-`OPENAI_API_KEY`, `OPENAI_MODEL`, `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`. Any
-OpenAI-compatible endpoint will do; the embedding model is needed even if you index nothing, since
-tool search is built by embedding tool descriptions.
-
-The server ships with the Feishu/Lark integration wired up, so a bot in a chat is an agent surface
-with no code written. It expects the Feishu block too — `FEISHU_APP_ID`, `FEISHU_APP_SECRET`,
-`FEISHU_ENCRYPT_KEY`, `FEISHU_TENANT_ID`, `FEISHU_TENANT_DOMAIN`, `FEISHU_BOT_OPEN_ID` — which also
-back the login on published-file pages. Set `APP_FEISHU_ENABLED=false` to leave the whole
-integration out; the shipped `application.yaml` still names the app id and secret for that login, so
-override the `spring.security.oauth2` block as well if you run without Feishu at all.
-
-Opening a chat with the bot for the first time is answered with a welcome card: what the agent is,
-and a few things you can tap to ask it rather than having to work out what to type. After that,
-opening the chat says nothing — unless the agent has learned to do something you have not been told
-about, in which case you get one card listing exactly what changed since your last visit, and
-nothing you have already read.
-
-That "since" is the notes under
-[`feishu/updates/`](spring-agent-integration-feishu/src/main/resources/feishu/updates), one markdown
-file per version, named `1.md`, `2.md` and so on; the greeting itself is
-[`feishu/welcome.md`](spring-agent-integration-feishu/src/main/resources/feishu/welcome.md). The
-agent records the number of the last note each person was shown, which is what lets it tell them
-only the new ones. To write your own, point `FEISHU_WELCOME` and `FEISHU_UPDATES` at files of your
-own — see `app.feishu` in
-[`application.yaml`](spring-agent-app-feishu/src/main/resources/application.yaml) for the rules, including
-what a gap in the numbering does.
-
-To receive any of this the app's event subscription needs **用户和机器人的会话首次被创建**
-(`p2p_chat_create`) and **用户进入与机器人的会话**
-(`im.chat.access_event.bot_p2p_chat_entered_v1`) added in the Feishu console. Only the second is
-required — the first is delivered over webhooks only, so a deployment on the long connection is
-greeted by the second either way.
-
-A turn is answered in a card that is written as the run goes: the answer as it streams, what the
-model thought, every tool call and what it returned, a panel per subagent, the to-do list, and what
-the turn cost. Feishu allows a card 30KB and 200 elements, and a long turn can outgrow both — so
-when a card fills up the agent finishes it and replies another onto the same message, carrying on
-where it left off, as many times as the turn needs. A very long answer arrives as a run of cards
-rather than stopping partway; the stop button is always on the one still being written.
-
-**What the agent makes in Feishu belongs to the person who asked for it.** The first time somebody
-has the agent create a document, a spreadsheet, a base or a file, it makes them a folder of their
-own in the bot's drive space, hands them its ownership, and puts that and everything after it in
-there — so one person's work is not sitting in a shared folder beside everybody else's. Each
-document, spreadsheet, base, uploaded file and imported document is handed over the same way as it
-is made, so it counts against your drive and stays yours if the bot is ever uninstalled; in a group
-chat the chat itself is left able to view it. The bot keeps full access to everything it hands over,
-which is what lets it go on editing what it made for you. Ask the agent where your files are and it
-will give you the link.
-
-**And it will only open what Feishu would have shown you.** Every call the bot makes carries its own
-credentials, not yours, so left alone it would read out any document it can see to whoever asked.
-Instead each call naming a document, spreadsheet, base, file, folder or wiki space is checked
-against that thing's collaborators first: you are let in if you are on the list, or if it is shared
-with a chat you are in, and refused in so many words otherwise. A document shared only by link is
-refused as well — add yourself or the chat as a collaborator. The same rule already covered reading
-a conversation and now covers writing to one: the agent will not post a message or a file into a
-group you are not in, and will not fetch a file out of one. The people in `ADMINS` are exempt, as
-they are everywhere else.
-
-Everything else is optional and set in
-[`application.yaml`](spring-agent-app-feishu/src/main/resources/application.yaml). Two switches decide what
-the deployment actually is:
+Two switches decide what a deployment actually is, and they mean the same thing in every application:
 
 | Property (env var) | Values | Default |
 | --- | --- | --- |
 | `app.persistence.type` (`PERSISTENCE_TYPE`) | `jpa` (SQLite, no server needed), `mongodb`, `redis` | `jpa` |
 | `app.ai.tools.shell.type` (`TOOLS_SHELL_TYPE`) | `none`, `kubernetes`, `docker`, `local` | `none` |
 
-The shell defaults to `none` because it runs commands the model wrote; turn it on deliberately, and
+The shell defaults to `none` because it runs commands the model wrote. Turn it on deliberately, and
 prefer `kubernetes` or `docker`, which give each user a disposable sandbox, over `local`, which does
-not.
-
-One more knob is worth knowing about before a tool surprises you with a wall of text.
-`app.ai.tools.max-result-chars` (`TOOLS_MAX_RESULT_CHARS`, default `30000`) is how long *any*
-tool's result may be — the shell, an MCP server, a webhook reader alike — before it is written to
-your workspace and the agent handed the path instead of the text. Nothing is lost: the agent reads
-the file, greps it, or sends it to you. It is counted in characters rather than tokens, so the same
-number is far more text in English than in Chinese; lower it if your tools answer in Chinese and
-runs feel like they run out of room.
-
-The agent does not have to read such a file back to use it, either. Where a tool parameter says it
-takes a file reference, the agent can give it `@file:<path>` — or `@file:<path>#/pointer/into/the/json`
-for one part — and the saved result goes into the call without passing through the model a second
-time. `app.ai.tools.max-inlined-input-chars` (`TOOLS_MAX_INLINED_INPUT_CHARS`, default `300000`)
-bounds how much one such reference may carry. Which parameters accept one is fixed in the code
-rather than configurable, deliberately: a parameter that reads a file is a parameter a tool call
-can be steered into reading a file with, and some runs act on text written by strangers.
-
-Two notes for a deployment running more than one replica. These files live under
-`app.storage.location`, so unless that is shared storage a follow-up turn served by another replica
-cannot see them; and a path the agent noted in an earlier conversation may since have been cleaned
-up, in which case it is told so and re-runs the tool.
-
-Scheduled tasks are safe across replicas: the schedule is a column on the task rather than a timer
-in one process, and each occurrence is won by exactly one replica before it fires. The one thing
-they must agree on is `TZ`, since a cron expression is resolved against the JVM's default zone.
-
-The default pair needs nothing running alongside it. For the others, `docker-compose.yaml` has a
-profile per value so the containers cannot drift from the application's own choice:
+not. `docker-compose.yaml` has a compose profile per value of both switches, so the containers and the
+application's own choice cannot drift apart:
 
 ```sh
 PERSISTENCE_TYPE=redis VECTORSTORE_TYPE=milvus \
   COMPOSE_PROFILES=$PERSISTENCE_TYPE,$VECTORSTORE_TYPE docker compose up   # backends only
 ```
 
-Add `app` to `COMPOSE_PROFILES` to run everything in containers. The knowledge base has a profile of
-its own, `rag`, and a switch that goes with it — the profile starts Milvus, the variable is what
-makes the application use it:
+Add `app` to `COMPOSE_PROFILES` to run everything in containers. The default pair needs no server at
+all.
 
-```sh
-RAG_ENABLED=true COMPOSE_PROFILES=rag docker compose up
-```
+## The modules
 
-Other things worth knowing before a real deployment:
-
-- `ADMINS` lists the people this deployment trusts with everybody else's work, by user id (a Feishu
-  open id). An admin's agent reads and posts in chats they are not a member of; they can answer a
-  question the agent put to somebody else and speak into a run already going for somebody else; and
-  they get the admin-only tools, which today are the ones that write the triage playbooks
-  (`ListPlaybooks`, `WritePlaybook`) and the ones that read back a knowledge base nobody logs in as
-  (`ListOwnerKnowledgeBase`, `SearchOwnerKnowledge`) — without those a playbook could be written
-  into a source owner's knowledge base and never read again. A run keeps the identity it started
-  with, so an admin causes things to happen *as* the person being helped — grant it only to people
-  you would trust with those files and credentials directly. Never list an events source's
-  `owner.user-id` among them — the application refuses to start on that pairing, since a triage run
-  assuming an admin identity would hand the admin-only tools to whoever wrote the event it is
-  triaging.
-- `SPRING_AGENT_LOCALE` chooses the language the agent's own text — and the tool descriptions the
-  model reads — are written in. `en` and `zh_CN` ship.
-- `app.ai.system-prompt` is where a persona and house rules go. It replaces a five-thousand-character
-  default, so read the note above it before overriding.
-- On `redis`, use Redis 8 or Redis Stack **configured to keep what it is given** (`maxmemory-policy
-  noeviction`, plus AOF or RDB). These are the agent's records, not a cache: a Redis provisioned for
-  caching will quietly evict a stored credential or an unfired task.
-- `/actuator/health` and `/actuator/prometheus` are exposed for probes and metrics.
-
-### Run the Slack server
-
-The same runtime with Slack as its surface: `./gradlew :spring-agent-app-slack:bootRun`. It takes
-the same `OPENAI_*`/`EMBEDDING_*` variables as the Feishu server, plus four of its own.
-
-| Variable | Where it comes from |
-| --- | --- |
-| `SLACK_BOT_TOKEN` | **OAuth & Permissions** in your app's settings, after installing the app to the workspace. Starts `xoxb-`. |
-| `SLACK_APP_TOKEN` | **Basic Information → App-Level Tokens**, generate one with the `connections:write` scope. Starts `xapp-`. This is what opens the Socket Mode connection, and it is a different credential from the bot token. |
-| `SLACK_BOT_USER_ID` | **OAuth & Permissions**, or `curl -H "Authorization: Bearer $SLACK_BOT_TOKEN" https://slack.com/api/auth.test` and read `user_id`. Starts `U`. |
-| `SLACK_TEAM_ID` | The same `auth.test` call, field `team_id`. Starts `T`. |
-
-`.env` is read by `docker compose` and by `docker run --env-file`, but **not** by
-`./gradlew bootRun` — Gradle passes on the environment it was started with and nothing more. So
-export it into the shell first:
-
-```sh
-set -a; . ./.env; set +a
-./gradlew :spring-agent-app-slack:bootRun
-```
-
-One variable name to watch: **`SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET` belong to the browser
-surface's Sign in with Slack, not to the bot.** Bolt's own `AppConfig` reads those two from the
-environment and treats an app that has them as a multi-workspace OAuth app, which authorizes each
-event against an installation store the bot does not have — so exporting them alongside the bot's
-own settings used to refuse every event with `401 "a request for an unknown workspace detected"`
-while the bot token was perfectly valid. The Slack integration now pins itself to single-workspace
-mode regardless, so the two can share a `.env` safely.
-
-An empty `SLACK_BOT_TOKEN=` in `.env` is worse than a missing one, because it resolves: the
-application starts, and every event is then answered with `401 "a request for an unknown workspace
-detected"` — Bolt calling `auth.test` with an empty token, once per delivery. `SlackIdentity`
-refuses to start on that now and says which variable it is, but the shape of the mistake is worth
-recognising.
-
-Creating the app, once, at <https://api.slack.com/apps>:
-
-1. **Socket Mode → Enable Socket Mode.** No public URL is needed, and no request signing.
-2. **OAuth & Permissions → Bot Token Scopes**: `chat:write`, `im:history`, `channels:history`,
-   `groups:history`, `mpim:history`, `files:read`, `files:write`, `reactions:write`, `users:read`.
-3. **Event Subscriptions → Subscribe to bot events**: `message.im`, `message.channels`,
-   `message.groups`, `message.mpim`, `app_home_opened`. Deliberately **not** `app_mention` — Slack
-   delivers a message that mentions the bot under both events with different ids, so subscribing to
-   both means answering every mention twice.
-4. **Interactivity & Shortcuts → Enable.** With Socket Mode on there is no Request URL to fill in;
-   this is what makes the stop button and the question form work.
-5. **Slash Commands → Create New Command**, `/config`, description "Choose which chat model answers
-   you". Only needed where `USER_MODELS_ENCRYPTION_KEY` is set, and again no Request URL under
-   Socket Mode. This one is not plumbing the application can do for itself: Bolt only routes
-   commands Slack decides to send, and Slack sends none it has not been told about. Creating it
-   adds the `commands` scope, so the app has to be reinstalled afterwards. Skipping this step
-   costs the modal but not the feature — a message reading ` /config`, with a leading space, opens
-   the same form in the channel.
-6. **Install to Workspace**, then invite the bot to any channel you want it to answer in.
-
-Opening a direct message with the bot for the first time is answered with a welcome note, and
-afterwards with whatever has changed since — the same `welcome.md` and `updates/N.md` arrangement the
-Feishu server uses, under `slack/` and pointed at by `SLACK_WELCOME` and `SLACK_UPDATES`.
-
-A turn is answered in a message that is rewritten as the run goes: the answer as it is written, the
-tools it is calling, its task list, and what it cost. Slack allows a message 50 blocks, and a long
-turn outgrows that — so when one fills up the agent finishes it and posts another into the same
-thread, carrying on where it left off.
-
-## Run the web UI
-
-A third application, `spring-agent-app-webui`: the agent and a browser, and nothing else. No bot, no
-webhook receiver, no chat platform — so what it gives you is the runtime itself with everything a run
-does made visible: the answer as it streams, what the model is thinking, every tool call and what it
-returned, a card per subagent, the live to-do list, the sources a knowledge base was consulted for,
-what the turn cost, and the agent's own questions as a form you answer in the page.
-
-```sh
-./gradlew :spring-agent-app-webui:bootRun   # the same OPENAI_*/EMBEDDING_* variables, plus the three below
-```
-
-Then open <http://localhost:8080>. Sign-in is Feishu OAuth by default, so three more variables are needed. To sign in with Slack
-instead, run with `SPRING_PROFILES_ACTIVE=slack-login` and set `SLACK_CLIENT_ID`,
-`SLACK_CLIENT_SECRET` and `SLACK_TEAM_ID` — a profile rather than a second registration, because
-Spring Security refuses to start with a registration whose client id is empty, so the two cannot
-both sit there half-configured. The Slack app needs `openid`, `profile` and `email` user scopes and
-`http://localhost:8080/login/oauth2/code/slack` as a redirect URI.
-
-| Variable | What it is |
-| --- | --- |
-| `FEISHU_APP_ID`, `FEISHU_APP_SECRET` | The Feishu app's credentials. The same pair the bot uses, but only the OAuth half is used here — no SDK, no websocket, no bot |
-| `FEISHU_TENANT_ID` | Whose people may use this deployment, as a tenant key. **There is no permissive default**: unset, nobody is let in. The agent acts with the logged-in person's credentials and files, so this is the line between a colleague and a stranger who happens to have installed the same app |
-
-In the Feishu app's console, add `http://localhost:8080/login/oauth2/code/feishu` (and the same URL
-under your real host) as a redirect URI, and grant the app the profile scopes it needs to return
-`open_id` and `tenant_key`.
-
-**A conversation reads as a conversation.** Both halves are drawn as markdown, so a message you
-typed with backticks, a pasted path or a bulleted list of what you already tried arrives looking like
-what you wrote, and your turn's bubble and the agent's answer are bounded by the same column. What
-the run did on the way to that answer — what it thought, what it called, its to-do list, what it
-cost — hangs off a hairline rail in the margin, numbered with the journal's own sequence, which is
-the number the browser sends back to resume. Scroll up out of a long conversation and a button
-appears over the composer to take you back to the end.
-
-**The sidebar is three tabs**, an icon each: the conversations, what the agent has been asked to do
-later, and — wherever a deployment has one — the knowledge base. Each is a list read the same way,
-and each has an address, so `#/chat/<conversation>`, `#/tasks/<task>` and
-`#/kb/<scope>/<document>` are links worth keeping and the back button works between them. Picking a
-row opens it in the main column: a conversation is its transcript, while a document and a scheduled
-task open into the same card — what kind of record it is, the one line that names it, its facts, and
-then what it holds. Every row is two lines: what it is called, and under that the moment it belongs
-to — when a conversation was last spoken to, when a document was stored — with a task's row showing
-its schedule there instead, next to how many times it has fired and whether it runs unattended. A
-task's prompt is drawn as markdown, since a prompt somebody wrote has lists and code in it, and the
-⋯ menu beside it opens the conversation its answers go into, **edits the task**, or calls it off.
-Editing covers the whole definition — its name, its prompt, whether it repeats and on what schedule,
-when it stops, how many times it fires in total, and whether it runs unattended — and it is held to
-exactly the rules the agent's own `UpdateScheduledTask` is, so there is one answer to what a
-schedule may be rather than two. How many times it *has* fired is not editable anywhere: that is a
-record of what happened. Anything that cannot be undone — deleting a
-conversation or a document, calling off a scheduled task — asks first, and the asking is where the
-work happens, so the button you pressed says so until it is done. Nothing on that screen creates a
-task, because nothing can: a schedule comes from asking the agent for one.
-
-**The foot of the sidebar is who you are signed in as**: your name, your user id under it shortened
-from the middle with a button to copy the whole of it, and two controls — the theme and the language
-behind one preferences menu, and the way out.
-
-**The knowledge base is the third of those tabs**, wherever a deployment has one at all
-(`RAG_ENABLED`, plus a Milvus to point it at — see the knowledge base above). Documents are listed
-there the way conversations are — one row per document rather than per chunk, opened by clicking it,
-shared or deleted from the ⋯ menu on the row — and the box above the list searches them. Beside that
-box are two icons: one adds to the knowledge base, and one chooses what the list shows — everything
-you can read, only your own documents, or only the company's. A chosen scope narrows a search as
-well as the list, and the line under the box says which of the three you are looking at. Opening one
-shows where it came from, how many chunks it was split into, who else can read it and **what it
-actually says**: the stored text, rendered as markdown, which is the same text the agent is handed
-when it retrieves the document. Adding is on the same screen:
-files are uploaded, stored in your own workspace and indexed on the spot, and a note is typed
-straight in; either can go into your own knowledge base or the company's. It is the same knowledge base a
-conversation reaches with `ListKnowledgeBase`, `IndexKnowledge`, `SearchKnowledge`,
-`UpdateKnowledgeScope` and `DeleteKnowledge` — what you add here is what the agent retrieves on the
-next message, and what a run stored is what this list shows. Sharing, moving and deleting always
-name which knowledge base the document is in, in the page and in a chat alike: the same file filed
-both privately and company-wide is two documents wearing one id, and without saying which one is
-meant a tidy-up of your own copy would take the company's away with it. There is no group knowledge base in
-the browser: a group is a group chat, and this surface has none.
-
-Somebody listed in `ADMINS` gets one thing more, in that same menu: `Read another person` asks for a
-user id and lists
-their knowledge base — listing, searching and reading a document, and nothing else. That mirrors the
-admin tools
-(`ListOwnerKnowledgeBase`, `SearchOwnerKnowledge`) exactly, and like them it is for the person who
-maintains what the agent knows. Deleting or re-scoping somebody else's document is not offered
-anywhere, in the page or in a chat. The box suggests, as you type, the identities the deployment
-runs unattended work as — an event source's `owner.user-id`, labelled with the sources it triages —
-since those are the knowledge bases nobody logs in to and whose ids are otherwise only found by
-reading the configuration; anybody else's id is still typed or pasted in, which is what the box is
-mostly for. There are suggestions only where the application serving the page also carries
-`spring-agent-events`, which the servers shipped here do not: they keep the webhook receiver and the
-browser in separate deployments.
-
-**A run outlives the page it was started from.** The page subscribes to a run over a websocket, and
-that subscription is a reader of a run that is happening on the server, never the run itself — so refreshing, closing the tab, or coming back an
-hour later re-attaches and redraws everything, and nothing a browser does can cancel a run except
-pressing Stop. A question the agent asked is written down rather than held open, so it survives a
-restart of the server too, and is still there to answer when you come back.
-
-Its own switches, on top of the ones in the table above:
-
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `WEB_TITLE` | translated per language | What the deployment calls itself: the browser tab, the sidebar brand, the heading before a conversation has a title. One name for every language; unset, each reader gets the shipped name in their own language |
-| `WEB_LOGO` | the shipped mark | The mark drawn beside that name in the sidebar: a path this deployment serves, an absolute address, or a `data:` URI. A path of its own needs a `permitAll` rule beside `/js/**` in the application's `SecurityConfigurer` |
-| `WEB_FAVICON` | `WEB_LOGO` | The browser tab's icon, in the same forms. Worth setting apart from the logo only where that logo is a wordmark, which rarely reads at sixteen pixels |
-| `WEB_MESSAGES` | none | Comma-separated basenames of message bundles consulted before the server's own, so a deployment can reword any of its text — including `app-title`, which is how it gives itself a different name in each language |
-| `WEB_JOURNAL_RETENTION` | `30m` | How long a finished run's detail — its tool calls, its subagents, its thinking — is kept for a browser that comes back to it. Past this the conversation is still there; how it was reached is not |
-| `WEB_JOURNAL_MAX_RUNS` | `500` | How many runs are held in memory at all. Finished ones are dropped first; a live run never is |
-| `WEB_QUESTION_TTL` | `24h` | How long an unanswered question stays answerable |
-| `WEB_LOCALE` | `en` | The language for a reader whose browser asks for one nothing is written in. Theirs is detected from `Accept-Language`, and the switcher in the page overrides both |
-
-`TOOLS_SHELL_TYPE` defaults to `none` here, unlike the command line. This surface is reachable by
-everyone in the tenant, and `local` would mean every one of them can run commands in the server
-process with its filesystem and its secrets; use `kubernetes` or `docker`, which sandbox per user.
-
-## Run both, and hand a conversation between them
-
-A fourth application, `spring-agent-app-web-feishu`, carries the web UI and the Feishu bot in one
-process, so a conversation started in either can be continued in the other — and an answer written
-in the browser can be posted back into the Feishu thread it came from. It is a narrower case than
-the three above and it needs both apps configured against one Feishu app, so it has a document of
-its own: [docs/advanced.md](docs/advanced.md).
-
-## Run the command line
-
-There is no prebuilt binary; build it from a clone.
-
-```sh
-./gradlew :spring-agent-app-cli:bootRun                    # needs the same OPENAI_*/EMBEDDING_* variables
-# or a native binary:
-./gradlew :spring-agent-app-cli:nativeCompile -Pnative
-```
-
-Everything lives in SQLite under `~/.spring-agent`. Type a sentence to talk to the agent; anything
-starting with `/` is a command — `/help`, `/clear`, `/session`, `/model`, `/tools`, `/stop`,
-`/exit`. Unlike the server it answers the agent's questions inline, so a run continues instead of
-ending when it asks; Ctrl-C cancels the run in progress rather than the session. Its shell tool runs
-on your own machine (`TOOLS_SHELL_TYPE=local` by default), which is the point of a laptop tool and
-worth knowing before you let it run something.
+Every module in the repository has a README of its own saying what it is, what it needs and what to
+know before changing it — [docs/integrations.md](docs/integrations.md) is the index, and the place
+where what they all have in common is written down.
 
 ## Build from source
 

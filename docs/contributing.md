@@ -113,6 +113,9 @@ spring-agent-app-webui                the same runtime with the browser surface 
 spring-agent-app-web-feishu           both surfaces in one process, so a conversation can be handed between them
 ```
 
+Each of those folders carries a `README.md` of its own — what it is, what it needs, and what to know
+before changing it. [`docs/integrations.md`](integrations.md) is the index.
+
 `spring-agent-core` must stay free of any persistence backend. This is enforced by
 `checkRuntimeClasspathIsolation` (wired into `check`, defined in
 `buildSrc/.../springagent.classpath-isolation.gradle`, configured at the bottom of
@@ -128,6 +131,9 @@ named by `afterName` in `KnowledgeToolsConfiguration`. Renaming one half silentl
 working, which is why both carry the warning.
 
 ## Adding an integration
+
+What every integration has in common, and the rules about which may sit beside which, are in
+[`docs/integrations.md`](integrations.md). This section is the mechanics.
 
 Every new module looks the same from the build's point of view:
 
@@ -148,6 +154,9 @@ Every new module looks the same from the build's point of view:
    ships tools whose descriptions should be translatable.
 7. A line in `spring-agent-app-feishu/build.gradle` and/or `spring-agent-app-slack/build.gradle` if
    a server should carry it, with a comment saying what taking it does and does not decide.
+8. A `README.md` in the module folder, written for the developer depending on it, and a row in
+   [`docs/integrations.md`](integrations.md). See [Documentation](#documentation) for what belongs in
+   each.
 
 `spring-agent-integration-github` is the smallest complete example — two classes and a prompt file.
 
@@ -533,16 +542,36 @@ agent's own rather than a person's. No scenario can withhold that.
 
 ## Documentation
 
-There are four documents and they have distinct audiences. Keep the change that alters behaviour in
-the same commit as the documentation for it:
+Documentation is split by audience, and the split is the point: a page written for two audiences ends
+up serving neither. Keep the change that alters behaviour in the same commit as the documentation for
+it.
+
+**The root documents**, each read on its own:
 
 | Document | Audience | Update it when |
 | --- | --- | --- |
+| [`README.md`](../README.md) | Somebody deciding whether to run this at all | A feature becomes visible to an end user; the set of applications changes; a switch gains or loses a value. It is an overview and an index — per-application setup belongs in that application's README |
 | [`docs/architecture.md`](architecture.md) | Anybody orienting themselves | A module, surface, event source or store is added or removed; one of the relationships between them changes |
-| [`README.md`](../README.md) | Somebody running the prebuilt server or CLI | A feature becomes visible to an end user; the way either application is started or configured changes; a switch gains or loses a value |
+| [`docs/integrations.md`](integrations.md) | Anybody looking for a module, or writing one | A module is added or removed; something becomes true of *every* integration |
+| [`docs/events.md`](events.md) | An operator turning event sources on | The observing path, a source's configuration, or what a triage run may do changes |
 | [`docs/sdk.md`](sdk.md) | A Java developer embedding the library | A public API, SPI or extension point changes; a module is published or removed; a scenario, listener hook or tool-context key is added |
 | [`docs/contributing.md`](contributing.md) | Somebody changing this repository | The build, the test layout or the module rules change; a new *kind* of integration becomes possible |
+| [`docs/advanced.md`](advanced.md) | A deployment doing something most do not | A feature needs more than one application configured together, or the ordinary way to run the agent never meets it |
 
-`application.yaml` remains the configuration reference, and none of the four duplicates it — they
-link to it. The same goes for the code: prefer a link to the class that explains itself over copying
-its reasoning into a document that will drift.
+**Every module carries a `README.md`**, and it states its audience in the first line:
+
+- A **library module** (`spring-agent-core`, `spring-agent-integration-*`, `spring-agent-persistence-*`,
+  `spring-agent-tools-shell-*`, `spring-agent-rag-*`, `spring-agent-events`) is written for the
+  **developer** depending on it or changing it: what it contributes, the design decisions that are
+  load-bearing, the gotchas — and a pointer to the switch an operator sets rather than the operator's
+  procedure.
+- An **application module** (`spring-agent-app-*`) is written for whoever **deploys** it: how to start
+  it, the variables it needs, the console setup on the platform it talks to, and what it carries —
+  linking down to each carried module rather than restating it.
+
+A new module gets its README in the commit that adds the module, and a row in
+[`docs/integrations.md`](integrations.md).
+
+`application.yaml` remains the configuration reference, and no document duplicates it — they link to
+it. The same goes for the code: prefer a link to the class that explains itself over copying its
+reasoning into a document that will drift.
