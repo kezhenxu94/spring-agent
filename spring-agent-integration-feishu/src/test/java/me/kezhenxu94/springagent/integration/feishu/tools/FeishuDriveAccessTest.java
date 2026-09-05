@@ -13,12 +13,20 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.lark.oapi.Client;
+import com.lark.oapi.service.drive.DriveService;
+import com.lark.oapi.service.drive.v1.model.AuthPermissionMemberReq;
+import com.lark.oapi.service.drive.v1.model.AuthPermissionMemberResp;
+import com.lark.oapi.service.drive.v1.model.AuthPermissionMemberRespBody;
 import com.lark.oapi.service.drive.v1.model.Member;
+import com.lark.oapi.service.drive.v1.resource.PermissionMember;
 import com.lark.oapi.service.wiki.WikiService;
 import com.lark.oapi.service.wiki.v2.V2;
+import com.lark.oapi.service.wiki.v2.model.GetSpaceReq;
+import com.lark.oapi.service.wiki.v2.model.GetSpaceResp;
 import com.lark.oapi.service.wiki.v2.model.ListSpaceMemberReq;
 import com.lark.oapi.service.wiki.v2.model.ListSpaceMemberResp;
 import com.lark.oapi.service.wiki.v2.model.ListSpaceMemberRespBody;
+import com.lark.oapi.service.wiki.v2.resource.Space;
 import com.lark.oapi.service.wiki.v2.resource.SpaceMember;
 import java.util.List;
 import java.util.Locale;
@@ -59,6 +67,9 @@ class FeishuDriveAccessTest {
   private static final String ADMIN = "ou_admin";
   private static final String DOC = "doccnDOCUMENT";
 
+  /** What {@code app.feishu.bot-open-id} names: the identity an unattended run is given. */
+  private static final String BOT = "ou_bot";
+
   @Mock private FeishuDriveService driveService;
   @Mock private FeishuChatAccess chatAccess;
   @Mock private FeishuUserFolders userFolders;
@@ -66,6 +77,10 @@ class FeishuDriveAccessTest {
   @Mock private WikiService wikiService;
   @Mock private V2 wikiV2;
   @Mock private SpaceMember spaceMember;
+  @Mock private Space space;
+  @Mock private DriveService driveApi;
+  @Mock private com.lark.oapi.service.drive.v1.V1 driveV1;
+  @Mock private PermissionMember permissionMember;
 
   private FeishuDriveAccess access;
 
@@ -74,10 +89,19 @@ class FeishuDriveAccessTest {
     lenient().when(feishu.wiki()).thenReturn(wikiService);
     lenient().when(wikiService.v2()).thenReturn(wikiV2);
     lenient().when(wikiV2.spaceMember()).thenReturn(spaceMember);
+    lenient().when(wikiV2.space()).thenReturn(space);
+    lenient().when(feishu.drive()).thenReturn(driveApi);
+    lenient().when(driveApi.v1()).thenReturn(driveV1);
+    lenient().when(driveV1.permissionMember()).thenReturn(permissionMember);
     access = accessWithAdmins(Set.of(ADMIN));
   }
 
   private FeishuDriveAccess accessWithAdmins(final Set<String> admins) {
+    // The bot's own open_id, so that a run carrying it is recognised as the agent rather than as a
+    // person; English so the refusals asserted below are the ones it answers with.
+    final var properties =
+        new FeishuProperties(
+            null, null, null, null, null, BOT, null, Locale.ENGLISH, null, null, null);
     return new FeishuDriveAccess(
         feishu,
         driveService,
@@ -90,9 +114,8 @@ class FeishuDriveAccessTest {
                 Locale.ENGLISH,
                 null,
                 null)),
-        new FeishuMessages(
-            new FeishuProperties(
-                null, null, null, null, null, null, null, Locale.ENGLISH, null, null, null)));
+        new FeishuMessages(properties),
+        properties);
   }
 
   private static ToolContext contextOf(final String userId) {
@@ -471,6 +494,124 @@ class FeishuDriveAccessTest {
 
       assertThatThrownBy(() -> access.requireWikiSpaceAccess(contextOf(ASKER), "7100"))
           .isInstanceOf(FeishuDriveAccess.DriveAccessDeniedException.class);
+    }
+  }
+
+  @Nested
+  @DisplayName("the bot itself, which no collaborator list holds")
+  class TheBotItself {
+
+    private AuthPermissionMemberResp granted(final Boolean result) {
+      final var body = new AuthPermissionMemberRespBody();
+      body.setAuthResult(result);
+      final var resp = new AuthPermissionMemberResp();
+      resp.setCode(0);
+      resp.setData(body);
+      return resp;
+    }
+
+    private AuthPermissionMemberResp cannotAnswer() {
+      final var resp = new AuthPermissionMemberResp();
+      resp.setCode(1062006);
+      resp.setMsg("Permission denied");
+      return resp;
+    }
+
+    private GetSpaceResp spaceAnswer(final int code) {
+      final var resp = new GetSpaceResp();
+      resp.setCode(code);
+      resp.setMsg(code == 0 ? "ok" : "forbidden");
+      return resp;
+    }
+
+    @Test
+    @DisplayName("is let onto what Feishu grants it, with no collaborator entry of its own")
+    void allowedByWhatFeishuGrantsIt() throws Exception {
+      when(permissionMember.auth(any(AuthPermissionMemberReq.class))).thenReturn(granted(true));
+
+      assertThatCode(() -> access.requireAccess(contextOf(BOT), DOC, "docx"))
+          .doesNotThrowAnyException();
+      verifyNoInteractions(driveService);
+    }
+
+    @Test
+    @DisplayName("is refused what Feishu grants it no access to, and told to have it shared")
+    void refusedWhatFeishuDeniesIt() throws Exception {
+      when(permissionMember.auth(any(AuthPermissionMemberReq.class))).thenReturn(granted(false));
+      when(driveService.listCollaborators(DOC, "docx")).thenReturn(List.of(user(STRANGER)));
+
+      assertThatThrownBy(() -> access.requireAccess(contextOf(BOT), DOC, "docx"))
+          .isInstanceOf(FeishuDriveAccess.DriveAccessDeniedException.class)
+          .hasMessageContaining("this bot has no access")
+          .hasMessageContaining("shared with the bot");
+    }
+
+    @Test
+    @DisplayName("falls back to the collaborator list, which is where a folder names it outright")
+    void allowedByBeingNamedOnTheList() throws Exception {
+      // No folder among that endpoint's types, so a folder always arrives here — and a folder
+      // handed to a person keeps the bot on it, which is exactly the entry being looked for.
+      when(permissionMember.auth(any(AuthPermissionMemberReq.class))).thenReturn(cannotAnswer());
+      when(driveService.listCollaborators("fldr", "folder")).thenReturn(List.of(user(BOT)));
+
+      assertThatCode(() -> access.requireAccess(contextOf(BOT), "fldr", "folder"))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("is refused when neither answer can be read, since unknown is still not yes")
+    void unknownFromBothIsRefused() throws Exception {
+      when(permissionMember.auth(any(AuthPermissionMemberReq.class))).thenReturn(cannotAnswer());
+      when(driveService.listCollaborators(DOC, "docx"))
+          .thenThrow(new IllegalStateException("Failed to list collaborators"));
+
+      assertThatThrownBy(() -> access.requireAccess(contextOf(BOT), DOC, "docx"))
+          .isInstanceOf(FeishuDriveAccess.DriveAccessDeniedException.class)
+          // The bot's wording of it, not the person's: both keys say "could not be established".
+          .hasMessageContaining("whether this bot may use");
+    }
+
+    @Test
+    @DisplayName("and nobody else is answered that way: a person is still read off the list")
+    void aPersonIsNeverAskedOfThatEndpoint() throws Exception {
+      when(driveService.listCollaborators(DOC, "docx")).thenReturn(List.of(user(ASKER)));
+
+      access.requireAccess(contextOf(ASKER), DOC, "docx");
+
+      verify(permissionMember, never()).auth(any(AuthPermissionMemberReq.class));
+    }
+
+    @Test
+    @DisplayName("is let into a wiki space Feishu answers it about")
+    void allowedIntoASpaceFeishuAnswersFor() throws Exception {
+      when(space.get(any(GetSpaceReq.class))).thenReturn(spaceAnswer(0));
+
+      assertThatCode(() -> access.requireWikiSpaceAccess(contextOf(BOT), "7100"))
+          .doesNotThrowAnyException();
+      verifyNoInteractions(spaceMember);
+    }
+
+    @Test
+    @DisplayName("and told it could not be established where neither answer can be read")
+    void unknownAboutASpaceIsRefused() throws Exception {
+      when(space.get(any(GetSpaceReq.class))).thenReturn(spaceAnswer(131006));
+      when(spaceMember.list(any(ListSpaceMemberReq.class))).thenThrow(new IllegalStateException());
+
+      assertThatThrownBy(() -> access.requireWikiSpaceAccess(contextOf(BOT), "7100"))
+          .isInstanceOf(FeishuDriveAccess.DriveAccessDeniedException.class)
+          .hasMessageContaining("whether this bot is in wiki space");
+    }
+
+    @Test
+    @DisplayName("and refused one it is not, having asked the member list as well")
+    void refusedFromASpaceItIsNotIn() throws Exception {
+      when(space.get(any(GetSpaceReq.class))).thenReturn(spaceAnswer(131006));
+      when(spaceMember.list(any(ListSpaceMemberReq.class)))
+          .thenReturn(new WikiSpaces().page(false, null, STRANGER));
+
+      assertThatThrownBy(() -> access.requireWikiSpaceAccess(contextOf(BOT), "7100"))
+          .isInstanceOf(FeishuDriveAccess.DriveAccessDeniedException.class)
+          .hasMessageContaining("this bot is not in wiki space");
     }
   }
 

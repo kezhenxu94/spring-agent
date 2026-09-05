@@ -116,7 +116,7 @@ public class FeishuChatAccess {
     // model reads is the whole of what it can explain the refusal from, so it says which it is.
     throw new ChatAccessDeniedException(
         messages.get(
-            isBot(userId)
+            feishuProperties.isBot(userId)
                 ? membership.member() == null ? "access-unknown-chat-bot" : "access-denied-chat-bot"
                 : membership.member() == null ? "access-unknown-chat" : "access-denied-chat",
             chatId));
@@ -166,7 +166,7 @@ public class FeishuChatAccess {
    * class comment.
    */
   public Membership membership(final String chatId, final String userId, final int maxPages) {
-    if (isBot(userId)) {
+    if (feishuProperties.isBot(userId)) {
       return botMembership(chatId);
     }
     String pageToken = null;
@@ -212,18 +212,6 @@ public class FeishuChatAccess {
     }
     return new Membership(
         null, messages.get("chat-membership-too-many", chatId, maxPages * MEMBER_PAGE_SIZE));
-  }
-
-  /**
-   * Whether {@code userId} is the identity this application itself acts as.
-   *
-   * <p>Blank or absent where a deployment never configured one, and then this is false for
-   * everybody: the check falls back to the member list, which is what it did before, rather than
-   * matching a blank user id against a blank property and letting an anonymous run into every chat.
-   */
-  boolean isBot(final String userId) {
-    final var botOpenId = feishuProperties == null ? null : feishuProperties.botOpenId();
-    return !Strings.isNullOrEmpty(botOpenId) && botOpenId.equals(userId);
   }
 
   /**

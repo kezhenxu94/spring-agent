@@ -2,7 +2,12 @@ package me.kezhenxu94.springagent.integration.feishu.tools;
 
 import com.google.common.base.Strings;
 import com.lark.oapi.Client;
+import com.lark.oapi.service.drive.v1.enums.AuthPermissionMemberPermEnum;
+import com.lark.oapi.service.drive.v1.model.AuthPermissionMemberReq;
+import com.lark.oapi.service.drive.v1.model.AuthPermissionMemberResp;
 import com.lark.oapi.service.drive.v1.model.Member;
+import com.lark.oapi.service.wiki.v2.model.GetSpaceReq;
+import com.lark.oapi.service.wiki.v2.model.GetSpaceResp;
 import com.lark.oapi.service.wiki.v2.model.ListSpaceMemberReq;
 import com.lark.oapi.service.wiki.v2.model.ListSpaceMemberResp;
 import java.time.Duration;
@@ -15,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.stereotype.Component;
@@ -35,6 +41,18 @@ import org.springframework.stereotype.Component;
  * which is how a document shared into a group reaches everybody in that group — checked through
  * {@link FeishuChatAccess}, so there is one implementation of "is this person in that chat" rather
  * than two.
+ *
+ * <p>A fourth way in belongs to one identity only, and it is the mirror of the one {@link
+ * FeishuChatAccess} has. A collaborator list, like a chat's member list, records people; the bot is
+ * not on it even where Feishu would let the bot open the document outright — because it owns it,
+ * because it was shared with a chat the bot sits in, because the tenant shares it. So a run whose
+ * identity <em>is</em> the bot, which is what a deployment names as an event source's owner so that
+ * triage acts as the agent rather than as a person, was refused every document, its own included.
+ * For that identity the question is asked of {@code permissions/:token/members/auth}, the endpoint
+ * ruled out below for a person: it answers for whoever the token represents, which for every call
+ * this application makes is the bot. Same bound, read where the bot's own access is written down —
+ * and the collaborator walk still runs after it, since that endpoint has no folder among its types
+ * and a bot is often named on a list outright.
  *
  * <p><b>What it deliberately does not consult</b> is the link-sharing setting: a document set to
  * "anyone in the organisation can read" is genuinely reachable by the person, and refusing it is a
@@ -92,6 +110,7 @@ public class FeishuDriveAccess {
   final FeishuUserFolders userFolders;
   final Admins admins;
   final FeishuMessages messages;
+  final FeishuProperties feishuProperties;
 
   /**
    * The decisions already made, and when they were made.
@@ -149,7 +168,11 @@ public class FeishuDriveAccess {
     }
     allowed.remove(key);
 
-    final var verdict = collaboration(toolContext, token, type, userId);
+    final var bot = feishuProperties.isBot(userId);
+    final var verdict =
+        bot
+            ? botAccess(toolContext, token, type, userId)
+            : collaboration(toolContext, token, type, userId);
     if (Boolean.TRUE.equals(verdict.allowed())) {
       remember(key);
       return;
@@ -157,7 +180,10 @@ public class FeishuDriveAccess {
     log.warn("Refused {} access to {} {}: {}", userId, type, token, verdict.note());
     throw new DriveAccessDeniedException(
         messages.get(
-            verdict.allowed() == null ? "access-unknown-doc" : "access-denied-doc", type, token));
+            (verdict.allowed() == null ? "access-unknown-doc" : "access-denied-doc")
+                + (bot ? "-bot" : ""),
+            type,
+            token));
   }
 
   /**
@@ -191,7 +217,8 @@ public class FeishuDriveAccess {
     }
     allowed.remove(key);
 
-    final var verdict = spaceMembership(spaceId, userId);
+    final var bot = feishuProperties.isBot(userId);
+    final var verdict = bot ? botSpaceAccess(spaceId, userId) : spaceMembership(spaceId, userId);
     if (Boolean.TRUE.equals(verdict.allowed())) {
       remember(key);
       return;
@@ -199,7 +226,8 @@ public class FeishuDriveAccess {
     log.warn("Refused {} access to wiki space {}: {}", userId, spaceId, verdict.note());
     throw new DriveAccessDeniedException(
         messages.get(
-            verdict.allowed() == null ? "access-unknown-wiki-space" : "access-denied-wiki-space",
+            (verdict.allowed() == null ? "access-unknown-wiki-space" : "access-denied-wiki-space")
+                + (bot ? "-bot" : ""),
             spaceId));
   }
 
@@ -292,6 +320,108 @@ public class FeishuDriveAccess {
         "Neither they nor any chat they are in is on the collaborator list of "
             + token
             + ", read in full.");
+  }
+
+  /**
+   * Whether the bot may use {@code token} itself, which is the one access question a tenant token
+   * can put to Feishu directly.
+   *
+   * <p>Two answers rather than one, and a yes from either is a yes: Feishu's own, which covers
+   * everything the bot reaches without being written down as a collaborator — a document it owns,
+   * one shared with a chat it sits in, one the tenant shares — and then the collaborator walk,
+   * which covers what that endpoint cannot be asked. It takes no {@code folder} among its types,
+   * and a folder is exactly where the bot <em>is</em> named outright: {@code
+   * FeishuDriveService#transferOwner} leaves it a collaborator on every per-person folder it hands
+   * over. Unknown from either leaves the pair unknown, so an unreadable answer is never a no.
+   */
+  private Verdict botAccess(
+      final ToolContext toolContext, final String token, final String type, final String userId) {
+    final var granted = feishuGrantsTheBot(token, type);
+    if (Boolean.TRUE.equals(granted.allowed())) {
+      return granted;
+    }
+    final var named = collaboration(toolContext, token, type, userId);
+    if (Boolean.TRUE.equals(named.allowed())) {
+      return named;
+    }
+    return new Verdict(
+        granted.allowed() == null || named.allowed() == null ? null : false,
+        granted.note() + ' ' + named.note());
+  }
+
+  /**
+   * What Feishu says when asked, with the app's own token, whether it may view a document.
+   *
+   * <p>{@code view} rather than {@code edit} because this class gates reads and writes alike: a
+   * write the bot may not make is refused by Feishu on the call that makes it, where asking for
+   * edit here would refuse a read the bot is perfectly entitled to.
+   */
+  private Verdict feishuGrantsTheBot(final String token, final String type) {
+    final AuthPermissionMemberResp resp;
+    try {
+      resp =
+          feishu
+              .drive()
+              .v1()
+              .permissionMember()
+              .auth(
+                  AuthPermissionMemberReq.newBuilder()
+                      .token(token)
+                      .type(type)
+                      .action(AuthPermissionMemberPermEnum.VIEW)
+                      .build());
+    } catch (Exception e) {
+      return new Verdict(
+          null, "Whether Feishu grants this bot " + type + " " + token + " could not be asked.");
+    }
+    if (!resp.success() || resp.getData() == null) {
+      return new Verdict(
+          null,
+          "Whether Feishu grants this bot "
+              + type
+              + " "
+              + token
+              + " could not be read: "
+              + resp.getCode()
+              + " "
+              + resp.getMsg()
+              + ".");
+    }
+    return Boolean.TRUE.equals(resp.getData().getAuthResult())
+        ? new Verdict(true, "Feishu grants this bot access to " + type + " " + token + ".")
+        : new Verdict(false, "Feishu grants this bot no access to " + type + " " + token + ".");
+  }
+
+  /**
+   * Whether the bot may use a wiki space itself, which is the same question one product over: a
+   * space's member list holds people, and the bot reaching a space is written down in that Feishu
+   * answers for it at all. The member walk still follows, for a space that names the bot outright.
+   */
+  private Verdict botSpaceAccess(final String spaceId, final String userId) {
+    final GetSpaceResp resp;
+    try {
+      resp = feishu.wiki().v2().space().get(GetSpaceReq.newBuilder().spaceId(spaceId).build());
+    } catch (Exception e) {
+      return new Verdict(
+          null, "Whether this bot is in wiki space " + spaceId + " could not be asked.");
+    }
+    if (resp.success()) {
+      return new Verdict(true, "Feishu answered this bot with the settings of space " + spaceId);
+    }
+    final var member = spaceMembership(spaceId, userId);
+    if (Boolean.TRUE.equals(member.allowed())) {
+      return member;
+    }
+    return new Verdict(
+        member.allowed() == null ? null : false,
+        "Feishu did not answer this bot about space "
+            + spaceId
+            + ": "
+            + resp.getCode()
+            + " "
+            + resp.getMsg()
+            + ". "
+            + member.note());
   }
 
   private void remember(final String key) {

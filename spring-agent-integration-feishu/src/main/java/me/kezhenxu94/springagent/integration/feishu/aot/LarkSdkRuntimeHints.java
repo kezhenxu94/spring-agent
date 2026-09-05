@@ -76,6 +76,8 @@ import com.lark.oapi.service.docx.v1.model.ListDocumentBlockReq;
 import com.lark.oapi.service.docx.v1.model.PatchDocumentBlockReq;
 import com.lark.oapi.service.docx.v1.model.RawContentDocumentReq;
 import com.lark.oapi.service.docx.v1.model.UpdateBlockRequest;
+import com.lark.oapi.service.drive.v1.model.AuthPermissionMemberReq;
+import com.lark.oapi.service.drive.v1.model.AuthPermissionMemberResp;
 import com.lark.oapi.service.drive.v1.model.BaseMember;
 import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberReq;
 import com.lark.oapi.service.drive.v1.model.BatchCreatePermissionMemberReqBody;
@@ -143,6 +145,8 @@ import com.lark.oapi.service.sheets.v3.model.CreateSpreadsheetReq;
 import com.lark.oapi.service.sheets.v3.model.QuerySpreadsheetSheetReq;
 import com.lark.oapi.service.sheets.v3.model.Spreadsheet;
 import com.lark.oapi.service.wiki.v2.model.GetNodeSpaceReq;
+import com.lark.oapi.service.wiki.v2.model.GetSpaceReq;
+import com.lark.oapi.service.wiki.v2.model.GetSpaceResp;
 import com.lark.oapi.service.wiki.v2.model.ListSpaceMemberReq;
 import com.lark.oapi.service.wiki.v2.model.ListSpaceMemberResp;
 import com.lark.oapi.service.wiki.v2.model.ListSpaceNodeReq;
@@ -259,6 +263,8 @@ public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
           RawContentDocumentReq.class,
           UpdateBlockRequest.class,
           BaseMember.class,
+          AuthPermissionMemberReq.class,
+          AuthPermissionMemberResp.class,
           BatchCreatePermissionMemberReq.class,
           BatchCreatePermissionMemberReqBody.class,
           CreateFolderFileReq.class,
@@ -267,6 +273,8 @@ public class LarkSdkRuntimeHints implements RuntimeHintsRegistrar {
           ListPermissionMemberResp.class,
           TransferOwnerPermissionMemberReq.class,
           TransferOwnerPermissionMemberResp.class,
+          GetSpaceReq.class,
+          GetSpaceResp.class,
           ListSpaceMemberReq.class,
           ListSpaceMemberResp.class,
           DownloadFileReq.class,
