@@ -86,8 +86,14 @@ only about how long the evidence stays available to look up by hand.
 the agent's own and never a person's, since a triage run assumes it along with that identity's files,
 credentials and MCP servers. `group-id` and `tenant-id` beside it are optional and say what else that
 identity belongs to, which gives the run the group's and the tenant's shared workspaces as well as
-its own — configured rather than taken from whatever the event named, so a surface that reports a
-tenant cannot pick the shared workspace an unattended run writes into.
+its own, and widens its knowledge base exactly as a person's is widened — own, plus the group's and
+the tenant's where it has them. A source that names only `user-id` acts in no group and no tenant and
+reads that one knowledge base.
+
+Those two are configured and never taken from whatever the event named, so a surface that reports a
+tenant cannot pick the shared workspace an unattended run writes into or the knowledge that steers
+it. That holds for a chat source too, where the chat's own ids are as real as any: a triage that
+should reach the chat's group says so under `owner.group-id`.
 
 **Never list a source's `owner.user-id` in `ADMINS`.** The application refuses to start on that
 pairing: a triage run assuming an admin identity would hand the admin-only tools to whoever wrote the
@@ -111,10 +117,17 @@ model is what broke. It needs a surface that can send and is otherwise logged.
 Not a setting: a **playbook**. Documents you write into the knowledge base and then edit like any
 other document, without a deployment. Each source names which of them are its playbook and what to
 look them up with (`playbook.query` and `playbook.filter`), and a triage run is given them before it
-decides anything. The base is always the one owned by that source's `owner.user-id` — never a group
-or tenant, whether an incoming event named one or the owner was configured with it — so what the
-agent is told to do can never be chosen by whoever sent the event. A source with no playbook triages
-on the shipped prompt alone.
+decides anything. The bases looked in are the ones that source's `owner` was configured with — the
+`user-id`'s, and the `group-id`'s and `tenant-id`'s if it has them — the same three a `SearchKnowledge`
+call inside that run reaches, and the same rule a person's run follows. So a playbook can live in a
+knowledge base your team already edits rather than only in an identity nobody logs in as. Never a
+group or tenant an incoming event named, so what the agent is told to do can never be chosen by
+whoever sent the event. A source with no playbook triages on the shipped prompt alone.
+
+Filing a playbook in a shared base means anybody who can write into that base could write a playbook,
+which is what `playbook.filter` is for: name the exact document ids that count and an ordinary note
+somebody files into the team's knowledge base is not one. Leave the filter blank and every document
+those bases hold is a candidate.
 
 Writing them is what the admin-only `ListPlaybooks` and `WritePlaybook` tools are for, alongside
 `ListOwnerKnowledgeBase` and `SearchOwnerKnowledge`, which read back a knowledge base nobody logs in

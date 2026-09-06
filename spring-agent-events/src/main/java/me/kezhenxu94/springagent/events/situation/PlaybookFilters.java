@@ -38,6 +38,11 @@ import org.springframework.stereotype.Component;
  * means a document the run indexed under an id of its own choosing is not a playbook, whatever it
  * says about itself. A blank filter gives that up, which is a deployment's decision to make
  * knowingly.
+ *
+ * <p>It carries more weight than that where a source's owner is configured with a group or a
+ * tenant, because {@code SituationSweeper#playbookFor} reads all three. Anybody who may index into
+ * a shared base is then somebody who could file the playbook, and only these ids decide which of
+ * their documents is one.
  */
 @Slf4j
 @Component

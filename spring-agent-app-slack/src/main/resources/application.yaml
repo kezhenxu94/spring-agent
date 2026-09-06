@@ -1043,16 +1043,23 @@ app:
     # GitHub event and a page at three in the morning are dealt with differently or the playbook is
     # not saying anything.
     #
-    # The base looked in is always the one owned by that source's owner.user-id alone, never a group
-    # or a tenant the incoming event named. That is not configurable, and it is the point: these
-    # documents decide what the agent does about text an attacker can write, so what they are must
-    # not itself be decided by whoever sent the event.
+    # The bases looked in are the ones that source's owner was configured with: the user-id's, plus
+    # the group-id's and tenant-id's where it has them, as alternatives rather than all three
+    # required. So a playbook can sit in a knowledge base a team already edits. Never a group or a
+    # tenant the incoming event named, and that part is not configurable: these documents decide what
+    # the agent does about text an attacker can write, so what they are must not itself be decided by
+    # whoever sent the event.
     #
-    # That owner is meant to be an identity of the agent's own rather than a person's, so nobody is
+    # Filing one in a shared base widens who can author it to everybody who can write into that base,
+    # which is what filter below is for — name exact document ids and an ordinary note somebody put
+    # in the team's knowledge base is not a playbook. Leave it blank and every document those bases
+    # hold is a candidate.
+    #
+    # The owner is meant to be an identity of the agent's own rather than a person's, so nobody is
     # logged in as it to write the documents. Somebody listed in app.ai.admins writes them from an
     # ordinary chat instead, with ListPlaybooks and WritePlaybook: the first says, per source, which
-    # base is read, with what question, and which document ids the filter below accepts; the second
-    # writes one of them. Both need a knowledge base (app.ai.rag.enabled).
+    # bases are read, with what question, and which document ids the filter below accepts; the second
+    # writes one of them, into the owner's own base. Both need a knowledge base (app.ai.rag.enabled).
     #
     # The owner itself must not be in app.ai.admins, and the application refuses to start if it is:
     # a triage run assuming an admin identity would hand these very tools to whoever wrote the
@@ -1071,12 +1078,18 @@ app:
     # attacker-authored text their workspace and their credentials. See SituationTriageScenario,
     # which also explains what a scenario cannot withhold.
     #
-    # group-id and tenant-id under it are optional and say what else that identity belongs to, which
-    # is what gives a run the group's and the tenant's shared workspaces alongside its own. Stated
-    # here rather than taken from whatever the event named: a situation's group and tenant come from
-    # the observation, so a surface that reported one would otherwise decide which shared workspace
-    # an unattended run reads and writes. They deliberately do not widen where the playbook is read
-    # from — that stays user-id alone, and EventsProperties.Owner says why.
+    # group-id and tenant-id under it are optional and say what else that identity belongs to. They
+    # are what gives a run the group's and the tenant's shared workspaces alongside its own, and
+    # what widens its knowledge base the same way a person's is widened: own, plus the group's and
+    # the tenant's where it has them, both for the playbook it is given up front and for what
+    # SearchKnowledge reaches. A source that names only user-id therefore acts in no group and no
+    # tenant, and reads that one identity's knowledge base and nothing else.
+    #
+    # Stated here rather than taken from whatever the event named, and that part is not negotiable:
+    # a situation's group and tenant come from the observation, so a surface that reported one would
+    # otherwise decide which shared workspace an unattended run writes into and which knowledge base
+    # steers it. That holds even for a chat source, where the chat's own ids are as real as any — a
+    # triage that should reach the chat's group says so here.
     #
     # Every timing above can be overridden per source, since the sources genuinely differ: an alert
     # should settle for half a minute, while a chat wants long enough for the people in it to answer

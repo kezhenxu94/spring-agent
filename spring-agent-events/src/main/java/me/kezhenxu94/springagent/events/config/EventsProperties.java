@@ -350,13 +350,25 @@ public record EventsProperties(
    * assemble from layers, and a group inherited from somewhere else while the user came from here
    * would be a run acting as a pairing nobody wrote down.
    *
-   * <p><b>Not what the playbook is read from.</b> That stays {@code userId} alone, in {@code
-   * SituationSweeper#playbookFor} and in {@code PlaybookTools} — see {@link Playbook}. These
-   * documents say what the agent does about text an attacker can write, and {@code WritePlaybook}
-   * writes them, so widening the base to a group would let anyone who can write into that group's
-   * knowledge base author what every later unattended run is steered by. What the group and tenant
-   * do reach is the {@code SearchKnowledge} tool, which is a lookup the agent chooses to make
-   * rather than one it is handed.
+   * <p><b>All three are what the playbook is read from</b> — {@code SituationSweeper#playbookFor}
+   * builds its scope from this record whole, so a deployment may file a runbook in a shared
+   * knowledge base instead of in an identity nobody logs in as. What that costs is authorship: a
+   * document in a group or tenant base can be written by anybody who may index into it, and these
+   * documents say what the agent does about text an attacker can write. {@code playbook.filter} is
+   * what bounds it — see {@link Playbook}. {@code WritePlaybook} still writes into {@code userId}
+   * alone, because a read may span the three and a write has to pick one.
+   *
+   * <p><b>These three are the whole of it, and nothing is inherited from the situation.</b> A
+   * situation carries a group and a tenant of its own — the chat's for a chat source, whatever the
+   * payload said for a webhook — and a run never takes them: a source configured with a {@code
+   * user-id} alone acts in no group and no tenant, however the event was routed. Otherwise the
+   * shared workspace an unattended run writes into, and the knowledge base it is steered by, would
+   * be chosen by whoever sent the event.
+   *
+   * <p>Which makes this the only input to a triage run's knowledge scope, on both paths that have
+   * one: {@code SearchKnowledge} reads the run's identity and {@code SituationSweeper#playbookFor}
+   * states the same three ids, so it behaves as a person's run does — own base, plus the group's
+   * and the tenant's where it has them — with no second rule to learn.
    *
    * @param userId the account the run logs in as. Its personal workspace, its MCP servers, its
    *     knowledge base. The one id with no sane default; {@code SituationSweeper} says at startup
@@ -364,11 +376,13 @@ public record EventsProperties(
    *     quietly never gets evaluated.
    * @param groupId the group that identity acts within, or blank where it belongs to none. Opaque,
    *     and meaningful only to whatever surface issues such ids — a Feishu chat id, a Slack
-   *     channel.
+   *     channel. A chat source whose triage should reach the chat's own workspace and knowledge
+   *     names that chat here; it is not picked up from the message.
    * @param tenantId the tenant/enterprise it belongs to, or blank where the deployment has no
    *     tenant concept. Stated here rather than taken from the situation on purpose: a situation's
    *     tenant comes from the observation, so a surface that reported one would otherwise choose
-   *     which shared workspace an unattended run reads and writes. See {@code Route}.
+   *     which shared workspace an unattended run reads and writes, and which knowledge bases it
+   *     searches. See {@code Route}.
    */
   @lombok.Builder
   public record Owner(String userId, String groupId, String tenantId) {
@@ -391,10 +405,11 @@ public record EventsProperties(
    * matters, what to check first, who to tell, when to stay silent — is prose, and because it is
    * then editable by the people who know it without a deployment. This record is only the lookup.
    *
-   * <p>The base looked in is always the one owned by the source's {@code owner.user-id} alone,
-   * never a group or tenant — neither the ones an incoming event happens to name nor the ones the
-   * owner itself was configured with. That is not configurable, and the reason is that these
-   * documents decide what the agent does about text an attacker can write.
+   * <p>The bases looked in are the source's {@code owner}'s — its user's, and its group's and
+   * tenant's where the deployment configured them, as alternatives rather than all three required.
+   * Never a group or tenant an incoming event happens to name: these documents decide what the
+   * agent does about text an attacker can write, so the identities are ones a deployment wrote
+   * down.
    *
    * <p>Both fields are stated by a deployment and neither is guessed, so a source with no {@code
    * query} simply has no playbook and triages on the prompt alone.
@@ -411,9 +426,10 @@ public record EventsProperties(
    * @param filter which documents count as this source's playbook, as a Spring AI filter expression
    *     over {@code KnowledgeMetadata} — e.g. {@code docId in ['runbook-github']}. Narrows what the
    *     owner may read and can never widen it. Parsed at startup by {@code PlaybookFilters}, which
-   *     refuses to start on a malformed one. Blank means the whole of the owner's knowledge base,
-   *     which is worth thinking twice about: see that class for why naming exact document ids is
-   *     what keeps a run from writing its own playbook.
+   *     refuses to start on a malformed one. Blank means the whole of every base the owner reaches,
+   *     its group's and tenant's included, which is worth thinking twice about: see that class for
+   *     why naming exact document ids is what keeps a run — or a colleague filing an ordinary note
+   *     into a shared base — from writing the playbook every later triage is steered by.
    */
   @lombok.Builder
   public record Playbook(String query, String filter) {

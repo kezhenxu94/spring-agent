@@ -337,14 +337,19 @@ public class SituationSweeper {
               .userId(policy.owner().userId())
               .chatId(claimed.chatId())
               .chatType(claimed.chatType())
-              // The owner's own group and tenant where the source named them, and only failing
-              // that the ones the situation carries. Both orders are defensible for a chat source,
-              // where the situation's ids come from the surface and are as real as any; the
-              // configured one wins because for every other source they come from an observation,
-              // and an identity the deployment wrote down should not be widened by something a
-              // webhook said. What they decide is the shared workspace the run may read and write.
-              .groupId(orElse(policy.owner().groupId(), claimed.groupId()))
-              .tenantId(orElse(policy.owner().tenantId(), claimed.tenantId()))
+              // The configured owner's, and nothing else. The situation carries a group and a
+              // tenant of its own — the chat's for a chat source, whatever the payload said for a
+              // webhook — and neither is taken, because these two decide the shared workspaces this
+              // run reads and writes and the knowledge bases it searches. Falling back to the
+              // observation's would leave a source configured with a user-id alone still acting
+              // inside a group, chosen by whoever sent the event.
+              //
+              // It also keeps the run's identity the only thing deciding its knowledge scope, as it
+              // is for a person's run: what SearchKnowledge reaches and what playbookFor retrieves
+              // are then the same three ids, so there is no second rule here. A chat source whose
+              // triage should reach the chat's group says so under owner.group-id.
+              .groupId(policy.owner().groupId())
+              .tenantId(policy.owner().tenantId())
               // No chat memory is read or written in this scenario, so this only names the run;
               // the situation's own id is the most useful thing to name it after.
               .conversationId(claimed.id())
@@ -434,15 +439,20 @@ public class SituationSweeper {
    * The knowledge this run's automatic retrieval should look at: the source's playbook, or nothing
    * stated at all where the source configured none.
    *
-   * <p>The scope is the owner's user and only that — never a group or a tenant, neither the ones
-   * the situation carries nor the ones the owner was configured with. That is the point of stating
-   * it here rather than letting the run derive it from its own identity, and it is worth being
-   * exact about what it prevents: the group and tenant on a situation come from the observation, so
-   * a surface that reported a tenant would otherwise decide which knowledge base an unattended run
-   * reasons from, and the documents in it are the ones that say what the agent does about text
-   * somebody else wrote. A configured {@code owner.group-id} is narrower than that but is left out
-   * for the second reason in {@code EventsProperties.Owner}: {@code WritePlaybook} writes into this
-   * scope, and a shared one is a playbook anybody in the group can author.
+   * <p>The scope is the configured owner, whole — its user, and its group and tenant where the
+   * deployment gave it any — so a playbook may be filed in a shared knowledge base rather than only
+   * in an identity nobody logs in as. {@code KnowledgeScopeFilter} turns that into a disjunction,
+   * so the three are alternatives: a document counts if it sits in any one of them.
+   *
+   * <p>Which is the same trio the run above is given, and deliberately the same: a person's run
+   * derives its knowledge scope from its own identity, and an unattended one should not need a
+   * second rule explaining itself. Stated on the request rather than derived only because the query
+   * and the filter have to be stated anyway — see {@link KnowledgeRetrieval}.
+   *
+   * <p>What a shared scope costs is authorship. A playbook in the owner's own base can only be
+   * written by something running as the owner; one in a group or tenant base can be written by
+   * anybody who may index into it. {@code playbook.filter} is what keeps that bounded — see {@code
+   * PlaybookFilters} — and it matters more here than it did when the scope was one private base.
    *
    * <p>Returning null where there is no query, rather than a scope with nothing to look up, so that
    * a deployment which has not written a playbook gets the retrieval it had before this existed.
@@ -452,7 +462,8 @@ public class SituationSweeper {
       return null;
     }
     return new KnowledgeRetrieval(
-        new KnowledgeScope(policy.owner().userId(), "", ""),
+        new KnowledgeScope(
+            policy.owner().userId(), policy.owner().groupId(), policy.owner().tenantId()),
         playbookFilters.forSource(policy.source()),
         policy.playbook().query());
   }
@@ -504,10 +515,6 @@ public class SituationSweeper {
 
   private static boolean isBlank(final String value) {
     return value == null || value.isBlank();
-  }
-
-  private static String orElse(final String configured, final String observed) {
-    return isBlank(configured) ? observed : configured;
   }
 
   private static String describe(final Throwable error) {
