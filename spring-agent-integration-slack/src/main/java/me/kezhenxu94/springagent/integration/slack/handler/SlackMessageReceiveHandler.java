@@ -14,6 +14,7 @@ import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
+import me.kezhenxu94.springagent.core.logging.RunMdc;
 import me.kezhenxu94.springagent.integration.slack.config.SlackIdentity;
 import me.kezhenxu94.springagent.integration.slack.usermodels.SlackConfigHandler;
 import org.springframework.beans.factory.ObjectProvider;
@@ -119,7 +120,15 @@ public class SlackMessageReceiveHandler {
       final com.slack.api.app_backend.events.payload.EventsApiPayload<MessageEvent> payload,
       final EventContext ctx) {
     final var event = payload.getEvent();
-    try {
+    // The whole delivery, the failure below included, named after the run it is about: the message
+    // timestamp is what this handler goes on to use as the request id, and the thread it belongs
+    // to is the conversation. Derived here rather than below so that every line this handler writes
+    // carries them, and closed before the acknowledgement so Bolt's thread is left as it was found.
+    try (var ignored =
+        RunMdc.of(
+            event.getTs(),
+            Strings.isNullOrEmpty(event.getThreadTs()) ? event.getTs() : event.getThreadTs(),
+            event.getUser())) {
       handle(payload, event);
     } catch (Exception e) {
       // Logged rather than thrown. Bolt turns a thrown exception into a non-2xx acknowledgement,

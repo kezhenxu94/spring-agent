@@ -29,6 +29,7 @@ import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
+import me.kezhenxu94.springagent.core.logging.RunMdc;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentComposition;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.McpTools;
@@ -217,6 +218,13 @@ public class SpringAgent {
    */
   public boolean fireOrQueue(
       final AgentRequest request, final Supplier<String> message, final String display) {
+    try (var ignored = RunMdc.of(request)) {
+      return doFireOrQueue(request, message, display);
+    }
+  }
+
+  private boolean doFireOrQueue(
+      final AgentRequest request, final Supplier<String> message, final String display) {
     final var live = liveRunFor(request);
     if (live == null || !live.queued().offer(new QueuedMessages.Queued(request, message))) {
       fire(request);
@@ -327,6 +335,18 @@ public class SpringAgent {
    * AgentResponseListener}s, never to the caller.
    */
   public void fire(final AgentRequest request) {
+    // Held across the whole method, subscription included, and that is what makes the rest of the
+    // run's logging work: with the accessor registered, Reactor captures the thread's MDC when the
+    // stream is subscribed and restores it around every signal it delivers afterwards — the
+    // assembly moved onto boundedElastic, the operators below, and the tool-calling loop inside the
+    // chain. Closing it puts the calling thread back as it was, which matters because the caller is
+    // often another run: a subagent tool, or a queued message being answered as this run ends.
+    try (var ignored = RunMdc.of(request)) {
+      doFire(request);
+    }
+  }
+
+  private void doFire(final AgentRequest request) {
     final var requestId = request.requestId();
     if (!accepting) {
       log.warn("Shutting down, dropping agent request {}", requestId);
@@ -592,6 +612,34 @@ public class SpringAgent {
    * them may cost this run its cleanup.
    */
   private void finish(
+      final AgentRequest request,
+      final String requestId,
+      final LiveRun liveRun,
+      final List<AgentResponseListener> listeners,
+      final LiveRun parent,
+      final CountDownLatch doneForParent,
+      final AtomicReference<McpTools> mcpTools,
+      final StringBuilder contentBuffer,
+      final AgentOutcome outcome) {
+    // Opened again here rather than inherited: this runs on subagentWaiters whenever the run has
+    // subagents to wait out, and that executor is not a Reactor scheduler — nothing restores a
+    // context onto its threads. Held for the whole method, so the wait, the cleanup and the failure
+    // paths all say which run they belong to.
+    try (var ignored = RunMdc.of(request)) {
+      doFinish(
+          request,
+          requestId,
+          liveRun,
+          listeners,
+          parent,
+          doneForParent,
+          mcpTools,
+          contentBuffer,
+          outcome);
+    }
+  }
+
+  private void doFinish(
       final AgentRequest request,
       final String requestId,
       final LiveRun liveRun,

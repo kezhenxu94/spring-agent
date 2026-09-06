@@ -22,6 +22,7 @@ import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
+import me.kezhenxu94.springagent.core.logging.RunMdc;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
@@ -112,8 +113,29 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
     }
   }
 
+  /**
+   * Names the run in the log before anything else happens, so that everything this handler says
+   * about a message — the claim it takes, the settings command it diverts, the failure that makes
+   * it hand the delivery back — is readable as one run alongside what the run itself logs.
+   *
+   * <p>The three ids are derived again here rather than passed down from the body below. They are
+   * one field read each, and the alternative is a scope that starts halfway through the method,
+   * after the lines it exists to tag.
+   */
   @Override
   public void handle(final P2MessageReceiveV1 event) throws Exception {
+    final var message = event.getEvent().getMessage();
+    final var messageId = message.getMessageId();
+    try (var ignored =
+        RunMdc.of(
+            messageId,
+            Strings.isNullOrEmpty(message.getRootId()) ? messageId : message.getRootId(),
+            event.getEvent().getSender().getSenderId().getOpenId())) {
+      handleMessage(event);
+    }
+  }
+
+  private void handleMessage(final P2MessageReceiveV1 event) throws Exception {
     final var data = event.getEvent();
     final var message = data.getMessage();
     final var messageId = message.getMessageId();

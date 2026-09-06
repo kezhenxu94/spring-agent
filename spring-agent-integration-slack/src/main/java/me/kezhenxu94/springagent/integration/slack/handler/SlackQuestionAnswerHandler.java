@@ -17,6 +17,7 @@ import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
+import me.kezhenxu94.springagent.core.logging.RunMdc;
 import me.kezhenxu94.springagent.integration.slack.config.SlackAutoConfiguration;
 import me.kezhenxu94.springagent.integration.slack.config.SlackMessages;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
@@ -113,7 +114,14 @@ public class SlackQuestionAnswerHandler {
     formCloser.answered(pending, summary(questions, answers));
 
     final var byAdmin = !Objects.equals(operator, pending.userId());
-    taskExecutor.execute(() -> deliver(pending, questions, answers, byAdmin));
+    // Named on the executor's thread rather than on this one: what follows is the run resuming, and
+    // this thread is about to go back to acknowledging interactions for everybody else.
+    taskExecutor.execute(
+        () -> {
+          try (var ignored = RunMdc.of(pending.id(), pending.conversationId(), pending.userId())) {
+            deliver(pending, questions, answers, byAdmin);
+          }
+        });
     return ephemeral(ctx, messages.get("question-submitted"));
   }
 

@@ -18,6 +18,7 @@ import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
+import me.kezhenxu94.springagent.core.logging.RunMdc;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuAutoConfiguration;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
@@ -154,7 +155,14 @@ public class FeishuQuestionAnswerHandler {
     }
     final var replyTo = event.getEvent().getContext().getOpenMessageId();
     final var answeredBy = Objects.equals(operator, pending.userId()) ? null : operator;
-    taskExecutor.execute(() -> deliver(pending, questions, answers, answeredBy, replyTo, token));
+    // Named on the executor's thread rather than on this one: what follows is the run resuming, and
+    // this thread is about to go back to acknowledging card callbacks for everybody else.
+    taskExecutor.execute(
+        () -> {
+          try (var ignored = RunMdc.of(pending.id(), pending.conversationId(), pending.userId())) {
+            deliver(pending, questions, answers, answeredBy, replyTo, token);
+          }
+        });
     return toast("success", messages.get("question-submitted"));
   }
 
