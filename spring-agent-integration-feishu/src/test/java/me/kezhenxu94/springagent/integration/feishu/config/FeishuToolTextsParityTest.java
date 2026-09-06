@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import me.kezhenxu94.springagent.core.i18n.ToolTextsInventory;
 import me.kezhenxu94.springagent.core.tools.i18n.ModuleToolTexts;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;

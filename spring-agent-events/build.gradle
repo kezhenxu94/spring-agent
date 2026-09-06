@@ -5,6 +5,11 @@ plugins {
 description = 'Event intelligence for spring-agent-core: correlates what other systems do into situations, and wakes the agent for the ones worth an opinion. The systems themselves arrive as spring-agent-integration-* modules.'
 
 dependencies {
+  // The i18n checks every module makes of its own tools and messages. Fixtures rather than a copy
+  // per module: they are two hundred lines of reflection over @Tool methods and properties files,
+  // and the first two modules to want them ended up with the same code twice.
+  testImplementation testFixtures(project(':spring-agent-core'))
+
   implementation project(':spring-agent-core')
 
   // Core's domain models carry `@Enumerated(EnumType.STRING)`, and core declares the JPA API

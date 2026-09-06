@@ -19,6 +19,7 @@ import me.kezhenxu94.springagent.core.dao.models.PublishedResource;
 import me.kezhenxu94.springagent.core.dao.repo.PublishedResourceRepo;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageService;
+import me.kezhenxu94.springagent.core.support.TestI18n;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -65,7 +66,9 @@ class PublishFileToolTest {
         .when(publishedResourceRepo)
         .deleteById(any());
 
-    tool = new PublishFileTool(storageService, userWorkspaceFactory, publishedResourceRepo);
+    tool =
+        new PublishFileTool(
+            storageService, userWorkspaceFactory, publishedResourceRepo, TestI18n.english());
     // Assigned rather than passed to the constructor: baseUrl is @Value-injected into the field,
     // which is how Spring populates it too.
     tool.baseUrl = "http://localhost:8080";

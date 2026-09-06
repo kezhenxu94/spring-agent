@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.integration.slack;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.Locale;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -15,7 +16,7 @@ import org.junit.jupiter.api.Test;
  */
 class SlackReplyFormatTest {
 
-  private final SlackReplyFormat format = new SlackReplyFormat();
+  private final SlackReplyFormat format = new SlackReplyFormat(Locale.ENGLISH);
 
   private static AgentRequest request(final String chatType) {
     return AgentRequest.builder()
@@ -60,5 +61,22 @@ class SlackReplyFormatTest {
   @DisplayName("mentioning somebody is told apart from naming them")
   void shouldDistinguishMentionFromName() {
     assertThat(replyFormat("p2p")).contains("<@U123ABC>").contains("without notifying them");
+  }
+
+  @Test
+  @DisplayName("the whole guide is served in the workspace's language, not only the answer")
+  void shouldBeTranslatedItself() {
+    // Two thousand characters of it go into the system prompt of every run on this surface, so
+    // English here is English the model reads on every turn — which is what has it reason in
+    // English however Chinese the rest of the prompt is.
+    final var chinese =
+        String.valueOf(
+            new SlackReplyFormat(Locale.SIMPLIFIED_CHINESE)
+                .variables(request("group"))
+                .get("replyFormat"));
+
+    assertThat(chinese).contains("Slack mrkdwn").contains("粗体");
+    // The syntax itself stays as Slack spells it: it is what the model has to type, not prose.
+    assertThat(chinese).contains("<@U123ABC>").contains("<!channel>");
   }
 }

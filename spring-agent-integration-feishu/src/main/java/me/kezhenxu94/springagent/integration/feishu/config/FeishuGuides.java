@@ -29,7 +29,7 @@ import me.kezhenxu94.springagent.core.config.LocalizedPrompt;
 public class FeishuGuides {
 
   /** Where the guides live, as a classpath location. */
-  static final String LOCATION = "feishu/prompts/";
+  public static final String LOCATION = "feishu/prompts/";
 
   /** Where this module's per-tool description translations live. */
   public static final String TOOLS_LOCATION = LOCATION + "tools/";

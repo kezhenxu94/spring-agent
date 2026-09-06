@@ -13,6 +13,7 @@ import lombok.SneakyThrows;
 import lombok.extern.jackson.Jacksonized;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -39,6 +40,9 @@ public class FeishuWikiTools {
   private static final int MAX_NODES_PER_WALK = 500;
 
   final Client feishu;
+
+  /** What these hand back to the model, in the workspace's language. */
+  final FeishuMessages messages;
 
   @Builder
   @Jacksonized
@@ -206,7 +210,7 @@ public class FeishuWikiTools {
       final NodePageFetcher fetcher) {
 
     if (spaceId == null || spaceId.isBlank()) {
-      throw new IllegalArgumentException("spaceId is required");
+      throw new IllegalArgumentException(messages.get("tool-space-id-required"));
     }
 
     final var nodes = new ArrayList<WikiNodeInfo>();
@@ -358,7 +362,7 @@ public class FeishuWikiTools {
    */
   ResolvedToken resolveTokenAndObjType(final String urlOrToken, final String objType) {
     if (urlOrToken == null || urlOrToken.isBlank()) {
-      throw new IllegalArgumentException("urlOrToken is required");
+      throw new IllegalArgumentException(messages.get("tool-url-or-token-required"));
     }
     final var resolved =
         FeishuGuardedTools.resolve(

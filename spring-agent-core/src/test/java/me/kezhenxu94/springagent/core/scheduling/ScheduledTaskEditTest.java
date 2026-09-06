@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
+import me.kezhenxu94.springagent.core.support.TestI18n;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -34,7 +35,9 @@ class ScheduledTaskEditTest {
   @DisplayName("a field left out keeps what the task already had")
   void absentMeansKeep() {
     final var edited =
-        new ScheduledTaskEdit(null, "new text", null, null, null, null, null).applyTo(task).task();
+        new ScheduledTaskEdit(null, "new text", null, null, null, null, null)
+            .applyTo(task, TestI18n.english())
+            .task();
 
     assertThat(edited.cronExpression()).isEqualTo("0 0 9 * * MON");
     assertThat(edited.expiresAt()).isEqualTo(Instant.parse("2030-01-01T00:00:00Z"));
@@ -47,7 +50,7 @@ class ScheduledTaskEditTest {
   void renaming() {
     final var result =
         new ScheduledTaskEdit("  Morning digest  ", null, null, null, null, null, null)
-            .applyTo(task);
+            .applyTo(task, TestI18n.english());
 
     assertThat(result.task().title()).isEqualTo("Morning digest");
     assertThat(result.task().taskText()).isEqualTo("summarise the thread");
@@ -60,7 +63,9 @@ class ScheduledTaskEditTest {
   @DisplayName("a task cannot be left nameless, nor named at prompt length")
   void titleIsAName() {
     assertThatThrownBy(
-            () -> new ScheduledTaskEdit("  ", null, null, null, null, null, null).applyTo(task))
+            () ->
+                new ScheduledTaskEdit("  ", null, null, null, null, null, null)
+                    .applyTo(task, TestI18n.english()))
         .hasMessageContaining("needs a name");
     assertThatThrownBy(
             () ->
@@ -72,7 +77,7 @@ class ScheduledTaskEditTest {
                         null,
                         null,
                         null)
-                    .applyTo(task))
+                    .applyTo(task, TestI18n.english()))
         .hasMessageContaining("limited to");
   }
 
@@ -81,7 +86,7 @@ class ScheduledTaskEditTest {
   void anEditNeverTouchesWhatHasHappened() {
     final var edited =
         new ScheduledTaskEdit("New name", "new text", "0 0 10 * * MON", null, "never", false, 20)
-            .applyTo(task)
+            .applyTo(task, TestI18n.english())
             .task();
 
     assertThat(edited.runCount()).isEqualTo(3);
@@ -96,7 +101,7 @@ class ScheduledTaskEditTest {
 
     final var edited =
         new ScheduledTaskEdit(null, null, null, fireAt.toString(), null, null, null)
-            .applyTo(task)
+            .applyTo(task, TestI18n.english())
             .task();
 
     assertThat(edited.cronExpression()).isNull();
@@ -111,7 +116,7 @@ class ScheduledTaskEditTest {
     assertThatThrownBy(
             () ->
                 new ScheduledTaskEdit(null, null, "0 0 9 * * MON", fireAt, null, null, null)
-                    .applyTo(task))
+                    .applyTo(task, TestI18n.english()))
         .hasMessageContaining("not both");
   }
 
@@ -121,7 +126,7 @@ class ScheduledTaskEditTest {
     assertThatThrownBy(
             () ->
                 new ScheduledTaskEdit(null, "new text", "not a cron", null, null, null, null)
-                    .applyTo(task))
+                    .applyTo(task, TestI18n.english()))
         .hasMessageContaining("is invalid");
   }
 
@@ -129,7 +134,8 @@ class ScheduledTaskEditTest {
   @DisplayName("a schedule shorter than the floor is raised to it, and the edit says so")
   void intervalIsRaised() {
     final var result =
-        new ScheduledTaskEdit(null, null, "0 */1 * * * *", null, null, null, null).applyTo(task);
+        new ScheduledTaskEdit(null, null, "0 */1 * * * *", null, null, null, null)
+            .applyTo(task, TestI18n.english());
 
     assertThat(result.task().cronExpression()).isEqualTo("0 */5 * * * *");
     assertThat(result.note()).contains("raised");
@@ -140,7 +146,7 @@ class ScheduledTaskEditTest {
   void expiryCanBeTakenOff() {
     final var result =
         new ScheduledTaskEdit(null, null, null, null, ScheduledTaskEdit.NEVER, null, null)
-            .applyTo(task);
+            .applyTo(task, TestI18n.english());
 
     assertThat(result.task().expiresAt()).isNull();
     assertThat(result.changes()).contains("it no longer expires");
@@ -152,7 +158,7 @@ class ScheduledTaskEditTest {
   void ceilingCanBeTakenOff() {
     final var result =
         new ScheduledTaskEdit(null, null, null, null, null, null, ScheduledTaskEdit.UNLIMITED)
-            .applyTo(task);
+            .applyTo(task, TestI18n.english());
 
     assertThat(result.task().maxRuns()).isNull();
   }
@@ -164,7 +170,7 @@ class ScheduledTaskEditTest {
     // legitimate way to stop a task after the run it is having now.
     assertThat(
             new ScheduledTaskEdit(null, null, null, null, null, null, 1)
-                .applyTo(task)
+                .applyTo(task, TestI18n.english())
                 .task()
                 .maxRuns())
         .isEqualTo(1);
@@ -174,7 +180,9 @@ class ScheduledTaskEditTest {
   @DisplayName("a negative ceiling is refused, since zero is already the word for uncounted")
   void negativeCeiling() {
     assertThatThrownBy(
-            () -> new ScheduledTaskEdit(null, null, null, null, null, null, -1).applyTo(task))
+            () ->
+                new ScheduledTaskEdit(null, null, null, null, null, null, -1)
+                    .applyTo(task, TestI18n.english()))
         .hasMessageContaining("at least 1");
   }
 
@@ -182,7 +190,9 @@ class ScheduledTaskEditTest {
   @DisplayName("a task cannot be left with nothing to do")
   void textCannotBeEmptied() {
     assertThatThrownBy(
-            () -> new ScheduledTaskEdit(null, "   ", null, null, null, null, null).applyTo(task))
+            () ->
+                new ScheduledTaskEdit(null, "   ", null, null, null, null, null)
+                    .applyTo(task, TestI18n.english()))
         .hasMessageContaining("something to do");
   }
 
@@ -192,7 +202,9 @@ class ScheduledTaskEditTest {
     final var tooLong = "x".repeat(ScheduledTaskEdit.MAX_TASK_TEXT + 1);
 
     assertThatThrownBy(
-            () -> new ScheduledTaskEdit(null, tooLong, null, null, null, null, null).applyTo(task))
+            () ->
+                new ScheduledTaskEdit(null, tooLong, null, null, null, null, null)
+                    .applyTo(task, TestI18n.english()))
         .hasMessageContaining("limited to");
   }
 
@@ -202,10 +214,14 @@ class ScheduledTaskEditTest {
     final var past = Instant.now().minus(1, ChronoUnit.HOURS).toString();
 
     assertThatThrownBy(
-            () -> new ScheduledTaskEdit(null, null, null, past, null, null, null).applyTo(task))
+            () ->
+                new ScheduledTaskEdit(null, null, null, past, null, null, null)
+                    .applyTo(task, TestI18n.english()))
         .hasMessageContaining("must be in the future");
     assertThatThrownBy(
-            () -> new ScheduledTaskEdit(null, null, null, null, past, null, null).applyTo(task))
+            () ->
+                new ScheduledTaskEdit(null, null, null, null, past, null, null)
+                    .applyTo(task, TestI18n.english()))
         .hasMessageContaining("must be in the future");
   }
 
@@ -215,7 +231,8 @@ class ScheduledTaskEditTest {
     final var nothing = new ScheduledTaskEdit(null, null, null, null, null, null, null);
 
     assertThat(nothing.namesNothing()).isTrue();
-    assertThatThrownBy(() -> nothing.applyTo(task)).hasMessageContaining("nothing to change");
+    assertThatThrownBy(() -> nothing.applyTo(task, TestI18n.english()))
+        .hasMessageContaining("nothing to change");
   }
 
   @Test

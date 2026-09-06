@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.nio.file.Path;
 import me.kezhenxu94.springagent.core.tools.HomeDir;
 import me.kezhenxu94.springagent.core.tools.UserHome;
+import me.kezhenxu94.springagent.integration.feishu.support.TestI18n;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,7 +26,7 @@ class FeishuFilesTest {
   @Test
   @DisplayName("artifactPath resolves a simple filename under the artifacts directory")
   void artifactPathHappyPath() throws Exception {
-    final var resolved = FeishuFiles.artifactPath("report.pdf", home);
+    final var resolved = FeishuFiles.artifactPath("report.pdf", home, TestI18n.english());
     final var artifactsDir = workspaceRoot.toAbsolutePath().normalize().resolve("artifacts");
     assertThat(resolved).isEqualTo(artifactsDir.resolve("report.pdf"));
     assertThat(resolved.startsWith(artifactsDir)).isTrue();
@@ -36,40 +37,40 @@ class FeishuFilesTest {
   void artifactPathStripsParentDirs() throws Exception {
     final var artifactsDir = workspaceRoot.toAbsolutePath().normalize().resolve("artifacts");
 
-    assertThat(FeishuFiles.artifactPath("subdir/report.pdf", home))
+    assertThat(FeishuFiles.artifactPath("subdir/report.pdf", home, TestI18n.english()))
         .isEqualTo(artifactsDir.resolve("report.pdf"));
-    assertThat(FeishuFiles.artifactPath("../etc/passwd", home))
+    assertThat(FeishuFiles.artifactPath("../etc/passwd", home, TestI18n.english()))
         .isEqualTo(artifactsDir.resolve("passwd"));
-    assertThat(FeishuFiles.artifactPath("/etc/passwd", home))
+    assertThat(FeishuFiles.artifactPath("/etc/passwd", home, TestI18n.english()))
         .isEqualTo(artifactsDir.resolve("passwd"));
   }
 
   @Test
   @DisplayName("artifactPath rejects dot-segment names")
   void artifactPathRejectsDotSegments() {
-    assertThatThrownBy(() -> FeishuFiles.artifactPath("..", home))
+    assertThatThrownBy(() -> FeishuFiles.artifactPath("..", home, TestI18n.english()))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> FeishuFiles.artifactPath(".", home))
+    assertThatThrownBy(() -> FeishuFiles.artifactPath(".", home, TestI18n.english()))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   @DisplayName("artifactPath rejects null, blank, and root-only inputs")
   void artifactPathRejectsInvalidInputs() {
-    assertThatThrownBy(() -> FeishuFiles.artifactPath(null, home))
+    assertThatThrownBy(() -> FeishuFiles.artifactPath(null, home, TestI18n.english()))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> FeishuFiles.artifactPath("", home))
+    assertThatThrownBy(() -> FeishuFiles.artifactPath("", home, TestI18n.english()))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> FeishuFiles.artifactPath("   ", home))
+    assertThatThrownBy(() -> FeishuFiles.artifactPath("   ", home, TestI18n.english()))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> FeishuFiles.artifactPath("/", home))
+    assertThatThrownBy(() -> FeishuFiles.artifactPath("/", home, TestI18n.english()))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   @DisplayName("artifactPath rejects fileName with embedded NUL (InvalidPathException)")
   void artifactPathRejectsInvalidPath() {
-    assertThatThrownBy(() -> FeishuFiles.artifactPath("foo\0bar", home))
+    assertThatThrownBy(() -> FeishuFiles.artifactPath("foo\0bar", home, TestI18n.english()))
         .isInstanceOf(IllegalArgumentException.class);
   }
 }

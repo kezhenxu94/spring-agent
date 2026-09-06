@@ -16,6 +16,7 @@ import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
 import me.kezhenxu94.springagent.core.scheduling.ScheduledTaskEdit;
 import me.kezhenxu94.springagent.core.scheduling.ScheduledTaskService;
+import me.kezhenxu94.springagent.core.support.TestI18n;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,7 +27,7 @@ class ScheduledTaskToolTest {
 
   private final ScheduledTaskRepo repo = mock(ScheduledTaskRepo.class);
   private final ScheduledTaskService service = mock(ScheduledTaskService.class);
-  private final ScheduledTaskTool tool = new ScheduledTaskTool(repo, service);
+  private final ScheduledTaskTool tool = new ScheduledTaskTool(repo, service, TestI18n.english());
 
   private final ToolContext context =
       new ToolContext(

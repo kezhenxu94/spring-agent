@@ -9,6 +9,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
@@ -49,6 +50,9 @@ public class McpServerManagementTools {
    * still get its MCP registry tools.
    */
   private final ObjectProvider<McpStreamableHttpClientProperties> streamableHttpProperties;
+
+  /** What this hands back to the model, in the workspace's language. */
+  private final CoreMessages messages;
 
   @Tool(
       name = "AddMcpServer",
@@ -91,10 +95,10 @@ name overwrites its configuration.
     final var ownerId = ToolContexts.require(context, ToolContexts.USER_ID);
 
     if (name == null || name.isBlank()) {
-      return "Error: a non-empty server name is required.";
+      return messages.get("mcp-no-name");
     }
     if (url == null || url.isBlank()) {
-      return "Error: a server URL is required.";
+      return messages.get("mcp-no-url");
     }
     final var serverName = name.trim();
     final var serverUrl = url.trim();
@@ -102,7 +106,7 @@ name overwrites its configuration.
     try {
       clientFactory.validateRemoteUrl(serverUrl);
     } catch (IllegalArgumentException e) {
-      return "Error: " + e.getMessage();
+      return messages.get("mcp-error", e.getMessage());
     }
 
     final var existing = repo.findByOwnerIdAndName(ownerId, serverName).orElse(null);
@@ -132,7 +136,7 @@ name overwrites its configuration.
       client = clientFactory.createAndInitialize(config, context.getContext());
       toolNames = client.listTools().tools().stream().map(t -> t.name()).toList();
     } catch (IllegalArgumentException e) {
-      return "Error: " + e.getMessage();
+      return messages.get("mcp-error", e.getMessage());
     } catch (Exception e) {
       log.warn(
           "Failed to connect to MCP server '{}' at {} for user {}",
@@ -140,7 +144,7 @@ name overwrites its configuration.
           serverUrl,
           ownerId,
           e);
-      return "Error: could not connect to MCP server '" + serverName + "': " + e.getMessage();
+      return messages.get("mcp-unreachable", serverName, e.getMessage());
     } finally {
       if (client != null) {
         try {
@@ -155,19 +159,18 @@ name overwrites its configuration.
       repo.save(config);
     } catch (Exception e) {
       log.error("Failed to persist MCP server '{}' for user {}", serverName, ownerId, e);
-      return "Error: failed to save MCP server '" + serverName + "': " + e.getMessage();
+      return messages.get("mcp-save-failed", serverName, e.getMessage());
     }
     log.info(
         "Registered MCP server '{}' ({}) for user {}",
         serverName,
         McpServerConfig.Transport.STREAMABLE_HTTP,
         ownerId);
-    return "Successfully registered MCP server '"
-        + serverName
-        + "' ("
-        + McpServerConfig.Transport.STREAMABLE_HTTP
-        + "). Available tools: "
-        + (toolNames.isEmpty() ? "(none)" : String.join(", ", toolNames));
+    return messages.get(
+        "mcp-registered",
+        serverName,
+        McpServerConfig.Transport.STREAMABLE_HTTP,
+        toolNames.isEmpty() ? messages.get("mcp-no-tools") : String.join(", ", toolNames));
   }
 
   @Tool(
@@ -193,12 +196,12 @@ name overwrites its configuration.
     final var configured = applicationConfigured();
 
     if (owned.isEmpty() && shared.isEmpty() && configured.isEmpty()) {
-      return "No MCP servers registered or shared with you.";
+      return messages.get("mcp-none");
     }
 
     final var sb = new StringBuilder();
     if (!owned.isEmpty()) {
-      sb.append("Owned by you:\n");
+      sb.append(messages.get("mcp-owned-by-you")).append("\n");
       for (final var s : owned) {
         sb.append("- ")
             .append(s.name())
@@ -206,29 +209,31 @@ name overwrites its configuration.
             .append(s.transport())
             .append("] ")
             .append(s.url())
-            .append(s.enabled() ? "" : " (disabled)")
+            .append(s.enabled() ? "" : " " + messages.get("mcp-disabled"))
             .append(
                 s.sharedWith() == null || s.sharedWith().isEmpty()
                     ? ""
-                    : " (shared with: " + shareTargets(s.sharedWith()) + ")")
+                    : " " + messages.get("mcp-shared-with", shareTargets(s.sharedWith())))
             .append("\n");
       }
     }
     if (!shared.isEmpty()) {
-      sb.append("Shared with you:\n");
+      sb.append(messages.get("mcp-shared-with-you")).append("\n");
       for (final var s : shared) {
         sb.append("- ")
             .append(s.name())
             .append(" [")
             .append(s.transport())
-            .append("] shared by ")
+            .append("] ")
+            .append(messages.get("mcp-shared-by"))
+            .append(' ')
             .append(s.ownerId())
-            .append(s.enabled() ? "" : " (disabled)")
+            .append(s.enabled() ? "" : " " + messages.get("mcp-disabled"))
             .append("\n");
       }
     }
     if (!configured.isEmpty()) {
-      sb.append("Configured by this application, for everyone:\n");
+      sb.append(messages.get("mcp-configured-here")).append("\n");
       for (final var entry : configured.entrySet()) {
         sb.append("- ")
             .append(entry.getKey())
@@ -256,22 +261,20 @@ name overwrites its configuration.
     final var ownerId = ToolContexts.require(context, ToolContexts.USER_ID);
 
     if (name == null || name.isBlank()) {
-      return "Error: a server name is required.";
+      return messages.get("mcp-no-server-name");
     }
     if (targetId == null || targetId.isBlank()) {
-      return "Error: a target open_id or chat_id is required.";
+      return messages.get("mcp-no-target");
     }
     final var serverName = name.trim();
     final var target = targetId.trim();
 
     if (isApplicationConfigured(serverName)) {
-      return notYoursToManage(serverName, "shared");
+      return notYoursToManage(serverName, "mcp-verb-shared");
     }
     final var config = repo.findByOwnerIdAndName(ownerId, serverName).orElse(null);
     if (config == null) {
-      return "Error: no MCP server named '"
-          + serverName
-          + "' is registered to you. Only servers you own can be shared.";
+      return messages.get("mcp-not-yours-share", serverName);
     }
     var sharedWith = config.sharedWith();
     if (sharedWith == null) {
@@ -279,12 +282,12 @@ name overwrites its configuration.
       config.sharedWith(sharedWith);
     }
     if (sharedWith.contains(target)) {
-      return "'" + serverName + "' is already shared with " + target + ".";
+      return messages.get("mcp-already-shared", serverName, target);
     }
     sharedWith.add(target);
     repo.save(config);
     log.info("Shared MCP server '{}' with {} by owner {}", serverName, target, ownerId);
-    return "Successfully shared '" + serverName + "' with " + target + ".";
+    return messages.get("mcp-share-done", serverName, target);
   }
 
   @Tool(
@@ -298,29 +301,27 @@ name overwrites its configuration.
     final var ownerId = ToolContexts.require(context, ToolContexts.USER_ID);
 
     if (name == null || name.isBlank()) {
-      return "Error: a server name is required.";
+      return messages.get("mcp-no-server-name");
     }
     if (targetId == null || targetId.isBlank()) {
-      return "Error: a target open_id or chat_id is required.";
+      return messages.get("mcp-no-target");
     }
     final var serverName = name.trim();
     final var target = targetId.trim();
 
     if (isApplicationConfigured(serverName)) {
-      return notYoursToManage(serverName, "unshared");
+      return notYoursToManage(serverName, "mcp-verb-unshared");
     }
     final var config = repo.findByOwnerIdAndName(ownerId, serverName).orElse(null);
     if (config == null) {
-      return "Error: no MCP server named '"
-          + serverName
-          + "' is registered to you. Only servers you own can be unshared.";
+      return messages.get("mcp-not-yours-unshare", serverName);
     }
     if (config.sharedWith() == null || !config.sharedWith().remove(target)) {
-      return "'" + serverName + "' was not shared with " + target + ".";
+      return messages.get("mcp-not-shared", serverName, target);
     }
     repo.save(config);
     log.info("Unshared MCP server '{}' from {} by owner {}", serverName, target, ownerId);
-    return "Successfully revoked access to '" + serverName + "' from " + target + ".";
+    return messages.get("mcp-unshare-done", serverName, target);
   }
 
   /**
@@ -365,13 +366,8 @@ name overwrites its configuration.
    * that no such server is registered, which reads as "it does not exist" for a server whose tools
    * the model can see itself calling — and invites it to register one under the same name.
    */
-  private static String notYoursToManage(final String name, final String verb) {
-    return "Error: '"
-        + name
-        + "' is configured by this application, not registered by you. It is already available to"
-        + " everyone here and cannot be "
-        + verb
-        + " through these tools.";
+  private String notYoursToManage(final String name, final String verb) {
+    return messages.get("mcp-not-yours-to-manage", name, messages.get(verb));
   }
 
   private static String blankToNull(final String value) {
@@ -387,17 +383,17 @@ name overwrites its configuration.
     final var ownerId = ToolContexts.require(context, ToolContexts.USER_ID);
 
     if (name == null || name.isBlank()) {
-      return "Error: a server name is required.";
+      return messages.get("mcp-no-server-name");
     }
     final var serverName = name.trim();
     if (isApplicationConfigured(serverName)) {
-      return notYoursToManage(serverName, "removed");
+      return notYoursToManage(serverName, "mcp-verb-removed");
     }
     if (!repo.existsByOwnerIdAndName(ownerId, serverName)) {
-      return "Error: no MCP server named '" + serverName + "' is registered.";
+      return messages.get("mcp-unknown", serverName);
     }
     repo.deleteByOwnerIdAndName(ownerId, serverName);
     log.info("Removed MCP server '{}' for user {}", serverName, ownerId);
-    return "Successfully removed MCP server '" + serverName + "'.";
+    return messages.get("mcp-removed", serverName);
   }
 }

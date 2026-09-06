@@ -2,6 +2,8 @@ package me.kezhenxu94.springagent.tools.shell.docker;
 
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.ConditionalOnShellBackend;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
+import me.kezhenxu94.springagent.core.config.ModuleMessages;
 import me.kezhenxu94.springagent.core.config.ShellToolsProperties.Type;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.repo.ShellCredentialRepo;
@@ -47,6 +49,17 @@ public class DockerShellAutoConfiguration {
         "shell-docker/tools", "shell-docker/prompts/tools/", properties.locale());
   }
 
+  /**
+   * What this backend's tools answer with, in the workspace's language.
+   *
+   * <p>Its own bundle rather than core's, for the reason the tool translations above have one: both
+   * shell backends answer under the same tool names, and only one of them is ever on the classpath.
+   */
+  @Bean
+  ModuleMessages dockerShellMessages(final SpringAgentProperties properties) {
+    return new ModuleMessages("shell-docker.messages", properties.locale());
+  }
+
   @Bean
   @ConditionalOnMissingBean
   ShellCredentialStore shellCredentialStore(
@@ -56,8 +69,8 @@ public class DockerShellAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  CredentialTools credentialTools(final ShellCredentialStore store) {
-    return new CredentialTools(store, "RestartShellContainer");
+  CredentialTools credentialTools(final ShellCredentialStore store, final CoreMessages messages) {
+    return new CredentialTools(store, "RestartShellContainer", messages);
   }
 
   @Bean(destroyMethod = "close")
@@ -73,7 +86,9 @@ public class DockerShellAutoConfiguration {
   @Bean(destroyMethod = "close")
   @ConditionalOnMissingBean
   DockerShellTools dockerShellTools(
-      final UserContainerManager userContainerManager, final DockerShellProperties properties) {
-    return new DockerShellTools(userContainerManager, properties);
+      final ModuleMessages messages,
+      final UserContainerManager userContainerManager,
+      final DockerShellProperties properties) {
+    return new DockerShellTools(userContainerManager, properties, messages);
   }
 }

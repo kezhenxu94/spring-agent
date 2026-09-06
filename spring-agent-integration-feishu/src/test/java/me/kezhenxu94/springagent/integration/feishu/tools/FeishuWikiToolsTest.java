@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import me.kezhenxu94.springagent.integration.feishu.support.TestI18n;
 import me.kezhenxu94.springagent.integration.feishu.tools.FeishuWikiTools.NodePage;
 import me.kezhenxu94.springagent.integration.feishu.tools.FeishuWikiTools.WikiNodeInfo;
 import org.junit.jupiter.api.DisplayName;
@@ -14,7 +15,7 @@ import org.junit.jupiter.api.Test;
 
 class FeishuWikiToolsTest {
 
-  private final FeishuWikiTools tools = new FeishuWikiTools(null);
+  private final FeishuWikiTools tools = new FeishuWikiTools(null, TestI18n.english());
 
   @Test
   @DisplayName("resolveTokenAndObjType passes a bare token through unchanged")

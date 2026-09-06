@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
+import me.kezhenxu94.springagent.integration.slack.config.SlackMessages;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.stereotype.Component;
 
@@ -34,10 +35,13 @@ public class SlackChatAccess {
   private final MethodsClient slack;
   private final Admins admins;
 
+  /** What a refusal says, in the workspace's language; the model reads it as the tool result. */
+  private final SlackMessages messages;
+
   /** Throws unless the run's user may reach {@code target}. */
   public void assertMayReach(final String target, final ToolContext toolContext) {
     if (Strings.isNullOrEmpty(target)) {
-      throw new IllegalArgumentException("No channel or user was named");
+      throw new IllegalArgumentException(messages.get("tool-no-target"));
     }
     final var userId = ToolContexts.get(toolContext, ToolContexts.USER_ID);
     if (Strings.isNullOrEmpty(userId)) {

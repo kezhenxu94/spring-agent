@@ -43,6 +43,22 @@ that bound is counted; `FEISHU_CARD_ELEMENTS`, `FEISHU_CARD_STREAM_CHARACTERS` a
 The card JSON itself lives in template files (`FEISHU_REPLY_CARD`, `FEISHU_WELCOME_CARD`,
 `FEISHU_UPDATE_CARD`), so a deployment restyles a card without touching Java.
 
+
+## Text the model reads
+
+`{replyFormat}` is this module's largest contribution to the prompt — two thousand characters of
+card-markdown rules in the system message of every run on this surface — and it lives in
+`feishu/prompts/reply-format.md` (plus `-group`) with per-locale siblings rather than as a Java
+constant, for the same reason core's prompts are files and for one sharper: a constant has one
+language, and two thousand characters of English at the head of every request is a constant pull
+towards English in a workspace that asked for something else.
+
+The four reference pages three of the tools return as their whole result are the same shape, read by
+`FeishuGuides` when the context starts. So are the tool descriptions, in `feishu/prompts/tools/`,
+and what the tools *answer* with, in `feishu/messages*.properties`. `FeishuPromptFilesTranslatedTest`
+and `FeishuMessageBundleParityTest` are what notice a page or a line left in English.
+
+
 ## Two rules about identity
 
 **What the agent makes in Feishu belongs to the person who asked for it.** The first time somebody

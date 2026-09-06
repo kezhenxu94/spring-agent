@@ -59,6 +59,13 @@ public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
     // because the one above does not cross a directory separator.
     hints.resources().registerPattern("core/prompts/tools/*.md");
 
+    // And the local shell backend's, which are core's files but not core's tools: the library
+    // declares Bash, BashOutput and KillShell, and all three shell backends translate those names
+    // in a bundle of their own so that only the active backend's wording is ever served.
+    hints.resources().registerPattern("shell-local/prompts/tools/*.md");
+    hints.resources().registerPattern("shell-local/tools.properties");
+    hints.resources().registerPattern("shell-local/tools_*.properties");
+
     // And each parameter's. A plain resource pattern, not registerResourceBundle: ModuleToolTexts
     // reads these as resources precisely so as not to go through a ResourceBundle, which would
     // consult the host's locale before the base file.

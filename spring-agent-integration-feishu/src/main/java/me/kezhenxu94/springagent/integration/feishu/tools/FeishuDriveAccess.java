@@ -144,10 +144,10 @@ public class FeishuDriveAccess {
    */
   public void requireAccess(final ToolContext toolContext, final String token, final String type) {
     if (Strings.isNullOrEmpty(token)) {
-      throw new IllegalArgumentException("token is required");
+      throw new IllegalArgumentException(messages.get("tool-token-required"));
     }
     if (Strings.isNullOrEmpty(type)) {
-      throw new IllegalArgumentException("type is required");
+      throw new IllegalArgumentException(messages.get("tool-type-required"));
     }
     // Absent rather than empty on a run with nobody behind it, which is a run with nobody to
     // authorise: throwing here is the fail-closed answer.
@@ -198,7 +198,7 @@ public class FeishuDriveAccess {
    */
   public void requireWikiSpaceAccess(final ToolContext toolContext, final String spaceId) {
     if (Strings.isNullOrEmpty(spaceId)) {
-      throw new IllegalArgumentException("spaceId is required");
+      throw new IllegalArgumentException(messages.get("tool-space-id-required"));
     }
     final var userId = ToolContexts.require(toolContext, ToolContexts.USER_ID);
     if (admins.isAdmin(userId)) {

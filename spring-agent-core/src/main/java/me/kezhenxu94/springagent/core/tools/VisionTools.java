@@ -51,7 +51,7 @@ public class VisionTools {
       final ToolContext context) {
     if (images == null || images.isEmpty()) {
       log.warn("RecognizeImage called with no images");
-      return "Error: give at least one image.";
+      return messages.get("vision-no-image");
     }
     // Said here rather than left to the call, because the call would reach an endpoint this
     // deployment never chose and come back as a credential rejection from it — which reads to the
@@ -82,8 +82,7 @@ public class VisionTools {
           failed.size(),
           images.size(),
           failed);
-      return "Error: none of the images could be read. Check the paths and URLs; a local path has"
-          + " to be inside the current user's, group's, or tenant's workspace directory.";
+      return messages.get("vision-unreadable");
     }
 
     final var startedAt = System.nanoTime();

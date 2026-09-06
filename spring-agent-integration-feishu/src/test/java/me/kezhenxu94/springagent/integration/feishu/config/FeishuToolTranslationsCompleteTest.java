@@ -6,6 +6,7 @@ import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
+import me.kezhenxu94.springagent.core.i18n.ToolTextsInventory;
 import me.kezhenxu94.springagent.core.tools.i18n.ModuleToolTexts;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;

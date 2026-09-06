@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import me.kezhenxu94.springagent.core.tools.UserHome;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
+import me.kezhenxu94.springagent.integration.feishu.support.TestI18n;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,7 +43,7 @@ class FeishuImportExportToolsTest {
         .thenReturn("ou_userOwnFolder");
     tools =
         new FeishuImportExportTools(
-            driveService, userWorkspaceFactory, userFolders, permissionTools);
+            driveService, userWorkspaceFactory, userFolders, permissionTools, TestI18n.english());
   }
 
   private void workspaceIsTheTempDir() {

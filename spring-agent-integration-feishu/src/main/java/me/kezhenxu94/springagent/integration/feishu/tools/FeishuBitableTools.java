@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.integration.feishu.bitable.FeishuBitableService;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuGuides;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
@@ -53,6 +54,9 @@ public class FeishuBitableTools {
 
   /** The reference pages this class hands back, in the workspace's language. */
   final FeishuGuides guides;
+
+  /** What these hand back to the model, in the workspace's language. */
+  final FeishuMessages messages;
 
   @Builder
   @Jacksonized
@@ -260,11 +264,8 @@ public class FeishuBitableTools {
       @ToolParam(description = "The app_token identifying the bitable") String appToken,
       @ToolParam(description = "The table_id of the table to rename") String tableId,
       @ToolParam(description = "The new name") String name) {
-    return "Table "
-        + tableId
-        + " is now named '"
-        + feishuBitableService.renameTable(appToken, tableId, name)
-        + "'.";
+    return messages.get(
+        "tool-table-renamed", tableId, feishuBitableService.renameTable(appToken, tableId, name));
   }
 
   @Tool(
@@ -277,14 +278,14 @@ public class FeishuBitableTools {
       @ToolParam(description = "The app_token identifying the bitable") String appToken,
       @ToolParam(description = "The table_ids of the tables to delete") List<String> tableIds) {
     if (tableIds == null || tableIds.isEmpty()) {
-      return "There was nothing to delete.";
+      return messages.get("tool-nothing-to-delete");
     }
     if (tableIds.size() > MAX_TABLES_PER_DELETE) {
       throw new IllegalArgumentException(
           "At most " + MAX_TABLES_PER_DELETE + " tables in one call, got " + tableIds.size());
     }
     feishuBitableService.batchDeleteTables(appToken, tableIds);
-    return "Deleted " + tableIds.size() + " table(s) from bitable " + appToken + ".";
+    return messages.get("tool-tables-deleted", tableIds.size(), appToken);
   }
 
   @Tool(
@@ -389,7 +390,7 @@ public class FeishuBitableTools {
       @ToolParam(description = "The table_id of the table") String tableId,
       @ToolParam(description = "The view_id of the view to delete") String viewId) {
     feishuBitableService.deleteView(appToken, tableId, viewId);
-    return "Deleted view " + viewId + " of table " + tableId + ".";
+    return messages.get("tool-view-deleted", viewId, tableId);
   }
 
   @Tool(
@@ -472,7 +473,7 @@ public class FeishuBitableTools {
               required = false)
           Boolean automaticFields) {
     if (recordIds == null || recordIds.isEmpty()) {
-      throw new IllegalArgumentException("recordIds must name at least one record");
+      throw new IllegalArgumentException(messages.get("tool-no-record-ids"));
     }
     if (recordIds.size() > MAX_RECORDS_PER_GET) {
       throw new IllegalArgumentException(
@@ -602,14 +603,14 @@ public class FeishuBitableTools {
       @ToolParam(description = "The table_id of the table") String tableId,
       @ToolParam(description = "The record_ids to delete, at most 500") List<String> recordIds) {
     if (recordIds == null || recordIds.isEmpty()) {
-      return "There was nothing to delete.";
+      return messages.get("tool-nothing-to-delete");
     }
     if (recordIds.size() > MAX_RECORDS_PER_DELETE) {
       throw new IllegalArgumentException(
           "At most " + MAX_RECORDS_PER_DELETE + " records in one call, got " + recordIds.size());
     }
     feishuBitableService.batchDeleteRecords(appToken, tableId, recordIds);
-    return "Deleted " + recordIds.size() + " record(s) from table " + tableId + ".";
+    return messages.get("tool-records-deleted", recordIds.size(), tableId);
   }
 
   @Tool(

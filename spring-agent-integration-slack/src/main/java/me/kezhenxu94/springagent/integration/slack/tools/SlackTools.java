@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.integration.slack.SlackFiles;
+import me.kezhenxu94.springagent.integration.slack.config.SlackMessages;
 import me.kezhenxu94.springagent.integration.slack.config.SlackProperties;
 import me.kezhenxu94.springagent.integration.slack.handler.SlackUserNames;
 import org.springframework.ai.chat.model.ToolContext;
@@ -37,6 +38,12 @@ public class SlackTools {
   private final SlackChatAccess chatAccess;
   private final SlackFiles files;
 
+  /**
+   * What these hand back to the model, in the workspace's language. A tool result is what the model
+   * reasons from and then writes its answer out of, so English here shows up in both.
+   */
+  private final SlackMessages messages;
+
   @Tool(
       name = "SlackSendMessage",
       description =
@@ -60,12 +67,12 @@ public class SlackTools {
                 return r;
               });
       if (!response.isOk()) {
-        return "Slack refused the message: " + response.getError();
+        return messages.get("tool-send-refused", response.getError());
       }
-      return "Sent, as message " + response.getTs() + " in " + response.getChannel();
+      return messages.get("tool-sent", response.getTs(), response.getChannel());
     } catch (Exception e) {
       log.warn("Could not send a Slack message to {}", target, e);
-      return "Could not send the message: " + e.getMessage();
+      return messages.get("tool-send-failed", e.getMessage());
     }
   }
 
@@ -88,24 +95,24 @@ public class SlackTools {
       if (Strings.isNullOrEmpty(threadTs)) {
         final var response = slack.conversationsHistory(r -> r.channel(channelId).limit(count));
         if (!response.isOk()) {
-          return "Slack refused the read: " + response.getError();
+          return messages.get("tool-read-refused", response.getError());
         }
         found = response.getMessages();
       } else {
         final var response =
             slack.conversationsReplies(r -> r.channel(channelId).ts(threadTs).limit(count));
         if (!response.isOk()) {
-          return "Slack refused the read: " + response.getError();
+          return messages.get("tool-read-refused", response.getError());
         }
         found = response.getMessages();
       }
       if (found == null || found.isEmpty()) {
-        return "No messages.";
+        return messages.get("tool-no-messages");
       }
       return found.stream().map(this::render).collect(Collectors.joining("\n"));
     } catch (Exception e) {
       log.warn("Could not read Slack history in {}", channelId, e);
-      return "Could not read the history: " + e.getMessage();
+      return messages.get("tool-read-failed", e.getMessage());
     }
   }
 
@@ -130,11 +137,11 @@ public class SlackTools {
                               com.slack.api.model.ConversationType.PUBLIC_CHANNEL,
                               com.slack.api.model.ConversationType.PRIVATE_CHANNEL)));
       if (!response.isOk()) {
-        return "Slack refused the list: " + response.getError();
+        return messages.get("tool-list-refused", response.getError());
       }
       final var channels = response.getChannels();
       if (channels == null || channels.isEmpty()) {
-        return "The bot is not in any channel.";
+        return messages.get("tool-no-channels");
       }
       return channels.stream()
           .filter(com.slack.api.model.Conversation::isMember)
@@ -142,7 +149,7 @@ public class SlackTools {
           .collect(Collectors.joining("\n"));
     } catch (Exception e) {
       log.warn("Could not list Slack channels", e);
-      return "Could not list the channels: " + e.getMessage();
+      return messages.get("tool-channels-failed", e.getMessage());
     }
   }
 
@@ -156,11 +163,11 @@ public class SlackTools {
     try {
       final var response = slack.conversationsMembers(r -> r.channel(channelId).limit(200));
       if (!response.isOk()) {
-        return "Slack refused the list: " + response.getError();
+        return messages.get("tool-list-refused", response.getError());
       }
       final var members = response.getMembers();
       if (members == null || members.isEmpty()) {
-        return "Nobody is in that channel.";
+        return messages.get("tool-no-members");
       }
       final var lines = new ArrayList<String>();
       for (final var member : members) {
@@ -169,7 +176,7 @@ public class SlackTools {
       return String.join("\n", lines);
     } catch (Exception e) {
       log.warn("Could not list members of {}", channelId, e);
-      return "Could not list the members: " + e.getMessage();
+      return messages.get("tool-members-failed", e.getMessage());
     }
   }
 
@@ -199,12 +206,12 @@ public class SlackTools {
                 return r;
               });
       if (!response.isOk()) {
-        return "Slack refused the upload: " + response.getError();
+        return messages.get("tool-upload-refused", response.getError());
       }
-      return "Uploaded " + file.getName() + " to " + channelId;
+      return messages.get("tool-uploaded", file.getName(), channelId);
     } catch (Exception e) {
       log.warn("Could not upload {} to {}", path, channelId, e);
-      return "Could not upload the file: " + e.getMessage();
+      return messages.get("tool-upload-failed", e.getMessage());
     }
   }
 
