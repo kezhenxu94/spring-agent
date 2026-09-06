@@ -79,6 +79,7 @@ class ToolInputFileRefsSecurityTest {
             .resolve("artifacts")
             .resolve("tool-results")
             .resolve("r.json");
+    // Their home is a home, just not one this request reaches.
 
     for (final var path : List.of(theirs, walked)) {
       assertThatThrownBy(() -> refs().expand("Write", arg("@file:" + path), contextOf("user1")))
@@ -103,17 +104,36 @@ class ToolInputFileRefsSecurityTest {
   }
 
   @Test
-  @DisplayName("nothing outside the tool-results directory is readable, however it is spelled")
-  void onlyToolResults() throws Exception {
+  @DisplayName("anywhere in the requester's own home is readable, including by an odd spelling")
+  void anywhereInTheHome() throws Exception {
+    // The boundary is the home rather than one directory in it, so a file a shell command left in
+    // the workspace can be handed to a tool without being copied through the model. What keeps
+    // memories out of a message is the parameter allow-list, not this.
     final var home = storage.resolve("user1");
     toolResultsOf("user1");
     Files.createDirectories(home.resolve("memories"));
-    final var memories = Files.writeString(home.resolve("memories").resolve("m.md"), "secret");
+    final var memories = Files.writeString(home.resolve("memories").resolve("m.md"), "[1]");
     final var artifact = Files.writeString(home.resolve("artifacts").resolve("a.json"), "[1]");
+    Files.createDirectories(home.resolve("workspace").resolve("notes"));
+    final var deep =
+        Files.writeString(home.resolve("workspace").resolve("notes").resolve("n.json"), "[1]");
     final var walked =
         toolResultsOf("user1").resolve("..").resolve("..").resolve("memories").resolve("m.md");
 
-    for (final var path : List.of(memories, artifact, walked, Path.of("/etc/hosts"))) {
+    for (final var path : List.of(memories, artifact, deep, walked)) {
+      assertThat(refs().expand("Write", arg("@file:" + path), contextOf("user1")))
+          .as("read %s", path)
+          .isEqualTo("{\"descendantsJson\":\"[1]\"}");
+    }
+  }
+
+  @Test
+  @DisplayName("nothing outside every home the request reaches is readable")
+  void nothingOutsideTheHome() throws Exception {
+    toolResultsOf("user1");
+    final var beside = Files.writeString(storage.resolve("beside.json"), "[1]");
+
+    for (final var path : List.of(beside, Path.of("/etc/hosts"))) {
       assertThatThrownBy(() -> refs().expand("Write", arg("@file:" + path), contextOf("user1")))
           .as("read %s", path)
           .isInstanceOf(ToolInputFileRefs.UnresolvableReference.class);

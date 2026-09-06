@@ -162,8 +162,8 @@ public class FeishuAutoConfiguration {
   }
 
   /**
-   * The document parameters that take an {@code @file:} reference to a saved tool result instead of
-   * the payload itself.
+   * The document parameters that take an {@code @file:} reference to a file instead of the payload
+   * itself.
    *
    * <p>These are the ones a previous call's result is handed to unchanged: a converted block tree
    * on its way to being inserted, or a set of block updates. Nothing else here is on the list —

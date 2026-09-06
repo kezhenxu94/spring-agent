@@ -347,17 +347,19 @@ your own should return what it has rather than cap it first. It writes JSON inde
 `Read` tool truncates a line past 2000 characters and a serialized tree is one line.
 
 The other half of that is `ToolInputFileRefs`, which lets an argument be given as `@file:<path>` or
-`@file:<path>#<JSON Pointer>` naming such a saved result, so a payload whose only destination is the
-next call never passes through the model at all. It is not a `ToolCallInterceptor`: expansion
+`@file:<path>#<JSON Pointer>` naming a file — such a saved result, something a shell command left in
+the workspace, anything under a home directory the request reaches — so a payload whose only
+destination is the next call never passes through the model at all. It is not a `ToolCallInterceptor`: expansion
 happens in `InterceptingToolCallback` between the interceptor chain and the delegate, so every
 interceptor — and so every surface showing what a call was given — sees the reference the model
 wrote rather than the payload it stood for.
 
-**Which parameters accept a reference is an allow-list, and it is a security boundary.** Contribute
-one from your own module as a `ToolInputFileRefs.Params` bean, mapping tool name to parameter names,
-and say so in the parameter's own `@ToolParam` description — that is how the model finds out. Add a
-parameter to it only where the argument is something a previous call produced and this call passes
-along unchanged. Expanding one the model composes gains nothing and turns that tool into a
+**Which parameters accept a reference is an allow-list, and it is the security boundary** — where the
+file may sit is the weaker half, since a home holds the memories and skills as well as the workspace.
+Contribute one from your own module as a `ToolInputFileRefs.Params` bean, mapping tool name to
+parameter names, and say so in the parameter's own `@ToolParam` description — that is how the model
+finds out. Add a parameter to it only where the argument is something the call passes along
+unchanged, and never where the argument decides where a payload is sent. Expanding one the model composes gains nothing and turns that tool into a
 file-reading primitive: a run triaging an observation acts on text written by whoever caused the
 event, and one injected sentence is enough to aim a message-sending tool at a file of memories. A
 reference on any other parameter is refused rather than written through as text; `@@file:` escapes

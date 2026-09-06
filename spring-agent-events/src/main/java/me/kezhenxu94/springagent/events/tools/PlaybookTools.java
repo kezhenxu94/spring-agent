@@ -124,7 +124,8 @@ public class PlaybookTools {
       @ToolParam(
               description =
                   "The playbook itself, as instructions to the agent. Takes a file reference:"
-                      + " @file:<path> for a saved tool result, or @file:<path>#/json/pointer for"
+                      + " @file:<path> for a saved tool result or any file in your home"
+                      + " directory, or @file:<path>#/json/pointer for"
                       + " one part of it")
           String text,
       final ToolContext context) {

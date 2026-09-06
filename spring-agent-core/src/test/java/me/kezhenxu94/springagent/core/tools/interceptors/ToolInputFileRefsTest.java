@@ -104,16 +104,24 @@ class ToolInputFileRefsTest {
   }
 
   @Test
-  @DisplayName("a file outside the tool-results directory is refused wherever it sits")
-  void refusesOutsideToolResults() throws Exception {
+  @DisplayName("a file outside the requester's home is refused wherever it sits")
+  void refusesOutsideTheHome() throws Exception {
     final var outside = Files.writeString(storage.resolve("elsewhere.json"), "[]");
-    final var nested = Files.createDirectories(toolResults.resolve("deeper"));
-    final var deeper = Files.writeString(nested.resolve("x.json"), "[]");
 
-    for (final var path : List.of(outside, deeper, Path.of("/etc/passwd"))) {
+    for (final var path : List.of(outside, Path.of("/etc/passwd"))) {
       assertThatThrownBy(() -> refs().expand("Write", arg("@file:" + path), CONTEXT))
           .isInstanceOf(ToolInputFileRefs.UnresolvableReference.class);
     }
+  }
+
+  @Test
+  @DisplayName("a subdirectory of a saved result is as referenceable as the directory itself")
+  void allowsNestedFiles() throws Exception {
+    final var nested = Files.createDirectories(toolResults.resolve("deeper"));
+    final var deeper = Files.writeString(nested.resolve("x.json"), "[]");
+
+    assertThat(refs().expand("Write", arg("@file:" + deeper), CONTEXT))
+        .isEqualTo("{\"descendantsJson\":\"[]\"}");
   }
 
   @Test
@@ -133,7 +141,7 @@ class ToolInputFileRefsTest {
     assertThatThrownBy(
             () -> refs().expand("Write", arg("@file:" + toolResults.resolve("gone.json")), CONTEXT))
         .isInstanceOf(ToolInputFileRefs.UnresolvableReference.class)
-        .hasMessageContaining("No such tool-result file");
+        .hasMessageContaining("No such file");
   }
 
   @Test
