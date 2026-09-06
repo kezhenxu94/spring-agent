@@ -1012,6 +1012,18 @@ app:
     # a run that was merely slow.
     stuck-investigation-timeout: ${EVENTS_STUCK_INVESTIGATION_TIMEOUT:PT20M}
 
+    # How long a closed situation, and the observations behind it, are kept before being deleted.
+    # Measured from the moment it was closed, which resolve-after-quiet does hours after the last
+    # observation, so nothing is ever taken away from underneath a run. A month by default: long
+    # enough to still look one up while people are talking about the incident it came from, short
+    # enough that a busy alert source does not grow the database for ever — closing a situation
+    # takes it out of every query but leaves the row, so without this the two tables only grow.
+    #
+    # Global rather than per-source, unlike every timing above it: this says how long the database
+    # holds evidence, which a deployment answers once. Set it to 0 to keep everything for ever,
+    # for a deployment where retention is somebody else's policy to enforce.
+    retention: ${EVENTS_RETENTION:PT720H}
+
     # What the agent is told it is doing, with {situation} substituted, overriding every source at
     # once. Left unset, and that is what makes it translatable: a property has one value, so setting
     # one here would pin every source to one wording in one language. Unset, each source is given its

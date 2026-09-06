@@ -22,6 +22,17 @@ import org.junit.jupiter.api.Test;
 class EventsPropertiesTest {
 
   @Test
+  @DisplayName("a negative retention means the same as zero: keep everything")
+  void shouldReadANegativeRetentionAsForEver() {
+    // Both spellings mean "delete nothing", and -1 is the one somebody reaches for when a property
+    // has no natural "off". Normalised here so SituationRetention has one value to test for.
+    assertThat(EventsProperties.builder().retention(Duration.ofDays(-1)).build().retention())
+        .isEqualTo(Duration.ZERO);
+    assertThat(EventsProperties.builder().retention(Duration.ZERO).build().retention())
+        .isEqualTo(Duration.ZERO);
+  }
+
+  @Test
   @DisplayName("a source nobody configured has no policy, so its observations are dropped")
   void shouldHaveNoPolicyForAnUnconfiguredSource() {
     assertThat(properties(Map.of()).policyFor("github")).isEmpty();

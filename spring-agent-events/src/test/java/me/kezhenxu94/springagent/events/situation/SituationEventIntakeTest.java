@@ -385,6 +385,9 @@ class SituationEventIntakeTest {
                   findBySituationId(final String situationId) {
                 return java.util.List.of();
               }
+
+              @Override
+              public void deleteBySituationId(final String situationId) {}
             },
             repos.claims,
             clock);

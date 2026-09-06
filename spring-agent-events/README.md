@@ -58,6 +58,10 @@ An observation joins the open situation for its `correlationKey`, or opens one. 
 - **a situation ends** either after `resolve-after-quiet` of nothing, or immediately after an
   evaluation where `resolve-after-evaluation` is set, or because a run called `ResolveSituation`.
 - **`stuck-investigation-timeout`** is what unwedges a situation whose run never came back.
+- **`retention`** is how long a closed situation and its observations are kept before `SituationRetention`
+  deletes them, measured from when the situation was closed. A month by default; `0` keeps everything.
+  Ending a situation takes it out of every query but leaves the row, so without this the two tables
+  only ever grow.
 
 Defaults for all of these are in `EventsProperties`, and each is documented with its reasoning in the
 `app.events` block of

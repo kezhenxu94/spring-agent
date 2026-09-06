@@ -74,6 +74,14 @@ situation (`resolve-after-quiet`), and how many events one situation may carry. 
 configures none of them inherits the global defaults, and the two chat sources ship with defaults of
 their own.
 
+**Retention is not**, and is the one setting under `app.events` that is global on purpose:
+`retention` says how long a closed situation and the observations behind it stay in the database
+before they are deleted, which is a statement about the database rather than about a source's
+manner. Thirty days by default, measured from the moment the situation was closed; `0` keeps
+everything for ever, for a deployment where retention is somebody else's policy to enforce. Nothing
+here ever reads a situation that old — closing one takes it out of every query — so the choice is
+only about how long the evidence stays available to look up by hand.
+
 **Who a source runs as** is `app.events.sources.<name>.owner`. Its `user-id` must be an identity of
 the agent's own and never a person's, since a triage run assumes it along with that identity's files,
 credentials and MCP servers. `group-id` and `tenant-id` beside it are optional and say what else that

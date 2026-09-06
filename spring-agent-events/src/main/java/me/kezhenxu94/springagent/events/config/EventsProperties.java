@@ -63,6 +63,12 @@ import org.springframework.util.unit.DataSize;
  *     reclaimed underneath itself, which is what the number is really about; the late write-back is
  *     harmless either way, since reclaiming bumps the generation and {@code
  *     SituationSweeper.Evaluation} already declines to write over a generation that moved on.
+ * @param retention how long a closed situation, and the observations behind it, are kept before
+ *     being deleted. Measured from the moment the situation was closed, so a long-lived one is
+ *     never taken away underneath a run. Global rather than per-source, unlike every timing above
+ *     it: this is a statement about how long the database holds evidence, and a deployment answers
+ *     that once. {@code 0} keeps everything for ever, for a deployment whose retention is somebody
+ *     else's policy.
  * @param playbook how a triage run finds the deployment's own instructions for dealing with an
  *     event, overriding every source at once. Usually left unset here and stated per source, since
  *     the whole point is that a GitHub event and an alert are dealt with differently.
@@ -89,6 +95,7 @@ public record EventsProperties(
     Duration resolveAfterQuiet,
     boolean resolveAfterEvaluation,
     Duration stuckInvestigationTimeout,
+    Duration retention,
     Playbook playbook,
     String triagePrompt,
     Map<String, Source> sources) {
@@ -107,6 +114,25 @@ public record EventsProperties(
   public static final Duration DEFAULT_RESOLVE_AFTER_QUIET = Duration.ofHours(6);
   public static final boolean DEFAULT_RESOLVE_AFTER_EVALUATION = false;
   public static final Duration DEFAULT_STUCK_INVESTIGATION_TIMEOUT = Duration.ofMinutes(20);
+
+  /**
+   * A month, which is long enough that a situation can still be looked up while anybody is still
+   * talking about the incident it came from, and short enough that a busy deployment's storage does
+   * not grow without limit. Nothing in this module reads a situation this old — {@code
+   * resolve-after-quiet} closed it hours after it went quiet, and a new observation under the same
+   * correlation key opens a fresh one rather than reviving it.
+   */
+  public static final Duration DEFAULT_RETENTION = Duration.ofDays(30);
+
+  /**
+   * How often the closed situations are looked at for deletion.
+   *
+   * <p>Not a property, unlike everything else here, because there is nothing a deployment could
+   * usefully say about it: the shortest retention worth setting is measured in hours and the pass
+   * is a read of one indexed set, so an hour is both often enough to honour any retention and rare
+   * enough to cost nothing. A knob here would only be a way to make one of those two false.
+   */
+  public static final Duration RETENTION_SWEEP_INTERVAL = Duration.ofHours(1);
 
   /**
    * The source name the Feishu integration reports group chat messages under.
@@ -185,6 +211,12 @@ public record EventsProperties(
         stuckInvestigationTimeout == null
             ? DEFAULT_STUCK_INVESTIGATION_TIMEOUT
             : stuckInvestigationTimeout;
+    // Negative is read as zero rather than rejected: both mean "do not delete anything", and a
+    // deployment that wrote -1 to say so should get what it meant.
+    retention =
+        retention == null
+            ? DEFAULT_RETENTION
+            : (retention.isNegative() ? Duration.ZERO : retention);
     playbook = playbook == null ? Playbook.NONE : playbook;
     triagePrompt = blankToNull(triagePrompt);
     sources = sources == null ? Map.of() : Map.copyOf(sources);
