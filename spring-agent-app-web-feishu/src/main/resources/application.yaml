@@ -293,6 +293,21 @@ spring:
 # The body says what the endpoint objected to. The level below answers the next question, which is
 # *which request* it objected to.
 logging:
+  # Which run a log line belongs to, in front of every console and file line. Boot leaves this slot
+  # (${LOG_CORRELATION_PATTERN}, which both of its patterns already carry) empty unless something
+  # fills it; what puts a value behind it is me.kezhenxu94.springagent.core.logging.RunMdc, which is
+  # also where the reasoning lives for how one run's identity follows it across the threads it is
+  # assembled, streamed, tool-called and finished on.
+  #
+  # The request id alone, although the MDC also holds the conversation and the user: this is the
+  # line a person reads, the request id is what everything else correlates by, and the other two
+  # would double its width for something nobody greps a terminal for. They are not lost — with
+  # LOG_APPENDER=STDOUT_JSON, JsonLogLayout writes the whole MDC as fields of its own, which is the
+  # appender a deployment shipping its logs anywhere runs.
+  #
+  # Empty on any line no run is behind: startup, the sweepers, an HTTP request that starts nothing.
+  pattern:
+    correlation: "%X{requestId:-} "
   level:
     # The whole outgoing ChatClientRequest, once per model call: the rendered system prompt, the
     # replayed conversation and every tool result in it. That is the message array the endpoint
@@ -324,6 +339,16 @@ management:
       exposure:
         include: health,prometheus
 app:
+  # Whether a run's MDC follows it across the threads it crosses, so that the log lines Spring AI,
+  # the OpenAI client and the tool-calling loop write from inside a run's reactive chain carry the
+  # run's id like the lines this codebase writes itself. On, and worth knowing what it costs: it is
+  # reactor.core.publisher.Hooks#enableAutomaticContextPropagation, which is global to the JVM
+  # rather than to this runtime's own streams, so every Reactor chain in the process pays for a
+  # capture and a restore around each signal. Turning it off leaves the explicit scopes in
+  # me.kezhenxu94.springagent.core.logging.RunMdc, which still name every line this runtime logs.
+  logging:
+    run-context-propagation: true
+
   # Which language the agent's own text speaks — what it writes into a conversation itself, as
   # opposed to what the model wrote or what a surface says directly. The note recording that the
   # user has already been asked something is the one so far. Blank takes the host's language, which

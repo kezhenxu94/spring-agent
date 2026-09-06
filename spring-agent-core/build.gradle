@@ -72,6 +72,12 @@ dependencies {
   implementation libs.guava
   implementation libs.jakarta.annotation.api
   implementation libs.bundles.logback.json
+  // What Reactor carries a run's MDC across its thread boundaries with — see
+  // me.kezhenxu94.springagent.core.logging.MdcThreadLocalAccessor. Named here rather than left to
+  // arrive under spring-ai-commons: this module compiles against its ThreadLocalAccessor, and a
+  // transitive that happens to be there today is not a compile dependency. BOM-managed, so no
+  // version. Nothing new on the runtime classpath, and nothing the isolation check cares about.
+  implementation 'io.micrometer:context-propagation'
 
   // Raw coordinates rather than the sibling projects, which would be a dependency cycle. These are
   // here only so PersistenceAutoConfigurationFilterTest can assert the auto-configuration class

@@ -537,6 +537,14 @@ is the reference for every property and environment variable. A new knob is adde
 rationale, in the same change that introduces it — and with an environment variable, since a
 container deployment has no other way to set it.
 
+**A log line says which run it belongs to.** The MDC keys are in
+[`RunMdc`](../spring-agent-core/src/main/java/me/kezhenxu94/springagent/core/logging/RunMdc.java) —
+`requestId`, `conversationId`, `userId` — and `SpringAgent` puts them there for the whole of a run,
+Reactor carrying them across the threads the run crosses. Nothing has to be done for code that runs
+inside a run. What does need a `try (var ignored = RunMdc.of(...))` of its own is an integration
+logging about a run on a thread of its own: a receive handler before it hands the message over, or
+an executor a surface answers a question on.
+
 **Defaults are conservative.** Anything that opens a socket, accepts traffic, runs somebody's code or
 spends money is off unless a deployment asks: `app.ai.tools.shell.type: none`, `app.events.enabled:
 false`, `app.ai.rag.enabled: false`. A half-configured feature should do nothing rather than do

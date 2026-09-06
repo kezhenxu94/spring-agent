@@ -61,6 +61,20 @@ a run; only the per-request ones in `McpTools` are.
 **Per-request identity reaches a tool through `toolContext`**, with typed keys in `tools/ToolContexts.java`.
 Read them through those keys rather than by string.
 
+**A log line says which run it belongs to**, through the MDC keys in `logging/RunMdc.java` —
+`requestId`, `conversationId`, `userId`. A run crosses several threads (assembled on the caller's,
+streamed on Reactor's, waited out on a virtual thread of its own, tool-called from inside the
+chain), so this is two mechanisms rather than one: `RunMdc.of(...)` opens an explicit scope that
+restores what was there when it closes, and `MdcThreadLocalAccessor` plus
+`Hooks.enableAutomaticContextPropagation()` (in `RunContextPropagationConfiguration`, off with
+`app.logging.run-context-propagation: false`) makes Reactor carry that MDC across the boundaries —
+which is what tags Spring AI's own log lines, since they are written inside the run's chain on
+threads nothing here can reach. A surface opens a scope of its own only where it logs about a run
+*outside* one of those threads: its receive handler, and the executor it resumes an answered
+question on. What the pattern in front of a log line is comes from `logging.pattern.correlation` in
+each application's `application.yaml`, and `logging/JsonLogLayout.java` writes the whole MDC as
+fields when `LOG_APPENDER=STDOUT_JSON`.
+
 **No hardcoded prose.** Text the agent writes for itself goes through `CoreMessages` over
 `messages*.properties`, in every language the module ships. That includes what a tool *answers*
 with, which is the half that gets forgotten: the model reads a tool result and writes the user's

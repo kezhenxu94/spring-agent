@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.Map;
+import me.kezhenxu94.springagent.core.logging.RunMdc;
 import me.kezhenxu94.springagent.integration.websocket.security.WebAuthoritiesMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -71,6 +72,20 @@ class SpringAgentWebUiApplicationTests {
                   || lower.contains("webhook");
             })
         .isEmpty();
+  }
+
+  @Test
+  @DisplayName("every log line has somewhere to say which run it belongs to")
+  void theCorrelationPatternIsWiredIntoLogging() {
+    // logging.pattern.correlation is the one slot Boot's own console and file patterns leave for
+    // this, and it is filled from application.yaml rather than from a logback.xml — which is what
+    // makes it work for the two applications here that ship no logback.xml at all. What would break
+    // it is silent: the block landing at a nesting level Boot ignores, or a derived
+    // application.yaml
+    // dropping it, and then a deployment's logs simply never name a run.
+    assertThat(System.getProperty("LOG_CORRELATION_PATTERN"))
+        .as("logging.pattern.correlation reached the logging system")
+        .contains(RunMdc.REQUEST_ID);
   }
 
   @Test

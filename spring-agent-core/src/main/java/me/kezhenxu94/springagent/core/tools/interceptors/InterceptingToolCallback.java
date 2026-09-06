@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.core.tools.interceptors;
 
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.logging.RunMdc;
 import me.kezhenxu94.springagent.core.tools.DisplayDescription;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
@@ -48,6 +49,22 @@ public class InterceptingToolCallback implements ToolCallback {
   }
 
   /**
+   * Names the run this call belongs to before the chain runs, since every tool call in a run passes
+   * through here.
+   *
+   * <p>Usually redundant, and deliberately kept: a call made on the run's own thread already
+   * carries the run's MDC, but a tool called from anywhere else — a callback resolved outside the
+   * run's chain, a manager invoking it directly — has only the tool context to say whose call this
+   * is. What it does not reach is work a tool hands to an executor of its own; that thread is the
+   * tool's to name.
+   */
+  private String handle(final String toolInput, final ToolContext toolContext) {
+    try (var ignored = RunMdc.of(toolContext)) {
+      return intercepted(toolInput, toolContext);
+    }
+  }
+
+  /**
    * The chain, either side of the call.
    *
    * <p>A {@link ToolCallInterceptor.CallRefused} takes the place of the call rather than ending the
@@ -56,7 +73,7 @@ public class InterceptingToolCallback implements ToolCallback {
    * — and only their {@code afterCall} takes it down again. The arguments handed on are the ones
    * the model wrote, since the transform that was in progress when the refusal came did not finish.
    */
-  private String handle(final String toolInput, final ToolContext toolContext) {
+  private String intercepted(final String toolInput, final ToolContext toolContext) {
     final String input;
     try {
       input = applyBefore(toolInput, toolContext);
