@@ -19,6 +19,11 @@ is that.
 
 ## The whole picture
 
+The [root README](../README.md#at-a-glance) opens with a cut-down version of this one, for somebody
+deciding whether to run the agent at all rather than orienting themselves in the code: the same
+shape, with the module names and the subgraph boundaries taken out. It is the one diagram that
+exists twice on purpose — change the shape here and change it there in the same commit.
+
 ```mermaid
 flowchart LR
     subgraph SURFACES[Chat surfaces one per application]

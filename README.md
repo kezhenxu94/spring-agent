@@ -15,15 +15,80 @@ lets it pick up new abilities in conversation, without a redeploy.
 
 It is also a library. If you are building your own agent on Spring Boot 4 and Spring AI, read
 [docs/sdk.md](docs/sdk.md); if you want to change this repository, read
-[docs/contributing.md](docs/contributing.md). For how the pieces fit together — the surfaces, the
-event sources, what a run is offered and where state lives — [docs/architecture.md](docs/architecture.md)
-draws it. [docs/integrations.md](docs/integrations.md) indexes every module and its own README,
+[docs/contributing.md](docs/contributing.md). [At a glance](#at-a-glance) below is the shape of it in
+one diagram, and [docs/architecture.md](docs/architecture.md) draws the rest — how a run starts, what
+it is offered, where state lives, and which module may depend on which.
+[docs/integrations.md](docs/integrations.md) indexes every module and its own README,
 [docs/events.md](docs/events.md) covers the agent watching rather than waiting, and
 [docs/advanced.md](docs/advanced.md) what a deployment can turn on that most do not need.
 
 Every property and environment variable is documented in place, with the reason for its default, in
 [`spring-agent-app-feishu/src/main/resources/application.yaml`](spring-agent-app-feishu/src/main/resources/application.yaml).
 That file, not this README, is the configuration reference.
+
+## At a glance
+
+```mermaid
+flowchart LR
+    subgraph TALK[Somebody talks to it]
+        feishu[a Feishu or Lark chat]
+        slack[a Slack channel]
+        browser[a browser]
+        cli[a terminal]
+    end
+
+    subgraph WATCH[Or nobody does]
+        hooks[GitHub GitLab Grafana deliveries]
+        mail[a watched mailbox]
+        clock[a scheduled task firing]
+    end
+
+    events[correlated into a situation and left to settle]
+    agent[SpringAgent the one entry point]
+    model[the model over any OpenAI compatible endpoint]
+
+    subgraph PERRUN[Assembled for that one run]
+        tools[built-in tools]
+        mcp[MCP servers this user may reach]
+        skills[that identity skills and memories]
+        kb[the knowledge base it may read]
+    end
+
+    subgraph OWNED[Owned by an identity never by the process]
+        home[a home with files credentials and a sandbox]
+        store[SQLite or MongoDB or Redis]
+    end
+
+    feishu --> agent
+    slack --> agent
+    browser --> agent
+    cli --> agent
+    hooks --> events
+    mail --> events
+    events --> agent
+    clock --> agent
+
+    agent --> model
+    model --> agent
+    agent --> tools
+    agent --> mcp
+    agent --> skills
+    agent --> kb
+    agent --> home
+    agent --> store
+```
+
+Everything funnels through one type. Whatever started a run — a person on a surface, a webhook nobody
+was addressing, a clock — it becomes an `AgentRequest` handed to `SpringAgent`, and tool composition,
+the model call, MCP lifecycle and cancellation all happen inside. Surfaces follow along as listeners,
+including runs they did not start, which is how a scheduled task can report back into a chat.
+
+One qualification the picture leaves out: **exactly one chat surface belongs on an application's
+classpath**, which is why Feishu and Slack are separate applications rather than one server with
+both. The browser is the exception, and is what
+[`spring-agent-app-web-feishu`](spring-agent-app-web-feishu/README.md) pairs with a chat. The
+reasoning, and four more diagrams — how a run starts, what it is offered, where state lives, which
+module may depend on which — are in [docs/architecture.md](docs/architecture.md).
 
 ## (Nearly) everything is a tool
 
@@ -160,6 +225,27 @@ not addressed in arrive through the chat integration. Related events are correla
 *situation* and left to settle — a thousand alerts from one outage become one run, not a thousand —
 and only then is the agent woken to decide whether it has anything worth saying. Silence is a normal
 answer.
+
+```mermaid
+flowchart LR
+    a1[a thousand alerts from one outage]
+    a2[an issue opened and then commented on]
+    a3[a mail thread]
+    intake[EventIntakes each intake isolated]
+    sit[one situation correlated by key and debounced]
+    triage[a triage run under its own identity]
+    out[an opinion on the chat or nothing at all]
+
+    a1 --> intake
+    a2 --> intake
+    a3 --> intake
+    intake --> sit
+    sit --> triage
+    triage --> out
+```
+
+Payload text is written by whoever caused the event, so a triage run treats it as **evidence, never
+routing and never instructions**, and runs as the agent rather than as any person.
 
 GitHub, GitLab, Grafana and a mailbox ship as sources. Each authenticates its own deliveries, and a
 source nobody configured a secret for refuses everything, so the endpoint is safe to expose but
