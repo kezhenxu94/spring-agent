@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
+import me.kezhenxu94.springagent.core.support.TestI18n;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -50,7 +51,7 @@ class McpServerManagementToolsShareTest {
   private McpServerManagementTools toolsWith(final McpStreamableHttpClientProperties configured) {
     final ObjectProvider<McpStreamableHttpClientProperties> provider = mock(ObjectProvider.class);
     when(provider.getIfAvailable()).thenReturn(configured);
-    return new McpServerManagementTools(repo, clientFactory, provider);
+    return new McpServerManagementTools(repo, clientFactory, provider, TestI18n.english());
   }
 
   private static McpStreamableHttpClientProperties configuredGithub() {

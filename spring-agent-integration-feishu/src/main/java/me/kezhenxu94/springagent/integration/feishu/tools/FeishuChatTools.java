@@ -361,17 +361,12 @@ public class FeishuChatTools {
           messageId,
           lookup.getCode(),
           lookup.getMsg());
-      return "Failed to recall message "
-          + messageId
-          + ": it could not be read first ("
-          + lookup.getCode()
-          + " "
-          + lookup.getMsg()
-          + ")";
+      return messages.get(
+          "tool-recall-unreadable", messageId, lookup.getCode() + " " + lookup.getMsg());
     }
     final var found = lookup.getData().getItems();
     if (found == null || found.length == 0) {
-      return "Failed to recall message " + messageId + ": no such message";
+      return messages.get("tool-recall-no-message", messageId);
     }
     access.requireMember(toolContext, found[0].getChatId());
 
@@ -389,13 +384,13 @@ public class FeishuChatTools {
           ToolContexts.get(toolContext, ToolContexts.USER_ID),
           resp.getCode(),
           resp.getMsg());
-      return "Failed to recall message " + messageId + ": " + resp.getCode() + " " + resp.getMsg();
+      return messages.get("tool-recall-failed", messageId, resp.getCode() + " " + resp.getMsg());
     }
     log.info(
         "Recalled message {} for user {}",
         messageId,
         ToolContexts.get(toolContext, ToolContexts.USER_ID));
-    return "Message " + messageId + " recalled.";
+    return messages.get("tool-recalled", messageId);
   }
 
   /** One page of members, shared by the listing tool and the membership check. */

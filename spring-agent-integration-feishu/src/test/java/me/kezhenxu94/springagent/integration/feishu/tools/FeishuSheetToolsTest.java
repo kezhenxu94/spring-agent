@@ -34,6 +34,7 @@ import me.kezhenxu94.springagent.integration.feishu.model.spreadsheet.Sheet;
 import me.kezhenxu94.springagent.integration.feishu.sheet.FeishuSheetsService;
 import me.kezhenxu94.springagent.integration.feishu.sheet.ValueRange;
 import me.kezhenxu94.springagent.integration.feishu.sheet.ValueRangeV2;
+import me.kezhenxu94.springagent.integration.feishu.support.TestI18n;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -97,7 +98,8 @@ class FeishuSheetToolsTest {
             new FeishuPermissionTools(feishu, new FeishuDriveService(feishu, new JsonMapper())),
             userFolders,
             new JsonMapper(),
-            new FeishuGuides(null));
+            new FeishuGuides(null),
+            TestI18n.english());
   }
 
   @Test

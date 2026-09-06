@@ -14,6 +14,7 @@ import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.core.tools.HomeDir;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuGuides;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import me.kezhenxu94.springagent.integration.feishu.docx.FeishuDocumentBodyWriter;
 import me.kezhenxu94.springagent.integration.feishu.docx.FeishuDocxService;
@@ -35,12 +36,16 @@ public class FeishuDocTools {
   final UserWorkspaceFactory userWorkspaceFactory;
   final FeishuDriveService feishuDriveService;
   final JsonMapper objectMapper;
+
   final FeishuProperties feishuProperties;
   final FeishuPermissionTools feishuPermissionTools;
   final FeishuUserFolders userFolders;
 
   /** The reference pages this class hands back, in the workspace's language. */
   final FeishuGuides guides;
+
+  /** What these hand back to the model, in the workspace's language. */
+  final FeishuMessages messages;
 
   @Builder
   @Jacksonized
@@ -364,7 +369,7 @@ public class FeishuDocTools {
               required = false)
           String clientToken) {
     if (childrenId == null) {
-      throw new IllegalArgumentException("childrenId must not be null");
+      throw new IllegalArgumentException(messages.get("tool-children-id-required"));
     }
     final var json =
         feishuDocxService.createDocumentBlockDescendant(
@@ -464,7 +469,7 @@ public class FeishuDocTools {
           String clientToken) {
     feishuDocxService.deleteDocumentBlockChildren(
         documentId, blockId, startIndex, endIndex, documentRevisionId, clientToken);
-    return "Deleted the children over [" + startIndex + ", " + endIndex + ").";
+    return messages.get("tool-children-deleted", startIndex, endIndex);
   }
 
   @Tool(

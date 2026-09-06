@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.dao.models.PublishedResource;
 import me.kezhenxu94.springagent.core.dao.repo.PublishedResourceRepo;
 import me.kezhenxu94.springagent.core.storage.StorageService;
@@ -37,6 +38,13 @@ public class PublishFileTool {
   private final StorageService storageService;
   private final UserWorkspaceFactory userWorkspaceFactory;
   private final PublishedResourceRepo publishedResourceRepo;
+
+  /**
+   * What this hands back to the model, in the workspace's language. A published link is reported to
+   * the user in the sentence the model writes from this one, so English here is an English sentence
+   * in a Chinese conversation.
+   */
+  private final CoreMessages messages;
 
   // Read straight from the environment rather than through SpringAgentProperties.Ai.Tools, where
   // the other per-tool settings live: it has no default worth writing down, and a placeholder with
@@ -84,19 +92,19 @@ public class PublishFileTool {
     try {
       sourcePath = resolveSourcePath(path, home);
     } catch (IllegalArgumentException e) {
-      return "Error: " + e.getMessage();
+      return messages.get("publish-error", e.getMessage());
     }
 
     final var visibility = PublishedResource.Visibility.from(visibilityParam);
     if (visibility == null) {
-      return "Error: visibility must be internal or public.";
+      return messages.get("publish-bad-visibility");
     }
 
     final Instant expiresAt;
     try {
       expiresAt = resolveExpiresAt(visibility, ttl);
     } catch (IllegalArgumentException e) {
-      return "Error: " + e.getMessage();
+      return messages.get("publish-error", e.getMessage());
     }
 
     final var token = UUID.randomUUID().toString().replace("-", "");
@@ -108,7 +116,7 @@ public class PublishFileTool {
       stored = storeContent(sourcePath, basePrefix, null);
     } catch (IOException | UncheckedIOException e) {
       log.error("Failed to publish {} for user {}", sourcePath, userId, e);
-      return "Error: publishing failed, try again shortly.";
+      return messages.get("publish-failed");
     }
 
     publishedResourceRepo.save(
@@ -123,7 +131,9 @@ public class PublishFileTool {
 
     final var url = buildUrl(visibilityDir, userId, token, stored);
     final var expiryNote =
-        expiresAt == null ? "The link never expires." : "The link expires at " + expiresAt + ".";
+        expiresAt == null
+            ? messages.get("publish-never-expires")
+            : messages.get("publish-expires-at", expiresAt);
 
     log.info(
         "Published resource token={} owner={} visibility={} directory={} expiresAt={}",
@@ -133,7 +143,7 @@ public class PublishFileTool {
         stored.directory(),
         expiresAt);
 
-    return "Published at " + url + ". " + expiryNote;
+    return messages.get("publish-published", url, expiryNote);
   }
 
   @Tool(
@@ -172,20 +182,20 @@ public class PublishFileTool {
 
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
     if (Strings.isNullOrEmpty(token)) {
-      return "Error: give a token.";
+      return messages.get("publish-no-token");
     }
 
     final var resource = publishedResourceRepo.findById(token).orElse(null);
     if (resource == null) {
-      return "Error: nothing is published under " + token + ".";
+      return messages.get("publish-unknown-token", token);
     }
     if (!resource.ownerId().equals(userId)) {
-      return "Error: you can only update content you published yourself.";
+      return messages.get("publish-not-yours-update");
     }
 
     final var updateMode = UpdateMode.from(mode);
     if (updateMode == null) {
-      return "Error: mode must be update or replace.";
+      return messages.get("publish-bad-mode");
     }
 
     final var home = userWorkspaceFactory.forRequest(context);
@@ -193,12 +203,11 @@ public class PublishFileTool {
     try {
       sourcePath = resolveSourcePath(path, home);
     } catch (IllegalArgumentException e) {
-      return "Error: " + e.getMessage();
+      return messages.get("publish-error", e.getMessage());
     }
 
     if (updateMode == UpdateMode.UPDATE && resource.directory() != Files.isDirectory(sourcePath)) {
-      return "Error: with mode=update the new content must be the same kind, file or directory, as"
-          + " what is published. Use mode=replace to change kind.";
+      return messages.get("publish-kind-mismatch");
     }
 
     final Instant expiresAt;
@@ -208,7 +217,7 @@ public class PublishFileTool {
       try {
         expiresAt = resolveExpiresAt(resource.visibility(), ttl);
       } catch (IllegalArgumentException e) {
-        return "Error: " + e.getMessage();
+        return messages.get("publish-error", e.getMessage());
       }
     }
 
@@ -229,7 +238,7 @@ public class PublishFileTool {
       }
     } catch (IOException | UncheckedIOException e) {
       log.error("Failed to update published resource {} for user {}", token, userId, e);
-      return "Error: the update failed, try again shortly.";
+      return messages.get("publish-update-failed");
     }
 
     publishedResourceRepo.save(
@@ -241,7 +250,9 @@ public class PublishFileTool {
 
     final var url = buildUrl(visibilityDir, userId, token, stored);
     final var expiryNote =
-        expiresAt == null ? "The link never expires." : "The link expires at " + expiresAt + ".";
+        expiresAt == null
+            ? messages.get("publish-never-expires")
+            : messages.get("publish-expires-at", expiresAt);
 
     log.info(
         "Updated published resource token={} owner={} mode={} directory={} expiresAt={}",
@@ -251,7 +262,7 @@ public class PublishFileTool {
         stored.directory(),
         expiresAt);
 
-    return "Updated, still at " + url + ". " + expiryNote;
+    return messages.get("publish-updated", url, expiryNote);
   }
 
   @Tool(
@@ -269,22 +280,22 @@ public class PublishFileTool {
 
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
     if (Strings.isNullOrEmpty(token)) {
-      return "Error: give a token.";
+      return messages.get("publish-no-token");
     }
 
     final var resource = publishedResourceRepo.findById(token).orElse(null);
     if (resource == null) {
-      return "Error: nothing is published under " + token + ".";
+      return messages.get("publish-unknown-token", token);
     }
     if (!resource.ownerId().equals(userId)) {
-      return "Error: you can only unpublish content you published yourself.";
+      return messages.get("publish-not-yours-unpublish");
     }
 
     deletePublishedFiles(resource, userId);
     publishedResourceRepo.deleteById(token);
 
     log.info("Unpublished resource token={} owner={}", token, userId);
-    return "Unpublished " + token + ".";
+    return messages.get("publish-unpublished", token);
   }
 
   @Tool(
@@ -308,44 +319,46 @@ public class PublishFileTool {
 
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
     if (Strings.isNullOrEmpty(token)) {
-      return "Error: give a token.";
+      return messages.get("publish-no-token");
     }
 
     final var resource = publishedResourceRepo.findById(token).orElse(null);
     if (resource == null) {
-      return "Error: nothing is published under " + token + ".";
+      return messages.get("publish-unknown-token", token);
     }
     if (!resource.ownerId().equals(userId)) {
-      return "Error: you can only extend content you published yourself.";
+      return messages.get("publish-not-yours-extend");
     }
 
     final Instant expiresAt;
     try {
       expiresAt = resolveExpiresAt(resource.visibility(), ttl);
     } catch (IllegalArgumentException e) {
-      return "Error: " + e.getMessage();
+      return messages.get("publish-error", e.getMessage());
     }
 
     publishedResourceRepo.save(resource.toBuilder().expiresAt(expiresAt).build());
 
     final var expiryNote =
-        expiresAt == null ? "The link never expires." : "The link expires at " + expiresAt + ".";
+        expiresAt == null
+            ? messages.get("publish-never-expires")
+            : messages.get("publish-expires-at", expiresAt);
     log.info("Renewed resource token={} owner={} expiresAt={}", token, userId, expiresAt);
-    return "Extended " + token + ". " + expiryNote;
+    return messages.get("publish-extended", token, expiryNote);
   }
 
   private Path resolveSourcePath(final String path, final HomeDir home) {
     if (Strings.isNullOrEmpty(path)) {
-      throw new IllegalArgumentException("Give a file or directory path.");
+      throw new IllegalArgumentException(messages.get("publish-no-path"));
     }
     final Path sourcePath;
     try {
       sourcePath = Path.of(path).toAbsolutePath().normalize();
     } catch (Exception e) {
-      throw new IllegalArgumentException("Invalid path: " + path);
+      throw new IllegalArgumentException(messages.get("publish-bad-path", path));
     }
     if (!Files.exists(sourcePath)) {
-      throw new IllegalArgumentException("No such file or directory: " + path);
+      throw new IllegalArgumentException(messages.get("publish-no-such-path", path));
     }
 
     final Path realSourcePath;
@@ -358,7 +371,7 @@ public class PublishFileTool {
       }
       realWorkspaceRoots = roots;
     } catch (IOException e) {
-      throw new IllegalArgumentException("Could not resolve the path: " + path);
+      throw new IllegalArgumentException(messages.get("publish-unresolvable-path", path));
     }
     if (realWorkspaceRoots.stream()
         .noneMatch(r -> realSourcePath.equals(r) || realSourcePath.startsWith(r))) {
@@ -450,7 +463,7 @@ public class PublishFileTool {
       if (resolvedTtl.isZero()
           || resolvedTtl.isNegative()
           || resolvedTtl.compareTo(PUBLIC_MAX_TTL) > 0) {
-        throw new IllegalArgumentException("A public ttl must be above 0 and at most 30d.");
+        throw new IllegalArgumentException(messages.get("publish-public-ttl-range"));
       }
       return Instant.now().plus(resolvedTtl);
     }
@@ -459,7 +472,7 @@ public class PublishFileTool {
     }
     final var parsed = parseTtl(ttl);
     if (parsed.isZero() || parsed.isNegative()) {
-      throw new IllegalArgumentException("ttl must be above 0.");
+      throw new IllegalArgumentException(messages.get("publish-ttl-positive"));
     }
     return Instant.now().plus(parsed);
   }
@@ -468,7 +481,7 @@ public class PublishFileTool {
     try {
       return DurationStyle.detectAndParse(ttl);
     } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("Invalid ttl: use a duration such as 30s, 10m, 2h or 1d.");
+      throw new IllegalArgumentException(messages.get("publish-bad-ttl"));
     }
   }
 

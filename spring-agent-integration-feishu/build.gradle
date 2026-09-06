@@ -5,6 +5,11 @@ plugins {
 description = 'Feishu/Lark integration for spring-agent-core: chats and cards as an agent surface.'
 
 dependencies {
+  // The i18n checks every module makes of its own tools and messages. Fixtures rather than a copy
+  // per module: they are two hundred lines of reflection over @Tool methods and properties files,
+  // and the first two modules to want them ended up with the same code twice.
+  testImplementation testFixtures(project(':spring-agent-core'))
+
   implementation project(':spring-agent-core')
   implementation libs.larksuite.oapi
 

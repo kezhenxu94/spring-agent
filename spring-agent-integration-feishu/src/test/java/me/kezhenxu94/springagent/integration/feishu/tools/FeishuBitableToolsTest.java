@@ -31,6 +31,7 @@ import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.integration.feishu.bitable.FeishuBitableService;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuGuides;
 import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
+import me.kezhenxu94.springagent.integration.feishu.support.TestI18n;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -83,7 +84,8 @@ class FeishuBitableToolsTest {
             new FeishuPermissionTools(feishu, feishuDriveService),
             userFolders,
             new JsonMapper(),
-            new FeishuGuides(null));
+            new FeishuGuides(null),
+            TestI18n.english());
   }
 
   @Test
@@ -244,7 +246,10 @@ class FeishuBitableToolsTest {
 
     final var message = tools.renameBitableTable("appToken", "tblA", "");
 
-    assertThat(message).isEqualTo("Table tblA is now named 'Tasks'.");
+    // Double quotes rather than single ones now that the sentence comes from the bundle: a
+    // MessageFormat pattern eats an apostrophe, so a quoted value has to be quoted with something
+    // else.
+    assertThat(message).isEqualTo("Table tblA is now named \"Tasks\".");
   }
 
   @Test

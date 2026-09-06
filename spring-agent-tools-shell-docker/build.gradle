@@ -5,6 +5,11 @@ plugins {
 description = 'Shell tools for spring-agent-core that run commands in a Docker container.'
 
 dependencies {
+  // The i18n checks every module makes of its own tools and messages. Fixtures rather than a copy
+  // per module: they are two hundred lines of reflection over @Tool methods and properties files,
+  // and the first two modules to want them ended up with the same code twice.
+  testImplementation testFixtures(project(':spring-agent-core'))
+
   api project(':spring-agent-core')
 
   // The only module that may carry Testcontainers on a runtime classpath, as

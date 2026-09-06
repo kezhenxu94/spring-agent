@@ -1,11 +1,27 @@
 plugins {
   id 'springagent.java-library-conventions'
   id 'springagent.classpath-isolation'
+  // The i18n checks every module has to make of its own tools live in src/testFixtures, so that a
+  // module gets them by subclassing rather than by copying two hundred lines of reflection into its
+  // own test source — which is how the first two modules ended up with the same inventory twice.
+  id 'java-test-fixtures'
+}
+
+// The fixtures are for this repository's own modules and are not part of what is published. Left
+// alone they would add -test-fixtures artifacts to the Maven publication and to the Central
+// deployment, which is a second thing to version and support for no consumer that asked for it.
+afterEvaluate {
+  components.java.withVariantsFromConfiguration(configurations.testFixturesApiElements) { skip() }
+  components.java.withVariantsFromConfiguration(configurations.testFixturesRuntimeElements) { skip() }
 }
 
 description = 'The backend-agnostic agent runtime: one entry point for running the agent, tool composition, system prompt rendering and the persistence contracts.'
 
 dependencies {
+  // The fixtures assert with JUnit and AssertJ, and reflect over a module's tool classes with
+  // Spring's own metadata reader, which the starter already brings.
+  testFixturesImplementation 'org.springframework.boot:spring-boot-starter-test'
+
   // api: types that appear in signatures integration modules compile against.
   api 'org.springframework.boot:spring-boot-starter'
   // No persistence backend is a dependency of this module. The domain models in dao/models carry

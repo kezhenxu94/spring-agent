@@ -112,37 +112,38 @@ public class LargeResponseInterceptor implements ToolCallInterceptor {
   }
 
   /** What is in the file, in one line: the keys and the array lengths, or the line count. */
-  private static String shapeOf(final JsonNode json, final String raw) {
+  private String shapeOf(final JsonNode json, final String raw) {
     if (json == null) {
       return plainTextShape(raw);
     }
     return describe(json, 0);
   }
 
-  private static String plainTextShape(final String raw) {
+  private String plainTextShape(final String raw) {
     final var lines = raw.lines().count();
-    return "text, " + lines + " line(s)";
+    return messages.get("large-response-text-lines", lines);
   }
 
-  private static String describe(final JsonNode node, final int depth) {
+  private String describe(final JsonNode node, final int depth) {
     if (node.isArray()) {
       if (node.isEmpty()) {
         return "[]";
       }
       if (depth >= MAX_SHAPE_DEPTH) {
-        return "[" + node.size() + " items]";
+        return messages.get("large-response-items", node.size());
       }
-      return "[" + node.size() + " items, each " + describe(node.get(0), depth + 1) + "]";
+      return messages.get(
+          "large-response-items-each", node.size(), describe(node.get(0), depth + 1));
     }
     if (node.isObject()) {
       if (depth >= MAX_SHAPE_DEPTH) {
-        return "{" + node.size() + " keys}";
+        return messages.get("large-response-keys", node.size());
       }
       final var described = new StringBuilder("{");
       var shown = 0;
       for (final var property : node.properties()) {
         if (shown == MAX_SHAPE_KEYS) {
-          described.append(", and ").append(node.size() - shown).append(" more keys");
+          described.append(messages.get("large-response-more-keys", node.size() - shown));
           break;
         }
         if (shown > 0) {
