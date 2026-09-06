@@ -62,4 +62,19 @@ a run; only the per-request ones in `McpTools` are.
 Read them through those keys rather than by string.
 
 **No hardcoded prose.** Text the agent writes for itself goes through `CoreMessages` over
-`messages*.properties`, in every language the module ships.
+`messages*.properties`, in every language the module ships. That includes what a tool *answers*
+with, which is the half that gets forgotten: the model reads a tool result and writes the user's
+answer out of it, so a string literal there is an English sentence in the middle of a conversation
+held in another language. A module with prose of its own gets a bundle of its own rather than a key
+in core's — `ModuleMessages` is that, ready made, with the host-locale fallback already off for the
+reason `ModuleToolTexts` gives at length.
+
+**The i18n checks are published as test fixtures**, under `me.kezhenxu94.springagent.core.i18n` in
+`src/testFixtures`, so a module gets them by subclassing rather than by copying two hundred lines of
+reflection. Add `testImplementation testFixtures(project(':spring-agent-core'))` and subclass
+`AbstractToolTextsParityTest` (every translation names a real tool),
+`AbstractEveryToolTranslatedTest` (every real tool has one), `AbstractToolTranslationsCompleteTest`
+(no stub, no placeholder), `AbstractLocalizedToolsEndToEndTest` (what reaches the model is the
+translation, descriptions and schema alike), `AbstractMessageBundleParityTest` (the bundles say the
+same things in every language) and `AbstractPromptFilesTranslatedTest` (every page of prose has a
+sibling). They are not published: the fixtures variant is skipped in the Maven publication.

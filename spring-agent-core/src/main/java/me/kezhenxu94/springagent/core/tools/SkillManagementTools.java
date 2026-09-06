@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -20,10 +21,13 @@ import org.springframework.stereotype.Component;
 public class SkillManagementTools {
   private final UserWorkspaceFactory userWorkspaceFactory;
 
-  private String validatePath(String path, HomeDir home) {
+  /** What this hands back to the model, in the workspace's language. */
+  private final CoreMessages messages;
+
+  private String validatePath(final String path, final HomeDir home) {
     final var resolved = Path.of(path).toAbsolutePath().normalize();
     if (home.containsIn(HomeDir.Folder.SKILLS, resolved)) return null;
-    return "Error: Access denied. Path is outside the allowed skill directories.";
+    return messages.get("skill-access-denied");
   }
 
   @Tool(
@@ -46,7 +50,7 @@ Usage:
     try {
       skillsDirs = userWorkspaceFactory.forRequest(context).dirs(HomeDir.Folder.SKILLS);
     } catch (IOException e) {
-      return "Error: failed to resolve skills directory: " + e.getMessage();
+      return messages.get("skill-no-directory", e.getMessage());
     }
 
     final var result = new StringBuilder();
@@ -65,8 +69,8 @@ Usage:
         }
       }
     }
-    if (total == 0) return "No skills installed.";
-    return String.format("Found %d skill(s):\n\n%s", total, result);
+    if (total == 0) return messages.get("skill-none");
+    return messages.get("skill-found", total, result);
   }
 
   @Tool(
@@ -102,19 +106,18 @@ Usage:
     final var file = new File(filePath);
     final var parent = file.getParentFile();
     if (parent != null && !parent.exists() && !parent.mkdirs()) {
-      return "Error: Failed to create parent directories for: " + filePath;
+      return messages.get("skill-no-parent-dirs", filePath);
     }
 
     final boolean existed = file.exists();
     try (final var writer = new BufferedWriter(new FileWriter(file, false))) {
       writer.write(content != null ? content : "");
     } catch (IOException e) {
-      return "Error writing file: " + e.getMessage();
+      return messages.get("skill-write-failed", e.getMessage());
     }
 
-    return existed
-        ? String.format("Successfully overwrote file: %s (%d bytes)", filePath, content.length())
-        : String.format("Successfully created file: %s (%d bytes)", filePath, content.length());
+    return messages.get(
+        existed ? "skill-file-overwritten" : "skill-file-created", filePath, content.length());
   }
 
   @Tool(
@@ -138,10 +141,10 @@ Usage:
     if (accessError != null) return accessError;
 
     final var dir = new File(skillFolderPath);
-    if (!dir.exists()) return "Error: Skill folder does not exist: " + skillFolderPath;
-    if (!dir.isDirectory()) return "Error: Path is not a directory: " + skillFolderPath;
+    if (!dir.exists()) return messages.get("skill-folder-missing", skillFolderPath);
+    if (!dir.isDirectory()) return messages.get("skill-not-a-directory", skillFolderPath);
     if (!new File(dir, "SKILL.md").exists()) {
-      return "Error: Not a skill folder (no SKILL.md found): " + skillFolderPath;
+      return messages.get("skill-not-a-skill", skillFolderPath);
     }
 
     try {
@@ -150,10 +153,10 @@ Usage:
           .map(Path::toFile)
           .forEach(File::delete);
     } catch (IOException e) {
-      return "Error deleting skill: " + e.getMessage();
+      return messages.get("skill-delete-failed", e.getMessage());
     }
 
-    return "Successfully deleted skill: " + skillFolderPath;
+    return messages.get("skill-deleted", skillFolderPath);
   }
 
   @Tool(
@@ -176,11 +179,10 @@ Usage:
     if (accessError != null) return accessError;
 
     final var file = new File(filePath);
-    if (!file.exists()) return "Error: File does not exist: " + filePath;
-    if (file.isDirectory())
-      return "Error: Path is a directory; use DeleteSkill instead: " + filePath;
+    if (!file.exists()) return messages.get("skill-file-missing", filePath);
+    if (file.isDirectory()) return messages.get("skill-file-is-directory", filePath);
 
-    if (!file.delete()) return "Error: Failed to delete file: " + filePath;
-    return "Successfully deleted file: " + filePath;
+    if (!file.delete()) return messages.get("skill-file-delete-failed", filePath);
+    return messages.get("skill-file-deleted", filePath);
   }
 }

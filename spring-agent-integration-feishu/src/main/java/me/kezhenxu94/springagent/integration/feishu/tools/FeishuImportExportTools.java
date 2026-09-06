@@ -13,6 +13,7 @@ import lombok.extern.jackson.Jacksonized;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
@@ -66,6 +67,9 @@ public class FeishuImportExportTools {
   final FeishuUserFolders userFolders;
   final FeishuPermissionTools permissionTools;
 
+  /** What these hand back to the model, in the workspace's language. */
+  final FeishuMessages messages;
+
   /**
    * @param truncationCodes what Feishu dropped to fit its own limits, empty when it dropped nothing
    */
@@ -116,24 +120,24 @@ public class FeishuImportExportTools {
       final ToolContext toolContext) {
 
     if (filePath == null || filePath.isBlank()) {
-      throw new IllegalArgumentException("filePath is required");
+      throw new IllegalArgumentException(messages.get("tool-file-path-required"));
     }
     final var normalisedType = type == null ? "" : type.trim().toLowerCase(Locale.ROOT);
     final var allowed = IMPORTABLE.get(normalisedType);
     if (allowed == null) {
-      throw new IllegalArgumentException("type must be one of docx, sheet or bitable, was " + type);
+      throw new IllegalArgumentException(messages.get("tool-bad-import-type", type));
     }
 
     final var file = new File(filePath);
     if (!file.isFile()) {
-      throw new IllegalArgumentException("No file at " + filePath);
+      throw new IllegalArgumentException(messages.get("tool-no-file-at", filePath));
     }
     // The same rule the other tools that read a local path apply: what may be uploaded to a chat is
     // what this request's own scopes hold, so that a path is never a way to read someone else's
     // files — or the host's — out of the machine the agent runs on.
     if (!userWorkspaceFactory.forRequest(toolContext).contains(file.toPath())) {
       log.warn("importFile rejected out-of-scope path: {}", filePath);
-      throw new IllegalArgumentException("The file must be within an allowed workspace");
+      throw new IllegalArgumentException(messages.get("tool-file-outside-workspace-strict"));
     }
 
     // Taken from the file rather than asked for: Feishu compares the extension it is told against
@@ -220,7 +224,7 @@ public class FeishuImportExportTools {
       final ToolContext toolContext) {
 
     if (token == null || token.isBlank()) {
-      throw new IllegalArgumentException("token is required");
+      throw new IllegalArgumentException(messages.get("tool-token-required"));
     }
     if (token.contains("/")) {
       throw new IllegalArgumentException(
@@ -263,7 +267,8 @@ public class FeishuImportExportTools {
     final var name =
         nameFor(
             fileName == null || fileName.isBlank() ? result.getFileName() : fileName, extension);
-    final var dest = FeishuFiles.artifactPath(name, userWorkspaceFactory.forRequest(toolContext));
+    final var dest =
+        FeishuFiles.artifactPath(name, userWorkspaceFactory.forRequest(toolContext), messages);
     Files.write(dest, bytes);
     log.info("Exported {} {} to {} ({} bytes)", normalisedType, token, dest, bytes.length);
 

@@ -63,7 +63,7 @@ public class SituationTools {
   public String listOpenSituations() {
     final var open = situations.findByStatus(Situation.Status.OPEN);
     if (open.isEmpty()) {
-      return "Nothing is being watched right now.";
+      return messages.get("situation-none-open");
     }
     final var now = clock.instant();
     return open.stream()
@@ -110,15 +110,15 @@ public class SituationTools {
     final var id =
         situationId == null || situationId.isBlank() ? contextSituationId(context) : situationId;
     if (id == null) {
-      return "Error: give a situationId. This run is not about a particular situation.";
+      return messages.get("situation-no-id");
     }
     if (situations.findById(id).isEmpty()) {
-      return "Error: no situation with id " + id + ".";
+      return messages.get("situation-unknown", id);
     }
     final var capped = limit == null ? 10 : Math.min(Math.max(limit, 1), MAX_EVENTS_PER_CALL);
     final var all = events.findBySituationId(id);
     if (all.isEmpty()) {
-      return "No observations are stored for situation " + id + ".";
+      return messages.get("situation-no-events", id);
     }
     final var sorted =
         all.stream()
@@ -174,18 +174,17 @@ public class SituationTools {
       final ToolContext context) {
     final var id = contextSituationId(context);
     if (id == null) {
-      return "Error: this run is not about a particular situation, so there is nothing to record"
-          + " an assessment on.";
+      return messages.get("situation-not-assessable");
     }
     final var situation = situations.findById(id).orElse(null);
     if (situation == null) {
-      return "Error: no situation with id " + id + ".";
+      return messages.get("situation-unknown", id);
     }
     final Situation.Decision parsed;
     try {
       parsed = Situation.Decision.valueOf(decision.trim().toUpperCase(Locale.ROOT));
     } catch (RuntimeException e) {
-      return "Error: decision must be NO_ACTION, ACTED or ESCALATED, not \"" + decision + "\".";
+      return messages.get("situation-bad-decision", decision);
     }
     situations.save(
         situation.toBuilder()
@@ -195,7 +194,7 @@ public class SituationTools {
             .confidence(confidence)
             .build());
     log.info("Situation {} assessed as {}: {}", id, parsed, summary);
-    return "Recorded: " + parsed + ".";
+    return messages.get("situation-recorded", parsed);
   }
 
   @Tool(
@@ -210,14 +209,14 @@ public class SituationTools {
       @ToolParam(description = "Why it is closed") final String reason, final ToolContext context) {
     final var id = contextSituationId(context);
     if (id == null) {
-      return "Error: this run is not about a particular situation, so there is nothing to close.";
+      return messages.get("situation-not-closable");
     }
     final var situation = situations.findById(id).orElse(null);
     if (situation == null) {
-      return "Error: no situation with id " + id + ".";
+      return messages.get("situation-unknown", id);
     }
     if (situation.status() == Situation.Status.RESOLVED) {
-      return "Situation " + id + " is already closed.";
+      return messages.get("situation-already-closed", id);
     }
     situations.save(
         situation.toBuilder()
@@ -229,7 +228,7 @@ public class SituationTools {
             .assessment(appendReason(situation.assessment(), reason))
             .build());
     log.info("Situation {} closed: {}", id, reason);
-    return "Closed situation " + id + ".";
+    return messages.get("situation-closed", id);
   }
 
   /**

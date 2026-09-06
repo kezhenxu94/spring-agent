@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.tools.i18n;
+package me.kezhenxu94.springagent.core.i18n;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -28,13 +28,13 @@ import org.springframework.util.StringUtils;
  * -parameters} is on for every module — and it has to be, since that is also where the input
  * schema's property names come from.
  */
-final class ToolTextsInventory {
+public final class ToolTextsInventory {
 
   private ToolTextsInventory() {}
 
   /** Every tool a module offers, and the parameters each one takes. */
-  static Map<String, Set<String>> toolsOf(final String basePackage, final List<Class<?>> extraTypes)
-      throws Exception {
+  public static Map<String, Set<String>> toolsOf(
+      final String basePackage, final List<Class<?>> extraTypes) throws Exception {
     final var types = new ArrayList<Class<?>>(extraTypes);
     final var resolver = new PathMatchingResourcePatternResolver();
     final var readers = new CachingMetadataReaderFactory(resolver);
@@ -83,11 +83,11 @@ final class ToolTextsInventory {
    * @param description what {@code @Tool} says
    * @param parameters what each {@code @ToolParam} says, by parameter name
    */
-  record English(String description, Map<String, String> parameters) {}
+  public record English(String description, Map<String, String> parameters) {}
 
   /** What every tool of a module declares in English, by tool name. */
-  static Map<String, English> englishOf(final String basePackage, final List<Class<?>> extraTypes)
-      throws Exception {
+  public static Map<String, English> englishOf(
+      final String basePackage, final List<Class<?>> extraTypes) throws Exception {
     final var types = new ArrayList<Class<?>>(extraTypes);
     final var resolver = new PathMatchingResourcePatternResolver();
     final var readers = new CachingMetadataReaderFactory(resolver);
@@ -131,7 +131,7 @@ final class ToolTextsInventory {
   }
 
   /** Every key in every locale variant of a module's parameter bundle. */
-  static Set<String> parameterKeys(final String bundleBase) throws Exception {
+  public static Set<String> parameterKeys(final String bundleBase) throws Exception {
     final var keys = new java.util.HashSet<String>();
     final var resolver = new PathMatchingResourcePatternResolver();
     for (final var resource : resolver.getResources("classpath*:" + bundleBase + "*.properties")) {
@@ -146,7 +146,8 @@ final class ToolTextsInventory {
   }
 
   /** Every description file a module ships, as the tool name and locale suffix each one carries. */
-  static List<DescriptionFile> descriptionFiles(final String promptDirectory) throws Exception {
+  public static List<DescriptionFile> descriptionFiles(final String promptDirectory)
+      throws Exception {
     final var files = new ArrayList<DescriptionFile>();
     final var resolver = new PathMatchingResourcePatternResolver();
     for (final var resource : resolver.getResources("classpath*:" + promptDirectory + "*.md")) {
@@ -171,8 +172,8 @@ final class ToolTextsInventory {
    * @param toolName the tool it claims to describe
    * @param localeSuffix the locale it claims to be written in, or null for the base file
    */
-  record DescriptionFile(String filename, String toolName, String localeSuffix) {
-    Locale locale() {
+  public record DescriptionFile(String filename, String toolName, String localeSuffix) {
+    public Locale locale() {
       return localeSuffix == null ? null : Locale.forLanguageTag(localeSuffix.replace('_', '-'));
     }
   }

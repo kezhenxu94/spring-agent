@@ -60,11 +60,11 @@ class FeishuToolsLocalizedEndToEndTest {
     return localizedDefinitionsOf(
         new FeishuTools(null, null, null, null, null, null, null, null, null, null),
         new FeishuChatTools(null, null, null),
-        new FeishuWikiTools(null),
-        new FeishuSheetTools(null, null, null, null, null, null),
-        new FeishuDocTools(null, null, null, null, null, null, null, null, null),
-        new FeishuBitableTools(null, null, null, null, null, null),
-        new FeishuImportExportTools(null, null, null, null));
+        new FeishuWikiTools(null, null),
+        new FeishuSheetTools(null, null, null, null, null, null, null),
+        new FeishuDocTools(null, null, null, null, null, null, null, null, null, null),
+        new FeishuBitableTools(null, null, null, null, null, null, null),
+        new FeishuImportExportTools(null, null, null, null, null));
   }
 
   @Test

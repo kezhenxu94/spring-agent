@@ -4,6 +4,8 @@ import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.ConditionalOnShellBackend;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
+import me.kezhenxu94.springagent.core.config.ModuleMessages;
 import me.kezhenxu94.springagent.core.config.ShellToolsProperties.Type;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.credentials.CredentialTools;
@@ -43,6 +45,17 @@ public class KubernetesShellAutoConfiguration {
         "shell-kubernetes/tools", "shell-kubernetes/prompts/tools/", properties.locale());
   }
 
+  /**
+   * What this backend's tools answer with, in the workspace's language.
+   *
+   * <p>Its own bundle rather than core's, for the reason the tool translations above have one: both
+   * shell backends answer under the same tool names, and only one of them is ever on the classpath.
+   */
+  @Bean
+  ModuleMessages kubernetesShellMessages(final SpringAgentProperties properties) {
+    return new ModuleMessages("shell-kubernetes.messages", properties.locale());
+  }
+
   @Bean(destroyMethod = "close")
   @ConditionalOnMissingBean
   KubernetesClient kubernetesClient() {
@@ -61,10 +74,11 @@ public class KubernetesShellAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   KubernetesShellTools kubernetesShellTools(
+      final ModuleMessages messages,
       final KubernetesClient kubernetesClient,
       final UserPodManager userPodManager,
       final KubernetesShellProperties properties) {
-    return new KubernetesShellTools(kubernetesClient, userPodManager, properties);
+    return new KubernetesShellTools(kubernetesClient, userPodManager, properties, messages);
   }
 
   @Bean
@@ -76,7 +90,7 @@ public class KubernetesShellAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  CredentialTools credentialTools(final ShellCredentialStore store) {
-    return new CredentialTools(store, "RestartShellPod");
+  CredentialTools credentialTools(final ShellCredentialStore store, final CoreMessages messages) {
+    return new CredentialTools(store, "RestartShellPod", messages);
   }
 }

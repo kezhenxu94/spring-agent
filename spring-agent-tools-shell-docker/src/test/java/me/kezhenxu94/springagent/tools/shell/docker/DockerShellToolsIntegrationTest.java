@@ -5,9 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import me.kezhenxu94.springagent.core.config.Admins;
+import me.kezhenxu94.springagent.core.config.ModuleMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.storage.StorageProperties;
 import me.kezhenxu94.springagent.core.tools.credentials.ShellCredentialStore;
@@ -171,7 +173,8 @@ class DockerShellToolsIntegrationTest {
     manager =
         new UserContainerManager(
             properties, storageProperties(), new Admins(appProperties()), fixedStore(credentials));
-    return new DockerShellTools(manager, properties);
+    return new DockerShellTools(
+        manager, properties, new ModuleMessages("shell-docker.messages", Locale.ENGLISH));
   }
 
   private StorageProperties storageProperties() {

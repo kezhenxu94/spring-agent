@@ -1,8 +1,12 @@
 package me.kezhenxu94.springagent.integration.slack;
 
+import java.util.Locale;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.PromptVariablesContributor;
+import me.kezhenxu94.springagent.core.config.LocalizedPrompt;
+import me.kezhenxu94.springagent.integration.slack.config.SlackProperties;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -28,65 +32,52 @@ import org.springframework.stereotype.Component;
 @Component
 public class SlackReplyFormat implements PromptVariablesContributor {
 
-  /**
-   * Every rule that holds wherever the answer is going. Long on the places Slack differs from the
-   * CommonMark the model already knows, and on what fails silently; short on everything else.
-   */
-  static final String COMMON =
-      """
-      # Writing for Slack
-      Your answer is rendered as Slack mrkdwn, which is NOT CommonMark. The differences below \
-      are the ones that matter; anything not listed does not exist in Slack and is shown as the \
-      literal characters you typed.
-
-      - Emphasis is single-character: `*bold*` (NOT `**bold**`), `_italic_`, `~strikethrough~`, \
-      `` `inline code` ``. Writing `**bold**` puts visible asterisks in your answer.
-      - There are NO headings. `#` is shown as a literal hash. To open a section, use a short \
-      `*bold line*` on its own instead.
-      - There are NO tables. A pipe table arrives as a wall of pipes. Use a short list, or one \
-      `field: value` per line.
-      - Lists are `-` or `1.` at the start of a line, indented by two spaces per level. A blank \
-      line between items is what keeps them apart.
-      - `> quote` for a block quote, and every line of a multi-line quote needs its own `>`.
-      - Fence code with triple backticks. Slack ignores the language after the fence, so do not \
-      rely on highlighting, but the fence itself is what keeps indentation and newlines.
-      - Links carry their text inside the angle brackets: `<https://example.com|the text>`, or \
-      `<https://example.com>` bare. CommonMark's `[text](url)` does NOT work and arrives as its \
-      own punctuation.
-      - Mention somebody, and they get a notification: `<@U123ABC>`, where the id is a Slack user \
-      id. Mention a person when you need them to look, not to refer to them — to name somebody \
-      without notifying them, write their display name as plain text. A list of people wants plain \
-      names, since a list of mentions notifies every one of them.
-      - Link a channel with `<#C123ABC>`, which notifies nobody.
-      - A literal character mrkdwn would eat has to be escaped as an HTML entity: `&amp;` for &, \
-      `&lt;` for <, `&gt;` for >. Those three only; everything else goes in as itself.
-      - An image written as `![alt](/absolute/path)` or `![alt](https://...)` is uploaded to the \
-      workspace for you and shown inline — a path from GenerateImage or the artifacts directory \
-      works as-is.
-      - A timestamp as `<!date^1700000000^{date_short} {time}|17 Nov 2023>` shows in each reader's \
-      own timezone; the text after the pipe is what a client that cannot render it falls back to.
-      - Keep any one paragraph under about 3000 characters. A longer one is split across blocks, \
-      which is safe but puts the break wherever it falls rather than where you wanted it.\
-      """;
+  /** Where this module's prompt files live, as a classpath location. */
+  static final String LOCATION = "slack/prompts/";
 
   /**
-   * Only in a channel. Notifying everybody present is something a person feels, and a channel is
-   * where there is somebody other than the reader to feel it — in a direct message there is nobody
-   * to notify but the one person already reading.
+   * Every rule that holds wherever the answer is going, in the workspace's language. Long on the
+   * places Slack differs from the CommonMark the model already knows, and on what fails silently;
+   * short on everything else.
    */
-  static final String CHANNEL_ONLY =
-      """
+  private final String common;
 
-      - `<!here>` notifies everybody currently online in the channel and `<!channel>` notifies \
-      every member whether they are here or not. Both interrupt people who did not ask you \
-      anything, and `<!channel>` in a busy channel reaches hundreds of them. Use neither unless \
-      what you have to say genuinely concerns everybody, and prefer naming the two or three people \
-      it actually concerns.\
-      """;
+  /**
+   * The rule that only holds in a channel. Notifying everybody present is something a person feels,
+   * and a channel is where there is somebody other than the reader to feel it — in a direct message
+   * there is nobody to notify but the one person already reading.
+   */
+  private final String channelOnly;
+
+  /**
+   * Read when the context starts rather than per run: the text is the same every run, and a
+   * translation left out of the jar then fails the deployment that is missing it instead of quietly
+   * serving English in every answer for weeks.
+   *
+   * <p>A file rather than a constant for the reason core's prompts are files, and for one this
+   * class makes sharper: two thousand characters of English go into the system prompt of every run
+   * on this surface, so a constant here is a constant pull towards English in a workspace that
+   * asked for something else — in the model's reasoning as much as in its answer.
+   *
+   * <p>Annotated because there are two constructors here: with more than one declared and none
+   * annotated, Spring picks neither and the context fails to start.
+   *
+   * @param properties for {@code app.slack.locale}, the language this surface speaks
+   */
+  @Autowired
+  public SlackReplyFormat(final SlackProperties properties) {
+    this(properties.locale());
+  }
+
+  /** The same, for a caller that has the locale rather than the properties. */
+  SlackReplyFormat(final Locale locale) {
+    this.common = LocalizedPrompt.text(LOCATION, "reply-format", locale);
+    this.channelOnly = LocalizedPrompt.text(LOCATION, "reply-format-channel", locale);
+  }
 
   @Override
   public Map<String, Object> variables(final AgentRequest request) {
     final var channel = !"p2p".equalsIgnoreCase(request.chatType());
-    return Map.of("replyFormat", channel ? COMMON + CHANNEL_ONLY : COMMON);
+    return Map.of("replyFormat", channel ? common + channelOnly : common);
   }
 }

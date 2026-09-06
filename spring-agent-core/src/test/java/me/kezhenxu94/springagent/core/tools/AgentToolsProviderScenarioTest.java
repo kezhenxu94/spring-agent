@@ -14,6 +14,7 @@ import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
 import me.kezhenxu94.springagent.core.scheduling.ScheduledTaskService;
+import me.kezhenxu94.springagent.core.support.TestI18n;
 import me.kezhenxu94.springagent.core.tools.mcp.McpClientFactory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -181,7 +182,8 @@ class AgentToolsProviderScenarioTest {
   @DisplayName("a scheduled run is not offered the tool that schedules runs")
   void aScheduledRunCannotScheduleMore() {
     final var scheduledTaskTool =
-        new ScheduledTaskTool(mock(ScheduledTaskRepo.class), mock(ScheduledTaskService.class));
+        new ScheduledTaskTool(
+            mock(ScheduledTaskRepo.class), mock(ScheduledTaskService.class), TestI18n.english());
 
     assertThat(BuiltInScenarios.SCHEDULED_TASK.offers(scheduledTaskTool)).isFalse();
     assertThat(BuiltInScenarios.CHAT.offers(scheduledTaskTool)).isTrue();

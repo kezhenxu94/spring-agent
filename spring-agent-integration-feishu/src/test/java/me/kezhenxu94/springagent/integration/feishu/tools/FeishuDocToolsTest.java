@@ -23,6 +23,7 @@ import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import me.kezhenxu94.springagent.integration.feishu.docx.FeishuDocumentBodyWriter;
 import me.kezhenxu94.springagent.integration.feishu.docx.FeishuDocxService;
 import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
+import me.kezhenxu94.springagent.integration.feishu.support.TestI18n;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -92,7 +93,8 @@ class FeishuDocToolsTest {
                 null),
             new FeishuPermissionTools(feishu, new FeishuDriveService(feishu, new JsonMapper())),
             userFolders,
-            new FeishuGuides(null));
+            new FeishuGuides(null),
+            TestI18n.english());
   }
 
   @Test

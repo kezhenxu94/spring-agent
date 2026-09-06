@@ -8,6 +8,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
 import me.kezhenxu94.springagent.core.scheduling.CronSchedules;
@@ -26,6 +27,15 @@ public class ScheduledTaskTool {
 
   final ScheduledTaskRepo scheduledTaskRepo;
   final ScheduledTaskService scheduledTaskService;
+
+  /**
+   * Everything this hands back to the model, in the workspace's language.
+   *
+   * <p>These are results and instructions a model reads and then writes an answer from, so English
+   * here is English in the answer — and, before that, in the reasoning the user watches. A task
+   * created in Chinese and confirmed in English is the whole of the complaint.
+   */
+  final CoreMessages messages;
 
   @Tool(
       name = "CreateScheduledTask",
@@ -104,10 +114,10 @@ tasks, so write it as a person would name the job rather than as an instruction 
     final var hasScheduledAt = !Strings.isNullOrEmpty(scheduledAt);
 
     if (hasCron && hasScheduledAt) {
-      return "Error: give either cronExpression or scheduledAt, not both.";
+      return messages.get("scheduled-task-both-schedules");
     }
     if (!hasCron && !hasScheduledAt) {
-      return "Error: give cronExpression for a recurring task, or scheduledAt for a one-off.";
+      return messages.get("scheduled-task-no-schedule");
     }
 
     final Instant resolvedExpiresAt;
@@ -120,54 +130,49 @@ tasks, so write it as a person would name the job rather than as an instruction 
       try {
         parsed = Instant.parse(expiresAt);
       } catch (Exception e) {
-        return "Error: expiresAt must be ISO-8601 with an offset (for example"
-            + " 2025-12-31T23:59:59+08:00), or \"never\".";
+        return messages.get("scheduled-task-bad-expires-at");
       }
       if (parsed.isBefore(Instant.now())) {
-        return "Error: expiresAt must be in the future.";
+        return messages.get("scheduled-task-past-expires-at");
       }
       resolvedExpiresAt = parsed;
     }
 
     if (maxRuns != null && maxRuns < 1) {
-      return "Error: maxRuns must be at least 1, or null for a task nothing counts.";
+      return messages.get("scheduled-task-bad-max-runs");
     }
 
     // The column's own limit. Checked here rather than left to the database, which on JPA would
     // truncate the prompt to something that still fires and does the wrong thing.
     if (Strings.nullToEmpty(taskText).trim().length() > ScheduledTaskEdit.MAX_TASK_TEXT) {
-      return "Error: a task's text is limited to "
-          + ScheduledTaskEdit.MAX_TASK_TEXT
-          + " characters.";
+      return messages.get("scheduled-task-text-too-long", ScheduledTaskEdit.MAX_TASK_TEXT);
     }
     if (Strings.isNullOrEmpty(title) || title.isBlank()) {
-      return "Error: give the task a short title, which is what the user sees it listed as.";
+      return messages.get("scheduled-task-no-title");
     }
     if (title.trim().length() > ScheduledTaskEdit.MAX_TITLE) {
-      return "Error: a task's title is limited to "
-          + ScheduledTaskEdit.MAX_TITLE
-          + " characters. Put the detail in taskText, which is what you are handed when it fires.";
+      return messages.get("scheduled-task-title-too-long", ScheduledTaskEdit.MAX_TITLE);
     }
 
-    final var runsNote = maxRuns == null ? "" : " It fires " + maxRuns + " times in all.";
+    // Joined with a space rather than each note carrying a leading one: a leading space in a
+    // properties value is stripped when the bundle is read, so a note that owned its own separator
+    // would run into the sentence before it — and only in the language whose translation kept it.
+    final var runsNote = maxRuns == null ? "" : messages.get("scheduled-task-runs-note", maxRuns);
 
     final var expiryNote =
         resolvedExpiresAt == null
-            ? "It never expires."
-            : "It expires at " + resolvedExpiresAt + ".";
+            ? messages.get("scheduled-task-never-expires")
+            : messages.get("scheduled-task-expires-at", resolvedExpiresAt);
 
     final var backgroundNote =
-        Boolean.TRUE.equals(background)
-            ? " It runs in the background: nothing is posted when it fires, so anything you should"
-                + " see it has to send itself, and only a failure is reported."
-            : "";
+        Boolean.TRUE.equals(background) ? messages.get("scheduled-task-background-note") : "";
 
     if (hasCron) {
       final String validated;
       try {
         validated = CronSchedules.validated(cronExpression);
       } catch (IllegalArgumentException e) {
-        return "Error: " + e.getMessage();
+        return messages.get("scheduled-task-error", e.getMessage());
       }
       final var task =
           scheduledTaskRepo.save(
@@ -191,30 +196,22 @@ tasks, so write it as a person would name the job rather than as an instruction 
       final var overrideNote =
           validated.equals(cronExpression)
               ? ""
-              : " The interval was raised to the smallest one allowed, " + validated + ".";
-      return "Created the recurring task \""
-          + title.trim()
-          + "\" ("
-          + validated
-          + "), id "
-          + task.id()
-          + ". "
-          + expiryNote
-          + runsNote
-          + overrideNote
-          + backgroundNote
-          + " Change it later with UpdateScheduledTask and that id, or cancel it with"
-          + " CancelScheduledTask.";
+              : " " + messages.get("scheduled-task-interval-raised", validated);
+      return messages.get(
+          "scheduled-task-created-recurring",
+          title.trim(),
+          validated,
+          task.id(),
+          notes(expiryNote, runsNote, overrideNote, backgroundNote));
     } else {
       final Instant fireAt;
       try {
         fireAt = Instant.parse(scheduledAt);
       } catch (Exception e) {
-        return "Error: scheduledAt must be ISO-8601 with an offset (for example"
-            + " 2025-01-15T10:00:00+08:00).";
+        return messages.get("scheduled-task-bad-scheduled-at");
       }
       if (fireAt.isBefore(Instant.now())) {
-        return "Error: scheduledAt must be in the future.";
+        return messages.get("scheduled-task-past-scheduled-at");
       }
       final var task =
           scheduledTaskRepo.save(
@@ -235,18 +232,12 @@ tasks, so write it as a person would name the job rather than as an instruction 
                   .status(ScheduledTask.Status.ACTIVE)
                   .build());
       scheduledTaskService.schedule(task);
-      return "Created the one-off task \""
-          + title.trim()
-          + "\", firing at "
-          + fireAt
-          + ", id "
-          + task.id()
-          + ". "
-          + expiryNote
-          + runsNote
-          + backgroundNote
-          + " Change it later with UpdateScheduledTask and that id, or cancel it with"
-          + " CancelScheduledTask.";
+      return messages.get(
+          "scheduled-task-created-once",
+          title.trim(),
+          fireAt,
+          task.id(),
+          notes(expiryNote, runsNote, backgroundNote));
     }
   }
 
@@ -258,7 +249,7 @@ tasks, so write it as a person would name the job rather than as an instruction 
     final List<ScheduledTask> tasks =
         scheduledTaskRepo.findByUserIdAndStatus(userId, ScheduledTask.Status.ACTIVE);
     if (tasks.isEmpty()) {
-      return "You have no active scheduled tasks.";
+      return messages.get("scheduled-task-none");
     }
     return tasks.stream()
         .map(
@@ -356,18 +347,14 @@ Usage:
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
     final var taskOpt = scheduledTaskRepo.findById(taskId);
     if (taskOpt.isEmpty()) {
-      return "Error: no task with id " + taskId + ".";
+      return messages.get("scheduled-task-unknown", taskId);
     }
     final var task = taskOpt.get();
     if (!task.userId().equals(userId)) {
-      return "Error: you can only change tasks you created yourself.";
+      return messages.get("scheduled-task-not-yours-change");
     }
     if (task.status() != ScheduledTask.Status.ACTIVE) {
-      return "Error: task "
-          + taskId
-          + " is "
-          + task.status()
-          + " and can no longer be changed. Create a new one instead.";
+      return messages.get("scheduled-task-not-active", taskId, task.status());
     }
 
     // Empty strings mean the same as absent here. A model that has been told "null to keep the
@@ -389,14 +376,10 @@ Usage:
     } catch (IllegalArgumentException e) {
       // Nothing was written: the edit is validated whole before any of it is applied, so a task is
       // never left saying something new on a schedule the caller thinks it no longer has.
-      return "Error: " + e.getMessage();
+      return messages.get("scheduled-task-error", e.getMessage());
     }
-    return "Updated task "
-        + taskId
-        + ": "
-        + String.join(", ", result.changes())
-        + "."
-        + result.note();
+    return messages.get(
+        "scheduled-task-updated", taskId, String.join(", ", result.changes()), result.note());
   }
 
   @Tool(name = "CancelScheduledTask", description = "Cancel a scheduled task by ID")
@@ -406,18 +389,25 @@ Usage:
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
     final var taskOpt = scheduledTaskRepo.findById(taskId);
     if (taskOpt.isEmpty()) {
-      return "Error: no task with id " + taskId + ".";
+      return messages.get("scheduled-task-unknown", taskId);
     }
     final var task = taskOpt.get();
     if (!task.userId().equals(userId)) {
-      return "Error: you can only cancel tasks you created yourself.";
+      return messages.get("scheduled-task-not-yours-cancel");
     }
     if (task.status() != ScheduledTask.Status.ACTIVE) {
-      return "Task " + taskId + " is already " + task.status() + ".";
+      return messages.get("scheduled-task-already", taskId, task.status());
     }
     scheduledTaskRepo.save(task.toBuilder().status(ScheduledTask.Status.CANCELLED).build());
     scheduledTaskService.unschedule(taskId);
-    return "Cancelled task " + taskId + ".";
+    return messages.get("scheduled-task-cancelled", taskId);
+  }
+
+  /** The notes that apply, as one sentence run, skipping the ones that came back empty. */
+  private static String notes(final String... parts) {
+    return java.util.Arrays.stream(parts)
+        .filter(part -> !part.isEmpty())
+        .collect(Collectors.joining(" "));
   }
 
   /**

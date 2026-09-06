@@ -337,6 +337,27 @@ app:
   # each of its parameters. A module with tools of its own ships the same pair — see feishu/tools.
   # Anything untranslated keeps the English it declares, so this can be filled in a tool at a time,
   # and the tools whose names nothing here can know, every MCP server's, are left alone.
+  #
+  # It reaches the system prompt, the tool descriptions and parameter descriptions, what a tool
+  # answers with, and the reference pages a tool returns whole. Which is most of the prompt, and is
+  # why leaving this unset is the first thing to check when the model reasons in English in a
+  # conversation held in another language: unset means the host's locale, and a container without
+  # LANG set speaks English. Each module logs at startup which locale it resolved and how many
+  # translations it found — search the log for "Tool translations for" — and setting
+  # logging.level.me.kezhenxu94.springagent.core.tools.i18n=TRACE prints the definitions actually
+  # offered, which is the last word on what the model read.
+  #
+  # What it cannot reach, and what therefore still pulls a turn towards English:
+  #   - an MCP server's tools. Their descriptions come from the server and nothing here rewrites
+  #     them, so a workspace with many English MCP tools is reading English on every iteration.
+  #   - a tool name. Those are identifiers the model has to type back, and are English on purpose.
+  #   - what the conversation already holds. Chat memory replays earlier turns, so a thread that
+  #     started in English carries on in English whatever this says.
+  #   - the user's own content: memories, skills, knowledge-base documents and the payloads of
+  #     observed events are quoted as they were written.
+  #   - the model itself. Some reasoning models emit their chain of thought in English however they
+  #     are prompted; the system prompt asks for the workspace language in the reasoning as well as
+  #     in the answer, which is as far as a prompt can go.
   storage:
     location: ${STORAGE_LOCATION:./data/}
     # Where a published file is reachable. This application serves core's ShareController itself, so

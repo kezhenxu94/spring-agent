@@ -27,6 +27,11 @@ if (providers.gradleProperty('native').present) {
 }
 
 dependencies {
+  // The i18n checks every module makes of its own tools and messages. Fixtures rather than a copy
+  // per module: they are two hundred lines of reflection over @Tool methods and properties files,
+  // and the first two modules to want them ended up with the same code twice.
+  testImplementation testFixtures(project(':spring-agent-core'))
+
   implementation project(':spring-agent-core')
   // Only this one, unlike spring-agent-app which carries all three: a command line run from a
   // laptop should need no server, and SQLite under the user's home is the whole of its storage.

@@ -19,6 +19,7 @@ import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.Tools;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.Tools.Skills;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
+import me.kezhenxu94.springagent.core.support.TestI18n;
 import me.kezhenxu94.springagent.core.tools.mcp.McpClientFactory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -64,7 +65,8 @@ class AgentToolsProviderSkillOfferTest {
         // Registered as the application registers it, annotation and all, since it is the
         // annotation that puts it in front of the scenario and so into the composed list.
         context.registerBean(
-            SkillManagementTools.class, () -> new SkillManagementTools(workspaces));
+            SkillManagementTools.class,
+            () -> new SkillManagementTools(workspaces, TestI18n.english()));
       }
       context.refresh();
       final var properties = properties(offerAfterExpensiveRuns);

@@ -5,6 +5,7 @@ import java.util.Comparator;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.springframework.ai.chat.model.ToolContext;
@@ -32,6 +33,9 @@ public class CredentialTools {
   private final ShellCredentialStore store;
   private final String restartToolName;
 
+  /** What this hands back to the model, in the workspace's language. */
+  private final CoreMessages messages;
+
   // @formatter:off
   @Tool(
       name = "SetCredential",
@@ -51,35 +55,25 @@ public class CredentialTools {
 
     final var userId = userIdFrom(toolContext);
     if (userId == null) {
-      return "Error: credential store unavailable: no userId in tool context";
+      return messages.get("credential-no-user");
     }
     if (name == null || !NAME_PATTERN.matcher(name).matches()) {
-      return "Error: invalid credential name. Must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$";
+      return messages.get("credential-bad-name");
     }
     if (value == null) {
-      return "Error: value must not be null";
+      return messages.get("credential-no-value");
     }
     final var valueBytes = value.getBytes(StandardCharsets.UTF_8);
     if (valueBytes.length > MAX_VALUE_BYTES) {
-      return "Error: value too large ("
-          + valueBytes.length
-          + " bytes, max "
-          + MAX_VALUE_BYTES
-          + ")";
+      return messages.get("credential-value-too-large", valueBytes.length, MAX_VALUE_BYTES);
     }
 
     try {
       store.put(userId, name, value);
-      return "Credential "
-          + name
-          + " stored. Run "
-          + restartToolName
-          + " to expose it as $"
-          + name
-          + ".";
+      return messages.get("credential-stored", name, restartToolName);
     } catch (final Exception e) {
       log.error("SetCredential failed user={} name={}", userId, name, e);
-      return "Error storing credential: " + e.getMessage();
+      return messages.get("credential-store-failed", e.getMessage());
     }
   }
 
@@ -97,21 +91,23 @@ public class CredentialTools {
 
     final var userId = userIdFrom(toolContext);
     if (userId == null) {
-      return "Error: credential store unavailable: no userId in tool context";
+      return messages.get("credential-no-user");
     }
 
     try {
       final var entries = store.list(userId);
       if (entries.isEmpty()) {
-        return "No credentials stored.";
+        return messages.get("credential-none");
       }
-      final var out = new StringBuilder("Credentials:\n");
+      final var out = new StringBuilder(messages.get("credential-listing")).append("\n");
       entries.stream()
           .sorted(Comparator.comparing(ShellCredentialStore.Entry::name))
           .forEach(
               entry -> {
                 final var updated =
-                    entry.updatedAt() == null ? "unknown" : entry.updatedAt().toString();
+                    entry.updatedAt() == null
+                        ? messages.get("credential-unknown-time")
+                        : entry.updatedAt().toString();
                 out.append("- ")
                     .append(entry.name())
                     .append("  (lastUpdated=")
@@ -121,7 +117,7 @@ public class CredentialTools {
       return out.toString().stripTrailing();
     } catch (final Exception e) {
       log.error("ListCredentials failed user={}", userId, e);
-      return "Error listing credentials: " + e.getMessage();
+      return messages.get("credential-list-failed", e.getMessage());
     }
   }
 
@@ -141,26 +137,20 @@ public class CredentialTools {
 
     final var userId = userIdFrom(toolContext);
     if (userId == null) {
-      return "Error: credential store unavailable: no userId in tool context";
+      return messages.get("credential-no-user");
     }
     if (name == null || !NAME_PATTERN.matcher(name).matches()) {
-      return "Error: invalid credential name. Must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$";
+      return messages.get("credential-bad-name");
     }
 
     try {
       if (!store.delete(userId, name)) {
-        return "Credential " + name + " not found (nothing to delete).";
+        return messages.get("credential-not-found", name);
       }
-      return "Credential "
-          + name
-          + " removed. Run "
-          + restartToolName
-          + " to drop $"
-          + name
-          + " from the sandbox.";
+      return messages.get("credential-removed", name, restartToolName);
     } catch (final Exception e) {
       log.error("DeleteCredential failed user={} name={}", userId, name, e);
-      return "Error deleting credential: " + e.getMessage();
+      return messages.get("credential-delete-failed", e.getMessage());
     }
   }
 

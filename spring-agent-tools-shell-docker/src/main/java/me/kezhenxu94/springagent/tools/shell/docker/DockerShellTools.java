@@ -9,6 +9,7 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.config.ModuleMessages;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.springframework.ai.chat.model.ToolContext;
@@ -32,6 +33,14 @@ public class DockerShellTools implements AutoCloseable {
 
   private final UserContainerManager userContainerManager;
   private final DockerShellProperties properties;
+
+  /**
+   * What this hands back to the model, in the workspace's language.
+   *
+   * <p>A shell result is what the model reasons from and then reports, so English here pulls the
+   * whole turn into English however the user wrote.
+   */
+  private final ModuleMessages messages;
 
   /**
    * Virtual threads, one per exec: {@code execInContainer} blocks until the command finishes, and
@@ -91,7 +100,7 @@ Usage notes:
       return runForeground(container, bashId, command, timeout);
     } catch (final Exception e) {
       log.error("Bash execution failed user={} bashId={}", userId, bashId, e);
-      return "bash_id: " + bashId + "\n\nError executing command: " + e.getMessage();
+      return messages.get("bash-exec-failed", bashId, e.getMessage());
     }
   }
 
@@ -122,7 +131,7 @@ Usage notes:
     final var userId = userIdFrom(toolContext);
 
     if (!isSafeBashId(bash_id)) {
-      return "Error: invalid bash_id";
+      return messages.get("bash-invalid-id");
     }
 
     try {
@@ -159,11 +168,11 @@ Usage notes:
         status = stdout.substring(idx + marker.length()).trim();
       } else {
         newOutput = stdout;
-        status = "Unknown";
+        status = messages.get("bash-status-unknown");
       }
 
       if ("NOT_FOUND".equals(newOutput.trim())) {
-        return "Error: No background shell found with ID: " + bash_id;
+        return messages.get("bash-no-such-shell", bash_id);
       }
 
       if (filter != null && !filter.isBlank()) {
@@ -171,17 +180,17 @@ Usage notes:
       }
 
       final var out = new StringBuilder();
-      out.append("Shell ID: ").append(bash_id).append('\n');
-      out.append("Status: ").append(status).append('\n');
+      out.append(messages.get("bash-shell-id", bash_id)).append('\n');
+      out.append(messages.get("bash-shell-status", status)).append('\n');
       if (!newOutput.isEmpty()) {
-        out.append("\nNew output:\n").append(newOutput);
+        out.append('\n').append(messages.get("bash-new-output")).append('\n').append(newOutput);
       } else {
-        out.append("\nNo new output since last check.");
+        out.append('\n').append(messages.get("bash-no-new-output"));
       }
       return out.toString();
     } catch (final Exception e) {
       log.error("BashOutput failed user={} bashId={}", userId, bash_id, e);
-      return "Error retrieving output: " + e.getMessage();
+      return messages.get("bash-output-failed", e.getMessage());
     }
   }
 
@@ -201,7 +210,7 @@ Usage notes:
 
     final var userId = userIdFrom(toolContext);
     if (!isSafeBashId(bash_id)) {
-      return "Error: invalid bash_id";
+      return messages.get("bash-invalid-id");
     }
 
     try {
@@ -226,15 +235,15 @@ Usage notes:
       final var result = execSync(container, script, properties.defaultTimeoutMs());
       final var status = result.stdout().trim();
       if ("NOT_FOUND".equals(status)) {
-        return "Error: No background shell found with ID: " + bash_id;
+        return messages.get("bash-no-such-shell", bash_id);
       }
       if ("already_terminated".equals(status)) {
-        return "Shell " + bash_id + " was already terminated. Removed from active shells.";
+        return messages.get("bash-already-terminated", bash_id);
       }
-      return "Successfully killed shell: " + bash_id;
+      return messages.get("bash-killed", bash_id);
     } catch (final Exception e) {
       log.error("KillShell failed user={} bashId={}", userId, bash_id, e);
-      return "Error killing shell: " + e.getMessage();
+      return messages.get("bash-kill-failed", e.getMessage());
     }
   }
 
@@ -255,13 +264,12 @@ Usage notes:
     try {
       final var deleted = userContainerManager.deleteContainerFor(userId);
       if (!deleted) {
-        return "No running shell container was found. The next Bash call will create one.";
+        return messages.get("bash-no-container");
       }
-      return "Shell container restarted. The next Bash call will create a fresh container with"
-          + " updated credentials.";
+      return messages.get("bash-container-restarted");
     } catch (final Exception e) {
       log.error("RestartShellContainer failed user={}", userId, e);
-      return "Error restarting shell container: " + e.getMessage();
+      return messages.get("bash-container-restart-failed", e.getMessage());
     }
   }
 
@@ -278,9 +286,9 @@ Usage notes:
     try {
       result = execSync(container, script, effectiveTimeout);
     } catch (final TimeoutException e) {
-      return "bash_id: " + bashId + "\n\nCommand timed out after " + effectiveTimeout + "ms";
+      return messages.get("bash-timed-out", bashId, effectiveTimeout);
     } catch (final Exception e) {
-      return "bash_id: " + bashId + "\n\nError executing command: " + e.getMessage();
+      return messages.get("bash-exec-failed", bashId, e.getMessage());
     }
 
     final var out = new StringBuilder();
@@ -290,11 +298,11 @@ Usage notes:
     }
     if (!result.stderr().isEmpty()) {
       if (!result.stdout().isEmpty()) out.append('\n');
-      out.append("STDERR:\n").append(result.stderr());
+      out.append(messages.get("bash-stderr")).append('\n').append(result.stderr());
     }
     if (result.exitCode() != null && result.exitCode() != 0) {
       if (out.length() > 0) out.append('\n');
-      out.append("Exit code: ").append(result.exitCode());
+      out.append(messages.get("bash-exit-code", result.exitCode()));
     }
     return out.toString();
   }
@@ -327,13 +335,7 @@ Usage notes:
             "echo $PID > /tmp/.bg/" + bashId + ".pid",
             "echo 0 > /tmp/.bg/" + bashId + ".offset");
     execSync(container, script, 30_000);
-    return "bash_id: "
-        + bashId
-        + "\n\nBackground shell started with ID: "
-        + bashId
-        + "\nUse BashOutput tool with bash_id='"
-        + bashId
-        + "' to retrieve output.";
+    return messages.get("bash-background-started", bashId);
   }
 
   /**

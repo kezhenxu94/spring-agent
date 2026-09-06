@@ -13,9 +13,9 @@ package me.kezhenxu94.springagent.integration.feishu;
  *
  * <p>Escaping rather than stripping, so what the person actually wrote is still readable: every
  * character markdown or Feishu would act on becomes the HTML entity that renders as itself, using
- * the same list the model is given in {@link FeishuReplyFormat#COMMON}. That list is the surface's
- * own documented answer to "how do I write this character literally", which is why it is the right
- * one here and not a longer one of our own invention.
+ * the same list the model is given in {@code feishu/prompts/reply-format.md}. That list is the
+ * surface's own documented answer to "how do I write this character literally", which is why it is
+ * the right one here and not a longer one of our own invention.
  */
 final class FeishuMarkdown {
 

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import me.kezhenxu94.springagent.core.tools.HomeDir;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 
 /** Where the Feishu tools put files, and where they take them from when nobody says. */
 final class FeishuFiles {
@@ -18,24 +19,25 @@ final class FeishuFiles {
    * far as either is concerned. The check afterwards is the one that actually holds — a basename
    * cannot escape, so it stands as an assertion that the reduction did what it claims.
    */
-  static Path artifactPath(final String fileName, final HomeDir home) throws IOException {
+  static Path artifactPath(final String fileName, final HomeDir home, final FeishuMessages messages)
+      throws IOException {
     if (fileName == null || fileName.isBlank()) {
-      throw new IllegalArgumentException("fileName is required");
+      throw new IllegalArgumentException(messages.get("tool-file-name-required"));
     }
     final String basename;
     try {
       final var nameOnly = Path.of(fileName).getFileName();
       basename = nameOnly == null ? null : nameOnly.toString();
     } catch (InvalidPathException e) {
-      throw new IllegalArgumentException("fileName is invalid: " + fileName, e);
+      throw new IllegalArgumentException(messages.get("tool-file-name-invalid", fileName), e);
     }
     if (basename == null || basename.isBlank() || ".".equals(basename) || "..".equals(basename)) {
-      throw new IllegalArgumentException("fileName is invalid: " + fileName);
+      throw new IllegalArgumentException(messages.get("tool-file-name-invalid", fileName));
     }
     final var artifacts = home.artifacts().normalize();
     final var dest = artifacts.resolve(basename).normalize();
     if (!dest.startsWith(artifacts)) {
-      throw new IllegalArgumentException("fileName escapes artifacts directory: " + fileName);
+      throw new IllegalArgumentException(messages.get("tool-file-name-escapes", fileName));
     }
     return dest;
   }

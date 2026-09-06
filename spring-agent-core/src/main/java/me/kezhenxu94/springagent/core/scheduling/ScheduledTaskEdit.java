@@ -4,6 +4,7 @@ import com.google.common.base.Strings;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 
 /**
@@ -87,16 +88,14 @@ public record ScheduledTaskEdit(
    * @throws IllegalArgumentException with a message meant to be read by whoever asked — a person in
    *     a dialog, or the model as a tool result
    */
-  public Result applyTo(final ScheduledTask task) {
+  public Result applyTo(final ScheduledTask task, final CoreMessages messages) {
     if (namesNothing()) {
-      throw new IllegalArgumentException(
-          "nothing to change. Give title, taskText, cronExpression, scheduledAt, expiresAt,"
-              + " background or maxRuns.");
+      throw new IllegalArgumentException(messages.get("scheduled-task-edit-nothing"));
     }
     final var hasCron = !Strings.isNullOrEmpty(cronExpression);
     final var hasScheduledAt = !Strings.isNullOrEmpty(scheduledAt);
     if (hasCron && hasScheduledAt) {
-      throw new IllegalArgumentException("give either cronExpression or scheduledAt, not both.");
+      throw new IllegalArgumentException(messages.get("scheduled-task-edit-both-schedules"));
     }
 
     final var updated = task.toBuilder();
@@ -106,30 +105,27 @@ public record ScheduledTaskEdit(
     if (title != null) {
       final var named = title.trim();
       if (named.isEmpty()) {
-        throw new IllegalArgumentException("a task needs a name.");
+        throw new IllegalArgumentException(messages.get("scheduled-task-edit-no-title"));
       }
       if (named.length() > MAX_TITLE) {
         throw new IllegalArgumentException(
-            "a task's title is limited to "
-                + MAX_TITLE
-                + " characters. Put the detail in its"
-                + " prompt, which is what the agent reads.");
+            messages.get("scheduled-task-edit-title-too-long", MAX_TITLE));
       }
       updated.title(named);
-      changes.add("it is now called \"" + named + "\"");
+      changes.add(messages.get("scheduled-task-edit-renamed", named));
     }
 
     if (taskText != null) {
       final var text = taskText.trim();
       if (text.isEmpty()) {
-        throw new IllegalArgumentException("a task needs something to do.");
+        throw new IllegalArgumentException(messages.get("scheduled-task-edit-no-text"));
       }
       if (text.length() > MAX_TASK_TEXT) {
         throw new IllegalArgumentException(
-            "a task's text is limited to " + MAX_TASK_TEXT + " characters.");
+            messages.get("scheduled-task-edit-text-too-long", MAX_TASK_TEXT));
       }
       updated.taskText(text);
-      changes.add("it now says \"" + text + "\"");
+      changes.add(messages.get("scheduled-task-edit-retexted", text));
     }
 
     if (hasCron) {
@@ -138,43 +134,47 @@ public record ScheduledTaskEdit(
       // old scheduledAt on a task that has just been made recurring is a second one that
       // ScheduledTaskService would have to choose between.
       updated.cronExpression(validated).scheduledAt(null);
-      changes.add("it now runs on " + validated);
+      changes.add(messages.get("scheduled-task-edit-cron", validated));
       if (!validated.equals(cronExpression)) {
-        note = " The interval was raised to the smallest one allowed, " + validated + ".";
+        // The space is here rather than in the bundle: a leading space in a properties value is
+        // stripped when the bundle is read, so a translation cannot carry its own separator.
+        note = " " + messages.get("scheduled-task-interval-raised", validated);
       }
     } else if (hasScheduledAt) {
-      final var fireAt = future(scheduledAt, "scheduledAt");
+      final var fireAt = future(scheduledAt, "scheduledAt", messages);
       updated.cronExpression(null).scheduledAt(fireAt);
-      changes.add("it now fires once, at " + fireAt);
+      changes.add(messages.get("scheduled-task-edit-once", fireAt));
     }
 
     if (expiresAt != null) {
       if (expiresAt.equalsIgnoreCase(NEVER)) {
         updated.expiresAt(null);
-        changes.add("it no longer expires");
+        changes.add(messages.get("scheduled-task-edit-no-expiry"));
       } else {
-        final var until = future(expiresAt, "expiresAt");
+        final var until = future(expiresAt, "expiresAt", messages);
         updated.expiresAt(until);
-        changes.add("it expires at " + until);
+        changes.add(messages.get("scheduled-task-edit-expires", until));
       }
     }
 
     if (background != null) {
       updated.background(background);
-      changes.add(background ? "it now runs in the background" : "it now replies in its thread");
+      changes.add(
+          messages.get(
+              background ? "scheduled-task-edit-background" : "scheduled-task-edit-foreground"));
     }
 
     if (maxRuns != null) {
       if (maxRuns < UNLIMITED) {
         throw new IllegalArgumentException(
-            "maxRuns must be at least 1, or " + UNLIMITED + " for a task nothing counts.");
+            messages.get("scheduled-task-edit-bad-max-runs", UNLIMITED));
       }
       if (maxRuns == UNLIMITED) {
         updated.maxRuns(null);
-        changes.add("it now fires until it expires or is cancelled");
+        changes.add(messages.get("scheduled-task-edit-unlimited"));
       } else {
         updated.maxRuns(maxRuns);
-        changes.add("it fires " + maxRuns + " times in all");
+        changes.add(messages.get("scheduled-task-edit-max-runs", maxRuns));
       }
     }
 
@@ -186,16 +186,16 @@ public record ScheduledTaskEdit(
    * retires the task on the next sweep, and a one-off in the past fires immediately — so a typo in
    * the year is a task that quietly does the opposite of what was asked for rather than an error.
    */
-  private static Instant future(final String value, final String field) {
+  private static Instant future(
+      final String value, final String field, final CoreMessages messages) {
     final Instant parsed;
     try {
       parsed = Instant.parse(value);
     } catch (Exception e) {
-      throw new IllegalArgumentException(
-          field + " must be ISO-8601 with an offset (for example 2025-01-15T10:00:00+08:00).", e);
+      throw new IllegalArgumentException(messages.get("scheduled-task-edit-bad-time", field), e);
     }
     if (parsed.isBefore(Instant.now())) {
-      throw new IllegalArgumentException(field + " must be in the future.");
+      throw new IllegalArgumentException(messages.get("scheduled-task-edit-past-time", field));
     }
     return parsed;
   }

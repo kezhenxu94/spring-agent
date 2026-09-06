@@ -15,6 +15,7 @@ import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
@@ -36,6 +37,14 @@ public class ScheduledTaskService {
   final SpringAgent springAgent;
   final ScheduledTaskRepo scheduledTaskRepo;
   final SpringAgentProperties appConfiguration;
+
+  /**
+   * What an edit says it changed, and why it was refused, in the workspace's language. Held here
+   * rather than in {@link ScheduledTaskEdit} because that is a plain record a caller builds itself;
+   * every caller of {@link #edit} goes through this service, so this is the one place that both the
+   * agent tool and the browser can be served the same sentence from.
+   */
+  final CoreMessages messages;
 
   /**
    * The tasks whose firing has not come back yet, so that {@link ScheduledTaskSweeper} does not
@@ -107,7 +116,7 @@ public class ScheduledTaskService {
    *     meant to be read by whoever asked
    */
   public ScheduledTaskEdit.Result edit(final ScheduledTask task, final ScheduledTaskEdit edit) {
-    final var result = edit.applyTo(task);
+    final var result = edit.applyTo(task, messages);
     if (edit.textOnly()) {
       scheduledTaskRepo.updateTaskText(task.id(), result.task().taskText());
       log.info("Scheduled task {} had its prompt rewritten", task.id());

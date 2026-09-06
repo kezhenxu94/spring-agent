@@ -118,7 +118,7 @@ public class FeishuTools {
     } else {
       final var currentChatId = resolveCurrentChatId(toolContext);
       if (Strings.isNullOrEmpty(currentChatId)) {
-        return "Failed: no chat target available (provide receiveId or invoke from a chat context)";
+        return messages.get("tool-no-chat-target");
       }
       targetReceiveId = currentChatId;
       targetReceiveIdType = "chat_id";
@@ -128,13 +128,13 @@ public class FeishuTools {
 
     final var file = new File(filePath);
     if (!file.exists()) {
-      return "Failed: file not found at " + filePath;
+      return messages.get("tool-file-not-found", filePath);
     }
 
     final var inWorkspace = userWorkspaceFactory.forRequest(toolContext).contains(file.toPath());
     if (!inWorkspace) {
       log.warn("sendFile rejected out-of-scope path: {}", filePath);
-      return "Failed: file must be within an allowed workspace or system temp directory";
+      return messages.get("tool-file-outside-workspace");
     }
 
     final var uploadResponse =
@@ -154,7 +154,7 @@ public class FeishuTools {
 
     if (uploadResponse.getCode() != 0) {
       log.error("Failed to upload file '{}': {}", filePath, uploadResponse.getMsg());
-      return "Failed to upload file: " + uploadResponse.getMsg();
+      return messages.get("tool-upload-failed", uploadResponse.getMsg());
     }
 
     final var fileKey = uploadResponse.getData().getFileKey();
@@ -183,11 +183,11 @@ public class FeishuTools {
           targetReceiveId,
           targetReceiveIdType,
           sendResponse.getMsg());
-      return "File uploaded but failed to send: " + sendResponse.getMsg();
+      return messages.get("tool-upload-send-failed", sendResponse.getMsg());
     }
 
     log.info("Sent file '{}' to {} ({})", file.getName(), targetReceiveId, targetReceiveIdType);
-    return "File sent successfully to " + targetReceiveId + ": " + file.getName();
+    return messages.get("tool-file-sent", targetReceiveId, file.getName());
   }
 
   /**
@@ -257,10 +257,10 @@ public class FeishuTools {
     if (resp.getCode() != 0) {
       log.error(
           "Failed to send Feishu message to {} ({}): {}", receiveId, receiveIdType, resp.getMsg());
-      return "Failed to send message: " + resp.getMsg();
+      return messages.get("tool-send-failed", resp.getMsg());
     }
     log.info("Sent Feishu message to {} ({})", receiveId, receiveIdType);
-    return "Message sent successfully to " + receiveId + ".";
+    return messages.get("tool-message-sent", receiveId);
   }
 
   @Tool(
@@ -274,7 +274,8 @@ public class FeishuTools {
       ToolContext toolContext) {
     try {
       final var dest =
-          FeishuFiles.artifactPath(fileName, userWorkspaceFactory.forRequest(toolContext));
+          FeishuFiles.artifactPath(
+              fileName, userWorkspaceFactory.forRequest(toolContext), messages);
       // A message id names no chat, so whose conversation this file is in only becomes knowable by
       // reading the message — and an id and a key are otherwise all it would take to pull a file
       // out of a chat the asker is not in. Checked before a byte is fetched.
@@ -293,14 +294,14 @@ public class FeishuTools {
                       .build());
       if (!response.success()) {
         log.warn("Failed to get file: {}, {}, {}", fileKey, response.getCode(), response.getMsg());
-        return "Failed to download file: " + response.getCode() + " " + response.getMsg();
+        return messages.get("tool-download-failed", response.getCode() + " " + response.getMsg());
       }
       Files.write(dest, response.getData().toByteArray());
       log.info("Saved file to artifacts: {}", dest);
       return dest.toString();
     } catch (IllegalArgumentException | IllegalStateException | IOException e) {
       log.warn("Failed to download file {}: {}", fileKey, e.getMessage());
-      return "Failed: " + e.getMessage();
+      return messages.get("tool-failed", e.getMessage());
     }
   }
 
@@ -506,11 +507,12 @@ public class FeishuTools {
       ToolContext toolContext) {
 
     if (fileToken == null || fileToken.isBlank()) {
-      return "Failed: fileToken is required";
+      return messages.get("tool-file-token-required");
     }
     try {
       final var dest =
-          FeishuFiles.artifactPath(fileName, userWorkspaceFactory.forRequest(toolContext));
+          FeishuFiles.artifactPath(
+              fileName, userWorkspaceFactory.forRequest(toolContext), messages);
       log.info("Downloading Drive file: token={}", fileToken);
       final var response =
           feishu
@@ -524,14 +526,15 @@ public class FeishuTools {
             fileToken,
             response.getCode(),
             response.getMsg());
-        return "Failed to download Drive file: " + response.getCode() + " " + response.getMsg();
+        return messages.get(
+            "tool-drive-download-failed", response.getCode() + " " + response.getMsg());
       }
       Files.write(dest, response.getData().toByteArray());
       log.info("Saved Drive file to artifacts: {}", dest);
       return dest.toString();
     } catch (IllegalArgumentException | IllegalStateException | IOException e) {
       log.warn("Failed to download Drive file {}: {}", fileToken, e.getMessage());
-      return "Failed: " + e.getMessage();
+      return messages.get("tool-failed", e.getMessage());
     }
   }
 
@@ -563,18 +566,18 @@ public class FeishuTools {
       final ToolContext toolContext) {
 
     if (filePath == null || filePath.isBlank()) {
-      throw new IllegalArgumentException("filePath is required");
+      throw new IllegalArgumentException(messages.get("tool-file-path-required"));
     }
     final var file = new File(filePath);
     if (!file.isFile()) {
-      throw new IllegalArgumentException("No file at " + filePath);
+      throw new IllegalArgumentException(messages.get("tool-no-file-at", filePath));
     }
     // The same rule every tool here that reads a local path applies: what may leave this machine is
     // what this request's own scopes hold, so that a path is never a way to publish someone else's
     // files — or the host's — into a drive.
     if (!userWorkspaceFactory.forRequest(toolContext).contains(file.toPath())) {
       log.warn("uploadDriveFile rejected out-of-scope path: {}", filePath);
-      throw new IllegalArgumentException("The file must be within an allowed workspace");
+      throw new IllegalArgumentException(messages.get("tool-file-outside-workspace-strict"));
     }
 
     final var targetFolderToken =

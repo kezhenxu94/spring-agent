@@ -34,6 +34,7 @@ import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
+import me.kezhenxu94.springagent.core.support.TestI18n;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.AgentComposition;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider.McpTools;
@@ -893,7 +894,8 @@ class SpringAgentTest {
     return new InterceptingToolCallingManager(
         DefaultToolCallingManager.builder()
             .toolCallbackResolver(
-                new InterceptingToolCallbackResolver(toolName -> null, List.of(), noFileRefs()))
+                new InterceptingToolCallbackResolver(
+                    toolName -> null, List.of(), noFileRefs(), TestI18n.english()))
             .build(),
         List.of(),
         noFileRefs());

@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
@@ -19,6 +20,14 @@ public class InterceptingToolCallbackResolver implements ToolCallbackResolver {
   private final List<ToolCallInterceptor> interceptors;
   private final ToolInputFileRefs fileRefs;
 
+  /**
+   * What the model reads in place of the dropped call, in the workspace's language. This fires
+   * whenever the tool search did not offer a tool the model went on to call, which is a normal part
+   * of a long turn rather than an error — so it is a sentence the model reads several times in a
+   * conversation, and one worth not being English.
+   */
+  private final CoreMessages messages;
+
   @Override
   public ToolCallback resolve(String toolName) {
     final var callback = delegate.resolve(toolName);
@@ -32,12 +41,13 @@ public class InterceptingToolCallbackResolver implements ToolCallbackResolver {
               + " resolve it by name; the call will be answered with an unavailable stub",
           toolName,
           delegate.getClass().getSimpleName());
-      return unavailableToolCallback(toolName);
+      return unavailableToolCallback(toolName, messages);
     }
     return new InterceptingToolCallback(callback, interceptors, fileRefs);
   }
 
-  private static ToolCallback unavailableToolCallback(String toolName) {
+  private static ToolCallback unavailableToolCallback(
+      final String toolName, final CoreMessages messages) {
     final var definition =
         ToolDefinition.builder().name(toolName).description("").inputSchema("{}").build();
     return new ToolCallback() {
@@ -50,7 +60,7 @@ public class InterceptingToolCallbackResolver implements ToolCallbackResolver {
       public String call(String toolInput) {
         log.warn(
             "Dropped call to unavailable tool '{}', arguments={}", toolName, abbreviate(toolInput));
-        return recoveryMessage(toolName);
+        return recoveryMessage(toolName, messages);
       }
 
       @Override
@@ -70,7 +80,7 @@ public class InterceptingToolCallbackResolver implements ToolCallbackResolver {
             toolName,
             sessionId,
             abbreviate(toolInput));
-        return recoveryMessage(toolName);
+        return recoveryMessage(toolName, messages);
       }
     };
   }
@@ -81,15 +91,8 @@ public class InterceptingToolCallbackResolver implements ToolCallbackResolver {
    * puts it back, so the way out is worth spelling out: told only that the tool is unavailable, the
    * model abandons the step it was in the middle of.
    */
-  private static String recoveryMessage(final String toolName) {
-    return "Tool '"
-        + toolName
-        + "' was not offered to this call, so it did not run. Call toolSearchTool with a query"
-        + " naming '"
-        + toolName
-        + "' to make it available again, then call '"
-        + toolName
-        + "' once more.";
+  private static String recoveryMessage(final String toolName, final CoreMessages messages) {
+    return messages.get("tool-not-offered", toolName);
   }
 
   /** Enough of the arguments to recognise the call, without a whole tool payload in the log. */

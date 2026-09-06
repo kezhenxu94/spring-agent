@@ -35,6 +35,17 @@ finishes it and posts another into the same thread, carrying on where it left of
 `SLACK_STREAM_CHARACTERS` and `SLACK_STREAM_INTERVAL` tune the rewriting; `SLACK_REPLY_MESSAGE`,
 `SLACK_WELCOME_MESSAGE` and `SLACK_UPDATE_MESSAGE` point at the Block Kit templates.
 
+
+## Text the model reads
+
+`{replyFormat}` is this module's largest contribution to the prompt — two thousand characters of
+mrkdwn rules in the system message of every run on this surface — and it lives in
+`slack/prompts/reply-format.md` (plus `-channel`) with per-locale siblings rather than as a Java
+constant: a constant has one language, and that much English at the head of every request is a
+constant pull towards English in a workspace that asked for something else. The tool descriptions
+are in `slack/prompts/tools/` and what the tools *answer* with in `slack/messages*.properties`.
+
+
 ## Gotchas worth knowing before changing this module
 
 - **`SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` belong to the browser surface's Sign in with Slack, not

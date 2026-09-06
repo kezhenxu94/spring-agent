@@ -93,7 +93,7 @@ public class FeishuChatAccess {
    */
   public void requireMember(final ToolContext toolContext, final String chatId) {
     if (Strings.isNullOrEmpty(chatId)) {
-      throw new IllegalArgumentException("chatId is required");
+      throw new IllegalArgumentException(messages.get("tool-chat-id-required"));
     }
     // Absent rather than empty on a run with nobody behind it, which is a run with nobody to
     // authorise: throwing here is the fail-closed answer.

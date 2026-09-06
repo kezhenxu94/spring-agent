@@ -435,7 +435,15 @@ Beans annotated `@AgentTool`, whose `@Tool` methods `AgentToolsProvider.compose(
 - Descriptions in `@Tool`/`@ToolParam` are English, an annotation value being a compile-time
   constant. Ship translations as `<prefix>/prompts/tools/<ToolName>_<locale>.md` for the tool and a
   `<ToolName>.<parameterName>` key in `<prefix>/tools_<locale>.properties` for its parameters.
-  Untranslated tools keep their English, so this can be filled in one tool at a time.
+  Untranslated tools keep their English, so this can be filled in one tool at a time — but the
+  module subclasses `AbstractEveryToolTranslatedTest` from core's test fixtures once it is done, so
+  that the next tool added cannot quietly leave it half done.
+- **What a tool returns is model-facing prose as much as what it declares**, and it is the half that
+  gets forgotten: the model reads a tool result and writes the user's answer out of it, so a string
+  literal there is an English sentence in the middle of a conversation held in another language, and
+  English reasoning on the way to it. Put those in the module's message bundle — `CoreMessages`, or
+  a `ModuleMessages` of the module's own — and a reference page a tool returns whole in
+  `<prefix>/prompts/<name>.md` with per-locale siblings.
 - Anything that has to happen around *every* call is a `ToolCallInterceptor`, not a change to each
   tool.
 - A tool returning something large returns it whole and lets `LargeResponseInterceptor` decide;

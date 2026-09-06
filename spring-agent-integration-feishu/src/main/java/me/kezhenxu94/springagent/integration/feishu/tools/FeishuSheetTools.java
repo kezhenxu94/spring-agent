@@ -14,6 +14,7 @@ import lombok.extern.jackson.Jacksonized;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuGuides;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.model.spreadsheet.ProtectedRange;
 import me.kezhenxu94.springagent.integration.feishu.model.spreadsheet.Sheet;
 import me.kezhenxu94.springagent.integration.feishu.sheet.FeishuSheetsService;
@@ -41,6 +42,9 @@ public class FeishuSheetTools {
 
   /** The reference pages this class hands back, in the workspace's language. */
   final FeishuGuides guides;
+
+  /** What these hand back to the model, in the workspace's language. */
+  final FeishuMessages messages;
 
   @Builder
   @Jacksonized
@@ -223,7 +227,7 @@ public class FeishuSheetTools {
           String sheetId) {
     feishuSheetsService.deleteSheet(spreadsheetToken, sheetId);
     log.info("Deleted sheet {} of spreadsheet {}", sheetId, spreadsheetToken);
-    return "Deleted sheet " + sheetId + ".";
+    return messages.get("tool-sheet-deleted", sheetId);
   }
 
   @Tool(
@@ -307,7 +311,7 @@ public class FeishuSheetTools {
           List<List<Object>> values) {
 
     if (values == null || values.isEmpty()) {
-      return "There was nothing to write.";
+      return messages.get("tool-nothing-to-write");
     }
 
     final var parsedRange = parseRange(range);
@@ -321,7 +325,7 @@ public class FeishuSheetTools {
         spreadsheetToken,
         range);
     feishuSheetsService.setValuesV2(spreadsheetToken, valueRange);
-    return "Wrote " + cells.size() + " rows to " + range + ".";
+    return messages.get("tool-rows-written", cells.size(), range);
   }
 
   @Tool(
@@ -345,7 +349,7 @@ public class FeishuSheetTools {
           List<RangeValues> ranges) {
 
     if (ranges == null || ranges.isEmpty()) {
-      return "There was nothing to write.";
+      return messages.get("tool-nothing-to-write");
     }
 
     final var valueRanges = new ArrayList<ValueRangeV2>();
@@ -357,7 +361,7 @@ public class FeishuSheetTools {
 
     log.info("Writing {} range(s) to spreadsheet {}", valueRanges.size(), spreadsheetToken);
     feishuSheetsService.setValuesBatchV2(spreadsheetToken, valueRanges);
-    return "Wrote " + valueRanges.size() + " ranges.";
+    return messages.get("tool-ranges-written", valueRanges.size());
   }
 
   @Tool(
@@ -466,13 +470,13 @@ public class FeishuSheetTools {
     }
 
     if (style.isEmpty()) {
-      return "There was no style to set.";
+      return messages.get("tool-no-style");
     }
 
     final var parsedRange = parseRange(range);
     log.info("Setting style {} on range {} of spreadsheet {}", style, range, spreadsheetToken);
     feishuSheetsService.setStyle(spreadsheetToken, parsedRange, style);
-    return "Styled " + range + ".";
+    return messages.get("tool-styled", range);
   }
 
   @Tool(
@@ -527,7 +531,7 @@ public class FeishuSheetTools {
       @ToolParam(description = "Id of the sheet to unlock") String sheetId) {
     feishuSheetsService.unlockSheet(spreadsheetToken, sheetId);
     log.info("Unlocked sheet {} of spreadsheet {}", sheetId, spreadsheetToken);
-    return "Unlocked sheet " + sheetId + ".";
+    return messages.get("tool-sheet-unlocked", sheetId);
   }
 
   @Tool(

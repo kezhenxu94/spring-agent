@@ -598,9 +598,26 @@ Text the agent writes itself — as opposed to what the model produced — is lo
 own; ship a bundle, and either name it in `spring.messages.basename` — core's is appended after
 whatever you name — or build a `MessageSource` of your own for it, as `FeishuMessages` and
 `WebMessages` do, so that
-two modules are not fighting over one basename. `app.locale`
+two modules are not fighting over one basename. `ModuleMessages` in core is that second thing ready
+made: give it a basename and `app.locale` and it is a bundle of your own with the host-locale
+fallback already turned off. `app.locale`
 also chooses the language tool descriptions are rewritten into on the way to the model, from
 `core/prompts/tools/<ToolName>_<locale>.md` and `core/tools_<locale>.properties`.
+
+**A tool result is model-facing prose too, and it is the half that gets forgotten.** What a tool
+*answers* — a confirmation, a refusal, the note saying what it did — is read by the model and turned
+straight into the sentence the user reads, so English there is an English answer to a question asked
+in another language, and English reasoning on the way to it. Put those in a bundle, not in a string
+literal. The same goes for a reference page a tool returns whole: keep it as
+`<prefix>/prompts/<name>.md` with per-locale siblings and read it with `LocalizedPrompt`, as
+`FeishuGuides` does, rather than as a Java constant.
+
+Core publishes the checks for all of this as test fixtures — add
+`testImplementation testFixtures(project(':spring-agent-core'))` and subclass
+`AbstractToolTextsParityTest`, `AbstractEveryToolTranslatedTest`,
+`AbstractToolTranslationsCompleteTest`, `AbstractLocalizedToolsEndToEndTest`,
+`AbstractMessageBundleParityTest` and `AbstractPromptFilesTranslatedTest`. Each wants two or three
+strings naming your package, your bundle and your prompt directory.
 
 ## A browser as your surface
 

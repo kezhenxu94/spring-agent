@@ -169,7 +169,7 @@ you no longer want it, call CancelSubagent.
     final var tenantId = ToolContexts.get(context, ToolContexts.TENANT_ID);
 
     if (Strings.isNullOrEmpty(prompt)) {
-      return "Error: prompt is required, and has to say the whole task.";
+      return messages.get("subagent-no-prompt");
     }
     if (!springAgent.accepting()) {
       return messages.get("subagent-shutting-down");

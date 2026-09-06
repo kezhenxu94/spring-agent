@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import me.kezhenxu94.springagent.core.aot.AgentToolsRuntimeHints;
 import me.kezhenxu94.springagent.core.config.LocalizedPrompt;
+import me.kezhenxu94.springagent.core.i18n.ToolTextsInventory;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
