@@ -294,7 +294,8 @@ public class FeishuDocTools {
               description =
                   "JSON array of the blocks to create, each one a block object of the shape"
                       + " FeishuDocBlockContentReference describes. Takes a file reference:"
-                      + " @file:<path> for a saved tool result, or @file:<path>#/json/pointer for"
+                      + " @file:<path> for a saved tool result or any file in your home"
+                      + " directory, or @file:<path>#/json/pointer for"
                       + " one part of it")
           String childrenJson,
       @ToolParam(
@@ -428,7 +429,8 @@ public class FeishuDocTools {
       @ToolParam(
               description =
                   "JSON array of the updates, each element a blockId and one operation field."
-                      + " Takes a file reference: @file:<path> for a saved tool result, or"
+                      + " Takes a file reference: @file:<path> for a saved tool result or any"
+                      + " file in your home directory, or"
                       + " @file:<path>#/json/pointer for one part of it")
           String requestsJson,
       @ToolParam(
