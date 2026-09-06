@@ -52,6 +52,7 @@ class EventsDefaultsTest {
         .isEqualTo(EventsProperties.DEFAULT_RESOLVE_AFTER_EVALUATION);
     assertThat(properties.stuckInvestigationTimeout())
         .isEqualTo(EventsProperties.DEFAULT_STUCK_INVESTIGATION_TIMEOUT);
+    assertThat(properties.retention()).isEqualTo(EventsProperties.DEFAULT_RETENTION);
     // Not defaulted, and deliberately: a property has one value, so a default here would pin every
     // source to one wording in one language. Unset is what lets TriagePrompts pick the file for the
     // source, in the workspace's language.
@@ -94,6 +95,8 @@ class EventsDefaultsTest {
     assertThat(environment.getProperty(EventsDefaults.RESOLVE_AFTER_QUIET)).isEqualTo("PT6H");
     assertThat(environment.getProperty(EventsDefaults.STUCK_INVESTIGATION_TIMEOUT))
         .isEqualTo("PT20M");
+    // Duration.ofDays writes hours rather than days, which is the form the yaml states too.
+    assertThat(environment.getProperty(EventsDefaults.RETENTION)).isEqualTo("PT720H");
   }
 
   @Test

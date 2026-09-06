@@ -543,6 +543,46 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
   }
 
   @Test
+  @DisplayName("deleting a situation takes its observations with it, on every backend")
+  void situationsAndTheirObservationsAreDeletable() {
+    // What app.events.retention is made of. Two backends derive the delete over situationId and
+    // Redis writes it out as a read plus deletes, so this is the assertion that says the three
+    // agree — and in particular that the delete takes only this situation's evidence.
+    final var mine = owner() + "-situation-6";
+    final var theirs = owner() + "-situation-7";
+    situationRepo.save(
+        Situation.builder()
+            .id(mine)
+            .source("grafana")
+            .correlationKey(owner() + "-grafana:ghi")
+            .status(Situation.Status.RESOLVED)
+            .phase(Situation.Phase.MONITORING)
+            .resolvedAt(Instant.now().truncatedTo(ChronoUnit.MILLIS))
+            .build());
+    observedEventRepo.save(
+        ObservedEvent.builder().id(owner() + "-delivery-4").situationId(mine).build());
+    observedEventRepo.save(
+        ObservedEvent.builder().id(owner() + "-delivery-5").situationId(mine).build());
+    observedEventRepo.save(
+        ObservedEvent.builder().id(owner() + "-delivery-6").situationId(theirs).build());
+
+    observedEventRepo.deleteBySituationId(mine);
+    situationRepo.deleteById(mine);
+
+    assertThat(situationRepo.findById(mine)).isEmpty();
+    assertThat(observedEventRepo.findBySituationId(mine)).isEmpty();
+    // The index the row was reachable through has to go with it, or the ingest path keeps handing
+    // arriving observations to a situation that no longer exists.
+    assertThat(
+            situationRepo.findByCorrelationKeyAndStatus(
+                owner() + "-grafana:ghi", Situation.Status.RESOLVED))
+        .isEmpty();
+    assertThat(observedEventRepo.findBySituationId(theirs))
+        .extracting(ObservedEvent::id)
+        .containsExactly(owner() + "-delivery-6");
+  }
+
+  @Test
   @DisplayName("a chat session is found by its owner, and by nobody else")
   void chatSessionsAreScopedToTheirOwner() {
     final var now = Instant.now();

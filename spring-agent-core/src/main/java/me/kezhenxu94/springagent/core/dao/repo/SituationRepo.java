@@ -40,4 +40,15 @@ public interface SituationRepo {
   List<Situation> findByStatus(Situation.Status status);
 
   List<Situation> findByPhase(Situation.Phase phase);
+
+  /**
+   * Forgets one situation for good, which is what retention is made of.
+   *
+   * <p>By id rather than by age, for the reason the whole contract is shaped this way: no backend
+   * here serves a range predicate over {@code resolvedAt}, so the caller reads the closed
+   * situations — an indexed equality on {@code status} — and decides in memory which of them are
+   * old enough. The observations behind each go with it, through {@link
+   * ObservedEventRepo#deleteBySituationId}.
+   */
+  void deleteById(String id);
 }

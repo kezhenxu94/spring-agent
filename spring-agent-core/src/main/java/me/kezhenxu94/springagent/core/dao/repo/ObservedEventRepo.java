@@ -21,4 +21,16 @@ public interface ObservedEventRepo {
    * affordable precisely because {@code app.events.max-events-per-situation} bounds what is stored.
    */
   List<ObservedEvent> findBySituationId(String situationId);
+
+  /**
+   * Forgets every observation recorded against one situation, when that situation is forgotten.
+   *
+   * <p>The one property this can be keyed by, {@code situationId} being the only indexed one here.
+   * JPA and MongoDB derive it; Redis writes it out as a read followed by deletes, for the reason
+   * {@code RedisMcpServerConfigRepo.deleteByOwnerIdAndName} does.
+   *
+   * <p>Nothing else deletes an observation. It is the situation's lifetime that decides, because
+   * evidence outliving what it is evidence for is a row nothing can ever ask for again.
+   */
+  void deleteBySituationId(String situationId);
 }

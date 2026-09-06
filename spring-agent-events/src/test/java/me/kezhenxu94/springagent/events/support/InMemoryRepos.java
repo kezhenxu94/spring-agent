@@ -73,6 +73,11 @@ public final class InMemoryRepos {
           .toList();
     }
 
+    @Override
+    public void deleteById(final String id) {
+      stored.remove(id);
+    }
+
     public List<Situation> all() {
       return List.copyOf(stored.values());
     }
@@ -103,6 +108,11 @@ public final class InMemoryRepos {
               stored.values().stream().filter(e -> situationId.equals(e.situationId())).toList());
       java.util.Collections.reverse(found);
       return found;
+    }
+
+    @Override
+    public void deleteBySituationId(final String situationId) {
+      stored.values().removeIf(e -> situationId.equals(e.situationId()));
     }
 
     public int size() {
