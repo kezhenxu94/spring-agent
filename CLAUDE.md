@@ -121,7 +121,10 @@ Root documents:
 - **`README.md`** — somebody deciding whether to run this at all. An overview and an index: the
   feature story, one quick start, the table of applications, the two switches. Per-application setup
   belongs in that application's README, not here. Update it when a feature becomes user-visible, when
-  the set of applications changes, or when a switch gains or loses a value.
+  the set of applications changes, or when a switch gains or loses a value. Its *At a glance* diagram
+  is a cut-down `docs/architecture.md`'s *The whole picture* — no module names, no subgraph
+  boundaries — and is the one diagram kept in two places deliberately: a change to the shape updates
+  both in the same commit.
 - **`docs/integrations.md`** — anybody looking for a module or writing one. What an integration *is*
   here, the kinds there are, the contract every module keeps, the one-chat-surface rule, and the index
   of every module README. Update it when a module is added or removed, or when something becomes true
@@ -137,7 +140,8 @@ Root documents:
 - **`docs/architecture.md`** — anybody orienting themselves, before picking one of the others. Mermaid
   diagrams of the surfaces, the two ways a run starts, what a run is offered, where state lives, and
   which module may depend on which. Keep it structural: it is not a configuration reference and must
-  not grow into one.
+  not grow into one. Every other diagram here is the only copy of itself; only *The whole picture* has
+  a simplified twin in the root README.
 - **`docs/contributing.md`** — somebody changing this repository. Build/test/lint, module layout and
   the classpath rules, how to add each kind of integration, conventions. Update it when the build, the
   test layout or the module rules change, or when a new *kind* of integration becomes possible.
