@@ -119,8 +119,13 @@ public class TaskController {
                 ? ScheduledTaskEdit.NEVER
                 : text(body, "expiresAt"),
             flag(body, "background"),
+            // The same, for the firing count — and boxed by hand, which is load-bearing rather
+            // than noise. UNLIMITED is an int, and a conditional expression with an int on one arm
+            // and an Integer on the other is promoted to int, so the count is unboxed: an edit
+            // naming no maxRuns at all threw a NullPointerException before it reached the service,
+            // which is every edit the page sends for a task whose ceiling nobody touched.
             body.containsKey("maxRuns") && body.get("maxRuns") == null
-                ? ScheduledTaskEdit.UNLIMITED
+                ? Integer.valueOf(ScheduledTaskEdit.UNLIMITED)
                 : count(body, "maxRuns"));
 
     final ScheduledTaskEdit.Result result;
