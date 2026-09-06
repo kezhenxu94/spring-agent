@@ -455,8 +455,8 @@ Beans annotated `@AgentTool`, whose `@Tool` methods `AgentToolsProvider.compose(
   argument — the answer is usually to fuse the two rather than to make the copy cheaper. That is
   what `FeishuWriteDocumentBody` is: the conversion, the insert, the chunking and the image
   workflow that used to be four tool calls and three rules the model had to remember. Where the
-  copy is genuine, an argument may instead be declared to accept an `@file:` reference to a saved
-  tool result, by contributing a `ToolInputFileRefs.Params` bean — see `docs/sdk.md` for why that
+  copy is genuine, an argument may instead be declared to accept an `@file:` reference to a file in
+  the requester's home, by contributing a `ToolInputFileRefs.Params` bean — see `docs/sdk.md` for why that
   list stays short.
 
 ### A persistence backend

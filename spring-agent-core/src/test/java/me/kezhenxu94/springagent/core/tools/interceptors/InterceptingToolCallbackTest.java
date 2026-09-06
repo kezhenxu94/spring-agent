@@ -79,7 +79,7 @@ class InterceptingToolCallbackTest {
             .call("{\"descendantsJson\":\"@file:/nowhere/at/all.json\"}", CONTEXT);
 
     assertThat(delegate.received).isNull();
-    assertThat(result).contains("No such tool-result file");
+    assertThat(result).contains("No such file");
     assertThat(seen).hasSize(2);
   }
 

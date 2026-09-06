@@ -13,7 +13,6 @@ import java.util.TreeSet;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
-import me.kezhenxu94.springagent.core.tools.HomeDir;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.stereotype.Component;
@@ -23,8 +22,8 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Lets a tool argument be given as a reference to a file a previous tool call was spilled to,
- * instead of the content itself.
+ * Lets a tool argument be given as a reference to a file in the requester's home — typically one a
+ * previous tool call was spilled to — instead of the content itself.
  *
  * <p>The waste this removes is a tool whose output has no purpose but to become another tool's
  * input: the model emits every byte of it and reads every byte back, paying for the same payload
@@ -34,11 +33,13 @@ import tools.jackson.databind.node.ObjectNode;
  * <p><b>Which parameters accept one is an allow-list, and that is the security boundary.</b>
  * Expanding any string argument of any tool would make every tool a file-reading primitive, and a
  * run does not always act on behalf of somebody trustworthy — an observation carries evidence
- * written by whoever caused the event, so a triage run reads attacker-authored text. Confining
- * reads to the workspace is no defence there, because the workspace is the interesting part: it
- * would take one injected sentence to have a message-sending tool address a file of memories. So a
- * parameter takes a reference only where a module said it does, and where its own description says
- * so to the model.
+ * written by whoever caused the event, so a triage run reads attacker-authored text. Where the file
+ * may sit is a far weaker guard than which parameter may name one: the agent's own home is the
+ * interesting part, so it would take one injected sentence to have a message-sending tool address a
+ * file of memories. That is why a parameter takes a reference only where a module said it does, and
+ * where its own description says so to the model — a parameter on the list is one whose value goes
+ * somewhere the run was already going to put a payload, not one that decides where a payload is
+ * sent.
  *
  * <p>A value that looks like a reference on a parameter that does not take one is an error rather
  * than text, because the alternative is writing {@code @file:/...} into somebody document as
@@ -57,9 +58,6 @@ public class ToolInputFileRefs {
 
   /** Separates the path from the JSON Pointer selecting the part of it that is wanted. */
   static final char POINTER_SEPARATOR = '#';
-
-  /** The one directory a reference may name, under each scope the request can reach. */
-  static final String TOOL_RESULTS_DIR = "tool-results";
 
   private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
@@ -220,15 +218,22 @@ public class ToolInputFileRefs {
   /**
    * The file the reference names, once it is certain to be one this request may read.
    *
-   * <p>The rule is deliberately narrower than "inside the workspace": a reference may only name a
-   * file that really lies directly inside a {@code tool-results} directory of one of the scopes
-   * this request reaches. Both sides of that comparison are resolved to their real paths, which
-   * settles traversal, a symlinked directory and — the one that is easy to miss — an innocent name
-   * in the right directory that is itself a link to a file somewhere else entirely.
+   * <p>The rule is the home directories this request reaches — its own, and its group's and
+   * tenant's where it has them, including a workspace pinned to a root of its own. So a reference
+   * can name what a tool call was spilled to, what a shell command wrote in the workspace, or
+   * anything else the agent keeps for this identity, and nothing outside that. Both sides of the
+   * comparison are resolved to their real paths, which settles traversal, a symlinked directory and
+   * — the one that is easy to miss — an innocent name in the right directory that is itself a link
+   * to a file somewhere else entirely.
+   *
+   * <p>What this does not settle is what the value is then used for: everything under a home is
+   * readable through a parameter that accepts a reference, memories and skills included, so the
+   * parameter allow-list is what keeps that from reaching a tool that sends things out. Read the
+   * class comment before adding a parameter to it.
    */
   private Path verified(final String rawPath, final ToolContext toolContext) {
     if (toolContext == null) {
-      // No context is no identity, and no identity is no workspace to resolve against. Guessing one
+      // No context is no identity, and no identity is no home to resolve against. Guessing one
       // would be guessing whose files these are.
       throw new UnresolvableReference(messages.get("tool-input-ref-no-context"));
     }
@@ -247,14 +252,15 @@ public class ToolInputFileRefs {
 
     final var home = userWorkspaceFactory.forRequest(toolContext);
     try {
-      // The file itself, not the path that was written: a link in the right directory pointing
-      // anywhere at all would otherwise pass this.
-      final var parent = candidate.toRealPath().getParent();
-      // Every scope the request reaches, exactly as reading a file does: a group chat's tool
-      // results belong to the run as much as the personal ones do.
-      for (final var artifacts : home.dirs(HomeDir.Folder.ARTIFACTS)) {
-        final var toolResults = artifacts.resolve(TOOL_RESULTS_DIR);
-        if (Files.isDirectory(toolResults) && parent.equals(toolResults.toRealPath())) {
+      // The file itself, not the path that was written: a link inside a home pointing anywhere at
+      // all would otherwise pass this.
+      final var file = candidate.toRealPath();
+      // Every scope the request reaches, exactly as reading a file does: a group chat's files
+      // belong to the run as much as the personal ones do. A root that does not exist yet — a
+      // group that has never had anything written for it — is skipped rather than failing the
+      // check, since nothing can lie under it anyway.
+      for (final var root : home.roots()) {
+        if (Files.isDirectory(root) && file.startsWith(root.toRealPath())) {
           return candidate;
         }
       }
