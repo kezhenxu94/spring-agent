@@ -22,9 +22,10 @@ import org.springframework.ai.tool.annotation.ToolParam;
  * <p>A playbook is an ordinary knowledge base document that happens to be the one {@code
  * SituationSweeper} retrieves before it triages a source's events — see {@code
  * EventsProperties.Playbook}. Which document that is, is settled by three things a deployment
- * configures and nothing else: the source's {@code owner.user-id}, whose knowledge base it is read
- * from; {@code playbook.query}, a fixed question that never contains the event's own text; and
- * {@code playbook.filter}, which names the document ids that count.
+ * configures and nothing else: the source's {@code owner}, whose knowledge base it is read from —
+ * the user's, and its group's and tenant's where the deployment configured them; {@code
+ * playbook.query}, a fixed question that never contains the event's own text; and {@code
+ * playbook.filter}, which names the document ids that count.
  *
  * <p>Before this, writing one meant being logged in as the source's owner, because {@code
  * IndexKnowledge} writes into the base of whoever is running — and an owner is meant to be an
@@ -61,9 +62,10 @@ public class PlaybookTools {
       description =
           """
           List the event sources this deployment watches and what each one's playbook is: which \
-          identity's knowledge base it is read from, the fixed question it is retrieved with, the \
-          filter that decides which documents count, and the document ids that filter accepts. \
-          Administrators only. Call this before WritePlaybook, because a playbook written under \
+          knowledge bases it is read from, the fixed question it is retrieved with, the filter that \
+          decides which documents count, and the document ids that filter accepts. A source whose \
+          owner has a group or a tenant reads from those bases too, and anybody who can write into \
+          one of them can therefore file a playbook. Administrators only. Call this before WritePlaybook, because a playbook written under \
           any other document id is stored successfully and then never read. To read back what a \
           source's playbook currently says, pass the owner it names to ListOwnerKnowledgeBase or \
           SearchOwnerKnowledge — nobody logs in as that identity, so those are the only way to see \
@@ -86,7 +88,7 @@ public class PlaybookTools {
               messages.get(
                   "playbook-source",
                   source,
-                  Strings.nullToEmpty(policy.owner().userId()),
+                  describeBases(policy),
                   Strings.nullToEmpty(policy.playbook().query()),
                   Strings.nullToEmpty(policy.playbook().filter()),
                   describeAcceptedIds(source)))
@@ -110,6 +112,10 @@ public class PlaybookTools {
           docId must be one of the ids ListPlaybooks says the source's filter accepts. Writing \
           again under the same id replaces that playbook; a different one stores a second document \
           the runs will read alongside the first.
+
+          This writes into the owner's own knowledge base, which is the first base ListPlaybooks \
+          lists. To put a playbook somewhere a team can edit it, file it into that group's or \
+          tenant's base with the ordinary knowledge tools, under an id the filter accepts.
           """)
   public String writePlaybook(
       @ToolParam(description = "The event source, as ListPlaybooks names it") String source,
@@ -158,9 +164,13 @@ public class PlaybookTools {
       final var storedId =
           knowledgeBase.index(
               KnowledgeSource.ofText(
-                  // The scope the sweeper retrieves as, stated rather than derived: the owner
-                  // alone, no group and no tenant. See SituationSweeper#playbookFor, which builds
-                  // the same scope on the reading side.
+                  // The owner alone, and OWN, so this lands in the identity's own knowledge base.
+                  // Narrower than what SituationSweeper#playbookFor reads, which is the owner's
+                  // group and tenant as well: a read may span the three, a write picks one, and the
+                  // private base is the one whose contents only something running as the owner can
+                  // have put there. An administrator who wants a playbook the team can edit files
+                  // it
+                  // with the ordinary knowledge tools under a doc id the source's filter accepts.
                   new KnowledgeScope(policy.owner().userId(), "", ""),
                   KnowledgeScope.Target.OWN,
                   title,
@@ -179,6 +189,31 @@ public class PlaybookTools {
     } catch (RuntimeException e) {
       return messages.get("playbook-write-failed", e.getMessage());
     }
+  }
+
+  /**
+   * The knowledge bases a source's playbook is read from, one line each.
+   *
+   * <p>Spelt out rather than reduced to the owner's user id because they are no longer one base and
+   * they are not equally safe to file a playbook in: {@code SituationSweeper#playbookFor} reads the
+   * owner's own, its group's and its tenant's as alternatives, and only the first is one that
+   * nothing but the agent's own identity can write into. An administrator deciding where a runbook
+   * goes needs to be told that here, in the answer they are already reading, rather than by finding
+   * out later that a colleague's note became a playbook.
+   */
+  private String describeBases(final EventsProperties.Policy policy) {
+    final var owner = policy.owner();
+    final var bases = new StringBuilder();
+    if (!Strings.isNullOrEmpty(owner.userId())) {
+      bases.append("\n    ").append(messages.get("playbook-base-user", owner.userId()));
+    }
+    if (!Strings.isNullOrEmpty(owner.groupId())) {
+      bases.append("\n    ").append(messages.get("playbook-base-group", owner.groupId()));
+    }
+    if (!Strings.isNullOrEmpty(owner.tenantId())) {
+      bases.append("\n    ").append(messages.get("playbook-base-tenant", owner.tenantId()));
+    }
+    return bases.toString();
   }
 
   /**

@@ -201,7 +201,7 @@ class SituationSweeperTest {
   }
 
   @Test
-  @DisplayName("the owner's group and tenant reach the run, and beat the ones an event named")
+  @DisplayName("the owner's group and tenant reach the run, and the ones an event named do not")
   void shouldRunAsTheConfiguredOwner() {
     final var properties = properties(false, 2);
     final var owned =
@@ -223,9 +223,9 @@ class SituationSweeperTest {
                                 .build())
                         .build()))
             .build();
-    // A group and a tenant on the way in, which the configured ones must win over: they came from
-    // the observation, and what they would otherwise decide is the shared workspace this run reads
-    // and writes.
+    // A group and a tenant on the way in, which are ignored either way: they came from the
+    // observation, and what they would otherwise decide is the shared workspace this run reads and
+    // writes and the knowledge bases it searches.
     observed(owned, "d1", Route.builder().groupId("g_event").tenantId("t_event").build());
     clock.advance(Duration.ofSeconds(31));
 
@@ -235,28 +235,33 @@ class SituationSweeperTest {
     assertThat(request.userId()).isEqualTo("ou_agent");
     assertThat(request.groupId()).isEqualTo("g_agent");
     assertThat(request.tenantId()).isEqualTo("t_agent");
-    // And still not what the playbook is read from — see EventsProperties.Owner.
+    // This source configured no playbook query, so there is nothing stated for the run to retrieve
+    // and its scope is derived from the identity above — the same three ids.
     assertThat(request.knowledgeRetrieval()).isNull();
   }
 
   @Test
-  @DisplayName("a source that named only a user keeps the group and tenant the situation carries")
-  void shouldFallBackToTheSituationsScope() {
+  @DisplayName("a source that named only a user runs in no group and no tenant at all")
+  void shouldNotFallBackToTheSituationsScope() {
     final var properties = properties(false, 2);
     observed(properties, "d1", Route.builder().groupId("g_event").tenantId("t_event").build());
     clock.advance(Duration.ofSeconds(31));
 
     sweeper(properties).sweep();
 
-    // The chat case: a message's own chat is as real an identity as anything configured, and this
-    // is what a deployment had before an owner could name a group and a tenant of its own.
+    // Not the chat's, even though for a chat source they are as real as anything configured. These
+    // two decide the shared workspaces the run reads and writes and the knowledge bases it
+    // searches, and a source configured with a user-id alone must not act inside a group somebody
+    // else's message put it in. A chat source that should reach its group says so under
+    // owner.group-id.
     final var request = fired();
-    assertThat(request.groupId()).isEqualTo("g_event");
-    assertThat(request.tenantId()).isEqualTo("t_event");
+    assertThat(request.groupId()).isNullOrEmpty();
+    assertThat(request.tenantId()).isNullOrEmpty();
   }
 
   @Test
-  @DisplayName("the run retrieves the source's playbook, from the owner's base and nowhere else")
+  @DisplayName(
+      "the run retrieves the source's playbook, from the bases the owner was configured with")
   void shouldRetrieveThePlaybook() {
     final var properties =
         EventsProperties.builder()
@@ -302,10 +307,64 @@ class SituationSweeperTest {
     assertThat(retrieval.query()).isEqualTo("how to deal with alerts");
     assertThat(new PrintFilterExpressionConverter().convertExpression(retrieval.filter()))
         .isEqualTo("docId EQ \"runbook-alerts\"");
-    // The owner alone. The group and tenant come from the observation, so a surface that reported
-    // one would otherwise choose which knowledge base an unattended run reasons from — and these
-    // are the documents that say what the agent does about text somebody else wrote.
+    // The configured owner, whole — which here is a user and nothing else. The g1 and t1 the
+    // observation carried are absent on purpose: they came from whoever sent the event, and a base
+    // chosen by a webhook is a playbook chosen by whoever sent it.
     assertThat(retrieval.scope()).isEqualTo(new KnowledgeScope("ou_agent", "", ""));
+  }
+
+  @Test
+  @DisplayName("an owner configured with a group and a tenant reads its playbook from all three")
+  void shouldRetrieveThePlaybookFromEveryConfiguredBase() {
+    final var properties =
+        EventsProperties.builder()
+            .enabled(true)
+            .debounce(Duration.ofSeconds(30))
+            .maxDebounce(Duration.ofMinutes(5))
+            .cooldown(Duration.ofMinutes(10))
+            .resolveAfterQuiet(Duration.ofHours(6))
+            .sources(
+                Map.of(
+                    "grafana",
+                    EventsProperties.Source.builder()
+                        .owner(
+                            EventsProperties.Owner.builder()
+                                .userId("ou_agent")
+                                .groupId("g_configured")
+                                .tenantId("t_configured")
+                                .build())
+                        .playbook(
+                            EventsProperties.Playbook.builder()
+                                .query("how to deal with alerts")
+                                .build())
+                        .build()))
+            .build();
+    new SituationEventIntake(
+            properties,
+            trustedActors(properties),
+            repos.situations,
+            repos.events,
+            repos.claims,
+            clock)
+        .observe(
+            Observation.builder()
+                .source("grafana")
+                .deliveryId("d1")
+                .kind("alert.firing")
+                .correlationKey("grafana:abc")
+                .title("api latency")
+                // Still ignored, even when the owner does have a group and a tenant of its own:
+                // these are the observation's, and configuration is not widened by a webhook.
+                .route(Route.builder().groupId("g1").tenantId("t1").build())
+                .build());
+    clock.advance(Duration.ofSeconds(31));
+
+    sweeper(properties).sweep();
+
+    // KnowledgeScopeFilter turns these into a disjunction, so a playbook filed in the team's or the
+    // company's base is retrieved as readily as one in the identity's own.
+    assertThat(fired().knowledgeRetrieval().scope())
+        .isEqualTo(new KnowledgeScope("ou_agent", "g_configured", "t_configured"));
   }
 
   @Test

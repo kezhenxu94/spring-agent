@@ -71,15 +71,16 @@ public final class SituationTriageScenario implements AgentScenario {
    * down about dealing with a source's events, which is the only thing that tells an unattended run
    * what its operators would want done.
    *
-   * <p>That is a narrower thing than the retrieval a chat run gets, and narrowed on purpose. {@code
-   * SituationSweeper} states the scope and the query on the request rather than letting them be
-   * derived — the base is the source's {@code owner.user-id} alone, and the query is a fixed
-   * question about the source rather than the event's own text, so that whoever wrote the event
-   * cannot choose which of the deployment's documents the model is shown. See {@code
-   * EventsProperties.Playbook}.
+   * <p>The bases read are the ones a chat run would read for the same identity — the owner's own,
+   * its group's and its tenant's, as alternatives — so there is no second rule to learn here. What
+   * is narrowed is which identity and which question: {@code SituationSweeper} states both on the
+   * request rather than letting them be derived, so the ids come from configuration and never from
+   * the observation, and the query is a fixed question about the source rather than the event's own
+   * text. Otherwise whoever wrote the event would choose which of the deployment's documents the
+   * model is shown. See {@code EventsProperties.Playbook}.
    *
-   * <p>What that costs is the automatic "have we seen this before" this used to give, since the
-   * group's and tenant's knowledge is no longer retrieved on the turn. It is one {@code
+   * <p>What that costs is the automatic "have we seen this before" a chat run gets, since the query
+   * is pinned and so nothing is retrieved against the situation's own text. It is one {@code
    * SearchKnowledge} call away and the run still has that tool, which is the right trade: a lookup
    * the agent chooses to make is worth more than one it cannot steer, and the playbook is worth
    * more than either.
