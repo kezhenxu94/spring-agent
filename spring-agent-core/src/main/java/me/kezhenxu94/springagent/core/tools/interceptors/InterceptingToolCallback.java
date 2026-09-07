@@ -2,25 +2,36 @@ package me.kezhenxu94.springagent.core.tools.interceptors;
 
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.logging.RunMdc;
 import me.kezhenxu94.springagent.core.tools.DisplayDescription;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 @Slf4j
 public class InterceptingToolCallback implements ToolCallback {
 
+  /** Arguments the model wrote, not a document: no application configuration reaches this. */
+  private static final JsonMapper MAPPER = JsonMapper.builder().build();
+
   private final ToolCallback delegate;
   private final List<ToolCallInterceptor> interceptors;
   private final ToolInputFileRefs fileRefs;
+  private final CoreMessages messages;
 
   public InterceptingToolCallback(
-      ToolCallback delegate, List<ToolCallInterceptor> interceptors, ToolInputFileRefs fileRefs) {
+      ToolCallback delegate,
+      List<ToolCallInterceptor> interceptors,
+      ToolInputFileRefs fileRefs,
+      CoreMessages messages) {
     this.delegate = delegate;
     this.interceptors = interceptors;
     this.fileRefs = fileRefs;
+    this.messages = messages;
   }
 
   @Override
@@ -104,9 +115,21 @@ public class InterceptingToolCallback implements ToolCallback {
    *
    * <p>A reference that cannot be honoured answers the call rather than raising: the model asked
    * for something reasonable in a way that did not work, and the way to tell it so is the same way
-   * it hears everything else about a tool call.
+   * it hears everything else about a tool call. Arguments that will not parse are answered the same
+   * way, and for the same reason.
    */
   private String invoke(final String input, final ToolContext toolContext) {
+    final var unreadable = unreadable(input);
+    if (unreadable != null) {
+      log.warn(
+          "Tool '{}' was called with arguments that are not JSON, so the call was answered rather"
+              + " than made: {} ({} characters were written)",
+          getToolDefinition().name(),
+          unreadable,
+          input.length());
+      log.debug("Arguments of the answered call to '{}': {}", getToolDefinition().name(), input);
+      return messages.get("tool-arguments-malformed", getToolDefinition().name(), unreadable);
+    }
     final var arguments = DisplayDescription.strip(input);
     final String expanded;
     try {
@@ -119,6 +142,42 @@ public class InterceptingToolCallback implements ToolCallback {
       return e.getMessage();
     }
     return toolContext == null ? delegate.call(expanded) : delegate.call(expanded, toolContext);
+  }
+
+  /**
+   * Why the arguments cannot be read, or null where they can be — or were never JSON to begin with.
+   *
+   * <p>The case this is here for is a call the model did not finish writing: a provider that runs
+   * out of output tokens mid-call still delivers the arguments it had got to, and they end wherever
+   * the cut fell — inside a string, after a comma, anywhere. Nothing downstream reads that as the
+   * accident it is. {@link DisplayDescription#strip} and {@link ToolInputFileRefs#expand} both pass
+   * unparseable input through untouched, on the reasoning that input they cannot read is input they
+   * have no business rewriting, and the tool then fails on it: a {@code MethodToolCallback} raises
+   * with Jackson's own words, which name a {@code LinkedHashMap} and a Java type and say nothing
+   * about writing the call again, and an MCP tool sends the broken payload to the server. So the
+   * call is answered here instead, with a sentence saying what to do about it.
+   *
+   * <p><b>Only a payload that set out to be a JSON object is judged.</b> Everything else is left
+   * exactly as it was, which keeps this from deciding that some callback whose input is not JSON is
+   * being called wrongly — the same stance the two transforms in {@link #invoke} take. Every tool
+   * schema the model is offered is an object schema, so in practice that is every real call.
+   *
+   * <p>It costs a parse per tool call, on top of the one the callback goes on to do. That is
+   * microseconds against a model round trip, and it buys the one place where the arguments are
+   * known to be readable before anything is done with them.
+   */
+  private static String unreadable(final String toolInput) {
+    if (toolInput == null || !toolInput.stripLeading().startsWith("{")) {
+      return null;
+    }
+    try {
+      MAPPER.readTree(toolInput);
+      return null;
+    } catch (JacksonException e) {
+      // The message without Jackson's source-and-offset tail, which is redacted anyway and reads
+      // to the model as noise about a stream it knows nothing about.
+      return e.getOriginalMessage();
+    }
   }
 
   private String applyBefore(String input, ToolContext ctx) {

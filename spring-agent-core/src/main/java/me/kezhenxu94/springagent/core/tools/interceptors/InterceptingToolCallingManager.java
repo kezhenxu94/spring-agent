@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.QueuedMessages;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -25,6 +26,9 @@ public class InterceptingToolCallingManager implements ToolCallingManager {
   private final List<ToolCallInterceptor> interceptors;
   private final ToolInputFileRefs fileRefs;
 
+  /** What a call the model did not finish writing is answered with, in the workspace's language. */
+  private final CoreMessages messages;
+
   @Override
   public List<ToolDefinition> resolveToolDefinitions(ToolCallingChatOptions chatOptions) {
     return delegate.resolveToolDefinitions(chatOptions);
@@ -40,7 +44,7 @@ public class InterceptingToolCallingManager implements ToolCallingManager {
                   cb ->
                       cb instanceof InterceptingToolCallback
                           ? cb
-                          : new InterceptingToolCallback(cb, interceptors, fileRefs))
+                          : new InterceptingToolCallback(cb, interceptors, fileRefs, messages))
               .toList();
       prompt = prompt.mutate().chatOptions(options.mutate().toolCallbacks(wrapped).build()).build();
     }

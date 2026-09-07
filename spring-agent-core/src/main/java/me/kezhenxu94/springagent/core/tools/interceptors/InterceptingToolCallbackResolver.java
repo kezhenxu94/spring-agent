@@ -43,7 +43,7 @@ public class InterceptingToolCallbackResolver implements ToolCallbackResolver {
           delegate.getClass().getSimpleName());
       return unavailableToolCallback(toolName, messages);
     }
-    return new InterceptingToolCallback(callback, interceptors, fileRefs);
+    return new InterceptingToolCallback(callback, interceptors, fileRefs, messages);
   }
 
   private static ToolCallback unavailableToolCallback(

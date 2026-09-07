@@ -183,7 +183,7 @@ public class SpringAgentCoreAutoConfiguration {
     final var defaultManager = builder.build();
     final var localizing = new LocalizingToolCallingManager(defaultManager, toolTexts);
     final var describing = new DescribingToolCallingManager(localizing, messages);
-    return new InterceptingToolCallingManager(describing, interceptors, fileRefs);
+    return new InterceptingToolCallingManager(describing, interceptors, fileRefs, messages);
   }
 
   /**
