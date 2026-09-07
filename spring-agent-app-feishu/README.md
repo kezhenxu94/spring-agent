@@ -25,19 +25,45 @@ Or from a clone: `./gradlew :spring-agent-app-feishu:bootRun`.
 [redis](../spring-agent-persistence-redis/README.md) ·
 [kubernetes](../spring-agent-tools-shell-kubernetes/README.md) /
 [docker](../spring-agent-tools-shell-docker/README.md) shell ·
-[rag-milvus](../spring-agent-rag-milvus/README.md).
+[rag-milvus](../spring-agent-rag-milvus/README.md) ·
+[provider-openai](../spring-agent-provider-openai/README.md) /
+[provider-dashscope](../spring-agent-provider-dashscope/README.md).
 
 Carrying a module is not turning it on. What each one needs is on its own page.
 
 ## The variables with no defaults
 
-The application will not start without these:
+The application will not start without a model to talk to, and there are two ways to give it one.
 
-`OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`,
-`EMBEDDING_MODEL`.
+**Either** the OpenAI-compatible set — `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`,
+`EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL` — which any gateway or self-hosted
+server takes.
 
-Any OpenAI-compatible endpoint will do. The embedding model is needed even if you index nothing, since
-tool search is built by embedding tool descriptions.
+**Or** the DashScope set: `DASHSCOPE_API_KEY`, `DASHSCOPE_CHAT_MODEL` and
+`DASHSCOPE_EMBEDDING_MODEL`. One credential covers every DashScope endpoint, and
+[spring-agent-provider-dashscope](../spring-agent-provider-dashscope/README.md) expands it into the
+`spring.ai.openai.*` connection, since DashScope's chat and embedding endpoints are that same
+protocol. The two model names still have to be given: no endpoint has a default model, and an empty
+one is refused by all of them. `DASHSCOPE_BASE_URL` is optional and is a **host with no path** —
+`https://dashscope-intl.aliyuncs.com`, or your workspace's
+`https://ws-<id>.<region>.maas.aliyuncs.com` — with the paths appended for you.
+
+An explicit `OPENAI_*` wins over the DashScope one, so moving a single model at a time works.
+
+The application refuses to start when a connection or a model name is missing, naming the variable to
+set, rather than starting and failing on the first run. The embedding model is needed even if you
+index nothing, since tool search is built by embedding tool descriptions.
+
+Two tools are off until a model is named for them, and are absent rather than broken when they are
+not — a tool the model can see is a tool it will try:
+
+- **`GenerateImage`** needs `IMAGE_MODEL_PROVIDER` set to `openai` or `dashscope`. It defaults to
+  `none`, because an image API is a paid third party this deployment would start calling on the
+  model's say-so, and the two providers' image APIs genuinely differ.
+- **`RecognizeImage`** needs a vision model: `DASHSCOPE_VISION_MODEL` (a `qwen3-vl-*` one, on its own
+  host if Model Studio gave it one), or `OPENAI_VISION_MODEL` on an OpenAI-compatible endpoint —
+  which may be the same model `OPENAI_MODEL` names, if that one is multimodal. It is not assumed,
+  because whether the model behind a gateway can see images is something only you know.
 
 Then the Feishu block: `FEISHU_APP_ID`, `FEISHU_APP_SECRET`, `FEISHU_ENCRYPT_KEY`, `FEISHU_TENANT_ID`,
 `FEISHU_TENANT_DOMAIN`, `FEISHU_BOT_OPEN_ID`. These also back the login on published-file pages. Set

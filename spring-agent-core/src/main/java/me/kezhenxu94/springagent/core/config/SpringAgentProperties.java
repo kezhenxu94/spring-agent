@@ -21,14 +21,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "app")
 public record SpringAgentProperties(
-    Dashscope dashscope, Ai ai, Locale locale, Shutdown shutdown, Scheduling scheduling) {
+    Ai ai, Locale locale, Shutdown shutdown, Scheduling scheduling) {
 
   public SpringAgentProperties {
-    // An application that configures no DashScope at all is a legitimate one — spring-agent-app-cli
-    // is
-    // the first — and leaving this null made the vision ChatClient fail the whole context with a
-    // NullPointerException at startup rather than the image tools simply not working.
-    dashscope = dashscope == null ? Dashscope.NONE : dashscope;
     shutdown = shutdown == null ? new Shutdown(null) : shutdown;
     scheduling = scheduling == null ? new Scheduling(null, null) : scheduling;
   }
@@ -489,25 +484,5 @@ public record SpringAgentProperties(
         private final String symbol;
       }
     }
-  }
-
-  public record Dashscope(Image image, Vision vision) {
-
-    /**
-     * What an application that configures no DashScope gets. The clients are still built — the
-     * image and vision tools are unconditional beans — but with nothing to call, so a call fails as
-     * a tool error the agent can report rather than taking the context down at startup.
-     */
-    public static final Dashscope NONE =
-        new Dashscope(new Image(null, null, null), new Vision(null, null, null));
-
-    public Dashscope {
-      image = image == null ? new Image(null, null, null) : image;
-      vision = vision == null ? new Vision(null, null, null) : vision;
-    }
-
-    public record Image(String apiKey, String baseUrl, String model) {}
-
-    public record Vision(String apiKey, String baseUrl, String model) {}
   }
 }

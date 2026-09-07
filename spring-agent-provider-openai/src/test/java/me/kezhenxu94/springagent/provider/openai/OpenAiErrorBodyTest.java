@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.config;
+package me.kezhenxu94.springagent.provider.openai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;

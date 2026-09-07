@@ -55,6 +55,24 @@ The whole of this, including how a source is configured and what a triage run is
 | [`spring-agent-tools-shell-docker`](../spring-agent-tools-shell-docker/README.md) | A container per user as the shell sandbox |
 | [`spring-agent-rag-milvus`](../spring-agent-rag-milvus/README.md) | The knowledge base: the only implementation of core's `KnowledgeBase` |
 
+### Model providers — which endpoint serves a run
+
+A provider is where a model actually lives. Core names none: it injects Spring AI's `ChatModel`,
+`EmbeddingModel`, `TranscriptionModel` and `ImageModel` and lets whichever module published them
+answer. Selection is **Spring AI's own `spring.ai.model.*`** rather than a switch of this project's,
+so both modules below may sit on one classpath and exactly one wins per kind of model.
+
+| Module | What it is |
+| --- | --- |
+| [`spring-agent-provider-openai`](../spring-agent-provider-openai/README.md) | The OpenAI wire protocol, and so most gateways: chat, embeddings, transcription, images, per-user endpoints |
+| [`spring-agent-provider-dashscope`](../spring-agent-provider-dashscope/README.md) | Alibaba Cloud DashScope: its own image API, its vision endpoint, one credential for the compatible rest |
+
+The second depends on the first — an `implementation` dependency, so it exposes none of it — which
+is the one exception to rule 1 below outside the event sources, and is stated in both READMEs rather
+than left in a build file: DashScope's chat and embedding endpoints *are* the OpenAI protocol, so the
+alternative is a second copy of the same SDK plumbing sending the same bytes. An application that can
+serve either therefore names both, and both lines do something.
+
 ### The runtime and the applications
 
 | Module | What it is |
@@ -72,9 +90,10 @@ A module is an integration if it does all of this and nothing more:
 
 1. **It depends on core, and on nothing beside it.** A compile dependency points from an integration
    to `spring-agent-core`, never the other way, and never from one integration to another — the
-   exception being an event source, which depends on `spring-agent-events` as well because that is
-   the SPI it implements. Where a name has to be shared across that line it is duplicated as a string
-   with a comment on both sides saying so.
+   exceptions being an event source, which depends on `spring-agent-events` as well because that is
+   the SPI it implements, and `spring-agent-provider-dashscope`, for the reason given above. Where
+   a name has to be shared across that line it is duplicated as a string with a comment on both
+   sides saying so.
 2. **It ships an auto-configuration** that component-scans its own package, named in
    `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`. Taking the
    dependency is what wires it; there is no manual registration anywhere.
@@ -84,7 +103,17 @@ A module is an integration if it does all of this and nothing more:
 4. **It has a switch if it costs anything.** Anything that opens a socket, accepts traffic or spends
    money is behind `app.<thing>.enabled` — a real boolean, never a check on whether a credential
    property is set, because conditions are evaluated against raw property values and a credential is
-   usually a `${PLACEHOLDER}` that fails to resolve exactly when the thing is not configured.
+   usually a `${PLACEHOLDER}` that fails to resolve exactly when the thing is not configured. A
+   provider's switch is `spring.ai.model.<kind>` instead, because Spring AI already owns that
+   decision and a second switch over it is a second thing to keep in step.
+
+   Where the configuration genuinely *is* the switch — a model name; there is nothing to name a
+   model for if there is no model — gate it with core's `@ConditionalOnNonBlankProperty` and not
+   `@ConditionalOnProperty`. The latter matches a property that is **present and empty**, which is
+   exactly what `${SOME_VAR:}` leaves behind when nobody set the variable, so the feature switches
+   itself on with nothing to work from. Nothing fails at startup: both provider modules' vision
+   clients were built asking for a model named `""` and the endpoint's rejection read like a broken
+   gateway. `ConditionalOnUserModels` is the same lesson learned about one specific key.
 5. **It writes no hardcoded prose.** Text the agent writes for itself goes through a `MessageSource`
    over `messages*.properties`, and a tool's description through the module's own `prompts/tools/`
    files. Every module here carries `en` and `zh_CN`.

@@ -95,7 +95,6 @@ class MilvusKnowledgeBaseTest {
 
   private static SpringAgentProperties agentProperties() {
     return new SpringAgentProperties(
-        null,
         new SpringAgentProperties.Ai(
             Set.of(),
             Map.of(),

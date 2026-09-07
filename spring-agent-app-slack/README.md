@@ -13,8 +13,8 @@
 
 Everything [the Feishu server](../spring-agent-app-feishu/README.md#what-it-carries) carries, with
 [slack](../spring-agent-integration-slack/README.md) where that has feishu. The `OPENAI_*` and
-`EMBEDDING_*` variables, the two switches, `ADMINS`, `USER_MODELS_ENCRYPTION_KEY` and the tool bounds
-all mean exactly what they mean there — a deployment moving between the two should not silently get
+`EMBEDDING_*` variables (or `DASHSCOPE_API_KEY` in their place), the three switches, `ADMINS`,
+`USER_MODELS_ENCRYPTION_KEY` and the tool bounds all mean exactly what they mean there — a deployment moving between the two should not silently get
 different limits.
 
 ## Its own four variables

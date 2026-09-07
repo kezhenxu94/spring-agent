@@ -35,8 +35,7 @@ class UserModelCommandTest {
     source.setBasename("core.messages");
     source.setDefaultEncoding("UTF-8");
     source.setFallbackToSystemLocale(false);
-    return new CoreMessages(
-        source, new SpringAgentProperties(null, null, Locale.ENGLISH, null, null));
+    return new CoreMessages(source, new SpringAgentProperties(null, Locale.ENGLISH, null, null));
   }
 
   @Test

@@ -138,7 +138,10 @@ class SpringAgentTest {
             // The plain advisor rather than the tool-search one an application configures: what is
             // under test here is the conversation history the agent turns back on, which both
             // carry the same way.
-            providerOf(ToolCallingAdvisor.builder()));
+            providerOf(ToolCallingAdvisor.builder()),
+            // No provider on this test classpath contributes one, and a rejection is then logged as
+            // whatever the stack trace says — see ProviderRejection.
+            List.<ProviderRejection>of());
   }
 
   @Test
@@ -1131,12 +1134,11 @@ class SpringAgentTest {
     final var source = new ResourceBundleMessageSource();
     source.setBasename(CoreMessages.BASENAME);
     source.setDefaultEncoding("UTF-8");
-    return new CoreMessages(source, new SpringAgentProperties(null, null, locale, null, null));
+    return new CoreMessages(source, new SpringAgentProperties(null, locale, null, null));
   }
 
   private static SpringAgentProperties properties() {
     return new SpringAgentProperties(
-        null,
         new SpringAgentProperties.Ai(
             Set.of(),
             Map.of(),
@@ -1347,7 +1349,8 @@ class SpringAgentTest {
             listenerProvider(),
             contributorProvider(),
             recorderProvider(new AskedQuestionsRecorder(chatMemory, messagesIn(Locale.ENGLISH))),
-            providerOf(ToolCallingAdvisor.builder().toolCallingManager(manager)));
+            providerOf(ToolCallingAdvisor.builder().toolCallingManager(manager)),
+            List.<ProviderRejection>of());
   }
 
   @Test
@@ -1380,7 +1383,10 @@ class SpringAgentTest {
             listenerProvider(),
             contributorProvider(),
             recorderProvider(new AskedQuestionsRecorder(chatMemory, messagesIn(Locale.ENGLISH))),
-            providerOf(ToolCallingAdvisor.builder()));
+            providerOf(ToolCallingAdvisor.builder()),
+            // No provider on this test classpath contributes one, and a rejection is then logged as
+            // whatever the stack trace says — see ProviderRejection.
+            List.<ProviderRejection>of());
     chatModel.callToolOnce("CurrentDateTime");
 
     fireAndAwait(request());

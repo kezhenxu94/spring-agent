@@ -2,32 +2,26 @@ package me.kezhenxu94.springagent.core.usermodels;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.openai.models.ReasoningEffort;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * The list every dropdown is built from, so what matters here is that it stays the SDK's list and
- * keeps saying what the wire says.
+ * The list every dropdown is built from.
+ *
+ * <p>That it still matches the OpenAI SDK's own is asserted in {@code
+ * ReasoningEffortsMatchTheSdkTest} in {@code spring-agent-provider-openai}, which is the module
+ * where that SDK exists. What is asserted here is the behaviour core implements: the three states,
+ * the sentinel, and what a value typed at a terminal is read as.
  */
 class ReasoningEffortsTest {
 
   @Test
-  @DisplayName("every effort the SDK knows is one a user can pick")
-  void coversTheSdk() {
-    // The guard the class exists for: an effort added upstream fails here rather than going
-    // quietly missing from three dropdowns and the tool's parameter description.
-    assertThat(ReasoningEfforts.VALUES).hasSize(ReasoningEffort.Known.values().length);
+  @DisplayName("the efforts are listed weakest first, as the wire spells them")
+  void wireSpelling() {
     assertThat(ReasoningEfforts.VALUES)
         .containsExactly("none", "minimal", "low", "medium", "high", "xhigh", "max");
-  }
-
-  @Test
-  @DisplayName("the values are what goes on the wire, not the enum constants")
-  void wireSpelling() {
-    // ReasoningEffort.Known.toString() gives HIGH, which no endpoint accepts.
-    assertThat(ReasoningEfforts.VALUES).doesNotContain(ReasoningEffort.Known.HIGH.toString());
-    assertThat(ReasoningEfforts.VALUES).contains(ReasoningEffort.HIGH.asString());
+    // An SDK's own enum constant is HIGH, which no endpoint accepts.
+    assertThat(ReasoningEfforts.VALUES).doesNotContain("HIGH");
   }
 
   @Test

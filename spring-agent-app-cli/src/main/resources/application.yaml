@@ -91,6 +91,14 @@ spring:
     #           url: https://api.githubcopilot.com/mcp/
     #           headers:
     #             Authorization: Bearer ${GITHUB_MCP_TOKEN}
+    # No spring.ai.model.* here, unlike the servers. This application carries only
+    # spring-agent-provider-openai, so `openai` — Spring AI's default for every kind — is the only
+    # answer there is, and stating it would suggest a choice a command line does not have.
+    #
+    # Image generation therefore follows Spring AI's own default, which is on: whether
+    # OPENAI_BASE_URL actually serves /v1/images/generations is the gateway's business. It is
+    # DashScope's image API that a laptop does not get, along with the vision tool, since neither
+    # exists without spring-agent-provider-dashscope.
     openai:
       base-url: ${OPENAI_BASE_URL}
       api-key: ${OPENAI_API_KEY}
@@ -118,8 +126,6 @@ spring:
         timeout: 30m
         stream-options:
           include-usage: true
-      image:
-        enabled: false
       embedding:
         base-url: ${EMBEDDING_BASE_URL}
         api-key: ${EMBEDDING_API_KEY}

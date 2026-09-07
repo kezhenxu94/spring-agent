@@ -1,0 +1,42 @@
+plugins {
+  id 'springagent.java-library-conventions'
+}
+
+description = 'The Alibaba Cloud DashScope model provider for spring-agent-core: its native image API, its vision endpoint, and one credential for the OpenAI-compatible rest.'
+
+dependencies {
+  // Named although it also arrives under the module below: this one compiles against core's
+  // ImageGenerationMetadata, and a transitive that happens to be there today is not a compile
+  // dependency. It is also what makes this module an integration by the rule in
+  // docs/integrations.md rather than by accident.
+  api project(':spring-agent-core')
+
+  // The one dependency in this repository between two modules that are not core, and it is
+  // deliberate rather than convenient. DashScope's chat, embedding and transcription endpoints
+  // *are* the OpenAI wire protocol — that is what `compatible-mode/v1` means — so the alternative
+  // is a second copy of the OpenAI SDK plumbing sending the same bytes, including the whole of the
+  // per-user endpoint machinery in that module's `usermodels` package.
+  //
+  // What is genuinely DashScope's own is here: the image API, which is not OpenAI-shaped at all,
+  // and a vision model that answers on a second endpoint. Everything else this module does is
+  // supply the settings under spring.ai.dashscope.* to that module's configuration — see
+  // DashScopeDefaults.
+  //
+  // `implementation`, not `api`, and the difference is what makes an application's build file
+  // honest. Nothing this module exposes is an OpenAI type — the two bean methods that name one are
+  // package-private — so no consumer compiles against that module through this one. Were this `api`
+  // it would put the OpenAI provider on every consumer's compile classpath, and an application
+  // naming both providers would have one of the two lines be decoration: dropping the DashScope
+  // one would silently take the deployment's chat model with it.
+  implementation project(':spring-agent-provider-openai')
+
+  implementation libs.guava
+
+  // MockEnvironment, for DashScopeDefaultsTest: the settings this module contributes are asserted
+  // against a bound environment rather than by parsing the yaml, so a block landing at a nesting
+  // level Boot ignores in silence is caught — the same reasoning as DockerShellDefaultsTest.
+  testImplementation 'org.springframework:spring-test'
+  // Stands in for DashScope's image endpoint in DashScopeImageModelTest, which is what pins the one
+  // genuinely proprietary API here: its request envelope and its response shape.
+  testImplementation libs.okhttp.mockwebserver
+}

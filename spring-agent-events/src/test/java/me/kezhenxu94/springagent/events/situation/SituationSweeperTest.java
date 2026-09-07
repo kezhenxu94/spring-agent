@@ -103,7 +103,6 @@ class SituationSweeperTest {
   private static Admins admins(final Set<String> ids) {
     return new Admins(
         new SpringAgentProperties(
-            null,
             new SpringAgentProperties.Ai(ids, Map.of(), null, null, null, null, null, null),
             Locale.ENGLISH,
             null,

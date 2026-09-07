@@ -20,7 +20,14 @@ Then open <http://localhost:8080>.
 [redis](../spring-agent-persistence-redis/README.md) ·
 [kubernetes](../spring-agent-tools-shell-kubernetes/README.md) /
 [docker](../spring-agent-tools-shell-docker/README.md) shell ·
-[rag-milvus](../spring-agent-rag-milvus/README.md).
+[rag-milvus](../spring-agent-rag-milvus/README.md) ·
+[provider-openai](../spring-agent-provider-openai/README.md) /
+[provider-dashscope](../spring-agent-provider-dashscope/README.md).
+
+The model variables are the Feishu server's — the `OPENAI_*`/`EMBEDDING_*` set, or
+`DASHSCOPE_API_KEY` in their place — and so are the three switches and the tool bounds; see
+[that page](../spring-agent-app-feishu/README.md#the-variables-with-no-defaults). A deployment moving
+between the two should not silently get different limits.
 
 **No bot, no webhook receiver, no chat platform.** So what it gives you is the runtime itself with
 everything a run does made visible: the answer as it streams, what the model is thinking, every tool

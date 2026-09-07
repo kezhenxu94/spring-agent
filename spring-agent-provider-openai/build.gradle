@@ -1,0 +1,29 @@
+plugins {
+  id 'springagent.java-library-conventions'
+}
+
+description = 'The OpenAI-compatible model provider for spring-agent-core: chat, embedding, transcription, images, and the per-user endpoints a person may register for themselves.'
+
+dependencies {
+  api project(':spring-agent-core')
+
+  // The starter, not the bare client. Spring AI's own auto-configuration is what this module is
+  // built on: it binds spring.ai.openai.*, publishes the ChatModel, EmbeddingModel,
+  // TranscriptionModel and ImageModel beans, and gates each of them on spring.ai.model.<kind>
+  // being `openai` — which is the whole of how a deployment switches provider here. Reimplementing
+  // any of that would be a second source of truth for the same properties.
+  //
+  // api rather than implementation because OpenAiChatOptions and OpenAiHttpClientBuilderCustomizer
+  // appear in this module's own bean signatures, and spring-agent-provider-dashscope compiles
+  // against them.
+  api 'org.springframework.ai:spring-ai-starter-model-openai'
+
+  // What the failed-response interceptor is written against. Present transitively under the
+  // starter's own HTTP client, but this module compiles against Interceptor and Response, and a
+  // transitive that happens to be there today is not a compile dependency.
+  implementation 'com.squareup.okhttp3:okhttp'
+
+  implementation libs.guava
+
+  testImplementation libs.okhttp.mockwebserver
+}

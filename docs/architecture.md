@@ -293,6 +293,8 @@ flowchart BT
     src[event source integrations]
     events[spring-agent-events]
     rag[rag-milvus]
+    prov[provider-openai]
+    dash[provider-dashscope]
     apps[the deployable applications]
 
     pers --> core
@@ -302,15 +304,28 @@ flowchart BT
     src --> core
     events --> core
     rag --> core
+    prov --> core
+    dash --> prov
     apps --> pers
     apps --> shell
     apps --> surf
     apps --> src
     apps --> events
     apps --> rag
+    apps --> prov
+    apps --> dash
 ```
 
-Every arrow points at core, and there is none between two integrations. `spring-agent-core` must
-also stay free of any persistence backend — `checkRuntimeClasspathIsolation` fails the build if
-Hibernate, the Mongo driver, Jedis, Milvus or fabric8 reach its runtime classpath. Where a name
-genuinely has to cross that line it is duplicated as a string with a comment on both sides saying so.
+Every arrow points at core, with two exceptions, both of which are an implementation depending on
+the SPI it implements rather than on a sibling: an event source needs `spring-agent-events`, and
+`provider-dashscope` needs `provider-openai` because DashScope's chat and embedding endpoints *are*
+the OpenAI wire protocol — the alternative is a second copy of the same SDK plumbing sending the same
+bytes. Both are written down in the modules' own READMEs.
+
+`spring-agent-core` must stay free of any persistence backend **and of any model provider** —
+`checkRuntimeClasspathIsolation` fails the build if Hibernate, the Mongo driver, Jedis, Milvus,
+fabric8 or the OpenAI SDK reach its runtime classpath. The OpenAI entries are the easiest to
+reintroduce by accident and the hardest to notice: a provider SDK arriving there costs every consumer
+the weight of a provider they did not choose, and nothing else in the build would say so. Where a name
+genuinely has to cross that line it is duplicated as a string with a comment on both sides saying so —
+core's `ModelToolsConfiguration` names each provider's auto-configuration that way.

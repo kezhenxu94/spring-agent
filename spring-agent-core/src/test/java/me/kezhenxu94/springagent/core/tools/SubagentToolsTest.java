@@ -284,7 +284,6 @@ class SubagentToolsTest {
 
   private static SpringAgentProperties properties(final int maxConcurrent) {
     return new SpringAgentProperties(
-        null,
         new SpringAgentProperties.Ai(
             Set.of(),
             Map.of(),
@@ -314,6 +313,6 @@ class SubagentToolsTest {
     final var source = new ResourceBundleMessageSource();
     source.setBasename(CoreMessages.BASENAME);
     source.setDefaultEncoding("UTF-8");
-    return new CoreMessages(source, new SpringAgentProperties(null, null, locale, null, null));
+    return new CoreMessages(source, new SpringAgentProperties(null, locale, null, null));
   }
 }
