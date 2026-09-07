@@ -12,6 +12,7 @@ For embedding the library in your own application, read [sdk.md](sdk.md).
   - [A set of tools](#a-set-of-tools)
   - [A persistence backend](#a-persistence-backend)
   - [A shell backend](#a-shell-backend)
+  - [A model provider](#a-model-provider)
   - [A knowledge base](#a-knowledge-base)
 - [Conventions](#conventions)
 - [Documentation](#documentation)
@@ -106,6 +107,8 @@ spring-agent-integration-slack        Slack channels and Block Kit messages as a
 spring-agent-integration-email        a watched IMAP mailbox as observations; dials out, so app.email.enabled
 spring-agent-integration-websocket    a browser as a surface: the SPA, its REST endpoints, STOMP run streaming
 spring-agent-rag-milvus               the knowledge base; the only KnowledgeBase implementation
+spring-agent-provider-openai          the OpenAI wire protocol, and so most gateways
+spring-agent-provider-dashscope       DashScope's own image API and vision endpoint; builds on the above
 spring-agent-app-feishu               deployable server, Feishu surface; depends on every optional module
 spring-agent-app-slack                the same server, Slack surface
 spring-agent-app-cli                  laptop command line; jpa + local shell only
@@ -116,19 +119,23 @@ spring-agent-app-web-feishu           both surfaces in one process, so a convers
 Each of those folders carries a `README.md` of its own — what it is, what it needs, and what to know
 before changing it. [`docs/integrations.md`](integrations.md) is the index.
 
-`spring-agent-core` must stay free of any persistence backend. This is enforced by
-`checkRuntimeClasspathIsolation` (wired into `check`, defined in
+`spring-agent-core` must stay free of any persistence backend **and of any model provider**. This is
+enforced by `checkRuntimeClasspathIsolation` (wired into `check`, defined in
 `buildSrc/.../springagent.classpath-isolation.gradle`, configured at the bottom of
 `spring-agent-core/build.gradle`): it fails the build if Hibernate, the Mongo driver, Jedis, Milvus,
-fabric8 and friends reach core's runtime classpath. If that task fails, a dependency became `api` or
-grew a new transitive — fix the dependency, do not widen the allow-list.
+fabric8, the OpenAI SDK and friends reach core's runtime classpath. If that task fails, a dependency
+became `api` or grew a new transitive — fix the dependency, do not widen the allow-list.
 
 The same rule holds in spirit for every module: a compile dependency points from an integration to
 core, never the other way, and never from one integration to another. Where a name genuinely has to
 be shared across that line it is duplicated as a string with a comment on both sides saying so —
 `"feishu-chat"` in `FeishuChatObservations` and `EventsProperties`, the auto-configuration class
-named by `afterName` in `KnowledgeToolsConfiguration`. Renaming one half silently stops the other
-working, which is why both carry the warning.
+named by `afterName` in `KnowledgeToolsConfiguration` and in `ModelToolsConfiguration`. Renaming one
+half silently stops the other working, which is why both carry the warning.
+
+Two implementations legitimately depend on the SPI module they implement rather than only on core: an
+event source needs `spring-agent-events`, and `spring-agent-provider-dashscope` needs
+`spring-agent-provider-openai`. Both say so in their own README.
 
 ## Adding an integration
 
@@ -497,6 +504,46 @@ a value to `app.ai.tools.shell.type`. The two shipped ones — Kubernetes and Do
 reading together: a sandbox per user, its own slice of the volume, torn down when idle and rebuilt on
 the next command, with credentials arriving as environment variables from a Secret or an encrypted
 row and never through a prompt.
+
+### A model provider
+
+Almost everything a provider offers is a Spring AI interface that core already injects — `ChatModel`,
+`EmbeddingModel`, `TranscriptionModel`, `ImageModel` — so **start by asking whether you need a module
+at all.** If the endpoint speaks the OpenAI wire protocol, configure `spring-agent-provider-openai`
+and stop; that covers nearly every gateway, self-hosted server and cloud inference product, and it is
+what `spring-agent-provider-dashscope` does for chat, embeddings and transcription.
+
+Selection is **Spring AI's own `spring.ai.model.<kind>`**, not a switch of this project's. There is
+no `ConditionalOnProviderBackend` beside the persistence and shell trios, deliberately: Spring AI
+gates every model auto-configuration it ships on those keys already, and a second switch over the
+same decision is a second thing to keep in step. It is a build-time decision in a native image like
+the others — `springagent.native.gradle` bakes `--spring.ai.model.image=` from `-PnativeBackends`.
+
+For an endpoint that genuinely is not OpenAI-shaped, a new module needs, on top of Spring AI's own
+starter for it:
+
+1. an auto-configuration named in `AutoConfiguration.imports`, **and added to the `afterName` list in
+   core's `ModelToolsConfiguration`** — matched textually, so a module missing from it silently loses
+   the image, vision and transcription tools;
+2. implementations of core's `UserChatClients` and `BuiltinModels` (`core/usermodels/`), two of the
+   three contracts a provider writes itself — Spring AI's models are all built once at startup from
+   configuration, and neither "build a client for an endpoint somebody typed into a chat" nor "ask an
+   endpoint what it serves" is that. Skip them and that provider simply has no per-user models;
+3. a bean **named** `visionChatClient` if vision is a separate endpoint there. The name is the
+   contract, not the type: a vision model is a `ChatClient` like the application's own, so a type
+   condition would be answered by the wrong one. Publishing none means no `RecognizeImage` tool at
+   all, which is deliberately not the same as a tool that refuses;
+4. a `ProviderRejection` bean, or a rejection that logs as a bare stack trace — see that interface
+   for why an endpoint's own words do not survive to where core sees the failure;
+5. an `aot` `RuntimeHints` for whatever its SDK reaches by name.
+
+What a provider must *not* do is invent a request type core has to name. Anything `ImageOptions`
+cannot carry travels in `ImageMessage`'s metadata map, keyed by `ImageGenerationMetadata` — read that
+class before adding a parameter to `GenerateImage`.
+
+And gate a model name with `@ConditionalOnNonBlankProperty`, never `@ConditionalOnProperty` — see
+rule 4 in [integrations.md](integrations.md#what-every-integration-has-in-common). Both vision
+clients here were written the wrong way first, and it does not fail at startup.
 
 ### A knowledge base
 

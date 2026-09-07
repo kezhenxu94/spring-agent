@@ -100,11 +100,77 @@ spring:
     #           url: https://api.githubcopilot.com/mcp/
     #           headers:
     #             Authorization: Bearer ${GITHUB_MCP_TOKEN}
-    openai:
-      base-url: ${OPENAI_BASE_URL}
-      api-key: ${OPENAI_API_KEY}
+    # Which provider serves each kind of model. Spring AI's own switch, not one of this project's:
+    # every model auto-configuration it ships is gated on the matching key here, so naming a
+    # provider here is what makes the others back off. Both spring-agent-provider-openai and
+    # spring-agent-provider-dashscope are on the classpath; exactly one wins per kind.
+    #
+    # `chat`, `embedding` and `audio.transcription` are left unset, which means `openai` — and that
+    # is right even on DashScope, whose endpoints are the OpenAI wire protocol (`compatible-mode`).
+    # spring.ai.dashscope.* below is what points that client at DashScope.
+    #
+    # `image` is the one that genuinely differs: DashScope generates images through an API of its
+    # own — reference images, and a size vocabulary OpenAI's has no field for — while OpenAI's is
+    # /v1/images/generations. So this one has to be chosen: `dashscope`, `openai`, or `none`.
+    #
+    # `none` by default, and deliberately, for the same reason app.ai.tools.shell.type is: an image
+    # provider is a paid third-party API this deployment would start calling on the model's say-so,
+    # and neither other value is safe to assume. `openai` on a gateway that proxies chat but not
+    # images answers 404s to every call; `dashscope` needs a DashScope key, which a deployment
+    # running elsewhere has no reason to hold.
+    #
+    # With `none` there is no ImageModel bean and therefore no GenerateImage tool at all — a model
+    # that is not offered a tool does better than one offered a tool that always fails. See
+    # ModelToolsConfiguration in core.
+    model:
+      image: ${IMAGE_MODEL_PROVIDER:none}
+    # Alibaba Cloud DashScope, as one credential. Read by spring-agent-provider-dashscope, which
+    # publishes the two things DashScope does differently — its image API and its vision endpoint —
+    # and contributes the rest to spring.ai.openai.* above, since chat and embeddings there are the
+    # OpenAI wire protocol. Nothing below does anything until api-key is set.
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY:}
+      # The host, with no path. DashScope serves both APIs this project uses off one host — the
+      # OpenAI-compatible one under /compatible-mode/v1 and its own image API under
+      # /api/v1/services/aigc/multimodal-generation/generation — so the paths are the module's
+      # business, not a deployment's: see DashScopeProperties. That stays true of the public host,
+      # the international one (dashscope-intl.aliyuncs.com), and a Model Studio workspace's own
+      # ws-<id>.<region>.maas.aliyuncs.com.
+      base-url: ${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com}
+      # Each model may name a host of its own, the way Spring AI lets each model override the common
+      # connection — a workspace that serves only one of them is the case for it. Blank means the
+      # host above, and blank is the normal case. A base-url here is a *host* too, never a full
+      # endpoint: one rule for the whole block.
       chat:
-        model: ${OPENAI_MODEL}
+        model: ${DASHSCOPE_CHAT_MODEL:}
+        base-url: ${DASHSCOPE_CHAT_BASE_URL:}
+      embedding:
+        model: ${DASHSCOPE_EMBEDDING_MODEL:}
+        base-url: ${DASHSCOPE_EMBEDDING_BASE_URL:}
+        # Has to agree with what the vector stores were built with — spring.ai.vectorstore.milvus
+        # .embedding-dimension and app.ai.rag.milvus.dimension. A collection built at one dimension
+        # and searched at another finds nothing and says nothing.
+        dimensions: ${DASHSCOPE_EMBEDDING_DIMENSIONS:1024}
+      image:
+        model: ${DASHSCOPE_IMAGE_MODEL:wan2.7-image-pro}
+        base-url: ${DASHSCOPE_IMAGE_BASE_URL:}
+      vision:
+        # The switch for the RecognizeImage tool as well as its model: naming none means no vision
+        # client and therefore no such tool at all, rather than a tool that refuses every call.
+        # Vision is a different model here (qwen3-vl-*) than the one a run's turns go to, on the
+        # same endpoint unless base-url below says otherwise.
+        model: ${DASHSCOPE_VISION_MODEL:}
+        base-url: ${DASHSCOPE_VISION_BASE_URL:}
+    openai:
+      # Empty defaults rather than required values, because spring-agent-provider-dashscope fills
+      # these in from spring.ai.dashscope.* when nothing set them — see DashScopeDefaults, and note
+      # that it only ever fills a *blank* target, so anything named here still wins. A deployment
+      # therefore sets either these or DASHSCOPE_API_KEY, and setting both points chat at the
+      # OPENAI_* endpoint and leaves DashScope serving only what is its own.
+      base-url: ${OPENAI_BASE_URL:}
+      api-key: ${OPENAI_API_KEY:}
+      chat:
+        model: ${OPENAI_MODEL:}
         temperature: 0
         # How much the model thinks before it answers, and as much as there is: the ladder the SDK
         # knows is minimal, medium, high, xhigh, none. `xhigh` because this agent's turns are tool
@@ -138,17 +204,42 @@ spring:
         timeout: 30m
         stream-options:
           include-usage: true
-      image:
-        enabled: false
+      # The model RecognizeImage asks about an image, and the switch for that tool: naming none
+      # means no vision client and therefore no such tool at all, rather than one that fails.
+      #
+      # Unset by default even though a GPT-class chat model would answer about an image perfectly
+      # well, because whether the model behind base-url above can see images is something only a
+      # deployment knows — plenty of gateways proxy one that cannot. Set it to the same value as
+      # chat.model if that model is multimodal.
+      #
+      # base-url and api-key are the connection above unless named here, for a gateway that routes
+      # vision elsewhere. A base-url here is the *whole* endpoint, /v1 included, because that is
+      # what it means everywhere under spring.ai.openai — the OpenAI SDK appends nothing to it.
+      # spring.ai.dashscope below deliberately differs: a base-url there is a host, since that
+      # module serves two APIs off one host and owns both paths.
+      vision:
+        model: ${OPENAI_VISION_MODEL:}
+        base-url: ${OPENAI_VISION_BASE_URL:}
+        api-key: ${OPENAI_VISION_API_KEY:}
       embedding:
-        base-url: ${EMBEDDING_BASE_URL}
-        api-key: ${EMBEDDING_API_KEY}
-        model: ${EMBEDDING_MODEL}
-        dimensions: 1024
+        base-url: ${EMBEDDING_BASE_URL:}
+        api-key: ${EMBEDDING_API_KEY:}
+        model: ${EMBEDDING_MODEL:}
+        dimensions: ${EMBEDDING_DIMENSIONS:1024}
       audio:
         transcription:
-          base-url: ${TRANSCRIPTION_OPENAI_BASE_URL}
-          api-key: ${TRANSCRIPTION_OPENAI_API_KEY}
+          # Empty defaults for the same reason the connection above has them: with a required value
+          # here a deployment that configures everything through spring.ai.dashscope.* would fail to
+          # start on an unresolvable placeholder for a feature it never asked for.
+          #
+          # Its own endpoint because transcription is often somewhere else — a Whisper deployment of
+          # one's own — and because the model this asks for is Spring AI's default rather than
+          # anything named here, which is why leaving these blank on a gateway that serves no
+          # transcription leaves TranscribeAudio present and failing. spring.ai.model.audio
+          # .transcription is what switches it off outright; it is not set here because doing so
+          # would take the tool away from deployments that have it working today.
+          base-url: ${TRANSCRIPTION_OPENAI_BASE_URL:}
+          api-key: ${TRANSCRIPTION_OPENAI_API_KEY:}
     tools:
       limits:
         # How many tool calls one turn may make. Spring AI's own numbers are 40 per tool and 150
@@ -894,15 +985,6 @@ app:
         thinking-input-per-million: 1.0
         output-per-million: 6.0
         currency: USD
-  dashscope:
-    image:
-      api-key: ${DASHSCOPE_IMAGE_API_KEY}
-      base-url: ${DASHSCOPE_IMAGE_BASE_URL:https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation}
-      model: ${DASHSCOPE_IMAGE_MODEL:wan2.7-image-pro}
-    vision:
-      api-key: ${DASHSCOPE_VISION_API_KEY}
-      base-url: ${DASHSCOPE_VISION_BASE_URL:https://ws-x1m3p2roqbf7dij1.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
-      model: ${DASHSCOPE_VISION_MODEL:qwen3-vl-plus}
   events:
     # Watching what other systems do, and deciding for itself whether to say anything about it.
     # Alerts and code-hosting webhooks arrive at /events/webhooks/<source>; group chat messages the

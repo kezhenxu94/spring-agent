@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.usermodels;
+package me.kezhenxu94.springagent.provider.openai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -8,6 +8,9 @@ import java.util.List;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import me.kezhenxu94.springagent.core.dao.repo.UserModelConfigRepo;
 import me.kezhenxu94.springagent.core.security.AesGcmSealer;
+import me.kezhenxu94.springagent.core.usermodels.ReasoningEfforts;
+import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
+import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -20,7 +23,7 @@ import org.springframework.ai.openai.OpenAiChatOptions;
  * <p>Nothing here talks to a model: building a client resolves options and opens an HTTP client
  * without connecting, so the endpoints named are never called.
  */
-class UserChatClientsTest {
+class OpenAiUserChatClientsTest {
 
   private static final String KEY = Base64.getEncoder().encodeToString(new byte[32]);
 
@@ -36,7 +39,7 @@ class UserChatClientsTest {
   private final OpenAiChatModel appModel = OpenAiChatModel.builder().options(appOptions).build();
 
   private final UserChatClients clients =
-      new UserChatClients(
+      new OpenAiUserChatClients(
           ChatClient.builder(appModel).build(),
           new UserModelRegistry(mock(UserModelConfigRepo.class), new AesGcmSealer(KEY, "t"), 3),
           appOptions,
@@ -88,8 +91,9 @@ class UserChatClientsTest {
   }
 
   private OpenAiChatOptions optionsFor(final String effort) {
-    return UserChatClients.optionsFor(
-        appOptions, new UserChatClients.Endpoint("https://own/v1", "own-key", "own-model", effort));
+    return OpenAiUserChatClients.optionsFor(
+        appOptions,
+        new OpenAiUserChatClients.Endpoint("https://own/v1", "own-key", "own-model", effort));
   }
 
   private static UserModelConfig builtin(final String model, final String effort) {

@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.config;
+package me.kezhenxu94.springagent.provider.openai;
 
 import java.io.IOException;
 import lombok.extern.slf4j.Slf4j;

@@ -29,15 +29,25 @@ the modules target bytecode 21 and use nothing newer.
 
 ## Dependencies
 
-Take `spring-agent-core` plus exactly one persistence module. Core is backend-agnostic and carries
-no database driver; the persistence module is what supplies both the agent's own repositories and
-the conversation-memory repository, and those two have to come from the same place. (On jpa and
-redis that is Spring AI's own repository; on mongodb the module substitutes one of its own, because
-upstream's returns a turn in an undefined order — see `MongoChatMemoryRepo`.)
+Take `spring-agent-core`, exactly one persistence module, and one model provider.
+
+Core is backend-agnostic and carries no database driver **and no model provider**. The persistence
+module supplies both the agent's own repositories and the conversation-memory repository, and those
+two have to come from the same place. (On jpa and redis that is Spring AI's own repository; on
+mongodb the module substitutes one of its own, because upstream's returns a turn in an undefined
+order — see `MongoChatMemoryRepo`.) The provider module supplies the `ChatModel` core builds its
+`ChatClient` from, and whichever of the embedding, transcription and image models that endpoint
+serves.
+
+`spring-agent-provider-openai` is the one to take unless you know otherwise: it is the OpenAI wire
+protocol rather than OpenAI the company, which is what nearly every gateway and self-hosted server
+speaks. Add `spring-agent-provider-dashscope` beside it only for DashScope's own image API and vision
+endpoint.
 
 ```groovy
 implementation 'me.kezhenxu94:spring-agent-core:<version>'
 implementation 'me.kezhenxu94:spring-agent-persistence-jpa:<version>'
+implementation 'me.kezhenxu94:spring-agent-provider-openai:<version>'
 ```
 
 ```xml
@@ -51,6 +61,11 @@ implementation 'me.kezhenxu94:spring-agent-persistence-jpa:<version>'
   <artifactId>spring-agent-persistence-jpa</artifactId>
   <version>VERSION</version>
 </dependency>
+<dependency>
+  <groupId>me.kezhenxu94</groupId>
+  <artifactId>spring-agent-provider-openai</artifactId>
+  <version>VERSION</version>
+</dependency>
 ```
 
 Every module auto-configures itself and component-scans its own package, so a plain
@@ -61,6 +76,12 @@ Selecting a backend is a two-step thing on purpose. Depending on a module makes 
 `app.persistence.type` (and `app.ai.tools.shell.type` for the shell) is what *chooses*. An
 application that depends on exactly one backend module can leave the property alone — a
 `@ConditionalOnPersistenceBackend` with nothing to choose between resolves to the one that is there.
+
+Providers are the same shape with somebody else's switch: **`spring.ai.model.*` is Spring AI's own**,
+and this project deliberately adds nothing beside it. Every model auto-configuration Spring AI ships
+is gated on `spring.ai.model.<kind>` naming its provider, so two provider modules on one classpath is
+not an ambiguity — exactly one answers per kind of model. Leaving the keys unset means `openai`,
+which is why the block below is all a consumer of `spring-agent-provider-openai` needs.
 
 ## Minimum configuration
 
@@ -77,8 +98,21 @@ spring:
         model: ${EMBEDDING_MODEL}
 ```
 
+`spring-agent-provider-openai` refuses to start when that block is empty, naming what to set: both
+connection fields blank cannot be anybody's intention, and a blank *model name* is refused by every
+endpoint since there is no default model on the wire. A blank API key alone is left alone, because a
+local server wanting no auth is a legitimate deployment and Spring AI treats it as one.
+
 An embedding model is not optional even if you never index a document: the tool-search advisor
 builds its index by embedding tool descriptions, and the knowledge base embeds what it stores.
+
+The tools that need a model other than the chat one — `GenerateImage`, `RecognizeImage`,
+`TranscribeAudio` — are registered only where the deployment has that model, and are simply absent
+otherwise. So no configuration is needed to switch one off, and the block above gets you none of the
+three: an `ImageModel` needs `spring.ai.model.image`, transcription needs
+`spring.ai.openai.audio.transcription.*`, and a vision client needs `spring.ai.openai.vision.model`.
+That is not the same as a tool that refuses — a tool the model can see is a tool it will try, and one
+that fails on configuration it cannot change reads to it as an endpoint to retry.
 
 Nothing else is required. In particular you do not have to name core's message bundle: the text the
 agent writes into a conversation itself resolves through your application's own `MessageSource`, and
@@ -832,8 +866,15 @@ on being able to store an API token sealed rather than on a flag of its own — 
 takes it through an `ObjectProvider` and falls back to the application's client when nothing is
 there.
 
-Three facts about Spring AI shape this, and any consumer building a `ChatClient` of their own runs
-into the same ones:
+`UserChatClients` is a **contract in core, implemented by a provider module** — it and
+`BuiltinModels` are the two things `spring-agent-provider-*` has to write itself, because Spring AI's
+model beans are all built once at startup from configuration and neither "a client for an endpoint
+somebody typed into a chat five seconds ago" nor "ask an endpoint what it serves" is that. What
+follows describes `spring-agent-provider-openai`'s implementation, `OpenAiUserChatClients`. A
+provider for an endpoint that is not OpenAI-shaped writes its own, or offers no per-user models.
+
+Three facts about Spring AI shape that implementation, and any consumer building a `ChatClient` of
+their own runs into the same ones:
 
 - `OpenAiChatModel` resolves `baseUrl`, `apiKey` and `timeout` once, in `build()`, into an
   `OpenAIClient` it then holds final. Runtime options carrying a base URL are **ignored**; only the
@@ -843,9 +884,10 @@ into the same ones:
   `buildRequestPrompt` takes the supplied ones whole when there are any. Anything built from
   scratch silently drops everything under `spring.ai.openai.chat`, including
   `stream-options.include-usage`, whose absence shows up not as an error but as runs that report no
-  token usage and so no cost. `UserChatClients` starts from `defaultChatModel.getOptions().mutate()`
-  and overrides only what makes the endpoint different: base URL, key, model, and the reasoning
-  effort the user chose.
+  token usage and so no cost. `OpenAiUserChatClients` starts from the application's own resolved
+  options — see `ApplicationEndpoint` for why the model bean's own are not enough — and overrides
+  only what makes the endpoint different: base URL, key, model, and the reasoning effort the user
+  chose.
 - Tools are called by the `ToolCallingAdvisor` `SpringAgent` registers on the prompt, not by the
   model, so a hand-built `ChatModel` needs no `ToolCallingManager`. It does need the context's
   `OpenAiHttpClientBuilderCustomizer` beans, or its provider rejections stay unreadable.
@@ -859,10 +901,11 @@ The pieces a consumer would extend or reuse:
 | Type | What it is for |
 | --- | --- |
 | `UserModelRegistry` | The rows, and the one place a token is sealed or opened. `activate` clears every other row of that owner *before* setting the new one, so an interrupted switch leaves none activated rather than two — and none means the application's own model. `setEffort` rewrites one row's reasoning effort and nothing else, keeping the sealed token, which is the only way to change it: the token is never readable again. `setActiveEffort` applies one to whichever model the user is on, creating `DEFAULT_ROW` where that is the application's own. |
-| `UserChatClients` | Resolving and caching the client, as above. Never throws: an endpoint that cannot be read is a fallback and a log line, because failing here would fail the run the user needs to fix it. `effortInForce` answers what a run for one user will actually be made with, which is what a surface must label its thinking panel from rather than the deployment's property. |
+| `UserChatClients` (interface) | Resolving and caching the client, as above — **a provider module implements it**. Never throws: an endpoint that cannot be read is a fallback and a log line, because failing here would fail the run the user needs to fix it. `effortInForce` answers what a run for one user will actually be made with, which is what a surface must label its thinking panel from rather than the deployment's property. |
 | `UserModelProbe` | The pre-save connection test — one tiny completion, since that exercises URL, token, model name **and** reasoning effort together where `GET /models` does not. |
-| `BuiltinModels` | What the application's own endpoint reports it can serve, cached and best-effort; an empty list is an ordinary answer. |
-| `ReasoningEfforts` | The efforts a user may choose, taken from the OpenAI SDK's own list rather than typed — Spring AI takes `reasoning_effort` as a bare string, so a typo is an endpoint that fails on every message. Three states: absent leaves the deployment's setting, a value sends it, `NOT_SENT` stops it being sent at all. |
+| `BuiltinModels` (interface) | What the application's own endpoint reports it can serve — **a provider module implements it**; cached and best-effort, and an empty list is an ordinary answer. |
+| `ProviderRejection` (`core/agent/`, interface) | The third and last thing a provider writes itself: reading what an endpoint said when it refused, so `SpringAgent` can log it beside the id of the run it refused. Nothing else can — an advisor rewraps the failure, and the SDK renders a non-JSON error body as the words `400: Unknown`. Asked about every failure of every run, so returning empty must be cheap and must never throw. |
+| `ReasoningEfforts` | The efforts a user may choose, stated in core rather than typed per call — Spring AI takes `reasoning_effort` as a bare string, so a typo is an endpoint that fails on every message. The list is core's, since three dropdowns are drawn from it; that it still matches the OpenAI SDK's is asserted in `spring-agent-provider-openai`, which is where that SDK exists. Three states: absent leaves the deployment's setting, a value sends it, `NOT_SENT` stops it being sent at all. |
 | `AesGcmSealer` (`core/security/`) | AES-GCM with a fresh nonce per write, shared with the shell credential store. Each caller brings its own key so a leak is contained to one feature. |
 | `UserModelConfig` (`core/dao/models/`) | The row. A **blank `baseUrl` means the application's own endpoint** and a **blank `model` means its configured model** — that is how choosing one of its models, or only an effort for it, records itself without copying the application's key per user. Such rows are named with a `@` prefix, which user-supplied names may not contain; `@` alone is `UserModelRegistry.DEFAULT_ROW`, the row that carries an effort for the application's model without pinning which model that is. |
 
@@ -877,8 +920,8 @@ is shared and its collections are built with one embedding model.
 ## Native image
 
 Both runtime switches are `@Conditional` and are evaluated during AOT, so in a native image they
-are **build-time** decisions baked by `-PnativeBackends`; the environment variable is inert in the
-binary and has to agree with what was baked. New code that needs reflection, resources or proxies
+are **build-time** decisions baked by `-PnativeBackends`, and so is `spring.ai.model.image`; the
+environment variable is inert in the binary and has to agree with what was baked. New code that needs reflection, resources or proxies
 needs its hints registered in a `RuntimeHints` class pulled in with `@ImportRuntimeHints`, or the
 binary breaks at runtime while the JVM build passes.
 
@@ -900,6 +943,8 @@ binary breaks at runtime while the JVM build passes.
 | [`spring-agent-integration-feishu`](../spring-agent-integration-feishu/README.md) | Feishu/Lark chats and cards as an agent surface, plus its docs, sheets, base and wiki tools, and drive import/export |
 | [`spring-agent-integration-slack`](../spring-agent-integration-slack/README.md) | Slack channels and Block Kit messages as an agent surface: streaming replies, a stop button, an asynchronous question form, greetings, chat observation and the message/channel/file tools. Written against Bolt, the Slack SDK's own application framework, over a Socket Mode connection |
 | [`spring-agent-rag-milvus`](../spring-agent-rag-milvus/README.md) | The knowledge base, and the only implementation of core's `KnowledgeBase` |
+| [`spring-agent-provider-openai`](../spring-agent-provider-openai/README.md) | Where the models come from, for any endpoint speaking the OpenAI wire protocol — which is nearly all of them. Chat, embeddings, transcription and images are Spring AI's own beans, bound to `spring.ai.openai.*`; on top of them this module implements core's `UserChatClients` and `BuiltinModels`, makes a rejected request's body readable, and narrows OpenAI's image API to what `GenerateImage` promises. **Core carries no provider, so an application needs one of these** |
+| [`spring-agent-provider-dashscope`](../spring-agent-provider-dashscope/README.md) | Alibaba Cloud DashScope, as one credential under `spring.ai.dashscope.*`: its own image API and its vision endpoint, with chat and embeddings contributed to `spring.ai.openai.*` since `compatible-mode` *is* that protocol. Builds on the module above rather than duplicating it |
 | [`spring-agent-integration-websocket`](../spring-agent-integration-websocket/README.md) | A browser as an agent surface: a single-page UI, the REST endpoints behind it, and runs streamed live over STOMP/WebSocket. Contributes no `SecurityFilterChain` — the including application owns that and wires in this module's `WebAuthoritiesMapper` — and needs `@EnableScheduling` on it |
 | [`spring-agent-app-webui`](../spring-agent-app-webui/README.md) | The deployable that is nothing but the runtime and the module above; not published, it ships as an image |
 | [`spring-agent-app-web-feishu`](../spring-agent-app-web-feishu/README.md) | The same deployable with the Feishu surface as well, so a conversation can be handed between a chat and a browser; not published, it ships as an image |

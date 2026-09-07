@@ -198,7 +198,6 @@ class ToolInputFileRefsTest {
   private ToolInputFileRefs refs(final int maxInlinedInputChars) {
     return new ToolInputFileRefs(
         new SpringAgentProperties(
-            null,
             new SpringAgentProperties.Ai(
                 null,
                 null,
@@ -222,7 +221,6 @@ class ToolInputFileRefsTest {
     source.setBasename(CoreMessages.BASENAME);
     source.setDefaultEncoding("UTF-8");
     source.setFallbackToSystemLocale(false);
-    return new CoreMessages(
-        source, new SpringAgentProperties(null, null, Locale.ENGLISH, null, null));
+    return new CoreMessages(source, new SpringAgentProperties(null, Locale.ENGLISH, null, null));
   }
 }

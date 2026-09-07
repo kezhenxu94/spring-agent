@@ -102,7 +102,6 @@ class KnowledgeBaseToolsTest {
     source.setDefaultEncoding("UTF-8");
     final var properties =
         new SpringAgentProperties(
-            null,
             new SpringAgentProperties.Ai(Set.of(), Map.of(), null, null, null, null, null, null),
             Locale.ENGLISH,
             null,
