@@ -897,7 +897,10 @@ class SpringAgentTest {
             .build();
     final var endsTurn =
         new InterceptingToolCallback(
-            new EndsTurnCallback(ToolCallbacks.from(tool)[0]), List.of(), noFileRefs());
+            new EndsTurnCallback(ToolCallbacks.from(tool)[0]),
+            List.of(),
+            noFileRefs(),
+            TestI18n.english());
 
     assertThat(endsTurn.getToolMetadata().returnDirect()).isTrue();
   }
@@ -947,7 +950,8 @@ class SpringAgentTest {
                     toolName -> null, List.of(), noFileRefs(), TestI18n.english()))
             .build(),
         List.of(),
-        noFileRefs());
+        noFileRefs(),
+        TestI18n.english());
   }
 
   /** The tool responses one AskUserQuestionTool call produces, as the model would read them. */
@@ -1322,7 +1326,10 @@ class SpringAgentTest {
         };
     final var manager =
         new InterceptingToolCallingManager(
-            DefaultToolCallingManager.builder().build(), List.of(whatArrivesMidCall), noFileRefs());
+            DefaultToolCallingManager.builder().build(),
+            List.of(whatArrivesMidCall),
+            noFileRefs(),
+            TestI18n.english());
     final var chatMemory =
         MessageWindowChatMemory.builder().chatMemoryRepository(chatMemoryRepository).build();
     try {

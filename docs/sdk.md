@@ -435,7 +435,7 @@ reference on any other parameter is refused rather than written through as text;
 for a value that really is that text.
 
 **Every tool is offered one parameter it did not declare.** `DisplayDescription` (`core/tools/`) adds
-an optional `_display_description` to the input schema of every tool whose own schema declares no
+a `_display_description` to the input schema of every tool whose own schema declares no
 `description` — a sentence, in active voice, saying what this particular call does — and
 `InterceptingToolCallback` takes it back off the arguments before the tool is called, so a tool never
 sees a field it never declared. What it buys is a readable trail: a surface names a call by that
@@ -450,6 +450,16 @@ It is **required**, so every call has a title rather than the readable-in-places
 buys, and requiring it is safe precisely because it never reaches the tool: nothing behind it can
 refuse a call over a field its own schema does not declare, since by then the field is gone. The cost
 is a sentence of output per tool call.
+
+**A call whose arguments will not parse is answered rather than made.** `InterceptingToolCallback`
+reads the arguments before anything is done with them, and where a payload that set out to be a JSON
+object does not parse it hands the model a sentence saying so and stops there. What that catches is
+almost always a call the model did not finish writing — a provider out of output tokens mid-call
+still delivers the arguments it had got to, and the cut lands in the last field, which is
+`_display_description`. Passed on, such a payload fails inside the tool instead: a `MethodToolCallback`
+raises with Jackson naming a `LinkedHashMap` and a Java type, and an MCP tool sends the broken payload
+to the server. Arguments that were never JSON are left exactly as the model wrote them, since a
+callback whose input this cannot read is not one it should be ruling on.
 
 That manager is also where `spring.ai.tools.limits.*` is read: it is built here rather than taken
 from Spring AI's auto-configuration, which backs off, so the limits are applied by hand in

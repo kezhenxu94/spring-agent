@@ -38,7 +38,8 @@ class InterceptingToolCallbackTest {
         new InterceptingToolCallback(
             new RecordingCallback(ToolMetadata.builder().returnDirect(true).build()),
             List.of(),
-            refs());
+            refs(),
+            messages());
 
     assertThat(callback.getToolMetadata().returnDirect()).isTrue();
   }
@@ -56,7 +57,7 @@ class InterceptingToolCallbackTest {
     final var delegate = new RecordingCallback(ToolMetadata.builder().build());
 
     final var result =
-        new InterceptingToolCallback(delegate, List.of(watching(seen)), refs())
+        new InterceptingToolCallback(delegate, List.of(watching(seen)), refs(), messages())
             .call("{\"descendantsJson\":\"@file:" + file + "\"}", CONTEXT);
 
     assertThat(delegate.received).isEqualTo("{\"descendantsJson\":\"[1,2,3]\"}");
@@ -75,7 +76,7 @@ class InterceptingToolCallbackTest {
     final var delegate = new RecordingCallback(ToolMetadata.builder().build());
 
     final var result =
-        new InterceptingToolCallback(delegate, List.of(watching(seen)), refs())
+        new InterceptingToolCallback(delegate, List.of(watching(seen)), refs(), messages())
             .call("{\"descendantsJson\":\"@file:/nowhere/at/all.json\"}", CONTEXT);
 
     assertThat(delegate.received).isNull();
@@ -91,7 +92,7 @@ class InterceptingToolCallbackTest {
     final var seen = new ArrayList<String>();
     final var delegate = new RecordingCallback(ToolMetadata.builder().build());
 
-    new InterceptingToolCallback(delegate, List.of(watching(seen)), refs())
+    new InterceptingToolCallback(delegate, List.of(watching(seen)), refs(), messages())
         .call(
             "{\"path\":\"/tmp/x\",\"" + DisplayDescription.FIELD + "\":\"Write the file\"}",
             CONTEXT);
@@ -110,7 +111,8 @@ class InterceptingToolCallbackTest {
     final var delegate = new RecordingCallback(ToolMetadata.builder().build());
 
     final var result =
-        new InterceptingToolCallback(delegate, List.of(refusing("Refused: not yours")), refs())
+        new InterceptingToolCallback(
+                delegate, List.of(refusing("Refused: not yours")), refs(), messages())
             .call("{\"path\":\"/tmp/x\"}", CONTEXT);
 
     assertThat(result).isEqualTo("Refused: not yours");
@@ -127,7 +129,8 @@ class InterceptingToolCallbackTest {
         new InterceptingToolCallback(
                 new RecordingCallback(ToolMetadata.builder().build()),
                 List.of(recording(seen, results), refusing("Refused: not yours")),
-                refs())
+                refs(),
+                messages())
             .call("{\"path\":\"/tmp/x\"}", CONTEXT);
 
     assertThat(result).isEqualTo("Refused: not yours");
@@ -146,7 +149,8 @@ class InterceptingToolCallbackTest {
     new InterceptingToolCallback(
             new RecordingCallback(ToolMetadata.builder().build()),
             List.of(refusing("Refused"), recording(seen, results)),
-            refs())
+            refs(),
+            messages())
         .call("{\"path\":\"/tmp/x\"}", CONTEXT);
 
     assertThat(seen).isEmpty();
@@ -167,12 +171,55 @@ class InterceptingToolCallbackTest {
                     throw new IllegalStateException("broken interceptor");
                   }
                 }),
-            refs());
+            refs(),
+            messages());
 
     org.assertj.core.api.Assertions.assertThatThrownBy(
             () -> callback.call("{\"path\":\"/tmp/x\"}", CONTEXT))
         .isInstanceOf(IllegalStateException.class)
         .hasMessage("broken interceptor");
+  }
+
+  @Test
+  @DisplayName("arguments the model did not finish writing answer the call instead of reaching it")
+  void truncatedArgumentsAnswerTheCall() {
+    // A provider that runs out of output tokens mid-call still delivers what it had got to, and it
+    // ends wherever the cut fell — here inside the description the runtime asked for, which is the
+    // last field written and so where a cut usually lands. Handed on, that payload fails inside the
+    // tool with Jackson naming a LinkedHashMap and a Java type, which tells the model nothing about
+    // writing the call again.
+    final var seen = new ArrayList<String>();
+    final var delegate = new RecordingCallback(ToolMetadata.builder().build());
+
+    final var result =
+        new InterceptingToolCallback(delegate, List.of(watching(seen)), refs(), messages())
+            .call(
+                "{\"path\":\"/tmp/x\",\"" + DisplayDescription.FIELD + "\":\"Write the fi",
+                CONTEXT);
+
+    assertThat(delegate.received).as("the tool was called with a broken payload").isNull();
+    assertThat(result)
+        .contains("could not be read as JSON")
+        .contains("Write")
+        .contains("closing quote")
+        .doesNotContain("LinkedHashMap");
+    // And the after-half still runs, so a surface that showed the call starting is told it ended.
+    assertThat(seen).hasSize(2);
+  }
+
+  @Test
+  @DisplayName("arguments that were never JSON are still the tool's business, not this one's")
+  void argumentsThatAreNotJsonAreLeftAlone() {
+    // Judging every payload would have this decide that a callback whose input is not JSON is being
+    // called wrongly. Only one that set out to be a JSON object is judged.
+    final var delegate = new RecordingCallback(ToolMetadata.builder().build());
+
+    final var result =
+        new InterceptingToolCallback(delegate, List.of(), refs(), messages())
+            .call("not json at all", CONTEXT);
+
+    assertThat(delegate.received).isEqualTo("not json at all");
+    assertThat(result).isEqualTo("ok");
   }
 
   private static ToolCallInterceptor refusing(final String message) {
