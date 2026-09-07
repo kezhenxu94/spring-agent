@@ -144,6 +144,18 @@ public class AgentToolsProvider {
       final boolean answersArriveLater,
       final Consumer<List<KnowledgeReference>> knowledgeHandler)
       throws IOException {
+    if (!request.scenario().tools()) {
+      // No tools means no MCP client is built, which is the whole point of asking before build()
+      // rather than filtering after it — the fan-out dials out to every server the user can reach,
+      // and a run that will be offered none of them should not pay for the handshakes. The memory
+      // advisor goes with them, being tools of its own; retrieval does not, since it contributes
+      // no tool and answers to a switch of its own.
+      final var retrieval = knowledgeRetrieval(request, knowledgeHandler);
+      return new AgentComposition(
+          new Object[0],
+          retrieval.map(List::of).orElseGet(List::of),
+          new McpTools(List.of(), new ToolCallback[0]));
+    }
     final var agentTools = build(request.userId(), request.chatId(), toolContext);
     // From here on the MCP clients are live, and the caller only learns of them by being handed the
     // composition. Anything that throws in between would leave them open with nobody holding a
