@@ -48,17 +48,16 @@ public class ImageGenerationTools {
       description =
           "Generate an image from a prompt and return its URL, a file:// one naming where the image"
               + " was saved on this machine, to be shown with markdown as"
-              + " ![description](file:///absolute/path.png). Also generates from reference images"
-              + " where the configured image provider supports them: a local file has to be"
-              + " published first with PublishFile (visibility=public, ttl=30m) and the URL it"
-              + " returns passed as referenceImages.")
+              + " ![description](file:///absolute/path.png) and nothing else — whoever renders the"
+              + " answer knows how to turn that into a picture. Also generates from reference"
+              + " images where the configured image provider supports them, passed as"
+              + " referenceImages.")
   public List<String> generateImage(
       @ToolParam(description = "The prompt describing the image") final String prompt,
       @ToolParam(
               description =
-                  "Reference images to generate from. Each has to be a publicly reachable URL;"
-                      + " publish a local file with PublishFile (visibility=public, ttl=30m) first"
-                      + " and use the link it returns",
+                  "Reference images to generate from. The image provider fetches each one itself,"
+                      + " so each has to be a URL it can reach",
               required = false)
           final List<String> referenceImages,
       @ToolParam(
