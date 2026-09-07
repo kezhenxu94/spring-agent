@@ -54,7 +54,7 @@ An observation joins the open situation for its `correlationKey`, or opens one. 
   become one run.
 - **`cooldown`** bounds how often one situation may wake the agent again as new events land on it.
 - **`max-events-per-situation`** and **`max-evidence`** bound what one situation holds and how much of
-  it a run is shown.
+  it a run is shown — and, for `max-evidence`, how much of it a failure notice quotes.
 - **a situation ends** either after `resolve-after-quiet` of nothing, or immediately after an
   evaluation where `resolve-after-evaluation` is set, or because a run called `ResolveSituation`.
 - **`stuck-investigation-timeout`** is what unwedges a situation whose run never came back.

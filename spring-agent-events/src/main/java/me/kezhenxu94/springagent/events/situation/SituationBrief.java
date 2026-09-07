@@ -134,8 +134,12 @@ public class SituationBrief {
    * Sort} is not something the Redis backend can serve and a contract two of three backends satisfy
    * is not a contract. Sorting in memory is affordable exactly because {@code
    * max-events-per-situation} bounds how many rows there can be.
+   *
+   * <p>Shared with {@link TriageFailureNotice}, which quotes the same tail to a person. That is the
+   * whole of what the two have in common, and it is here rather than in either of them because the
+   * reason above is the reason both need it.
    */
-  private static List<ObservedEvent> mostRecent(final List<ObservedEvent> all, final int limit) {
+  static List<ObservedEvent> mostRecent(final List<ObservedEvent> all, final int limit) {
     final var sorted =
         all.stream()
             .sorted(

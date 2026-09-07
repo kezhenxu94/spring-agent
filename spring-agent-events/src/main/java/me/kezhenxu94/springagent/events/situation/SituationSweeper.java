@@ -67,6 +67,10 @@ public class SituationSweeper {
 
   private final ThreadPoolTaskScheduler taskScheduler;
   private final SituationBrief brief;
+
+  /** The brief's counterpart for the other reader: whoever is told that a run failed. */
+  private final TriageFailureNotice notice;
+
   private final TriagePrompts triagePrompts;
   private final PlaybookFilters playbookFilters;
 
@@ -80,8 +84,9 @@ public class SituationSweeper {
   private final ObjectProvider<Notifier> notifier;
 
   /**
-   * For the one line of this class a person reads. Everything else it writes goes to a log, which
-   * stays in English here as it does everywhere else in this codebase.
+   * What a person reads: the name a surface gives one of these runs. The failure notice used to be
+   * here too and is now {@link TriageFailureNotice}'s. Everything else this class writes goes to a
+   * log, which stays in English here as it does everywhere else in this codebase.
    */
   private final EventsMessages messages;
 
@@ -369,7 +374,9 @@ public class SituationSweeper {
       log.error("Could not start a triage run for situation {}", claimed.id(), e);
       situations.save(
           claimed.toBuilder().phase(Situation.Phase.MONITORING).lastError(describe(e)).build());
-      report(policy, claimed, e);
+      // The phase just written: a run that never started leaves the situation waiting for the next
+      // observation, exactly as a run that failed does.
+      report(policy, claimed, e, Situation.Phase.MONITORING);
     }
   }
 
@@ -482,7 +489,10 @@ public class SituationSweeper {
    * this ever becomes noisy, the noise is the report.
    */
   private void report(
-      final EventsProperties.Policy policy, final Situation situation, final Throwable error) {
+      final EventsProperties.Policy policy,
+      final Situation situation,
+      final Throwable error,
+      final Situation.Phase next) {
     final var route = policy.route();
     if (route == null || route.isEmpty()) {
       return;
@@ -493,17 +503,12 @@ public class SituationSweeper {
       return;
     }
     try {
-      target.send(
-          route,
-          messages.get(
-              "triage-failed",
-              situation.source(),
-              situation.id(),
-              situation.title(),
-              describe(error)));
+      target.send(route, notice.render(situation, next, describe(error), target));
     } catch (RuntimeException e) {
-      // Never let this displace what it was reporting. A surface that cannot reach its own service
-      // is a second failure, and the first one is already recorded on the situation.
+      // Never let this displace what it was reporting, and that now covers the rendering as well as
+      // the sending: the notice reads the observations, so a store that is what broke would
+      // otherwise take the report of its own failure down with it. A surface that cannot reach its
+      // own service is a second failure, and the first one is already recorded on the situation.
       log.error("Could not report the failure of situation {}", situation.id(), e);
     }
   }
@@ -571,24 +576,32 @@ public class SituationSweeper {
         return;
       }
 
-      if (error != null) {
-        report(policy, current, error);
-      }
-
       final var now = clock.instant();
       final var observedDuringTheRun =
           current.lastEventAt() != null
               && (current.lastEvaluatedAt() == null
                   || current.lastEventAt().isAfter(current.lastEvaluatedAt()));
-      final var updated = current.toBuilder().lastError(error == null ? null : describe(error));
+      // Decided before the notice is sent rather than after the row is written, and handed to both:
+      // whether anything will look at this again is the one thing whoever reads the notice needs,
+      // and passing the same value the builder gets is what stops the message and the row saying
+      // different things. Reporting first is deliberate — see the comment on the save below.
+      final var next =
+          observedDuringTheRun ? Situation.Phase.AWAITING_EVALUATION : Situation.Phase.MONITORING;
+
+      if (error != null) {
+        report(policy, current, error, next);
+      }
+
+      final var updated =
+          current.toBuilder().phase(next).lastError(error == null ? null : describe(error));
 
       if (observedDuringTheRun) {
         // More arrived while we were thinking, so what we just concluded is already out of date.
         // Due again, with the pending run of observations starting now so that max-debounce is
         // measured from them rather than from the batch already considered.
-        updated.phase(Situation.Phase.AWAITING_EVALUATION).awaitingSince(now);
+        updated.awaitingSince(now);
       } else {
-        updated.phase(Situation.Phase.MONITORING).awaitingSince(null);
+        updated.awaitingSince(null);
         // Only a run that finished gets to end the situation. A failed one has concluded nothing,
         // and closing on its behalf would throw away the evidence with it.
         if (policy.resolveAfterEvaluation() && outcome == AgentOutcome.COMPLETED) {
@@ -598,6 +611,10 @@ public class SituationSweeper {
       // A failed evaluation is not retried on a timer. The error is recorded, and the next
       // observation makes the situation due again — which is the difference between a transient
       // failure being retried and a permanent one being retried for ever.
+      //
+      // And this is deliberately the last thing, after the notice has gone out. A write that fails
+      // is among the failures most worth reporting, so nothing a person is told may depend on this
+      // one succeeding.
       situations.save(updated.build());
     }
   }

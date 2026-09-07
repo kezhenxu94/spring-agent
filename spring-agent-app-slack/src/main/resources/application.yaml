@@ -1053,6 +1053,12 @@ app:
 
     # How many of those go into the prompt. The rest stay one GetSituationEvents call away, so the
     # agent can go and look without every run paying for the whole history.
+    #
+    # It also bounds how many a failure notice quotes into the chat named by a source's route, which
+    # is the one place this number buys something other than context: no chat surface truncates, so
+    # far past this default the notice becomes a message the platform refuses and the failure is only
+    # logged. Twenty summaries is some 20KB at the 1024 characters each one may store, which both
+    # Feishu and Slack accept.
     max-evidence: ${EVENTS_MAX_EVIDENCE:20}
 
     # The largest webhook body accepted, checked before anything parses it.
