@@ -51,5 +51,28 @@ public enum BuiltInScenarios implements AgentScenario {
           && !(tool instanceof ScheduledTaskTool)
           && !(tool instanceof FiringScheduledTaskTool);
     }
+  },
+
+  /**
+   * A single request answered in isolation — no conversation memory, no knowledge retrieval, no
+   * tools. For a caller that wants one prompt turned into one answer (a summary, a classification,
+   * a translation) with no chance of the run reaching for a tool, remembering a past turn, or
+   * pulling in retrieved context nobody asked for.
+   */
+  ONE_OFF {
+    @Override
+    public boolean conversationMemory() {
+      return false;
+    }
+
+    @Override
+    public boolean knowledgeRetrieval() {
+      return false;
+    }
+
+    @Override
+    public boolean tools() {
+      return false;
+    }
   }
 }

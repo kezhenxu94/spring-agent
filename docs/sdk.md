@@ -152,6 +152,31 @@ working: the message joins the run in flight rather than starting a second one, 
 through the `QUEUED_MESSAGES` tool-context key. `cancel(requestId)` stops a run; `onShutdown()` lets
 in-flight runs finish on a graceful shutdown.
 
+`fireAndAwait(request, timeout)` is for the other kind of caller entirely: one with nowhere to route
+listener callbacks that just wants the text back, the way calling a model directly would read.
+
+```java
+final var verdict = agent.fireAndAwait(
+    AgentRequest.builder()
+        .requestId(UUID.randomUUID().toString())
+        .userId("importer")
+        .scenario(BuiltInScenarios.ONE_OFF)
+        .userMessage(u -> u.text("Is this ticket a bug or a feature request?\n\n" + body))
+        .build(),
+    Duration.ofSeconds(30));
+```
+
+Only a run that reached `COMPLETED` returns its text. A run that failed rethrows its own exception;
+one that was cancelled — the stop button, a parent being cancelled, a bean listener that stopped
+consuming — throws `CancellationException` rather than passing its partial text off as the answer;
+and a run that has not finished within `timeout` throws `AgentTimeoutException`. The timeout only
+stops the *waiting*: call `cancel(requestId)` yourself if you want the run ended too.
+
+**Never call it from inside a run** — a tool method, a `ToolCallInterceptor`, a listener callback.
+Those execute on Reactor's bounded `boundedElastic` pool, which the new run needs a worker from as
+well; blocking one to wait for another exhausts that pool. A tool that wants a run of its own has
+`SubagentTools`, which hands the waiting off to a thread of its own.
+
 That last one has an ordering contract worth knowing if your surface holds a connection of its own.
 `onShutdown()` is a `ContextClosedEvent` listener ordered `LOWEST_PRECEDENCE`, and it *blocks* for
 up to `app.shutdown.in-flight-wait-timeout` (30 minutes by default) while the runs already going
@@ -224,6 +249,7 @@ than an enum so that your own scenarios are first-class:
 ```java
 public interface AgentScenario {
   default boolean conversationMemory() { return true; }   // read and append chat memory
+  default boolean tools() { return true; }                // any tools at all?
   default boolean offers(Object tool) { return true; }    // is this @AgentTool bean offered?
   default boolean knowledgeRetrieval() { return true; }   // consult the knowledge base first
 }
@@ -236,6 +262,7 @@ public interface AgentScenario {
 | `CHAT` | Somebody is talking to the agent | `FiringScheduledTaskTool` — nothing is firing, so there is no task for it to act on |
 | `SCHEDULED_TASK` | A task firing on its own schedule | `ScheduledTaskTool` — a run that fires on a schedule must not be able to schedule more, which is how one task becomes a growing pile. It keeps `FiringScheduledTaskTool`, which acts only on the task that is firing: it can end that task or give it its next time, so a run can honour "until X happens" and "remind me again later" without the number of tasks ever growing |
 | `SUBAGENT` | A run another run asked for, whose answer is a tool result | `SubagentTools`, `ScheduledTaskTool` and `FiringScheduledTaskTool`; and no conversation memory in either direction, since a subagent is given its task in full and must not write turns nobody said into the history |
+| `ONE_OFF` | One prompt turned into one answer — a summary, a classification, a translation — for a caller using `fireAndAwait` | Everything: `tools()` is false, so nothing is composed at all, and no conversation memory and no knowledge retrieval either |
 
 `spring-agent-events` adds `SituationTriageScenario` for a run woken by something the agent
 observed rather than by a person.
@@ -252,6 +279,14 @@ public enum MyScenarios implements AgentScenario {
   }
 }
 ```
+
+`tools()` and `offers(tool)` are two gates at different altitudes, and the difference matters.
+`offers` rules on the `@AgentTool` beans alone; everything else a run is composed of — the
+filesystem and todo tools, the ask, the skills tool, the memory tools, the user's MCP servers and
+the application-wide ones under `spring.ai.mcp.client.*` — comes from elsewhere and no per-tool
+ruling reaches it. So an `offers` that returns false for everything is *not* a run without tools.
+`tools()` returning false is: nothing is composed, and the MCP fan-out is skipped rather than
+connected and discarded.
 
 A tool declared `@AgentTool(admin = true)` is additionally withheld unless the run's user is named
 in `app.ai.admins`. That is on the user id alone, so an administrator holds them in their own scheduled

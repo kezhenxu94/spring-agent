@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
@@ -344,6 +345,91 @@ public class SpringAgent {
     try (var ignored = RunMdc.of(request)) {
       doFire(request);
     }
+  }
+
+  /**
+   * Starts {@code request} and blocks until it finishes, returning the final answer.
+   *
+   * <p>For a caller with nowhere to route {@link AgentResponseListener} callbacks — no card, no
+   * journal, nothing waiting to render deltas — that just wants the text back, the way calling a
+   * model directly would read. Everyone else should prefer {@link #fire} or {@link #fireOrQueue}
+   * and read the answer off their own listener; writing one only to immediately block on it, as
+   * this method does internally, would be pure boilerplate at every call site otherwise.
+   *
+   * <p><b>Never call this from inside a run</b> — a tool method, a {@code ToolCallInterceptor}, an
+   * {@link AgentResponseListener} callback. Those execute on Reactor's {@code boundedElastic}
+   * worker pool, which the run started here needs a worker of its own from; blocking one while
+   * waiting for another is how that bounded pool is exhausted by a handful of concurrent calls,
+   * each then waiting out its full timeout. A tool that wants another run started from within one
+   * has {@code SubagentTools}, which hands the waiting off to a thread of its own.
+   *
+   * <p>Only a run that reached {@link AgentOutcome#COMPLETED} returns its text. A run that was
+   * cancelled — the stop button, a parent being cancelled, a bean listener that stopped consuming —
+   * has produced a partial answer at best, and returning that as though it were the final one would
+   * hand the caller a truncated classification with no way to tell.
+   *
+   * @throws AgentTimeoutException if {@code timeout} elapses before the run finishes
+   * @throws CancellationException if the run was cancelled
+   * @throws RuntimeException whatever the run itself failed with, if it failed
+   */
+  public String fireAndAwait(final AgentRequest request, final Duration timeout) {
+    final var done = new CountDownLatch(1);
+    final var content = new AtomicReference<>("");
+    final var failure = new AtomicReference<Throwable>();
+    final var result = new AtomicReference<AgentOutcome>();
+    fire(
+        request.toBuilder()
+            .listener(
+                new AgentResponseListener() {
+                  @Override
+                  public void onContent(final String contentSoFar) {
+                    content.set(contentSoFar);
+                  }
+
+                  @Override
+                  public void onError(final Throwable error) {
+                    failure.set(error);
+                  }
+
+                  @Override
+                  public void onFinished(final AgentOutcome outcome) {
+                    result.set(outcome);
+                    done.countDown();
+                  }
+                })
+            .build());
+    final boolean finished;
+    try {
+      finished = done.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
+    } catch (final InterruptedException e) {
+      Thread.currentThread().interrupt();
+      // Not a timeout, however similar it looks from here: the wait was cut short by whoever owns
+      // this thread, usually a shutdown, and saying "did not finish within PT30S" would send the
+      // next person reading the log hunting a slow model that was never slow.
+      throw new IllegalStateException(
+          "Interrupted while waiting for agent request " + request.requestId(), e);
+    }
+    if (!finished) {
+      throw new AgentTimeoutException(request.requestId(), timeout);
+    }
+    final var error = failure.get();
+    if (error instanceof RuntimeException re) {
+      throw re;
+    }
+    if (error != null) {
+      throw new IllegalStateException("Agent request " + request.requestId() + " failed", error);
+    }
+    final var outcome = result.get();
+    if (outcome == AgentOutcome.CANCELLED) {
+      throw new CancellationException("Agent request " + request.requestId() + " was cancelled");
+    }
+    if (outcome != AgentOutcome.COMPLETED) {
+      // FAILED with nothing reported through onError. Nothing here can say what went wrong, but
+      // the partial text is not an answer either, and returning it would be the same lie.
+      throw new IllegalStateException(
+          "Agent request " + request.requestId() + " ended as " + outcome);
+    }
+    return content.get();
   }
 
   private void doFire(final AgentRequest request) {

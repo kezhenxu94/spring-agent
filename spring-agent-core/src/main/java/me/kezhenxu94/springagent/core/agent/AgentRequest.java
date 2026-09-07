@@ -55,7 +55,7 @@ import org.springframework.ai.chat.client.ChatClient;
  *     me.kezhenxu94.springagent.core.tools.ToolContexts} identity keys are filled in by core and
  *     win on conflict
  */
-@Builder
+@Builder(toBuilder = true)
 public record AgentRequest(
     String requestId,
     String parentRequestId,

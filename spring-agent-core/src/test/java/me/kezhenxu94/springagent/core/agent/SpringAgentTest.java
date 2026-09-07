@@ -17,12 +17,14 @@ import static org.mockito.Mockito.when;
 import io.modelcontextprotocol.client.McpSyncClient;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -411,6 +413,50 @@ class SpringAgentTest {
     assertThat(listener.errors.getFirst()).hasRootCauseMessage("model is down");
     assertThat(listener.outcomes).containsExactly(AgentOutcome.FAILED);
     verify(mcpClient, timeout(5000).times(1)).close();
+  }
+
+  @Test
+  @DisplayName("fireAndAwait returns the run's final content instead of requiring a listener")
+  void fireAndAwaitReturnsTheFinalAnswer() {
+    final var answer = agent.fireAndAwait(request().build(), Duration.ofSeconds(5));
+
+    assertThat(answer).isEqualTo("hello world");
+  }
+
+  @Test
+  @DisplayName("fireAndAwait rethrows the run's own failure rather than swallowing it")
+  void fireAndAwaitPropagatesTheRunsFailure() {
+    chatModel.failWith(new IllegalStateException("model is down"));
+
+    assertThatThrownBy(() -> agent.fireAndAwait(request().build(), Duration.ofSeconds(5)))
+        .hasRootCauseMessage("model is down");
+  }
+
+  @Test
+  @DisplayName("fireAndAwait refuses to pass off a cancelled run's partial text as the answer")
+  void fireAndAwaitRejectsACancelledRun() {
+    // A run cancelled mid-stream has emitted content and no error, which is exactly what a
+    // completed one looks like from the outside. Returning the partial text would hand the caller
+    // a truncated answer it has no way to recognise as truncated.
+    declaredListener =
+        new AgentResponseListener() {
+          @Override
+          public boolean shouldContinue() {
+            return false;
+          }
+        };
+
+    assertThatThrownBy(() -> agent.fireAndAwait(request().build(), Duration.ofSeconds(5)))
+        .isInstanceOf(CancellationException.class)
+        .hasMessageContaining("req-1");
+  }
+
+  @Test
+  @DisplayName("fireAndAwait times out rather than blocking forever on a run that never finishes")
+  void fireAndAwaitTimesOutWithoutFinishing() {
+    assertThatThrownBy(() -> agent.fireAndAwait(request().build(), Duration.ZERO))
+        .isInstanceOf(AgentTimeoutException.class)
+        .hasMessageContaining("req-1");
   }
 
   @Test

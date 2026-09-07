@@ -16,6 +16,21 @@ public interface AgentScenario {
   }
 
   /**
+   * Whether a run in this scenario is offered any tools at all. It is by default; override to false
+   * for a run that must turn one prompt into one answer with nothing in between.
+   *
+   * <p>Coarser than {@link #offers} and not a shorthand for it: {@code offers} rules on the
+   * {@code @AgentTool} beans alone, while everything else a run is composed of — the filesystem and
+   * todo tools, the ask, the skills tool, the memory tools, the user's MCP servers and the
+   * application-wide ones — arrives from elsewhere and no per-tool ruling reaches it. Saying no
+   * here is what keeps all of it out, and it is also what spares the run the MCP fan-out, which
+   * dials out to every server the user can reach before the model is asked anything.
+   */
+  default boolean tools() {
+    return true;
+  }
+
+  /**
    * Whether a run in this scenario is offered {@code tool}, one of the {@code @AgentTool} beans in
    * the context. Every tool by default; override to keep one out of these runs.
    */
