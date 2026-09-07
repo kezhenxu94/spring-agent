@@ -65,6 +65,14 @@ Naming nothing is *not* the same as a tool that refuses. When no bean called `vi
 exists, core registers no `RecognizeImage` at all: a tool the model can see is a tool it will try,
 and one that fails on configuration it cannot change reads to it as an endpoint to retry.
 
+The client's options are a copy of the application's own resolved ones — the connection, the
+timeout, the sampling parameters — with one field dropped rather than copied: the reasoning effort.
+`spring.ai.openai.chat.options.reasoning-effort` says how hard the model that runs a turn should
+think, and the vision model is a different model asked one question about an image. Copied over, it
+is sent to a model nobody configured it for, and a gateway that translates `reasoning_effort` into
+its own thinking parameter then refuses every call with an error naming neither the setting nor the
+tool. See `OpenAiProviderAutoConfiguration#visionOptions`.
+
 The gate is core's `@ConditionalOnNonBlankProperty` rather than `@ConditionalOnProperty`, because
 the yaml spells the setting `${OPENAI_VISION_MODEL:}` and an unset variable therefore leaves the
 property *present and empty* — which `@ConditionalOnProperty` treats as configured, matching

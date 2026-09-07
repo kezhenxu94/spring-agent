@@ -263,6 +263,11 @@ spring:
       # what it means everywhere under spring.ai.openai — the OpenAI SDK appends nothing to it.
       # spring.ai.dashscope below deliberately differs: a base-url there is a host, since that
       # module serves two APIs off one host and owns both paths.
+      #
+      # The rest of chat.* above comes along — the timeout, the temperature, the credential — but
+      # chat.reasoning-effort deliberately does not: it says how hard the model running the turns
+      # should think, and sending it to a vision model that was never configured for it is refused
+      # outright by some gateways. See OpenAiProviderAutoConfiguration#visionOptions.
       vision:
         model: ${OPENAI_VISION_MODEL:}
         base-url: ${OPENAI_VISION_BASE_URL:}

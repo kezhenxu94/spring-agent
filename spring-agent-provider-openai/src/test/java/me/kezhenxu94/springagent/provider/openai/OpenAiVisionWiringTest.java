@@ -6,6 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration;
 import org.springframework.ai.model.tool.autoconfigure.ToolCallingAutoConfiguration;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -60,5 +61,53 @@ class OpenAiVisionWiringTest {
     runner
         .withPropertyValues("spring.ai.openai.vision.model=")
         .run(context -> assertThat(context).doesNotHaveBean("visionChatClient"));
+  }
+
+  @Test
+  @DisplayName("the vision client keeps the application's connection but not its reasoning effort")
+  void theEffortIsNotCarriedOver() {
+    final var defaults =
+        OpenAiChatOptions.builder()
+            .baseUrl("https://gateway.example.com/v1")
+            .apiKey("sk-test")
+            .model("gpt-5.6")
+            .reasoningEffort("xhigh")
+            .temperature(0.0)
+            .build();
+
+    final var options =
+        OpenAiProviderAutoConfiguration.visionOptions(
+            defaults,
+            new OpenAiVisionProperties(
+                "qwen3-vl-plus", "https://vision.example.com/v1", "sk-eyes"));
+
+    // An effort configured for the model that runs the turns is not a statement about a vision
+    // model at another endpoint, and a gateway that reads it as its own thinking parameter refuses
+    // every call — see visionOptions for the error that led here.
+    assertThat(options.getReasoningEffort()).isNull();
+    assertThat(options.getModel()).isEqualTo("qwen3-vl-plus");
+    assertThat(options.getBaseUrl()).isEqualTo("https://vision.example.com/v1");
+    assertThat(options.getApiKey()).isEqualTo("sk-eyes");
+    // Everything else the deployment configured still has to survive the copy.
+    assertThat(options.getTemperature()).isEqualTo(0.0);
+  }
+
+  @Test
+  @DisplayName("a vision block naming no endpoint of its own keeps the application's")
+  void aBlankEndpointIsTheApplicationsOwn() {
+    final var defaults =
+        OpenAiChatOptions.builder()
+            .baseUrl("https://gateway.example.com/v1")
+            .apiKey("sk-test")
+            .model("gpt-5.6")
+            .build();
+
+    final var options =
+        OpenAiProviderAutoConfiguration.visionOptions(
+            defaults, new OpenAiVisionProperties("gpt-5.6-vision", "", ""));
+
+    assertThat(options.getBaseUrl()).isEqualTo("https://gateway.example.com/v1");
+    assertThat(options.getApiKey()).isEqualTo("sk-test");
+    assertThat(options.getModel()).isEqualTo("gpt-5.6-vision");
   }
 }
