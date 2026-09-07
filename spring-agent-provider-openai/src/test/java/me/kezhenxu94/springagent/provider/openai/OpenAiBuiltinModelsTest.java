@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.usermodels;
+package me.kezhenxu94.springagent.provider.openai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
  * <p>The names here are real ones from gateways this runs against, because that is the only thing
  * the filter can be judged against — see {@code BuiltinModels#chatModelsAmong}.
  */
-class BuiltinModelsTest {
+class OpenAiBuiltinModelsTest {
 
   @Test
   @DisplayName("what cannot answer a chat completion is left out")
@@ -33,7 +33,7 @@ class BuiltinModelsTest {
             "gpt-4o-realtime-preview",
             "stable-diffusion-3.5-large");
 
-    assertThat(BuiltinModels.chatModelsAmong(offered)).containsExactly("gpt-5");
+    assertThat(OpenAiBuiltinModels.chatModelsAmong(offered)).containsExactly("gpt-5");
   }
 
   @Test
@@ -49,7 +49,7 @@ class BuiltinModelsTest {
             "qwen-vl-ocr",
             "step-1o-turbo-vision");
 
-    assertThat(BuiltinModels.chatModelsAmong(offered)).isEqualTo(offered);
+    assertThat(OpenAiBuiltinModels.chatModelsAmong(offered)).isEqualTo(offered);
   }
 
   @Test
@@ -59,6 +59,6 @@ class BuiltinModelsTest {
     // unfiltered menu beats an empty one.
     final var offered = List.of("internal-embed-1", "internal-embed-2");
 
-    assertThat(BuiltinModels.chatModelsAmong(offered)).isEqualTo(offered);
+    assertThat(OpenAiBuiltinModels.chatModelsAmong(offered)).isEqualTo(offered);
   }
 }

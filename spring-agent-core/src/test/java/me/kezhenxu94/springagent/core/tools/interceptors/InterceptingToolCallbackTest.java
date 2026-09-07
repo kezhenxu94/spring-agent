@@ -252,7 +252,6 @@ class InterceptingToolCallbackTest {
   private ToolInputFileRefs refs() {
     return new ToolInputFileRefs(
         new SpringAgentProperties(
-            null,
             new SpringAgentProperties.Ai(
                 null,
                 null,
@@ -276,7 +275,6 @@ class InterceptingToolCallbackTest {
     source.setBasename(CoreMessages.BASENAME);
     source.setDefaultEncoding("UTF-8");
     source.setFallbackToSystemLocale(false);
-    return new CoreMessages(
-        source, new SpringAgentProperties(null, null, Locale.ENGLISH, null, null));
+    return new CoreMessages(source, new SpringAgentProperties(null, Locale.ENGLISH, null, null));
   }
 }

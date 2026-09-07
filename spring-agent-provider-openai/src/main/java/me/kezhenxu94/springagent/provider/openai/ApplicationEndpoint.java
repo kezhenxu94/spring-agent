@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.usermodels;
+package me.kezhenxu94.springagent.provider.openai;
 
 import org.springframework.ai.model.openai.autoconfigure.OpenAiAutoConfigurationUtil;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
@@ -8,15 +8,15 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 /**
  * The application's own chat options with the connection it actually dials filled in.
  *
- * <p>Everything in this package builds a chat client of its own — {@link BuiltinModels} to ask an
- * endpoint what it serves, {@link UserChatClients} to reach a model a user chose — and each starts
- * from the application's options so that the result is the deployment's endpoint with one or two
- * fields changed. That only works if those options say where the endpoint is, and they do not:
- * {@code OpenAiChatProperties.toOptions()}, which is what the {@code OpenAiChatModel} bean is built
- * with, copies the sampling parameters and nothing else. Base URL, API key, timeout, retries, proxy
- * and custom headers live only in the {@code spring.ai.openai.*} connection properties, from which
- * Spring AI's auto-configuration builds the model's HTTP client directly. So {@code
- * chatModel.getOptions().getApiKey()} is null in every deployment, however it is configured.
+ * <p>Everything in this package builds a chat client of its own — {@link OpenAiBuiltinModels} to
+ * ask an endpoint what it serves, {@link OpenAiUserChatClients} to reach a model a user chose — and
+ * each starts from the application's options so that the result is the deployment's endpoint with
+ * one or two fields changed. That only works if those options say where the endpoint is, and they
+ * do not: {@code OpenAiChatProperties.toOptions()}, which is what the {@code OpenAiChatModel} bean
+ * is built with, copies the sampling parameters and nothing else. Base URL, API key, timeout,
+ * retries, proxy and custom headers live only in the {@code spring.ai.openai.*} connection
+ * properties, from which Spring AI's auto-configuration builds the model's HTTP client directly. So
+ * {@code chatModel.getOptions().getApiKey()} is null in every deployment, however it is configured.
  *
  * <p>What that null costs is not a clear failure. The OpenAI SDK falls back to the {@code
  * OPENAI_BASE_URL} and {@code OPENAI_API_KEY} environment variables it reads on its own, so a

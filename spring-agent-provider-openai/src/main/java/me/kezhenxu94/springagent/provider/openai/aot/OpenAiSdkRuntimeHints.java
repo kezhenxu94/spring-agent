@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.aot;
+package me.kezhenxu94.springagent.provider.openai.aot;
 
 import java.io.IOException;
 import java.util.List;

@@ -10,6 +10,12 @@ dependencies {
   // and the first two modules to want them ended up with the same code twice.
   testImplementation testFixtures(project(':spring-agent-core'))
 
+  // The real per-user model resolver, because FeishuCardUpdaterReasoningTest asserts that a user's
+  // own reasoning effort beats the deployment's — which is a claim about that resolver's behaviour,
+  // not about the card. Test-only: this module's own code compiles against core's UserChatClients
+  // interface and never against an implementation of it.
+  testImplementation project(':spring-agent-provider-openai')
+
   implementation project(':spring-agent-core')
   implementation libs.larksuite.oapi
 

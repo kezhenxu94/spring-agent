@@ -1,7 +1,6 @@
 package me.kezhenxu94.springagent.core.agent;
 
 import com.google.common.base.Strings;
-import com.openai.errors.OpenAIServiceException;
 import java.io.InterruptedIOException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -145,6 +144,13 @@ public class SpringAgent {
    * rather than left to {@code ChatClient} to register — see {@link #rawStream} for why.
    */
   final ObjectProvider<ToolCallingAdvisor.Builder<?>> toolCallingAdvisorBuilder;
+
+  /**
+   * How a failed run's cause chain is turned into what the endpoint actually said. Empty on a
+   * deployment whose provider module contributes none, in which case a rejection is logged as
+   * whatever the stack trace says — see {@link ProviderRejection} for why that is not enough.
+   */
+  final List<ProviderRejection> providerRejections;
 
   /**
    * The one tool advisor every run shares, built on first use.
@@ -1042,27 +1048,24 @@ public class SpringAgent {
   }
 
   /**
-   * Ties a run to the model endpoint's own record of refusing it.
+   * Ties a run to the model endpoint's own record of refusing it — see {@link ProviderRejection},
+   * which is where the reasoning is.
    *
-   * <p>The stack trace already carries the SDK's exception, but not in a form anyone can act on: an
-   * advisor rewraps every failure as {@code IllegalStateException("Stream processing failed")}, and
-   * a rejection whose body was not JSON reduces to the word {@code Unknown} (see {@link
-   * me.kezhenxu94.springagent.core.config.OpenAiErrorBodyLoggingInterceptor}, which logs the body
-   * itself). What is missing is the handle a gateway operator searches by, next to the id of the
-   * run that hit it — the HTTP layer knows the request id but not the run, and this line knows
-   * both.
+   * <p>The whole chain is walked rather than the top of it, because the rejection is several
+   * wrappings down by the time it arrives here, and each describer is asked about each link:
+   * neither core nor a provider knows how deep its own exception was buried.
    */
-  private static void logProviderRejection(final String requestId, final Throwable error) {
+  private void logProviderRejection(final String requestId, final Throwable error) {
     for (var cause = error; cause != null; cause = cause.getCause()) {
-      if (cause instanceof OpenAIServiceException rejected) {
-        log.error(
-            "Agent request {} was rejected by the model endpoint: status={}, request-id={},"
-                + " body={}",
-            requestId,
-            rejected.statusCode(),
-            rejected.headers().values("x-request-id"),
-            rejected.body());
-        return;
+      for (final var describer : providerRejections) {
+        final var described = describer.describe(cause);
+        if (described.isPresent()) {
+          log.error(
+              "Agent request {} was rejected by the model endpoint: {}",
+              requestId,
+              described.get());
+          return;
+        }
       }
     }
   }

@@ -276,21 +276,36 @@ The quickest of them:
 docker run --env-file .env -p 8080:8080 ghcr.io/kezhenxu94/spring-agent:latest
 ```
 
-Six variables have no defaults and nothing starts without them — `OPENAI_BASE_URL`, `OPENAI_API_KEY`,
-`OPENAI_MODEL`, `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`. Any OpenAI-compatible
-endpoint will do; the embedding model is needed even if you index nothing, since tool search is built
-by embedding tool descriptions. Each application's page lists what else it needs.
+It needs to be told where the models are and which models to ask for, and there are two ways to say
+it. Either the six OpenAI-compatible variables — `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`,
+`EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL` — which is what any gateway or
+self-hosted server takes; or, on Alibaba Cloud DashScope, `DASHSCOPE_API_KEY` plus the two model
+names, `DASHSCOPE_CHAT_MODEL` and `DASHSCOPE_EMBEDDING_MODEL`, since one credential covers every
+DashScope endpoint but no endpoint has a default model. Add `DASHSCOPE_BASE_URL` — a host, with no
+path — for the international endpoint or a Model Studio workspace.
 
-Two switches decide what a deployment actually is, and they mean the same thing in every application:
+Nothing starts without one of those sets: the application says which variable is missing rather than
+failing on the first run. The embedding model is needed even if you index nothing, since tool search
+is built by embedding tool descriptions. Each application's page lists what else it needs.
+
+Three switches decide what a deployment actually is, and they mean the same thing in every
+application:
 
 | Property (env var) | Values | Default |
 | --- | --- | --- |
 | `app.persistence.type` (`PERSISTENCE_TYPE`) | `jpa` (SQLite, no server needed), `mongodb`, `redis` | `jpa` |
 | `app.ai.tools.shell.type` (`TOOLS_SHELL_TYPE`) | `none`, `kubernetes`, `docker`, `local` | `none` |
+| `spring.ai.model.image` (`IMAGE_MODEL_PROVIDER`) | `none`, `openai`, `dashscope` | `none` |
 
 The shell defaults to `none` because it runs commands the model wrote. Turn it on deliberately, and
 prefer `kubernetes` or `docker`, which give each user a disposable sandbox, over `local`, which does
-not. `docker-compose.yaml` has a compose profile per value of both switches, so the containers and the
+not.
+
+Image generation defaults to `none` for a related reason: it is a paid third-party API the agent
+would start calling on the model's say-so, and the two providers' image APIs are genuinely different
+rather than one endpoint with two hostnames. With `none` there is no `GenerateImage` tool at all,
+which is better than a tool that always fails. `spring.ai.model.image` is Spring AI's own property,
+not one of this project's — the third switch borrows a namespace rather than adding one. `docker-compose.yaml` has a compose profile per value of both switches, so the containers and the
 application's own choice cannot drift apart:
 
 ```sh

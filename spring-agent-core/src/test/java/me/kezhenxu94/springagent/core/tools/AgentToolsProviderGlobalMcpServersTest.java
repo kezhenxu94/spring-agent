@@ -113,7 +113,6 @@ class AgentToolsProviderGlobalMcpServersTest {
 
   private static SpringAgentProperties properties() {
     return new SpringAgentProperties(
-        null,
         new Ai(
             Set.of(),
             Map.of(),

@@ -411,13 +411,12 @@ class KnowledgeControllerTest {
   }
 
   private static SpringAgentProperties properties() {
-    return new SpringAgentProperties(null, null, Locale.ENGLISH, null, null);
+    return new SpringAgentProperties(null, Locale.ENGLISH, null, null);
   }
 
   private static Admins admins(final Set<String> ids) {
     return new Admins(
         new SpringAgentProperties(
-            null,
             new SpringAgentProperties.Ai(ids, Map.of(), null, null, null, null, null, null),
             Locale.ENGLISH,
             null,

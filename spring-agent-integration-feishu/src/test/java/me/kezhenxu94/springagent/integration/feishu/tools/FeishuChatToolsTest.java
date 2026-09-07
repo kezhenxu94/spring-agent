@@ -84,7 +84,6 @@ class FeishuChatToolsTest {
                 feishu,
                 new Admins(
                     new SpringAgentProperties(
-                        null,
                         new SpringAgentProperties.Ai(
                             Set.of(), Map.of(), null, null, null, null, null, null),
                         Locale.ENGLISH,

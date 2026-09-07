@@ -30,16 +30,45 @@ happen around every run, it is a listener or an interceptor here, not a special 
 | `identity`, `security` | Who a run is, and what an `app.ai.admins` member may do |
 | `storage`, `share` | A user's home under `app.storage.location`, and `ShareController` publishing a file |
 | `scheduling` | Scheduled tasks: a schedule is a column on the task, and each occurrence is won by exactly one replica |
-| `usermodels` | Bring-your-own-model: sealed endpoints a person registers, and the `/config` machinery around them |
+| `usermodels` | Bring-your-own-model: sealed endpoints a person registers, and the `/config` machinery around them. `UserChatClients` and `BuiltinModels` are contracts here — a `spring-agent-provider-*` module implements them |
 | `advisors`, `logging`, `config`, `aot` | Spring AI advisors, structured logging, auto-configuration, native-image hints |
 
 ## Rules this module keeps
 
-**No persistence backend, ever.** `checkRuntimeClasspathIsolation` (wired into `check`, defined in
-`buildSrc/.../springagent.classpath-isolation.gradle`, configured at the bottom of `build.gradle`)
-fails the build if Hibernate, the Mongo driver, Jedis, Milvus, fabric8 and friends reach core's
-runtime classpath. If it fails, a dependency became `api` or grew a new transitive — fix the
-dependency, do not widen the allow-list.
+**No persistence backend and no model provider, ever.** `checkRuntimeClasspathIsolation` (wired into
+`check`, defined in `buildSrc/.../springagent.classpath-isolation.gradle`, configured at the bottom of
+`build.gradle`) fails the build if Hibernate, the Mongo driver, Jedis, Milvus, fabric8, the OpenAI SDK
+and friends reach core's runtime classpath. If it fails, a dependency became `api` or grew a new
+transitive — fix the dependency, do not widen the allow-list.
+
+**Where the model comes from is somebody else's business.** Core names no provider: it injects Spring
+AI's `ChatModel`, `EmbeddingModel`, `TranscriptionModel` and `ImageModel`, and a
+`spring-agent-provider-*` module publishes them — see
+[`spring-agent-provider-openai`](../spring-agent-provider-openai/README.md). Three consequences worth
+knowing before changing anything near a model:
+
+- `ModelToolsConfiguration` registers `GenerateImage`, `RecognizeImage` and `TranscribeAudio` **only
+  where the deployment has that model**, ordered with `@AutoConfiguration(afterName = ...)` naming each
+  provider's class as a string. A provider missing from that list silently loses those three tools; a
+  deployment with no such model gets no tool rather than one that always fails.
+- `usermodels`' `UserChatClients` and `BuiltinModels`, and `agent/ProviderRejection`, are the only
+  three contracts a provider has to implement itself. Everything else it offers is a Spring AI
+  interface. Read each one's javadoc for why Spring AI has no counterpart — briefly: its models are
+  built once at startup from configuration, and none of "build a client for an endpoint somebody typed
+  into a chat", "ask an endpoint what it serves" and "read what an endpoint said when it refused" is
+  that.
+- Anything `ImageOptions` cannot carry travels in `ImageMessage`'s metadata map, keyed by
+  `tools/ImageGenerationMetadata`. That is what keeps `GenerateImage` from naming a provider's own
+  options type, and is why core needs no image SPI of its own.
+
+**A setting spelled `${SOME_VAR:}` is present and empty when nobody set the variable.**
+`@ConditionalOnProperty` calls that configured — it matches anything that is not the literal
+`false` — so where the configuration *is* the switch, gate it with
+`config/ConditionalOnNonBlankProperty` instead. `ConditionalOnUserModels` is the same lesson learned
+about one key, and both provider modules' vision clients are the general case: gated the wrong way,
+the client was built asking for a model named `""` and the endpoint's rejection read like a broken
+gateway rather than a feature nobody turned on. Nothing fails at startup when this is got wrong,
+which is the whole reason it is written down here.
 
 **One domain model serves every backend.** The records in `dao/models/` carry JPA, MongoDB *and* Redis
 mapping annotations at once. That works because an annotation whose type is absent at runtime is

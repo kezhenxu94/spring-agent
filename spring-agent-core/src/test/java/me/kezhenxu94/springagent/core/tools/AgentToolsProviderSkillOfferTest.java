@@ -96,7 +96,6 @@ class AgentToolsProviderSkillOfferTest {
 
   private static SpringAgentProperties properties(final boolean offerAfterExpensiveRuns) {
     return new SpringAgentProperties(
-        null,
         new Ai(
             Set.of(),
             Map.of(),

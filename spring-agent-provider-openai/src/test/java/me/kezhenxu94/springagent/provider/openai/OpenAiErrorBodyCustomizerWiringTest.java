@@ -1,4 +1,4 @@
-package me.kezhenxu94.springagent.core.config;
+package me.kezhenxu94.springagent.provider.openai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -36,7 +36,7 @@ class OpenAiErrorBodyCustomizerWiringTest {
     method.setAccessible(true);
     final var customizer =
         (OpenAiHttpClientBuilderCustomizer)
-            method.invoke(newInstanceOf(SpringAgentCoreAutoConfiguration.class));
+            method.invoke(newInstanceOf(OpenAiProviderAutoConfiguration.class));
 
     final var builder = SpringAiOpenAiHttpClient.builder();
     customizer.customize(builder);
@@ -49,7 +49,7 @@ class OpenAiErrorBodyCustomizerWiringTest {
   }
 
   private static Method customizerBeanMethod() throws NoSuchMethodException {
-    return SpringAgentCoreAutoConfiguration.class.getDeclaredMethod(
+    return OpenAiProviderAutoConfiguration.class.getDeclaredMethod(
         "openAiErrorBodyLoggingCustomizer");
   }
 

@@ -1,6 +1,5 @@
 package me.kezhenxu94.springagent.core.usermodels;
 
-import com.openai.models.ReasoningEffort;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Stream;
@@ -37,26 +36,21 @@ public final class ReasoningEfforts {
   public static final String NOT_SENT = "not-sent";
 
   /**
-   * Every effort the SDK knows, weakest first, as the wire spells them.
+   * Every effort the wire accepts, weakest first, spelled as it goes on the wire.
    *
-   * <p>Built from the {@link ReasoningEffort} constants rather than from {@code
-   * ReasoningEffort.Known.values()}, which looks like the obvious source and is the wrong one:
-   * {@code Known} is a Java enum whose {@code toString} yields the constant's name, so it gives
-   * {@code HIGH} where the wire value is {@code high}. {@code ReasoningEffortsTest} checks that
-   * this list still covers every {@code Known} value, so an effort the SDK adds fails the build
-   * here rather than going quietly missing from every dropdown.
+   * <p>Literals rather than a provider SDK's constants, because this list is core's: it is what
+   * three dropdowns are drawn from and what a stored {@code reasoningEffort} is validated against,
+   * on a deployment whose provider module core knows nothing about. Lowercase deliberately — an
+   * SDK's own enum is a Java enum whose {@code toString} yields {@code HIGH}, which no endpoint
+   * accepts.
+   *
+   * <p>That the list still matches the SDK is asserted where the SDK is on the classpath: {@code
+   * ReasoningEffortsMatchTheSdkTest} in {@code spring-agent-provider-openai}. An effort added
+   * upstream fails the build there rather than going quietly missing from every dropdown, and this
+   * comment is the pointer to it — a list of literals with nothing checking them would drift.
    */
   public static final List<String> VALUES =
-      Stream.of(
-              ReasoningEffort.NONE,
-              ReasoningEffort.MINIMAL,
-              ReasoningEffort.LOW,
-              ReasoningEffort.MEDIUM,
-              ReasoningEffort.HIGH,
-              ReasoningEffort.XHIGH,
-              ReasoningEffort.MAX)
-          .map(ReasoningEffort::asString)
-          .toList();
+      List.of("none", "minimal", "low", "medium", "high", "xhigh", "max");
 
   /** Everything a user may choose, in the order to offer it. */
   public static final List<String> CHOICES =

@@ -1,0 +1,14 @@
+# Stands in for a real application's file in DashScopeDefaultsOrderingTest — specifically for what
+# every application.yaml in this repository leaves behind when nobody set the variable. They spell
+# it `${OPENAI_API_KEY:}`; the effect, and the thing under test, is a property that is *present and
+# empty*, which is what an ordinary lowest-precedence property source cannot beat.
+#
+# Written as literal blanks rather than as placeholders on purpose: reading the real variables would
+# make the test pass or fail depending on what the developer running it happens to export.
+spring:
+  ai:
+    openai:
+      base-url: ""
+      api-key: ""
+      chat:
+        model: ""

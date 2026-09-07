@@ -28,7 +28,7 @@ public final class TestI18n {
     // The shipped applications set this false, so that a locale with no bundle lands on English
     // rather than on whatever the host happens to speak.
     source.setFallbackToSystemLocale(false);
-    return new CoreMessages(source, new SpringAgentProperties(null, null, locale, null, null));
+    return new CoreMessages(source, new SpringAgentProperties(null, locale, null, null));
   }
 
   public static CoreMessages english() {

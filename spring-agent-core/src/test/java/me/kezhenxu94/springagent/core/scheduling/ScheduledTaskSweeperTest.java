@@ -56,7 +56,7 @@ class ScheduledTaskSweeperTest {
 
   private static SpringAgentProperties properties() {
     return new SpringAgentProperties(
-        null, null, null, null, new SpringAgentProperties.Scheduling(SWEEP_INTERVAL, null));
+        null, null, null, new SpringAgentProperties.Scheduling(SWEEP_INTERVAL, null));
   }
 
   private ScheduledTask.ScheduledTaskBuilder task(final String id) {

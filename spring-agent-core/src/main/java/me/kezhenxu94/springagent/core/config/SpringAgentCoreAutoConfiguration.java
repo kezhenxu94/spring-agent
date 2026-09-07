@@ -1,13 +1,11 @@
 package me.kezhenxu94.springagent.core.config;
 
-import com.google.common.base.Strings;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import me.kezhenxu94.springagent.core.aot.AgentToolsRuntimeHints;
 import me.kezhenxu94.springagent.core.aot.CoreMessagesRuntimeHints;
-import me.kezhenxu94.springagent.core.aot.OpenAiSdkRuntimeHints;
 import me.kezhenxu94.springagent.core.aot.StoragePropertiesRuntimeHints;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageService;
@@ -28,11 +26,7 @@ import org.springframework.ai.embedding.BatchingStrategy;
 import org.springframework.ai.model.tool.DefaultToolCallingManager;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.autoconfigure.ToolCallingProperties;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.ai.openai.http.okhttp.OpenAiHttpClientBuilderCustomizer;
 import org.springframework.ai.tool.resolution.ToolCallbackResolver;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -82,7 +76,6 @@ import org.springframework.web.client.RestTemplate;
 @ImportRuntimeHints({
   AgentToolsRuntimeHints.class,
   CoreMessagesRuntimeHints.class,
-  OpenAiSdkRuntimeHints.class,
   StoragePropertiesRuntimeHints.class
 })
 public class SpringAgentCoreAutoConfiguration {
@@ -117,10 +110,12 @@ public class SpringAgentCoreAutoConfiguration {
       @Value("${app.ai.embedding.batch-size:10}") final int batchSize) {
     // Spring AI's default TokenCountBatchingStrategy only limits batches by token count
     // (8191), so dozens of short tool descriptions fit in a single embeddings.create
-    // call; DashScope's OpenAI-compatible endpoint rejects batches over ~20 rows
-    // regardless of token count ("batch size is invalid, it should not be larger than
-    // 20"). Cap by row count instead, and default well under that limit — a provider
-    // that allows larger batches is the reason this is a property.
+    // call. Several OpenAI-compatible endpoints cap the number of *rows* instead and
+    // reject such a batch outright, regardless of how few tokens it carries — see
+    // spring-agent-provider-dashscope's README for the one this default was chosen for.
+    // Cap by row count, and default well under the lowest cap known; a provider module
+    // that knows its endpoint's limit contributes its own value, which is the reason
+    // this is a property rather than a constant.
     //
     // Raising it is only half of what makes a cold index quick, and the smaller half:
     // the batches are embedded one after another, so what a few hundred tool
@@ -237,77 +232,12 @@ public class SpringAgentCoreAutoConfiguration {
     builder.onLimitExceeded(limits.getOnLimitExceeded());
   }
 
-  /**
-   * Puts the provider's own words back into the log when it rejects a request.
-   *
-   * <p>Spring AI applies every customizer bean of this type to the OkHttp client behind each OpenAI
-   * model, which is the only seam that still sees the response bytes — see {@link
-   * OpenAiErrorBodyLoggingInterceptor} for why they are otherwise unrecoverable. Not behind a
-   * property: it only ever fires on a request that already failed, and a 4xx nobody can explain is
-   * the reason it exists.
-   */
-  @Bean
-  @ConditionalOnMissingBean(name = "openAiErrorBodyLoggingCustomizer")
-  OpenAiHttpClientBuilderCustomizer openAiErrorBodyLoggingCustomizer() {
-    final var interceptor = new OpenAiErrorBodyLoggingInterceptor();
-    return builder -> builder.interceptor(interceptor);
-  }
-
-  // Name-based: two ChatClient beans here, so a type-based condition would have the first
-  // suppress the second.
+  // Name-based rather than by type: a provider module may publish a vision ChatClient beside this
+  // one, and a type condition would then have whichever was registered first suppress the other.
   @Bean
   @ConditionalOnMissingBean(name = "chatClient")
   ChatClient chatClient(final ChatClient.Builder builder) {
     return builder.build();
-  }
-
-  /**
-   * What the vision client authenticates with when a deployment configured nothing for it to
-   * authenticate against. Never sent: {@code VisionTools} refuses such a call — see the bean below
-   * for why the client is nevertheless built.
-   */
-  private static final String UNCONFIGURED_VISION_API_KEY = "no-vision-endpoint-configured";
-
-  /**
-   * The model {@link me.kezhenxu94.springagent.core.tools.VisionTools} asks about an image.
-   *
-   * <p>Built here rather than by Spring AI because it is a second endpoint — see {@link
-   * SpringAgentProperties.Dashscope}, and {@code UserChatClients} for the same reasoning applied to
-   * a user's own.
-   *
-   * <p>The credential is spelled out even when there is none, and that is the load-bearing part.
-   * The OpenAI SDK behind this model refuses to be built without one, so an application that
-   * configures no vision endpoint — the command line configures none — would fail to start rather
-   * than starting with a tool that cannot be called, which is what {@code Dashscope.NONE} promises.
-   * Worse, handed nothing the SDK goes looking in the environment: on a machine that exports {@code
-   * OPENAI_API_KEY} it would quietly build a client onto <em>that</em> endpoint and send somebody's
-   * images there. So the placeholder below is deliberate: the client exists, its credential is
-   * plainly not one, and {@code VisionTools} refuses the call before it is ever sent.
-   */
-  @Bean
-  @ConditionalOnMissingBean(name = "visionChatClient")
-  @Qualifier("vision")
-  ChatClient visionChatClient(
-      final SpringAgentProperties appConfiguration,
-      // Spring AI applies these to the models its own auto-configuration builds; this model is
-      // built here, so it has to ask for them itself or it would be the one endpoint whose
-      // rejections stay unreadable — and it is a gateway, which is where unreadable ones come from.
-      final List<OpenAiHttpClientBuilderCustomizer> httpClientCustomizers) {
-    final var vision = appConfiguration.dashscope().vision();
-    final var chatModel =
-        OpenAiChatModel.builder()
-            .options(
-                OpenAiChatOptions.builder()
-                    .baseUrl(vision.baseUrl())
-                    .apiKey(
-                        Strings.isNullOrEmpty(vision.apiKey())
-                            ? UNCONFIGURED_VISION_API_KEY
-                            : vision.apiKey())
-                    .model(vision.model())
-                    .build())
-            .httpClientBuilderCustomizers(httpClientCustomizers)
-            .build();
-    return ChatClient.builder(chatModel).build();
   }
 
   /**

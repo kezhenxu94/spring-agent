@@ -1,0 +1,5 @@
+# An EnvironmentPostProcessor rather than an auto-configuration, because it has to run before
+# anything binds spring.ai.openai.* — see DashScopeDefaults for what it fills in and why only a
+# blank target is filled.
+org.springframework.boot.EnvironmentPostProcessor=\
+  me.kezhenxu94.springagent.provider.dashscope.DashScopeDefaults

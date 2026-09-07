@@ -54,6 +54,8 @@ spring-agent-events                               observations -> situations -> 
 spring-agent-integration-{github,gitlab,grafana}  webhook readers for spring-agent-events
 spring-agent-integration-email                    a watched mailbox as observations; dials out, so app.email.enabled
 spring-agent-rag-milvus                           the knowledge base; the only implementation of core's KnowledgeBase
+spring-agent-provider-openai                      the OpenAI wire protocol, and so most gateways: chat, embeddings, transcription, images, per-user endpoints
+spring-agent-provider-dashscope                   DashScope's own image API and vision endpoint; depends on provider-openai, since compatible-mode *is* that protocol
 spring-agent-integration-{feishu,slack}           chats and cards / channels and Block Kit, as a surface
 spring-agent-integration-websocket                a browser as a surface: the SPA, its REST endpoints, STOMP run streaming, the knowledge base as a page
 spring-agent-app-feishu                           deployable server whose surface is Feishu; depends on every optional module
@@ -80,7 +82,13 @@ A run is offered exactly what `compose(...)` returns, so tools that come from el
 - `app.persistence.type` — `jpa` (default, SQLite) | `mongodb` | `redis`, via `@ConditionalOnPersistenceBackend`. Chooses repositories *and* the conversation-memory repository together. On jpa and redis that is Spring AI's own; on mongodb it is `MongoChatMemoryRepo` in that module, because Spring AI's orders a turn by a millisecond timestamp it stamps itself and so returns it scrambled — read that class before touching it.
 - `app.ai.tools.shell.type` — `none` (default) | `kubernetes` | `docker` | `local`, via `@ConditionalOnShellBackend`.
 
-Both are evaluated during AOT, so in a **native image they are build-time decisions** baked by `-PnativeBackends` (see `springagent.native.gradle`); the environment variable is inert at runtime and must be set to agree with what was baked.
+A third switch behaves the same way and is deliberately **not** one of ours: `spring.ai.model.*` picks the model provider. Spring AI gates every model auto-configuration it ships on `spring.ai.model.<kind>`, so naming a provider is what makes the others back off, and there is no `@ConditionalOnProviderBackend` to write — a second switch over the same decision would be a second thing to keep in step. In practice only `spring.ai.model.image` (`IMAGE_MODEL_PROVIDER`, default `none`) is set here: DashScope's chat, embedding and transcription endpoints *are* the OpenAI wire protocol, so those stay `openai` and `spring-agent-provider-dashscope`'s `DashScopeDefaults` points that client at DashScope from `spring.ai.dashscope.*`.
+
+All three are evaluated during AOT, so in a **native image they are build-time decisions** baked by `-PnativeBackends` (see `springagent.native.gradle`); the environment variable is inert at runtime and must be set to agree with what was baked.
+
+**A property spelled `${SOME_VAR:}` is present and empty when nobody set the variable**, and `@ConditionalOnProperty` calls that configured — it matches anything that is not the literal `false`. Where the configuration *is* the switch (a model name, a credential) gate it with `core/config/ConditionalOnNonBlankProperty` instead; `ConditionalOnUserModels` is the same lesson learned about one key, and both provider modules' vision clients depend on it. Getting this wrong does not fail at startup: it builds a client asking for a model called `""` and the endpoint's rejection reads like a broken gateway.
+
+**Core names no model provider.** It injects Spring AI's `ChatModel`, `EmbeddingModel`, `TranscriptionModel` and `ImageModel`, and `ModelToolsConfiguration` registers the three tools that need one of the latter three only where a provider published it — a tool the model can see is a tool it will try, so an absent tool beats one that always fails. Two contracts a provider must implement itself live in `core/usermodels/`: `UserChatClients` and `BuiltinModels`, because Spring AI's models are all built once at startup from configuration and neither "build a client for an endpoint somebody typed into a chat" nor "ask an endpoint what it serves" is that. `core/agent/ProviderRejection` is a third, for reading what an endpoint said when it refused — that never survives to where core sees the failure. Anything `ImageOptions` cannot carry travels in `ImageMessage`'s metadata map, keyed by `core/tools/ImageGenerationMetadata`, which is what keeps core's `GenerateImage` from naming a provider's type.
 
 **One domain model serves every backend.** The records in `core/dao/models/` carry JPA, MongoDB *and* Redis mapping annotations at once (`@Entity` + `@Document` + `@RedisHash`, both `@Id` flavours). This works because an annotation whose type is absent at runtime is discarded on reflection — which is also why core declares those persistence APIs `compileOnly`. Repository *contracts* live in `core/dao/repo/`; each `spring-agent-persistence-*` module implements them. When adding a model or a query, update all three implementations, and note that Redis has no query planner: an `@Indexed` field is the definition of what can be filtered on, not a tuning knob.
 
@@ -196,7 +204,7 @@ Anything else drifting is a bug in one of the two. `DockerShellDefaultsTest` in 
 
 ## Running locally
 
-Required env vars, no defaults, the app will not start without them: `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`. They come from `.env` (gitignored).
+Required env vars, no defaults, the app will not start without them: `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL` — **or** `DASHSCOPE_API_KEY` alone, which `DashScopeDefaults` expands into all six. They come from `.env` (gitignored).
 
 `docker-compose.yaml` has a compose profile per value of the two switches, so the containers and the application's own choice cannot drift apart:
 

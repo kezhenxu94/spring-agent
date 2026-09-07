@@ -88,6 +88,6 @@ class DescribingToolCallingManagerTest {
     source.setBasename(CoreMessages.BASENAME);
     source.setDefaultEncoding("UTF-8");
     source.setFallbackToSystemLocale(false);
-    return new CoreMessages(source, new SpringAgentProperties(null, null, locale, null, null));
+    return new CoreMessages(source, new SpringAgentProperties(null, locale, null, null));
   }
 }

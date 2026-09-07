@@ -38,7 +38,33 @@ dependencies {
   compileOnly 'org.springframework.data:spring-data-mongodb'
   compileOnly 'org.springframework.data:spring-data-redis'
   compileOnly 'org.springframework.data:spring-data-commons'
-  api 'org.springframework.ai:spring-ai-starter-model-openai'
+  // The model and client APIs, and no provider. Which endpoint serves a run is a
+  // spring-agent-provider-* module's business — this module names ChatClient, ChatModel,
+  // EmbeddingModel, ImageModel and TranscriptionModel and nothing that implements one of them,
+  // which is what lets a consumer choose. See ModelToolsConfiguration for how the tools that need
+  // one of those models are registered only where a provider published it.
+  //
+  // Both arrive transitively under any provider's starter, and are named here anyway: this module
+  // compiles against them, and a transitive that happens to be there today is not a compile
+  // dependency. api rather than implementation because they appear in the bean and SPI signatures
+  // every provider and integration module compiles against.
+  api 'org.springframework.ai:spring-ai-client-chat'
+  api 'org.springframework.ai:spring-ai-model'
+  // Two of Spring AI's auto-configuration modules, named for what this module reads out of them
+  // rather than for the beans they contribute. Both used to arrive under the OpenAI starter, which
+  // is a provider's dependency now and may not be the provider a consumer chose.
+  //
+  // model-tool: ToolCallingProperties, because core replaces the ToolCallingManager and so has to
+  // read the same spring.ai.tools.limits.* a deployment sets.
+  //
+  // model-chat-client: not referenced by name anywhere here, and still required. Spring AI's
+  // ToolSearchAdvisorAutoConfiguration — which ToolSearchIndexConfiguration orders itself before —
+  // declares `before = ChatClientAutoConfiguration.class` as a *class literal*, so that class has
+  // to be loadable for the annotation to be read at all. Without it the tool index quietly does not
+  // exist: no error, no bean, and searches that find nothing. ToolSearchIndexConfigurationTest is
+  // what notices.
+  implementation 'org.springframework.ai:spring-ai-autoconfigure-model-tool'
+  implementation 'org.springframework.ai:spring-ai-autoconfigure-model-chat-client'
   api libs.spring.ai.agent.utils
 
   implementation 'org.springframework.boot:spring-boot-starter-webmvc'
@@ -90,15 +116,55 @@ dependencies {
   testImplementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-mongodb'
   testImplementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-redis'
 
-  // MockWebServer stands in for the model endpoint in OpenAiErrorBodyTest, which asserts what a
-  // rejected request leaves behind. okhttp itself is already on the runtime classpath, under
-  // Spring AI's OpenAI client; this adds only the test server. Test-only, so the
-  // checkRuntimeClasspathIsolation assertion below is unaffected for the same reason as above.
-  testImplementation libs.okhttp.mockwebserver
+  // No model provider here, not even for tests, and that is worth stating: core's tests build the
+  // ChatClient they need from a stub ChatModel, so nothing in this module — main or test — names an
+  // endpoint's wire protocol. A provider appearing on this line is the first sign that something
+  // did.
+}
+
+// SubagentSchedulerStarvationTest gets a JVM to itself, and this is the whole reason the task
+// exists: it replaces Reactor's *global* scheduler factory with a one-thread boundedElastic, which
+// is the only way to turn the starvation it is about from "sometimes" into "every time" (see the
+// class's own javadoc for why the pool size cannot be set any other way).
+//
+// A global that another test class in the same JVM can be affected by, or can affect. Gradle hands
+// each fork a share of the classes and a run whose stream is still alive when this class starts
+// will reach for Schedulers.boundedElastic() and be handed *this* one-thread pool, pinning the
+// single executor the test needs — and the run under test then waits for a thread that never comes
+// free, which is exactly the deadlock the class asserts does not happen. It fails as "the subagent
+// never ran".
+//
+// Nothing about that is deterministic: it depends on which classes share the fork, so it survived
+// unnoticed until a change to the set of test classes in this module reshuffled them. Isolating the
+// class is the fix rather than a retry, because a retry reuses the same fork and fails again.
+tasks.register('schedulerIsolationTest', Test) {
+  description = 'Runs the tests that replace a global Reactor scheduler, alone in their own JVM.'
+  group = 'verification'
+  testClassesDirs = sourceSets.test.output.classesDirs
+  classpath = sourceSets.test.runtimeClasspath
+  useJUnitPlatform()
+  include '**/SubagentSchedulerStarvationTest.class'
+  // One fork, and no sharing: the point of the task.
+  maxParallelForks = 1
+}
+
+tasks.named('test') {
+  // Excluded here rather than left to run twice: the task above is the only place it is correct.
+  exclude '**/SubagentSchedulerStarvationTest.class'
+}
+
+tasks.named('check') {
+  dependsOn 'schedulerIsolationTest'
 }
 
 // Core is backend-agnostic and must stay that way: it is the module every consumer takes, whichever
-// database, vector store and shell they run.
+// database, vector store, shell and *model provider* they run.
+//
+// The openai entries are the least obvious of them. An `api` dependency on a provider's starter
+// makes every consumer resolve that provider's SDK whether or not it is the one they chose, and
+// nothing else in the build would say so — the symptom is weight, not a failure. A provider's
+// classes reaching this module means a signature or an import went in that only one provider can
+// satisfy; the fix is at that signature, not here.
 forbidOnRuntimeClasspath(
     groups: [
       'org.hibernate.orm',
@@ -110,6 +176,7 @@ forbidOnRuntimeClasspath(
       'org.testcontainers',
       'redis.clients',
       'io.lettuce',
+      'com.openai',
     ],
     modules: [
       'spring-data-jpa',
@@ -126,4 +193,7 @@ forbidOnRuntimeClasspath(
       'spring-ai-model-chat-memory-repository-mongodb',
       'spring-ai-model-chat-memory-repository-redis',
       'spring-ai-milvus-store',
+      'spring-ai-openai',
+      'spring-ai-autoconfigure-model-openai',
+      'spring-ai-starter-model-openai',
     ])

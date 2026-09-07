@@ -113,7 +113,6 @@ class LargeResponseInterceptorTest {
   private LargeResponseInterceptor interceptor(final int maxResultChars) {
     return new LargeResponseInterceptor(
         new SpringAgentProperties(
-            null,
             new SpringAgentProperties.Ai(
                 null,
                 null,
@@ -136,7 +135,6 @@ class LargeResponseInterceptorTest {
     source.setBasename(CoreMessages.BASENAME);
     source.setDefaultEncoding("UTF-8");
     source.setFallbackToSystemLocale(false);
-    return new CoreMessages(
-        source, new SpringAgentProperties(null, null, Locale.ENGLISH, null, null));
+    return new CoreMessages(source, new SpringAgentProperties(null, Locale.ENGLISH, null, null));
   }
 }

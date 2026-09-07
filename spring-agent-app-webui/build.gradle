@@ -62,6 +62,24 @@ dependencies {
   // back off, and defaults to false.
   implementation project(':spring-agent-rag-milvus')
 
+  // Where the models come from. Core carries no provider at all, so an application has to name one;
+  // both are here so that which one serves a run is configuration rather than a rebuild — see
+  // spring.ai.model.* in application.yaml.
+  //
+  // Both on one classpath is not the ambiguity two chat surfaces would be. Spring AI's own
+  // conditions gate each kind of model on spring.ai.model.<kind> naming its provider, so exactly
+  // one answers per kind, and there is no switch of ours for them to disagree with.
+  //
+  // Neither line is decoration. provider-openai is what serves chat, embeddings and the endpoints a
+  // person registers for themselves — on DashScope too, whose compatible-mode *is* that protocol —
+  // and provider-dashscope adds only what DashScope does differently: its image API and its vision
+  // endpoint. It depends on the first as `implementation`, so dropping this line would leave the
+  // OpenAI provider on the runtime classpath but off the compile one, which is not a state to
+  // depend on. Taking it commits nothing: it contributes nothing until
+  // spring.ai.dashscope.api-key names a key.
+  implementation project(':spring-agent-provider-openai')
+  implementation project(':spring-agent-provider-dashscope')
+
   // Its whole surface, and the only integration it takes: the pages, the REST endpoints and the
   // STOMP broker a run streams over. Deliberately no chat platform — this application logs people
   // in with Feishu, which is Spring Security and a tenant key rather than the Feishu SDK, so it
@@ -77,7 +95,6 @@ dependencies {
   implementation 'io.micrometer:micrometer-registry-prometheus'
 
   implementation platform(libs.spring.ai.bom)
-  implementation 'org.springframework.ai:spring-ai-starter-model-openai'
   // The tool-search index, not the knowledge base — the two are separate stores and the module
   // above carries its own client. See the same dependency in spring-agent-app for the full reason.
   implementation 'org.springframework.ai:spring-ai-starter-vector-store-milvus'

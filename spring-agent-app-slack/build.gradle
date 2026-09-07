@@ -90,6 +90,24 @@ dependencies {
   // property that turns a knowledge base on without it. app.ai.rag.enabled turns it back off.
   implementation project(':spring-agent-rag-milvus')
 
+  // Where the models come from. Core carries no provider at all, so an application has to name one;
+  // both are here so that which one serves a run is configuration rather than a rebuild — see
+  // spring.ai.model.* in application.yaml.
+  //
+  // Both on one classpath is not the ambiguity two chat surfaces would be. Spring AI's own
+  // conditions gate each kind of model on spring.ai.model.<kind> naming its provider, so exactly
+  // one answers per kind, and there is no switch of ours for them to disagree with.
+  //
+  // Neither line is decoration. provider-openai is what serves chat, embeddings and the endpoints a
+  // person registers for themselves — on DashScope too, whose compatible-mode *is* that protocol —
+  // and provider-dashscope adds only what DashScope does differently: its image API and its vision
+  // endpoint. It depends on the first as `implementation`, so dropping this line would leave the
+  // OpenAI provider on the runtime classpath but off the compile one, which is not a state to
+  // depend on. Taking it commits nothing: it contributes nothing until
+  // spring.ai.dashscope.api-key names a key.
+  implementation project(':spring-agent-provider-openai')
+  implementation project(':spring-agent-provider-dashscope')
+
   implementation 'org.springframework.boot:spring-boot-starter-actuator'
   implementation 'org.springframework.boot:spring-boot-starter-security'
   implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'

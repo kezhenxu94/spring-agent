@@ -20,7 +20,12 @@ ext.nativeImageName = 'spring-agent-cli'
 // A native image bakes the @Conditional decisions, so the binary's shell backend is chosen here
 // rather than by TOOLS_SHELL_TYPE at runtime. `local` matches application.yaml's default and is
 // what makes the binary useful with nothing installed; -PnativeBackends overrides it.
-ext.nativeDefaultBackends = 'shell-local'
+//
+// `image-openai` for the same reason and to the same end: this application's application.yaml sets
+// no spring.ai.model.image, which on the JVM means Spring AI's default of `openai`, and the native
+// build would otherwise bake `none` and quietly ship a binary with no GenerateImage tool. There is
+// no image-dashscope to choose here — spring-agent-provider-dashscope is not on this classpath.
+ext.nativeDefaultBackends = 'shell-local,image-openai'
 
 if (providers.gradleProperty('native').present) {
   pluginManager.apply('org.graalvm.buildtools.native')
@@ -38,8 +43,13 @@ dependencies {
   // Selecting a different backend means adding its module here, not flipping a property.
   implementation project(':spring-agent-persistence-jpa')
 
+  // Only the OpenAI-compatible provider, for the same reason there is only one persistence
+  // backend here: a laptop points OPENAI_BASE_URL at whatever gateway it uses, and the modules that
+  // exist to carry a vendor's own APIs — DashScope's image endpoint, its vision host — are weight a
+  // command line never asks for. It carries the starter, so nothing else names it.
+  implementation project(':spring-agent-provider-openai')
+
   implementation libs.spring.shell.starter
-  implementation 'org.springframework.ai:spring-ai-starter-model-openai'
   implementation libs.spring.ai.agent.utils
   implementation libs.guava
 

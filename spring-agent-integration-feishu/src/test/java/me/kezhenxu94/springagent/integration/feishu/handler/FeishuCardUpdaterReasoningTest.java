@@ -26,6 +26,7 @@ import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
+import me.kezhenxu94.springagent.provider.openai.OpenAiUserChatClients;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -190,7 +191,7 @@ class FeishuCardUpdaterReasoningTest {
             .reasoningEffort("xhigh")
             .build();
     final var appModel = OpenAiChatModel.builder().options(appOptions).build();
-    return new UserChatClients(
+    return new OpenAiUserChatClients(
         ChatClient.builder(appModel).build(),
         new UserModelRegistry(
             repo,

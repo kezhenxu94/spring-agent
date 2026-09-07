@@ -217,7 +217,6 @@ class AgentToolsProviderScenarioTest {
         mock(SpringAgentProperties.class),
         new Admins(
             new SpringAgentProperties(
-                null,
                 new SpringAgentProperties.Ai(
                     admin == null ? Set.of() : Set.of(admin),
                     Map.of(),

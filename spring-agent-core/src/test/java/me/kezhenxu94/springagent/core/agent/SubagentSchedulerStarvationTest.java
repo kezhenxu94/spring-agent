@@ -121,7 +121,10 @@ class SubagentSchedulerStarvationTest {
             providerOf(outcomesByRun),
             emptyProvider(),
             emptyProvider(),
-            providerOf(ToolCallingAdvisor.builder()));
+            providerOf(ToolCallingAdvisor.builder()),
+            // No provider on this test classpath contributes one, and a rejection is then logged as
+            // whatever the stack trace says — see ProviderRejection.
+            List.<ProviderRejection>of());
 
     // The real tools, not a stand-in: what is under test is how WaitForSubagent waits.
     final var tools = new SubagentTools(agent, properties, messages);
@@ -402,7 +405,6 @@ class SubagentSchedulerStarvationTest {
 
   private static SpringAgentProperties properties() {
     return new SpringAgentProperties(
-        null,
         new SpringAgentProperties.Ai(
             Set.of(),
             Map.of(),
@@ -426,7 +428,7 @@ class SubagentSchedulerStarvationTest {
     final var source = new ResourceBundleMessageSource();
     source.setBasename(CoreMessages.BASENAME);
     source.setDefaultEncoding("UTF-8");
-    return new CoreMessages(source, new SpringAgentProperties(null, null, locale, null, null));
+    return new CoreMessages(source, new SpringAgentProperties(null, locale, null, null));
   }
 
   private static <T> ObjectProvider<T> emptyProvider() {
