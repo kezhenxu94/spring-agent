@@ -127,19 +127,45 @@ public class OpenAiProviderAutoConfiguration {
     final var defaults =
         ApplicationEndpoint.resolve(
             defaultChatModel.getOptions(), commonProperties, chatProperties);
-    final var options = defaults.mutate().model(vision.model());
+    final var chatModel =
+        OpenAiChatModel.builder()
+            .options(visionOptions(defaults, vision))
+            .httpClientBuilderCustomizers(httpClientCustomizers)
+            .build();
+    return ChatClient.builder(chatModel).build();
+  }
+
+  /**
+   * The application's resolved options with the vision endpoint's own fields over the top.
+   *
+   * <p>A method of its own so that what is carried over and what is dropped can be asserted without
+   * building a model, which needs a credential.
+   *
+   * <p>The reasoning effort is <b>dropped</b> rather than copied, and that is the point of this
+   * method. {@code spring.ai.openai.chat.options.reasoning-effort} says how hard the model that
+   * runs the agent's turns should think; the vision model is a different model, usually at a
+   * different endpoint, and it is asked one question about an image. Carried over, the field is
+   * sent to a model that was never configured for it — and an endpoint that translates {@code
+   * reasoning_effort} into its own thinking parameter then refuses every call, which is how this
+   * was found: a DashScope-compatible gateway answered a {@code qwen3-vl} request with {@code the
+   * thinking_budget parameter must be a positive integer and not greater than 0}, an error that
+   * names neither the field this deployment set nor the tool that failed.
+   *
+   * <p>Everything else under {@code spring.ai.openai.chat} stays, for the reason {@code
+   * OpenAiUserChatClients#build} spells out: Spring AI takes supplied options whole rather than
+   * merging them with a model's defaults, so options built from scratch here would drop the
+   * timeout, the credential and the connection along with the effort.
+   */
+  static OpenAiChatOptions visionOptions(
+      final OpenAiChatOptions defaults, final OpenAiVisionProperties vision) {
+    final var options = defaults.mutate().model(vision.model()).reasoningEffort(null);
     if (!Strings.isNullOrEmpty(vision.baseUrl())) {
       options.baseUrl(vision.baseUrl());
     }
     if (!Strings.isNullOrEmpty(vision.apiKey())) {
       options.apiKey(vision.apiKey());
     }
-    final var chatModel =
-        OpenAiChatModel.builder()
-            .options(options.build())
-            .httpClientBuilderCustomizers(httpClientCustomizers)
-            .build();
-    return ChatClient.builder(chatModel).build();
+    return options.build();
   }
 
   /**
