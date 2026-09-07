@@ -40,8 +40,9 @@ import org.springframework.util.unit.DataSize;
  * @param maxEventsPerSituation how many observations to keep per situation. Past this they are
  *     counted and not stored: the count is what the agent reasons about at that scale, and the
  *     thousandth alert body is not evidence anybody reads.
- * @param maxEvidence how many recent observations to put in the prompt. The rest stay one tool call
- *     away, which is the point of {@code GetSituationEvents}.
+ * @param maxEvidence how many recent observations to put in the prompt, and how many a failure
+ *     notice quotes to a person. The rest stay one tool call away, which is the point of {@code
+ *     GetSituationEvents}.
  * @param maxBodySize the largest webhook body accepted, before anything parses it
  * @param debounce how long a situation must be quiet before it is worth an opinion. Every arriving
  *     observation pushes the deadline out, which is what turns a thousand alerts into one run.

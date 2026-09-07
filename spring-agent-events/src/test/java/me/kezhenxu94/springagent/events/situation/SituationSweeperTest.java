@@ -3,6 +3,7 @@ package me.kezhenxu94.springagent.events.situation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -67,6 +68,9 @@ class SituationSweeperTest {
   void setUp() {
     when(springAgent.accepting()).thenReturn(true);
     when(notifiers.getIfAvailable()).thenReturn(notifier);
+    // A surface escapes what somebody else wrote before rendering it, and a mock would answer null:
+    // the notice would then read "null" and every assertion on our own words would still pass.
+    when(notifier.quoted(anyString())).thenAnswer(call -> call.getArgument(0));
   }
 
   private EventsProperties properties(
@@ -120,6 +124,7 @@ class SituationSweeperTest {
         admins,
         scheduler,
         new SituationBrief(repos.events, properties, TestI18n.english(), clock),
+        new TriageFailureNotice(repos.events, properties, TestI18n.english(), clock),
         TestI18n.prompts(Locale.ENGLISH),
         filters,
         notifiers,
@@ -541,6 +546,57 @@ class SituationSweeperTest {
     verify(notifier)
         .send(eq(Route.builder().chatId("oc_alerts").chatType("group").build()), text.capture());
     assertThat(text.getValue()).contains("grafana").contains("the model refused");
+    // With enough of the situation in it to decide whether to go and look: which attempt, how much
+    // has been observed, the observations themselves, and that nothing will pick this up on its
+    // own. See TriageFailureNoticeTest for the rest of what it says.
+    assertThat(text.getValue()).contains("Attempt 1").contains("1 observation(s)");
+    assertThat(text.getValue()).contains("p99 over 2s");
+    assertThat(text.getValue()).contains("will not be looked at again");
+  }
+
+  @Test
+  @DisplayName(
+      "a failure with something already waiting says it is due again, not that it is quiet")
+  void shouldSayTheSituationIsDueAgainWhenObservedDuringTheRun() {
+    // The phase the notice describes is decided before the row is written and handed to both, so
+    // that the message and the row cannot say different things about the same situation.
+    final var properties = properties(true, 2);
+    observed(properties, "d1");
+    clock.advance(Duration.ofSeconds(31));
+    sweeper(properties).sweep();
+
+    final var listener = fired().listeners().getFirst();
+    clock.advance(Duration.ofSeconds(5));
+    observed(properties, "d2");
+    listener.onError(new IllegalStateException("the model refused"));
+    listener.onFinished(AgentOutcome.FAILED);
+
+    final var text = ArgumentCaptor.forClass(String.class);
+    verify(notifier).send(any(), text.capture());
+    assertThat(text.getValue()).contains("due again");
+    assertThat(repos.situations.only().phase()).isEqualTo(Situation.Phase.AWAITING_EVALUATION);
+  }
+
+  @Test
+  @DisplayName("what a stranger wrote is escaped for the chat before the notice carries it")
+  void shouldEscapeForeignTextInTheNotice() {
+    // A title and an observation summary are whoever caused the event's words, and so is a
+    // gateway's refusal, which routinely echoes back the request it was sent. A chat's markdown has
+    // tags that notify people, so unescaped any of them would let somebody ping a whole group
+    // through this bot by writing the right thing into an alert.
+    when(notifier.quoted(anyString())).thenReturn("[escaped]");
+    final var properties = properties(false, 2);
+    observed(properties, "d1");
+    clock.advance(Duration.ofSeconds(31));
+    sweeper(properties).sweep();
+
+    final var listener = fired().listeners().getFirst();
+    listener.onError(new IllegalStateException("<at id=all></at>"));
+    listener.onFinished(AgentOutcome.FAILED);
+
+    final var text = ArgumentCaptor.forClass(String.class);
+    verify(notifier).send(any(), text.capture());
+    assertThat(text.getValue()).doesNotContain("<at id=all>").contains("[escaped]");
   }
 
   @Test
@@ -562,6 +618,25 @@ class SituationSweeperTest {
   @DisplayName("a deployment with no Notifier installed still records the failure and carries on")
   void shouldSurviveWithoutANotifier() {
     when(notifiers.getIfAvailable()).thenReturn(null);
+    final var properties = properties(false, 2);
+    observed(properties, "d1");
+    clock.advance(Duration.ofSeconds(31));
+    sweeper(properties).sweep();
+
+    final var listener = fired().listeners().getFirst();
+    listener.onError(new IllegalStateException("the model refused"));
+    listener.onFinished(AgentOutcome.FAILED);
+
+    assertThat(repos.situations.only().lastError()).contains("the model refused");
+  }
+
+  @Test
+  @DisplayName("a Notifier whose escaping throws still leaves the failure recorded")
+  void shouldSurviveANotifierThatCannotEscape() {
+    // The notice is rendered inside the same try as the send, because rendering reads the
+    // observations and asks the surface to escape them — two more things that can throw where the
+    // store or the surface is what broke.
+    when(notifier.quoted(anyString())).thenThrow(new IllegalStateException("no dialect"));
     final var properties = properties(false, 2);
     observed(properties, "d1");
     clock.advance(Duration.ofSeconds(31));
@@ -862,6 +937,7 @@ class SituationSweeperTest {
             noAdmins(),
             scheduler,
             new SituationBrief(repos.events, properties, TestI18n.messages(chinese), clock),
+            new TriageFailureNotice(repos.events, properties, TestI18n.messages(chinese), clock),
             TestI18n.prompts(chinese),
             new PlaybookFilters(properties),
             notifiers,

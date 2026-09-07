@@ -112,6 +112,14 @@ are unattended, so nothing else would ever mention one that broke; the notice is
 application rather than by the agent, since the failure most worth hearing about is the one where the
 model is what broke. It needs a surface that can send and is otherwise logged.
 
+What arrives is enough to decide whether to go and look without opening a database: which source and
+which situation, what went wrong, which attempt this was and how much has been observed of it, what
+the last look that worked concluded, whether anything will pick the situation up again on its own —
+it will not, until something else is observed for it — and the most recent observations, as many as
+`max-evidence`. Those last are quoted between a fence saying whose words they are, and everything
+whoever caused the event wrote is escaped for the chat first, titles and error messages included: a
+mention tag in an alert name must not be able to notify a group through the bot.
+
 ## What the agent should *do* about it
 
 Not a setting: a **playbook**. Documents you write into the knowledge base and then edit like any
