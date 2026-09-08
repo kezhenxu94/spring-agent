@@ -26,8 +26,8 @@ class FeishuCardDefaultsTest {
 
     defaults.postProcessEnvironment(environment, null);
 
-    assertThat(environment.getProperty(FeishuCardDefaults.CARD_STREAM_INTERVAL)).isEqualTo("1s");
-    assertThat(environment.getProperty(FeishuCardDefaults.CARD_STREAM_CHARACTERS)).isEqualTo("400");
+    assertThat(environment.getProperty(FeishuCardDefaults.CARD_STREAM_INTERVAL)).isEqualTo("3s");
+    assertThat(environment.getProperty(FeishuCardDefaults.CARD_STREAM_CHARACTERS)).isEqualTo("500");
   }
 
   @Test

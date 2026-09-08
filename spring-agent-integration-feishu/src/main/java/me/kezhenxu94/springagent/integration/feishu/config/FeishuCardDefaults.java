@@ -33,17 +33,19 @@ public class FeishuCardDefaults implements EnvironmentPostProcessor, Ordered {
   static final String CARD_STREAM_CHARACTERS = "app.feishu.card-stream-characters";
 
   /**
-   * A second between writes. Chosen for what a reader is doing rather than for what the API will
-   * take: an answer that redraws once a second reads as it being written, and shortening it buys
-   * smoothness the eye does not register while costing the run a round trip each time.
+   * Three seconds between writes. Chosen for what a reader is doing rather than for what the API
+   * will take: a card that redraws every few seconds still reads as an answer being written, and a
+   * shorter interval buys smoothness the eye does not register while costing the run a round trip
+   * each time.
    */
-  static final String DEFAULT_CARD_STREAM_INTERVAL = "1s";
+  static final String DEFAULT_CARD_STREAM_INTERVAL = "3s";
 
   /**
    * How far behind the card may fall before it is written early anyway, so that a burst of text
-   * does not sit unsent for the rest of the interval. Roughly a paragraph.
+   * does not sit unsent for the rest of the interval. Roughly a paragraph, which is what keeps the
+   * longer interval from reading as a stall.
    */
-  static final String DEFAULT_CARD_STREAM_CHARACTERS = "400";
+  static final String DEFAULT_CARD_STREAM_CHARACTERS = "500";
 
   @Override
   public void postProcessEnvironment(
