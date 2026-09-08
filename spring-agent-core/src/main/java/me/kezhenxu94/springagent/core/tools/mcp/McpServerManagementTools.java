@@ -67,6 +67,10 @@ reached, or it points at a private/loopback address, nothing is stored and an er
 attempt the call with the URL you were given rather than refusing on sight — the error message will
 explain why a URL is invalid. On success the server's tool names are returned. Re-adding an existing
 name overwrites its configuration.
+
+Every tool this server offers is exposed under a prefix, so pass toolPrefix when the user says what
+the tools should be called; without one the prefix is a hash of the server name, which is valid but
+unreadable. Two servers the same user can reach may not share a prefix.
 """)
   public String addMcpServer(
       @ToolParam(
@@ -91,6 +95,15 @@ name overwrites its configuration.
           final String description,
       @ToolParam(required = false, description = "Optional website URL for this integration")
           final String websiteUrl,
+      @ToolParam(
+              required = false,
+              description =
+                  "Optional prefix every tool of this server is named after, e.g. \"github\" makes"
+                      + " \"github_search_issues\". Letters, digits, underscores and hyphens only."
+                      + " Must not be one another server you can reach already uses. Defaults to a"
+                      + " hash of the name, which works but tells you nothing when you see the"
+                      + " tool")
+          final String toolPrefix,
       final ToolContext context) {
     final var ownerId = ToolContexts.require(context, ToolContexts.USER_ID);
 
@@ -105,6 +118,7 @@ name overwrites its configuration.
 
     try {
       clientFactory.validateRemoteUrl(serverUrl);
+      McpClientFactory.validateToolPrefix(toolPrefix);
     } catch (IllegalArgumentException e) {
       return messages.get("mcp-error", e.getMessage());
     }
@@ -125,8 +139,14 @@ name overwrites its configuration.
             .version(blankToNull(version))
             .description(blankToNull(description))
             .websiteUrl(blankToNull(websiteUrl))
+            .toolPrefix(blankToNull(toolPrefix))
             .enabled(true)
             .build();
+
+    final var taken = prefixTakenBy(config, context);
+    if (taken != null) {
+      return messages.get("mcp-prefix-taken", McpClientFactory.toolPrefix(config), taken);
+    }
 
     final List<String> toolNames;
     McpSyncClient client = null;
@@ -171,6 +191,35 @@ name overwrites its configuration.
         serverName,
         McpServerConfig.Transport.STREAMABLE_HTTP,
         toolNames.isEmpty() ? messages.get("mcp-no-tools") : String.join(", ", toolNames));
+  }
+
+  /**
+   * The name of another server this caller can reach whose tools would be named the same as {@code
+   * config}'s, or null when the prefix is free.
+   *
+   * <p>Checked against everything {@code findAccessibleTo} returns rather than only what the owner
+   * registered, because that is the exact set a run assembles: a prefix free among a user's own
+   * servers can still collide with one shared with them, and the collision costs the run every MCP
+   * tool rather than the one call. Disabled servers count — a server is re-enabled far more easily
+   * than a prefix is renamed once the model has been calling it.
+   *
+   * <p>Effective prefixes, from {@link McpClientFactory#toolPrefix}, so a chosen prefix that
+   * happens to spell out another server's name hash is caught too.
+   */
+  private String prefixTakenBy(final McpServerConfig config, final ToolContext context) {
+    final var prefix = McpClientFactory.toolPrefix(config);
+    final var identifiers =
+        McpServerConfig.accessIdentifiers(
+            config.ownerId(), ToolContexts.get(context, ToolContexts.CHAT_ID));
+    return repo.findAccessibleTo(config.ownerId(), identifiers).stream()
+        // Re-adding a name overwrites that very row, so it is not a second server.
+        .filter(
+            other ->
+                !(other.ownerId().equals(config.ownerId()) && other.name().equals(config.name())))
+        .filter(other -> prefix.equals(McpClientFactory.toolPrefix(other)))
+        .map(McpServerConfig::name)
+        .findFirst()
+        .orElse(null);
   }
 
   @Tool(

@@ -94,6 +94,25 @@ public class McpServerConfig {
   private String description;
   private String websiteUrl;
 
+  /**
+   * What every tool of this server is named after, e.g. {@code github} makes {@code
+   * github_search_issues}. Blank means the hash derived from {@link #name} — see {@code
+   * McpClientFactory#toolPrefix}, which is where the fallback lives and the only place that should
+   * read this field.
+   *
+   * <p>Worth setting because the default is unreadable by design: a hash distinguishes names that a
+   * character-stripping slug would collapse, at the cost of a tool called {@code
+   * mcp_1a2b3c4d5e6f7890_search}. The model sees that name and nothing else about where the tool
+   * came from, so a chosen prefix is the difference between it knowing which server it is calling
+   * and guessing.
+   *
+   * <p>Not queried on any backend, and deliberately not unique in the schema: uniqueness has to
+   * hold across every server one caller can reach, owned and shared alike, which no column
+   * constraint can express. {@code McpServerManagementTools} checks it at registration and {@code
+   * AgentToolsProvider} refuses a run whose assembled tools collide anyway.
+   */
+  private String toolPrefix;
+
   @Builder.Default private boolean enabled = true;
 
   /**

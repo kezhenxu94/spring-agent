@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -212,11 +214,14 @@ public class AgentToolsProvider {
     }
 
     agentTools.skillsTool().ifPresent(tools::add);
+    final var callbacks = new ArrayList<ToolCallback>();
     final var mcpCallbacks = agentTools.mcpTools().callbacks();
     if (mcpCallbacks != null) {
-      Collections.addAll(tools, mcpCallbacks);
+      Collections.addAll(callbacks, mcpCallbacks);
     }
-    tools.addAll(globalToolCallbacks());
+    callbacks.addAll(globalToolCallbacks());
+    rejectDuplicateToolNames(callbacks);
+    tools.addAll(callbacks);
 
     final var advisors = new ArrayList<Advisor>();
     knowledgeRetrieval(request, knowledgeHandler).ifPresent(advisors::add);
@@ -421,6 +426,40 @@ public class AgentToolsProvider {
   }
 
   /**
+   * Refuses a composition offering two tools of the same name.
+   *
+   * <p>Spring AI rejects such a request itself, deeper down and without saying which name or where
+   * either came from, so this is the same failure reported where the answer is: a chosen {@code
+   * toolPrefix} on one MCP server that another server the caller reaches already uses. Registration
+   * checks that (see {@code McpServerManagementTools}), but only against what the *owner* can
+   * reach, and a server shared with somebody afterwards is a collision nobody was there to catch.
+   *
+   * <p>Throwing costs the run, which is the point: the alternative is dropping one of the two, and
+   * then a tool call goes to whichever server survived the tie — a request meant for staging
+   * answered by production. The run is lost either way once Spring AI sees the request, so the only
+   * thing left to decide is whether the user is told why.
+   *
+   * <p>Only the callbacks are checked, not the tool objects beside them: a name is on a callback
+   * already, whereas reading one off a {@code @Tool} method means deriving callbacks that would
+   * then be thrown away. The names that can collide are the ones assembled from configuration
+   * anyway — a duplicate among this repository's own tools is a compile-time-visible mistake, not
+   * something a deployment can cause.
+   */
+  private static void rejectDuplicateToolNames(final List<ToolCallback> callbacks) {
+    final var seen = new HashSet<String>(callbacks.size());
+    for (final var callback : callbacks) {
+      final var name = callback.getToolDefinition().name();
+      if (!seen.add(name)) {
+        throw new IllegalStateException(
+            "Two tools offered to this run are both named '"
+                + name
+                + "'. Where these come from MCP servers, give one of them a different tool prefix"
+                + " (AddMcpServer's toolPrefix) so its tools are named apart.");
+      }
+    }
+  }
+
+  /**
    * Tools contributed to the application as a whole rather than built for one run: the callbacks of
    * every {@link ToolCallbackProvider} bean in the context.
    *
@@ -565,6 +604,7 @@ public class AgentToolsProvider {
         mcpServerConfigRepo.findAccessibleTo(userId, identifiers).stream()
             .filter(McpServerConfig::enabled)
             .toList();
+    rejectDuplicateToolPrefixes(configs);
     final var clients = new ArrayList<McpSyncClient>(configs.size());
     if (!configs.isEmpty()) {
       try (final var executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -597,14 +637,65 @@ public class AgentToolsProvider {
         }
       }
     }
-    final var callbacks =
-        clients.isEmpty()
-            ? new ToolCallback[0]
-            : SyncMcpToolCallbackProvider.builder()
-                .mcpClients(clients)
-                .toolNamePrefixGenerator(new ServerNameToolPrefixGenerator())
-                .build()
-                .getToolCallbacks();
-    return new McpTools(clients, callbacks);
+    if (clients.isEmpty()) {
+      return new McpTools(clients, new ToolCallback[0]);
+    }
+    try {
+      final var callbacks =
+          SyncMcpToolCallbackProvider.builder()
+              .mcpClients(clients)
+              .toolNamePrefixGenerator(new ServerNameToolPrefixGenerator())
+              .build()
+              .getToolCallbacks();
+      return new McpTools(clients, callbacks);
+    } catch (RuntimeException e) {
+      // Every client is connected by now and the caller learns of them only through the McpTools
+      // this returns, so anything thrown here has to close them itself. Listing tools is where
+      // Spring AI validates the assembled names, and it throws on a duplicate — which is exactly
+      // the case rejectDuplicateToolPrefixes above cannot see, two servers with different prefixes
+      // whose tool names collide anyway.
+      new McpTools(clients, new ToolCallback[0]).close();
+      throw e;
+    }
+  }
+
+  /**
+   * Refuses a run where two of the servers it would reach name their tools the same way.
+   *
+   * <p>A prefix is unique by construction while it is derived from the server name, so this only
+   * fires on a chosen {@code toolPrefix}. Registration checks the same thing, but only against what
+   * the *owner* could reach at the time: a server shared with somebody afterwards, or an
+   * application-wide one added later, is a collision nobody was there to catch.
+   *
+   * <p>Before the fan-out rather than after, so a run that cannot be composed does not pay for the
+   * handshakes first. And a refusal rather than dropping one of the two, because a dropped server
+   * means a tool call meant for staging answered by production — a wrong answer is worse than an
+   * error the user can act on. Spring AI refuses the request over duplicate names anyway; all this
+   * decides is whether the user is told what to change.
+   */
+  private static void rejectDuplicateToolPrefixes(final List<McpServerConfig> configs) {
+    final var byPrefix = new HashMap<String, String>(configs.size());
+    for (final var config : configs) {
+      final String prefix;
+      try {
+        prefix = McpClientFactory.toolPrefix(config);
+      } catch (IllegalArgumentException e) {
+        // A stored prefix that cannot be honoured costs that one server its tools, in
+        // createAndInitialize below, the same as a server that is unreachable. It is not a reason
+        // to refuse every other server's.
+        continue;
+      }
+      final var owner = byPrefix.putIfAbsent(prefix, config.name());
+      if (owner != null) {
+        throw new IllegalStateException(
+            "MCP servers '"
+                + owner
+                + "' and '"
+                + config.name()
+                + "' both name their tools '"
+                + prefix
+                + "_*'. Give one of them a different tool prefix (AddMcpServer's toolPrefix).");
+      }
+    }
   }
 }

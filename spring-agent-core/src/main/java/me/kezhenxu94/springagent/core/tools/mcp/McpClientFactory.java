@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
@@ -59,6 +60,9 @@ public class McpClientFactory {
   private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(30);
   private static final int HASH_PREFIX_LENGTH = 16;
+  private static final int MAX_TOOL_PREFIX_LENGTH = 32;
+  private static final Pattern TOOL_PREFIX_PATTERN =
+      Pattern.compile("[A-Za-z0-9_-]{1," + MAX_TOOL_PREFIX_LENGTH + "}");
 
   private final Set<String> trustedHosts;
   private final List<McpHeaderContributor> headerContributors;
@@ -95,7 +99,7 @@ public class McpClientFactory {
     final var title =
         config.title() == null || config.title().isBlank() ? config.name() : config.title();
     final var clientInfo =
-        McpSchema.Implementation.builder(hashPrefix(config.name()), version)
+        McpSchema.Implementation.builder(toolPrefix(config), version)
             .title(title)
             .description(config.description())
             .websiteUrl(config.websiteUrl())
@@ -138,6 +142,51 @@ public class McpClientFactory {
       }
     }
     return headers;
+  }
+
+  /**
+   * What this server's tools are named after: the prefix the user chose, or the hash of the server
+   * name when they chose none. Set as the client's {@code clientInfo} name above, which is what
+   * {@link ServerNameToolPrefixGenerator} reads.
+   *
+   * <p>The only reader of {@link McpServerConfig#toolPrefix()}, so that "blank means the hash"
+   * holds everywhere — a caller comparing prefixes for a collision has to see the same value the
+   * model will.
+   */
+  public static String toolPrefix(final McpServerConfig config) {
+    final var chosen = config.toolPrefix();
+    if (chosen == null || chosen.isBlank()) {
+      return hashPrefix(config.name());
+    }
+    validateToolPrefix(chosen);
+    return chosen.trim();
+  }
+
+  /**
+   * Rejects a chosen prefix that would make an invalid or unusable tool name.
+   *
+   * <p>The character set is the one every provider accepts for a tool name, and the length cap is
+   * about what is left for the tool's own name: {@link ServerNameToolPrefixGenerator} keeps the
+   * result inside 64 characters by truncating and appending a hash, so a prefix that eats most of
+   * that budget turns every tool of the server into a hash — the very thing naming one avoids.
+   *
+   * <p>Throws rather than falls back to the hash. A prefix that cannot be honoured is a mistake to
+   * report at registration, and silently using another name would have the model call tools under
+   * names the user was never told.
+   */
+  public static void validateToolPrefix(final String prefix) {
+    if (prefix == null || prefix.isBlank()) {
+      return;
+    }
+    final var trimmed = prefix.trim();
+    if (!TOOL_PREFIX_PATTERN.matcher(trimmed).matches()) {
+      throw new IllegalArgumentException(
+          "An MCP tool prefix may only contain letters, digits, underscores and hyphens, and must"
+              + " be at most "
+              + MAX_TOOL_PREFIX_LENGTH
+              + " characters: "
+              + trimmed);
+    }
   }
 
   /**

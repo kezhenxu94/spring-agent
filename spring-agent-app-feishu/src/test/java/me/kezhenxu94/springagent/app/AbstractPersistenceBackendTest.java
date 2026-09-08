@@ -79,6 +79,7 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
                 .transport(McpServerConfig.Transport.STREAMABLE_HTTP)
                 .url("https://mcp.example.invalid/sse")
                 .headers(Map.of("Authorization", "Bearer token", "X-Trace", "on"))
+                .toolPrefix("ops")
                 .sharedWith(List.of("ou_friend", "oc_group"))
                 .build());
     assertThat(saved.id()).isEqualTo(owner() + "-server-1");
@@ -91,6 +92,8 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
             Map.of("Authorization", "Bearer token", "X-Trace", "on"));
     assertThat(found.get().sharedWith()).containsExactlyInAnyOrder("ou_friend", "oc_group");
     assertThat(found.get().transport()).isEqualTo(McpServerConfig.Transport.STREAMABLE_HTTP);
+    // What every tool of the server is named after, so a backend that drops it renames them all.
+    assertThat(found.get().toolPrefix()).isEqualTo("ops");
 
     assertThat(mcpServerConfigRepo.existsByOwnerIdAndName(owner(), "server-1")).isTrue();
   }

@@ -91,6 +91,14 @@ every `ToolCallbackProvider` bean in the context, which is how application-wide 
 `spring.ai.mcp.client.*` reach the model. Those clients belong to the context and are never closed by
 a run; only the per-request ones in `McpTools` are.
 
+**A user-registered MCP server's tools are named after a prefix**, `<prefix>_<tool>`, and the
+prefix is the one the user chose (`AddMcpServer`'s `toolPrefix`, stored on `McpServerConfig`) or a
+hash of the server name when they chose none — `McpClientFactory.toolPrefix` is the only place that
+decides which. The hash is unique by construction, including for names differing only in non-ASCII
+text; a chosen prefix is not, so two servers one caller can reach may not share one. That is checked
+at registration and again in `compose(...)`, which refuses the run rather than dropping one of the
+two: a dropped server means a call meant for staging answered by production.
+
 **Per-request identity reaches a tool through `toolContext`**, with typed keys in `tools/ToolContexts.java`.
 Read them through those keys rather than by string.
 
