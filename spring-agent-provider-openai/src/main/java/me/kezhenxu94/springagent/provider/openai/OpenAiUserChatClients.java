@@ -192,9 +192,9 @@ public class OpenAiUserChatClients implements UserChatClients {
    * ask for, and how hard to think. That is not tidiness. Spring AI does not merge runtime options
    * with a model's defaults — {@code buildRequestPrompt} takes the supplied ones whole when there
    * are any — so options built from scratch here would quietly drop everything under {@code
-   * spring.ai.openai.chat}: the temperature, the reasoning effort, the timeout, and {@code
-   * stream-options.include-usage}, whose absence shows up not as an error but as runs that report
-   * no token usage and therefore no cost.
+   * spring.ai.openai.chat}: the temperature, the reasoning effort and the timeout, whose absence
+   * shows up not as a startup failure but as one endpoint's runs behaving unlike every other run on
+   * the same deployment.
    *
    * <p>The HTTP client customizers are the context's own for the same reason {@code
    * visionChatClient} takes them: built by hand, this model would otherwise be the one endpoint

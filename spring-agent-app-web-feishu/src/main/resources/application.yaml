@@ -255,8 +255,15 @@ spring:
         # keeps its MCP clients open and delays graceful shutdown for that whole time. Setting it
         # to 0 (the SDK's "no timeout") would remove both bounds; don't.
         timeout: 30m
-        stream-options:
-          include-usage: true
+        # `stream-options.include-usage` is deliberately *not* set here, even though every run's
+        # cost is read from the usage a streaming turn reports. Spring AI already asks for it:
+        # OpenAiChatModel sends `stream_options: {include_usage: true}` on a streaming request that
+        # carries no stream options of its own, so naming them here buys nothing — and costs one
+        # thing. Told to build the object, it writes *both* fields from null-collapsing ternaries,
+        # so the request also carries `include_obfuscation: false`, a field only OpenAI itself
+        # knows. Gemini's OpenAI-compatible endpoint refuses the whole request over it — `Unknown
+        # name "include_obfuscation" at 'stream_options'` — and any gateway strict about unknown
+        # fields does the same, failing every turn while this file looks correct.
       # The model RecognizeImage asks about an image, and the switch for that tool: naming none
       # means no vision client and therefore no such tool at all, rather than one that fails.
       #

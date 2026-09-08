@@ -901,12 +901,12 @@ their own runs into the same ones:
   cannot be expressed as different options.
 - Runtime options **replace** a model's defaults rather than merging with them —
   `buildRequestPrompt` takes the supplied ones whole when there are any. Anything built from
-  scratch silently drops everything under `spring.ai.openai.chat`, including
-  `stream-options.include-usage`, whose absence shows up not as an error but as runs that report no
-  token usage and so no cost. `OpenAiUserChatClients` starts from the application's own resolved
-  options — see `ApplicationEndpoint` for why the model bean's own are not enough — and overrides
-  only what makes the endpoint different: base URL, key, model, and the reasoning effort the user
-  chose.
+  scratch silently drops everything under `spring.ai.openai.chat` — the temperature, the reasoning
+  effort, the timeout — whose absence shows up not as a startup failure but as one endpoint's runs
+  behaving unlike every other run on the same deployment. `OpenAiUserChatClients` starts from the
+  application's own resolved options — see `ApplicationEndpoint` for why the model bean's own are
+  not enough — and overrides only what makes the endpoint different: base URL, key, model, and the
+  reasoning effort the user chose.
 - Tools are called by the `ToolCallingAdvisor` `SpringAgent` registers on the prompt, not by the
   model, so a hand-built `ChatModel` needs no `ToolCallingManager`. It does need the context's
   `OpenAiHttpClientBuilderCustomizer` beans, or its provider rejections stay unreadable.
