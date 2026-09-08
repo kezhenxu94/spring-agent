@@ -1420,14 +1420,17 @@ app:
     # reader nothing, since the next one replaces rather than follows it, and only the newest state
     # was ever going to be on screen.
     #
-    # A shorter interval is a smoother-looking card and a slower run; 0 sends every chunk as it
-    # arrives, which is what happened before these existed. The character trigger is what stops a
-    # burst of text from sitting unsent for the rest of an interval; 0 turns it off and leaves the
-    # clock in sole charge. Neither can lose the end of an answer: whatever is waiting is written
-    # when the interval passes, when the card is changed some other way, and when the run ends.
+    # A shorter interval is a smoother-looking card and more calls to Feishu; 0 sends every chunk
+    # as it arrives, which is what happened before these existed. It is not a knob over how fast a
+    # run goes, and lengthening it to make one faster is a wasted change: the calls are made on the
+    # card's own worker, so this paces that worker and never the run. The character trigger is what
+    # stops a burst of text from sitting unsent for the rest of an interval; 0 turns it off and
+    # leaves the clock in sole charge. Neither can lose the end of an answer: whatever is waiting
+    # is written when the interval passes, when the card is changed some other way, and when the
+    # run ends.
     #
     # These are here to name the environment variables, not to supply the values: FeishuCardDefaults
     # contributes the same two defaults for an application that configures neither, so a consumer of
     # the module as a library is covered without copying this block. Keep them in step.
-    card-stream-interval: ${FEISHU_CARD_STREAM_INTERVAL:3s}
-    card-stream-characters: ${FEISHU_CARD_STREAM_CHARACTERS:500}
+    card-stream-interval: ${FEISHU_CARD_STREAM_INTERVAL:1s}
+    card-stream-characters: ${FEISHU_CARD_STREAM_CHARACTERS:400}

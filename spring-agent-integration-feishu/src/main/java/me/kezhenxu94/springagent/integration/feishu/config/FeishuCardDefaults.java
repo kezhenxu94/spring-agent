@@ -33,19 +33,22 @@ public class FeishuCardDefaults implements EnvironmentPostProcessor, Ordered {
   static final String CARD_STREAM_CHARACTERS = "app.feishu.card-stream-characters";
 
   /**
-   * Three seconds between writes. Chosen for what a reader is doing rather than for what the API
-   * will take: a card that redraws every few seconds still reads as an answer being written, and a
-   * shorter interval buys smoothness the eye does not register while costing the run a round trip
-   * each time.
+   * A second between writes. Chosen for what a reader is doing rather than for what the API will
+   * take: an answer that redraws once a second reads as it being written, and shortening it buys
+   * smoothness the eye does not register while costing the run a round trip each time.
+   *
+   * <p>Lengthening it buys nothing, which is worth knowing before reaching for it: the calls are
+   * made on the card's own worker, so what this paces is that worker and never the run. A run that
+   * appears to be waiting on its card is waiting on something else — see {@code SpringAgent}'s
+   * listener scheduler.
    */
-  static final String DEFAULT_CARD_STREAM_INTERVAL = "3s";
+  static final String DEFAULT_CARD_STREAM_INTERVAL = "1s";
 
   /**
    * How far behind the card may fall before it is written early anyway, so that a burst of text
-   * does not sit unsent for the rest of the interval. Roughly a paragraph, which is what keeps the
-   * longer interval from reading as a stall.
+   * does not sit unsent for the rest of the interval. Roughly a paragraph.
    */
-  static final String DEFAULT_CARD_STREAM_CHARACTERS = "500";
+  static final String DEFAULT_CARD_STREAM_CHARACTERS = "400";
 
   @Override
   public void postProcessEnvironment(

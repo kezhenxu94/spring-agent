@@ -54,6 +54,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
 
 /**
@@ -185,6 +186,30 @@ public class SpringAgent {
    * per waiting run, which is not what a pooled platform thread is for.
    */
   private final ExecutorService subagentWaiters = Executors.newVirtualThreadPerTaskExecutor();
+
+  /**
+   * Where everything the operators below do with a chunk happens, listeners included, so that what
+   * a surface does with a chunk is done on a thread belonging to this run and to nothing else.
+   *
+   * <p>The thread it would otherwise be is not the network's: Spring AI's own pipeline already
+   * hands the chunks over on a {@code boundedElastic} worker, through a queue with a prefetch of
+   * 256. So what is at stake is not whether a listener may block at all — it is whose thread it
+   * blocks. That pool is a fixed number of workers, shared with every other run's stream and with
+   * each tool round of it, and a surface does block: a card or a message has to be waited on
+   * wherever an element must exist before anything can be streamed into it, which is a round trip
+   * on the first chunk of every card and on every tool call. Once the queue behind a blocked worker
+   * fills, the model's stream stops being read — and the worker was never ours to hold in the first
+   * place.
+   *
+   * <p>So the chunks are handed over once more, onto a thread of our own, and both queues become
+   * slack the surface may fall behind by: a stalled listener costs the run a few chunks of lag
+   * rather than a pooled worker and, eventually, its own stream. Virtual threads for the same
+   * reason {@link #subagentWaiters} uses them — this holds a thread for as long as a run lasts and
+   * spends most of it waiting.
+   */
+  private final Scheduler notifications =
+      Schedulers.fromExecutorService(
+          Executors.newVirtualThreadPerTaskExecutor(), "agent-listeners");
 
   @Getter private volatile boolean accepting = true;
 
@@ -552,6 +577,10 @@ public class SpringAgent {
         // still waiting on was never delivered and sends it again, so a slow assembly turned into
         // duplicate answers. boundedElastic because everything being moved is blocking.
         .subscribeOn(Schedulers.boundedElastic())
+        // Everything below this line runs on a thread of the run's own rather than on the pooled
+        // worker Spring AI emits from — see notifications, which is what makes a listener free to
+        // wait on a write without the model's stream waiting behind it.
+        .publishOn(notifications)
         .doOnSubscribe(
             $ -> {
               final var current = inFlight.incrementAndGet();
@@ -678,13 +707,12 @@ public class SpringAgent {
 
               // The run is over as far as the model is concerned, but not as far as the turn is:
               // the subagents it started are still going, and they belong to it. Waiting for them
-              // is the one thing that must not happen here. This callback runs on a Reactor
-              // boundedElastic worker, the pool is a fixed number of single-threaded executors
-              // shared out once it is full, and every subagent's own stream needs a worker from
-              // it — so blocking here can be blocking the very thread that would let a subagent
-              // finish, which is a deadlock with nothing thrown and nothing logged. A thread of
-              // our own instead, and only when there is in fact something to wait for: a run with
-              // no subagents, which is nearly all of them, ends inline exactly as before.
+              // is the one thing that must not happen here, because this callback does not always
+              // run on the thread the operators above it did: a cancellation disposes the
+              // subscription from whoever pressed stop, and a wait measured in minutes on that
+              // thread is the surface's dispatcher held for all of it. A thread of our own
+              // instead, and only when there is in fact something to wait for: a run with no
+              // subagents, which is nearly all of them, ends inline exactly as before.
               if (liveRun.children().isEmpty()) {
                 tail.run();
               } else {

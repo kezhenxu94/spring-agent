@@ -17,6 +17,10 @@ rendering, the Spring AI `ChatClient` call, MCP client lifecycle, listener fan-o
 Integrations never touch `AgentToolsProvider`, MCP clients or Reactor directly. If something needs to
 happen around every run, it is a listener or an interceptor here, not a special case in a surface.
 
+The fan-out is on a virtual thread of the run's own rather than on the worker Spring AI emits from,
+which is what makes a listener free to wait on a write — see the `notifications` scheduler in
+`SpringAgent`. A callback that blocks costs the run its own lag and no other run anything.
+
 ## The packages
 
 | Package | What lives there |
@@ -92,9 +96,10 @@ Read them through those keys rather than by string.
 
 **A log line says which run it belongs to**, through the MDC keys in `logging/RunMdc.java` —
 `requestId`, `conversationId`, `userId`. A run crosses several threads (assembled on the caller's,
-streamed on Reactor's, waited out on a virtual thread of its own, tool-called from inside the
-chain), so this is two mechanisms rather than one: `RunMdc.of(...)` opens an explicit scope that
-restores what was there when it closes, and `MdcThreadLocalAccessor` plus
+streamed on Reactor's, reported to its listeners on a virtual thread of its own, waited out on
+another, tool-called from inside the chain), so this is two mechanisms rather than one:
+`RunMdc.of(...)` opens an explicit scope that restores what was there when it closes, and
+`MdcThreadLocalAccessor` plus
 `Hooks.enableAutomaticContextPropagation()` (in `RunContextPropagationConfiguration`, off with
 `app.logging.run-context-propagation: false`) makes Reactor carry that MDC across the boundaries —
 which is what tags Spring AI's own log lines, since they are written inside the run's chain on
