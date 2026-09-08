@@ -42,6 +42,7 @@ import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.chat.prompt.PromptTemplate;
+import org.springframework.ai.mcp.AsyncMcpToolCallbackProvider;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
 import org.springframework.ai.rag.generation.augmentation.ContextualQueryAugmenter;
@@ -481,6 +482,7 @@ public class AgentToolsProvider {
         .forEach(
             provider -> {
               try {
+                rediscover(provider);
                 // Listing tools is a round trip to a remote server for the MCP provider, and a
                 // server that is down or slow costs the run those tools, never the run itself —
                 // the same bargain the per-request MCP path strikes above.
@@ -493,6 +495,45 @@ public class AgentToolsProvider {
               }
             });
     return callbacks;
+  }
+
+  /**
+   * Makes an MCP provider list its server's tools again, rather than answer from the set it listed
+   * once.
+   *
+   * <p>Spring AI's two providers cache their callbacks and invalidate that cache from one place
+   * only: an {@code McpToolsChangedEvent}, which arrives if — and only if — the server pushes a
+   * {@code notifications/tools/list_changed} over the session that is open. A server redeployed
+   * behind its URL with a tool added, removed or renamed pushes nothing over a session that was
+   * torn down with the old process, so without this every later run is offered the set listed at
+   * startup, until the application is restarted.
+   *
+   * <p>The tool search makes that worse rather than merely stale. Its advisor fingerprints the
+   * names and descriptions it is handed and re-indexes only when that fingerprint moves, so a
+   * frozen tool set is also a frozen index: searching finds the tool that no longer exists and
+   * cannot find the one that replaced it. The symptom reads as a broken index, which is the wrong
+   * place to look.
+   *
+   * <p>Once per run, which is where the two MCP paths meet: a user's own servers are connected,
+   * handshaken and listed afresh for every request already (see {@link #buildMcpTools}), and one
+   * {@code listTools} round trip is strictly less than that. A server that cannot be reached costs
+   * its tools this run, by the caller's {@code catch} — the bargain stated there, and the right one
+   * for a tool the model would otherwise see and call into a server that is gone.
+   *
+   * <p>Concurrent runs do not each pay for it: the provider re-lists under a lock and clears the
+   * flag, so runs arriving while one is listing read the set it just fetched.
+   *
+   * <p>By type rather than through an interface because upstream publishes none — {@code
+   * invalidateCache} is declared on each provider class. A {@link ToolCallbackProvider} of any
+   * other kind is left alone: nothing is known about where it gets its callbacks, and it is free to
+   * be as fresh as it likes.
+   */
+  private static void rediscover(final ToolCallbackProvider provider) {
+    if (provider instanceof SyncMcpToolCallbackProvider sync) {
+      sync.invalidateCache();
+    } else if (provider instanceof AsyncMcpToolCallbackProvider async) {
+      async.invalidateCache();
+    }
   }
 
   /**

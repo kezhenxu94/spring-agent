@@ -89,7 +89,10 @@ get wrong.
 there too: alongside the `@AgentTool` beans and the user's own MCP servers it appends the callbacks of
 every `ToolCallbackProvider` bean in the context, which is how application-wide MCP servers under
 `spring.ai.mcp.client.*` reach the model. Those clients belong to the context and are never closed by
-a run; only the per-request ones in `McpTools` are.
+a run; only the per-request ones in `McpTools` are. Each is asked to list its server's tools again
+before every run, because Spring AI's providers otherwise answer from the set they listed at startup
+and invalidate that cache only on a `notifications/tools/list_changed` the server has to push — see
+`AgentToolsProvider.rediscover` for why a frozen tool set also freezes the tool-search index.
 
 **A user-registered MCP server's tools are named after a prefix**, `<prefix>_<tool>`, and the
 prefix is the one the user chose (`AddMcpServer`'s `toolPrefix`, stored on `McpServerConfig`) or a

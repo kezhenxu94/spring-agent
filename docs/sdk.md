@@ -387,7 +387,10 @@ Per-request identity reaches a tool through the tool context, under typed keys i
 - the callbacks of every `ToolCallbackProvider` bean, which is how application-wide MCP servers
   configured under `spring.ai.mcp.client.*` reach the model — Spring AI publishes them as such a
   bean but never wires it into a `ChatClient` itself. Those clients belong to the context and are
-  never closed by a run.
+  never closed by a run, and each MCP provider among them is made to list its server's tools again
+  before every run — upstream caches that listing and re-fetches it only on a server-pushed
+  `notifications/tools/list_changed`, so a server redeployed with a tool added, removed or renamed
+  would otherwise stay hidden until the application restarts.
 
 It also contributes two advisors, since both are tools in everything but shape:
 `AutoMemoryToolsAdvisor`, which adds the memory tools and the paragraph that explains them, and
