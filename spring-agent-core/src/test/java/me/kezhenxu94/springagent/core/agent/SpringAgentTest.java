@@ -1501,7 +1501,7 @@ class SpringAgentTest {
     }
   }
 
-  private static final class RecordingListener implements AgentResponseListener {
+  private static class RecordingListener implements AgentResponseListener {
     private final List<String> contents = new ArrayList<>();
     private final List<Throwable> errors = new ArrayList<>();
     private final List<AgentOutcome> outcomes = new ArrayList<>();
@@ -1528,6 +1528,38 @@ class SpringAgentTest {
     public boolean shouldContinue() {
       return !stopAfterFirstContent || contents.isEmpty();
     }
+  }
+
+  @Test
+  @DisplayName(
+      "a listener is called on a thread of the run's own, not one the model's stream needs")
+  void listenersRunOffTheStreamsOwnThreads() {
+    // Spring AI hands the chunks over on a boundedElastic worker of its own, so what is at stake
+    // here is not whether a listener may block — it is whose thread it blocks. That pool is a
+    // fixed number of workers shared with every run's stream and with each tool round of it, and a
+    // surface has to wait on the writes that put an element somewhere before anything can be
+    // streamed into it. Blocking one of those workers for a round trip per tool call is the model's
+    // stream paced by the card, and there is no rate at which asking for that is safe.
+    final var threads = new java.util.concurrent.CopyOnWriteArrayList<Thread>();
+    final var listener =
+        new RecordingListener() {
+          @Override
+          public void onContent(final String contentSoFar) {
+            threads.add(Thread.currentThread());
+          }
+        };
+
+    fireAndAwait(request(), listener);
+
+    assertThat(threads).as("nothing was streamed").isNotEmpty();
+    assertThat(threads)
+        .allSatisfy(
+            thread -> {
+              assertThat(thread.isVirtual())
+                  .as("a listener ran on %s, a pooled thread the model's stream needs", thread)
+                  .isTrue();
+              assertThat(thread.getName()).doesNotStartWith("boundedElastic");
+            });
   }
 
   /** Streams two chunks and remembers the tool context it was called with. */

@@ -207,9 +207,11 @@ and a run that has not finished within `timeout` throws `AgentTimeoutException`.
 stops the *waiting*: call `cancel(requestId)` yourself if you want the run ended too.
 
 **Never call it from inside a run** — a tool method, a `ToolCallInterceptor`, a listener callback.
-Those execute on Reactor's bounded `boundedElastic` pool, which the new run needs a worker from as
-well; blocking one to wait for another exhausts that pool. A tool that wants a run of its own has
-`SubagentTools`, which hands the waiting off to a thread of its own.
+A tool method and an interceptor execute on Reactor's bounded `boundedElastic` pool, which the new
+run needs a worker from as well; blocking one to wait for another exhausts that pool. A listener
+callback has a thread of its own, but it is the thread that run's chunks are handed over on, so
+waiting there for a second run stalls the first for as long as the second takes. A tool that wants a
+run of its own has `SubagentTools`, which hands the waiting off to a thread of its own.
 
 That last one has an ordering contract worth knowing if your surface holds a connection of its own.
 `onShutdown()` is a `ContextClosedEvent` listener ordered `LOWEST_PRECEDENCE`, and it *blocks* for
@@ -259,6 +261,13 @@ class MySurfaceListener implements AgentResponseListener {
 
 `registry.abort(reason)` refuses the run outright, which is how a surface enforces its own
 preconditions without a tool of its own.
+
+**Every callback runs on one virtual thread belonging to that run**, so they are serialized and a
+callback may block — waiting on the write that puts an element on a card before anything can be
+streamed into it, say. What it costs is the run's own lag: the chunks queue behind it and the surface
+falls behind the model rather than the model waiting on the surface. What it must not do is wait for
+*another* run (see `fireAndWait` below) or for something with no timeout: a run's stream is not read
+while its listeners are being called, so a callback that never returns is a turn that never ends.
 
 ## Asking the user a question
 
