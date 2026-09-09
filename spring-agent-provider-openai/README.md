@@ -40,7 +40,12 @@ Four things, each because Spring AI has no way to know it:
   [`ApplicationEndpoint`](src/main/java/me/kezhenxu94/springagent/provider/openai/ApplicationEndpoint.java)
   before touching either: `OpenAiChatProperties.toOptions()` carries no base URL and no credential,
   and the SDK handed no credential goes looking in the environment — so a client built from the
-  model bean's own options can end up quietly pointed at the public OpenAI endpoint.
+  model bean's own options can end up quietly pointed at the public OpenAI endpoint. A hand-built
+  chat model also has to be handed the context's `ToolCallingManager`: the advisor `SpringAgent`
+  registers only *executes* tool calls, while the request's tool list is still resolved by the
+  model, so a model built without one offers the endpoint tool definitions none of the runtime's
+  rewrites reached — no `_display_description`, so no tool call has a title on a card, and no
+  localized descriptions. `OpenAiUserModelToolsTest` reads that off the wire.
 - **`OpenAiErrorBodyLoggingInterceptor`** — the only place a rejected request's body still exists.
   openai-java renders a non-JSON error envelope as the words `400: Unknown`, so without this a run
   fails for literally unknowable reasons.

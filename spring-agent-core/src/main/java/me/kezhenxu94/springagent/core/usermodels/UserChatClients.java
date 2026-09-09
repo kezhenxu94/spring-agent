@@ -15,6 +15,14 @@ import org.springframework.ai.chat.client.ChatClient;
  * is "build a client for an endpoint somebody typed into a chat five seconds ago", and Spring AI's
  * model beans are all built once, at startup, from configuration.
  *
+ * <p><b>A client built here must be built with the context's {@code ToolCallingManager}.</b> The
+ * advisor {@code SpringAgent} registers executes a run's tool calls, but the tool list a request
+ * carries is resolved by the chat model, from the manager it was built with — and a builder given
+ * none substitutes a plain default. A client built without it works, answers, and calls tools,
+ * while offering the endpoint definitions that none of the runtime's rewrites reached: no {@code
+ * core/tools/DisplayDescription} parameter, so no tool call has a title on any surface, and no
+ * localized tool or parameter descriptions. See {@code OpenAiUserChatClients#build}.
+ *
  * <p>Implementations are expected never to throw and never to return null from {@link #forUser}: a
  * user whose stored endpoint cannot be read must get the application's model, because failing here
  * would fail the very run they would use to fix it.

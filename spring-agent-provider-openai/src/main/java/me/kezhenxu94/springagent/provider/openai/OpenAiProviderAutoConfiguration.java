@@ -15,6 +15,7 @@ import org.springframework.ai.image.ImageModel;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiCommonProperties;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingProperties;
+import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.OpenAiImageModel;
@@ -210,12 +211,17 @@ public class OpenAiProviderAutoConfiguration {
       final OpenAiCommonProperties commonProperties,
       final OpenAiChatProperties chatProperties,
       final UserModelRegistry registry,
+      // The context's own, because a chat model built by hand is offered a plain default in its
+      // place and then asks the endpoint for a tool list none of the runtime's rewrites reached —
+      // see OpenAiUserChatClients#build. Spring AI hands its own models this same bean.
+      final ToolCallingManager toolCallingManager,
       final List<OpenAiHttpClientBuilderCustomizer> httpClientCustomizers,
       final UserModelsProperties properties) {
     return new OpenAiUserChatClients(
         defaultChatClient,
         registry,
         resolvedOptions(defaultChatModel, commonProperties, chatProperties),
+        toolCallingManager,
         httpClientCustomizers,
         properties.cacheSize());
   }

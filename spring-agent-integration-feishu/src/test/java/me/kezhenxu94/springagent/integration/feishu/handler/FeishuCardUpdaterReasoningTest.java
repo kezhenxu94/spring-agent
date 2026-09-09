@@ -198,6 +198,7 @@ class FeishuCardUpdaterReasoningTest {
             new AesGcmSealer(java.util.Base64.getEncoder().encodeToString(new byte[32]), "test"),
             3),
         appOptions,
+        org.springframework.ai.model.tool.ToolCallingManager.builder().build(),
         List.of(),
         4);
   }
