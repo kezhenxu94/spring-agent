@@ -181,6 +181,12 @@ never has to infer it from the shape of an error.
 | `toolContext` | Extra tool-context entries; core's identity keys are filled in and win on conflict |
 | `listeners`, `todoEventHandlers` | Per-run observers, in addition to the bean-declared ones |
 
+A todo handler is `core.tools.TodoWriteTool.TodoEventHandler`, core's own type rather than the
+library's identically named one — `TodoWrite` is a fork, for the schema reason in
+[spring-agent-core's README](../spring-agent-core/README.md#todowrite-and-why-it-is-a-fork). The
+records it hands you (`Todos`, `Todos.TodoItem`, `Todos.Status`) are unchanged, so a surface that
+renders a todo list changes an import and nothing else.
+
 `fireOrQueue(...)` is the variant for a surface where a user may type again while a run is still
 working: the message joins the run in flight rather than starting a second one, and the run reads it
 through the `QUEUED_MESSAGES` tool-context key. `cancel(requestId)` stops a run; `onShutdown()` lets

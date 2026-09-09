@@ -68,6 +68,26 @@ Four decisions in there are load-bearing, and each has its reasoning at the code
   per-path lock, since a group's `MEMORY.md` now has concurrent writers; a directory in a shared
   scope is not deleted whole; and one call's output is capped per scope.
 
+## TodoWrite, and why it is a fork
+
+`tools/TodoWriteTool.java` is a fork of the library's tool of the same name, and the only difference
+is the tool method's parameter: it takes the list of items, where upstream takes the `Todos` wrapper.
+Spring AI builds a tool's input schema from the method's parameters, keyed by parameter name, and
+inlines each parameter's own type — and upstream's parameter is called `todos` while the wrapper's
+single component is also called `todos`. So the only payload the schema accepted was
+`{"todos": {"todos": [...]}}`; models send `{"todos": [...]}`, which fails to deserialize, and the
+description names no fields, so a run burns turns guessing. `TodoWriteToolTest` asserts the flat
+schema.
+
+`Todos`, `Todos.TodoItem`, `Todos.Status` and `TodoEventHandler` are byte-identical to upstream's,
+and the tool name and description are too — so the surfaces that render a todo list only changed an
+import, and `core/prompts/tools/TodoWrite_zh_CN.md` keeps applying. The fix is
+[upstream PR #74](https://github.com/spring-ai-community/spring-ai-agent-utils/pull/74): when it is
+released, delete this class, point every import back at `org.springaicommunity.agent.tools`, and put
+`TodoWriteTool` back in `CoreEveryToolTranslatedTest`'s list of the library's tools — the package
+scan finds it while it is core's own, and stops when it is not. It stays in
+`aot/AgentToolsRuntimeHints`' list either way: nothing declares it a bean, so AOT never sees it.
+
 ## Rules this module keeps
 
 **No persistence backend and no model provider, ever.** `checkRuntimeClasspathIsolation` (wired into

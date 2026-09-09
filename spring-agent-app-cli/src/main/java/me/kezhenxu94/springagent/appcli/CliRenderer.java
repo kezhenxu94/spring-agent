@@ -8,11 +8,11 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener.SubagentEvent;
+import me.kezhenxu94.springagent.core.tools.TodoWriteTool.TodoEventHandler;
+import me.kezhenxu94.springagent.core.tools.TodoWriteTool.Todos;
 import me.kezhenxu94.springagent.core.tools.ToolContextKey;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.jline.utils.WCWidth;
-import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
-import org.springaicommunity.agent.tools.TodoWriteTool.Todos;
 import org.springframework.ai.chat.metadata.Usage;
 
 /**

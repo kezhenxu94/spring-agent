@@ -7,7 +7,7 @@ import java.util.function.Consumer;
 import lombok.Builder;
 import lombok.Singular;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeRetrieval;
-import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
+import me.kezhenxu94.springagent.core.tools.TodoWriteTool.TodoEventHandler;
 import org.springframework.ai.chat.client.ChatClient;
 
 /**

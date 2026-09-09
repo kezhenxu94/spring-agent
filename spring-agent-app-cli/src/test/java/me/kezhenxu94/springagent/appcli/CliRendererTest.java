@@ -7,6 +7,9 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
+import me.kezhenxu94.springagent.core.tools.TodoWriteTool.Todos;
+import me.kezhenxu94.springagent.core.tools.TodoWriteTool.Todos.Status;
+import me.kezhenxu94.springagent.core.tools.TodoWriteTool.Todos.TodoItem;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,9 +17,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springaicommunity.agent.tools.TodoWriteTool.Todos;
-import org.springaicommunity.agent.tools.TodoWriteTool.Todos.Status;
-import org.springaicommunity.agent.tools.TodoWriteTool.Todos.TodoItem;
 
 // Lenient because the console's styling helpers are stubbed once in setUp for every test, and most
 // tests exercise only some of them.
