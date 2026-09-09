@@ -91,6 +91,28 @@ class ToolSearchIndexConfigurationTest {
                     .isInstanceOf(StatelessVectorToolIndex.class));
   }
 
+  @Test
+  @DisplayName("no tool search means no index of ours, and no store required either")
+  void backsOffWhereTheToolSearchIsOff() {
+    // Upstream conditions its whole auto-configuration on `enabled`, so with the tool search off
+    // there is nothing to replace. Asserted with no VectorStore in the context, because that is
+    // where getting it wrong is not merely an unread bean: the index bean's own failure would stop
+    // a deployment that had turned both off together from starting at all.
+    new ApplicationContextRunner()
+        .withConfiguration(
+            AutoConfigurations.of(
+                PropertyPlaceholderAutoConfiguration.class,
+                ToolSearchIndexConfiguration.class,
+                ToolSearchAdvisorAutoConfiguration.class))
+        .withPropertyValues("spring.ai.chat.client.tool-search-advisor.tool-index-type=vector")
+        .run(
+            context ->
+                assertThat(context)
+                    .hasNotFailed()
+                    .doesNotHaveBean(ToolIndex.class)
+                    .doesNotHaveBean(StatelessVectorToolIndex.class));
+  }
+
   @Configuration(proxyBeanMethods = false)
   static class AVectorStore {
     @Bean

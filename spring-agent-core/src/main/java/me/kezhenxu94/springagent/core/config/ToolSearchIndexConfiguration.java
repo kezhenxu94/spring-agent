@@ -9,6 +9,7 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -26,6 +27,12 @@ import org.springframework.context.annotation.Bean;
  * selecting {@code lucene} or {@code regex} still selects them: this replaces the vector index, it
  * does not overrule the choice of index.
  *
+ * <p>And on {@code enabled}, which upstream carries on the auto-configuration as a whole rather
+ * than on its index. Without it a deployment that turns the tool search off but leaves {@code
+ * tool-index-type} where it was gets an index nothing reads — and, where the store is the one thing
+ * it was also turning off, a context that fails to start on the exception below. A replacement has
+ * to be conditioned on everything the thing it replaces was, or it outlives it.
+ *
  * <p>The store is taken as an {@link ObjectProvider} and read when the index is built, for the same
  * reason and with the same consequence. {@code @ConditionalOnBean(VectorStore.class)} would be
  * answered while this auto-configuration is processed, and every auto-configuration that
@@ -36,6 +43,9 @@ import org.springframework.context.annotation.Bean;
  * earlier deployment.
  */
 @AutoConfiguration(before = ToolSearchAdvisorAutoConfiguration.class)
+@ConditionalOnBooleanProperty(
+    prefix = "spring.ai.chat.client.tool-search-advisor",
+    name = "enabled")
 @ConditionalOnProperty(
     prefix = "spring.ai.chat.client.tool-search-advisor",
     name = "tool-index-type",
