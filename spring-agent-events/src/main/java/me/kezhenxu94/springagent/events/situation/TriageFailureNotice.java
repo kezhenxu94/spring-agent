@@ -182,6 +182,12 @@ public class TriageFailureNotice {
               notifier.quoted(oneLine(event.kind())),
               notifier.quoted(oneLine(event.summary()))));
     }
+
+    // A blank line before the closing fence, which the brief does not need: this one is rendered as
+    // markdown by a chat surface, and a line following a bullet with no blank line between them is
+    // read as a continuation of that bullet. Without it the marker saying where somebody else's
+    // words stop is drawn inside the last of them, which is the one place it must not be.
+    lines.add("");
     lines.add(messages.get("notice-fence-end"));
     return lines;
   }

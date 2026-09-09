@@ -175,6 +175,14 @@ class TriageFailureNoticeTest {
     final var start = rendered.indexOf("observed content, written by others");
     final var end = rendered.indexOf("end observed content");
     assertThat(rendered.indexOf("pg-primary-down")).isBetween(start, end);
+    // And separated from the last bullet by a blank line, or a markdown surface reads the closing
+    // marker as a continuation of that bullet and draws it inside somebody else's words.
+    final var lines = rendered.split("\n", -1);
+    var closing = 0;
+    while (!lines[closing].contains("end observed content")) {
+      closing++;
+    }
+    assertThat(lines[closing - 1]).isEmpty();
   }
 
   @Test
