@@ -5,12 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
+import me.kezhenxu94.springagent.core.tools.TodoWriteTool.Todos;
 import me.kezhenxu94.springagent.integration.websocket.run.RunEvent;
 import me.kezhenxu94.springagent.integration.websocket.run.RunJournal;
 import me.kezhenxu94.springagent.integration.websocket.run.WebRunRenderer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springaicommunity.agent.tools.TodoWriteTool.Todos;
 
 /** What one run's callbacks turn into on the wire. */
 class WebRunRendererTest {

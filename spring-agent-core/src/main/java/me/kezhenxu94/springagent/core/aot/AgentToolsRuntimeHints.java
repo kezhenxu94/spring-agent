@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.core.aot;
 
 import java.util.List;
+import me.kezhenxu94.springagent.core.tools.TodoWriteTool;
 import org.springaicommunity.agent.tools.AskUserQuestionTool;
 import org.springaicommunity.agent.tools.FileSystemTools;
 import org.springaicommunity.agent.tools.GlobTool;
@@ -8,27 +9,29 @@ import org.springaicommunity.agent.tools.GrepTool;
 import org.springaicommunity.agent.tools.ListDirectoryTool;
 import org.springaicommunity.agent.tools.ShellTools;
 import org.springaicommunity.agent.tools.SkillsTool;
-import org.springaicommunity.agent.tools.TodoWriteTool;
 import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
 
 /**
- * Reflection hints for the tools that come from spring-ai-agent-utils.
+ * Reflection hints for the tools a run is handed rather than told about by a bean definition.
  *
  * <p>Spring AI finds a tool by reflecting for {@code @Tool} over declared methods, and {@code
  * ChatClient.tools(...)} rejects an object with none — so without these a native image fails the
  * run rather than quietly losing a tool.
  *
  * <p>In core rather than in an integration because core composes these, so every integration built
- * as a native image needs the same set. A tool this project declares itself is found through
- * {@code @AgentTool} and already gets hints from Spring's own AOT processing.
+ * as a native image needs the same set. A tool this project declares as a bean is found through
+ * {@code @AgentTool} and already gets hints from Spring's own AOT processing — which is why {@code
+ * TodoWriteTool} is in this list despite being core's own class: nothing declares it a bean, {@code
+ * AgentToolsProvider} builds one per run, so AOT never sees it.
  */
 public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
 
   /**
-   * Every tool type spring-ai-agent-utils can hand to a run. The two search tools it also ships,
-   * Brave and web fetch, are left out: nothing here constructs them.
+   * Every tool type spring-ai-agent-utils can hand to a run, plus core's fork of one of them. The
+   * two search tools the library also ships, Brave and web fetch, are left out: nothing here
+   * constructs them.
    *
    * <p>Public because it is this module's one statement of which tools it takes from that library,
    * and the test that no translation names a tool that no longer exists reads the same list. Adding

@@ -66,7 +66,7 @@ class CoreToolsLocalizedEndToEndTest {
   void upstreamTool() {
     final var definition =
         localized(
-            org.springaicommunity.agent.tools.TodoWriteTool.builder().build(),
+            me.kezhenxu94.springagent.core.tools.TodoWriteTool.builder().build(),
             Locale.of("zh", "CN"));
 
     assertThat(definition.name()).isEqualTo("TodoWrite");
