@@ -55,6 +55,8 @@ public class FeishuQuestionHandler implements QuestionHandler {
             .userId(request.userId())
             .chatId(request.chatId())
             .chatType(request.chatType())
+            .groupId(request.groupId())
+            .tenantId(request.tenantId())
             .conversationId(request.conversationId())
             .rootMessageId(request.rootMessageId())
             .cardId(card.cardId())

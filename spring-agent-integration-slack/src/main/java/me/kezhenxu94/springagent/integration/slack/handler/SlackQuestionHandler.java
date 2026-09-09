@@ -58,6 +58,8 @@ public class SlackQuestionHandler implements QuestionHandler {
             .userId(request.userId())
             .chatId(request.chatId())
             .chatType(request.chatType())
+            .groupId(request.groupId())
+            .tenantId(request.tenantId())
             .conversationId(request.conversationId())
             .rootMessageId(request.rootMessageId())
             // The field is named for a card and is opaque to core, which never reads it: here it

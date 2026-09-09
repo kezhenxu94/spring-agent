@@ -189,6 +189,8 @@ public class FeishuQuestionAnswerHandler {
               .userId(pending.userId())
               .chatId(pending.chatId())
               .chatType(pending.chatType())
+              .groupId(pending.groupId())
+              .tenantId(pending.tenantId())
               .conversationId(pending.conversationId())
               .rootMessageId(pending.rootMessageId())
               .replyMessageId(replyTo)
