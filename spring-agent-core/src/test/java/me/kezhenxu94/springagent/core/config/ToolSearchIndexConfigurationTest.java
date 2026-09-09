@@ -10,6 +10,7 @@ import org.springframework.ai.chat.client.advisor.toolsearch.autoconfigure.ToolS
 import org.springframework.ai.tool.toolsearch.ToolIndex;
 import org.springframework.ai.tool.toolsearch.index.regex.RegexToolIndex;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.context.PropertyPlaceholderAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -66,8 +67,44 @@ class ToolSearchIndexConfigurationTest {
                     .isInstanceOf(RegexToolIndex.class));
   }
 
+  @Test
+  @DisplayName(
+      "the vector tool index is ours when the store arrives from a later auto-configuration")
+  void oursWinsWhateverRegistersTheStore() {
+    // Which is every real deployment: Milvus's store comes from Spring AI's
+    // MilvusVectorStoreAutoConfiguration, and core's own simple store from
+    // VectorStoreConfiguration, both of which sort after this one.
+    new ApplicationContextRunner()
+        .withConfiguration(
+            AutoConfigurations.of(
+                PropertyPlaceholderAutoConfiguration.class,
+                ToolSearchIndexConfiguration.class,
+                ToolSearchAdvisorAutoConfiguration.class,
+                ALateVectorStore.class))
+        .withPropertyValues(
+            "spring.ai.chat.client.tool-search-advisor.enabled=true",
+            "spring.ai.chat.client.tool-search-advisor.tool-index-type=vector")
+        .run(
+            context ->
+                assertThat(context.getBeansOfType(ToolIndex.class).values())
+                    .singleElement()
+                    .isInstanceOf(StatelessVectorToolIndex.class));
+  }
+
   @Configuration(proxyBeanMethods = false)
   static class AVectorStore {
+    @Bean
+    VectorStore vectorStore() {
+      return mock(VectorStore.class);
+    }
+  }
+
+  /**
+   * The same store, contributed by an auto-configuration whose name sorts after {@link
+   * ToolSearchIndexConfiguration} — as every real one does.
+   */
+  @AutoConfiguration
+  static class ALateVectorStore {
     @Bean
     VectorStore vectorStore() {
       return mock(VectorStore.class);

@@ -6,9 +6,9 @@ import org.springframework.ai.chat.client.advisor.toolsearch.autoconfigure.ToolS
 import org.springframework.ai.tool.toolsearch.ToolIndex;
 import org.springframework.ai.vectorstore.SimpleVectorStore;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -25,6 +25,15 @@ import org.springframework.context.annotation.Bean;
  * <p>Conditioned on {@code tool-index-type} the same way Spring AI conditions its own, so that
  * selecting {@code lucene} or {@code regex} still selects them: this replaces the vector index, it
  * does not overrule the choice of index.
+ *
+ * <p>The store is taken as an {@link ObjectProvider} and read when the index is built, for the same
+ * reason and with the same consequence. {@code @ConditionalOnBean(VectorStore.class)} would be
+ * answered while this auto-configuration is processed, and every auto-configuration that
+ * contributes a store is processed after it — Spring AI's {@code
+ * MilvusVectorStoreAutoConfiguration} and core's own {@link VectorStoreConfiguration} both sort
+ * later by class name. So the condition never held in a real application: this index backed off,
+ * upstream's was registered in its place, and the store went on accumulating the documents of every
+ * earlier deployment.
  */
 @AutoConfiguration(before = ToolSearchAdvisorAutoConfiguration.class)
 @ConditionalOnProperty(
@@ -34,12 +43,20 @@ import org.springframework.context.annotation.Bean;
 public class ToolSearchIndexConfiguration {
 
   @Bean
-  @ConditionalOnBean(VectorStore.class)
   @ConditionalOnMissingBean(ToolIndex.class)
   StatelessVectorToolIndex statelessVectorToolIndex(
-      final VectorStore vectorStore,
+      final ObjectProvider<VectorStore> vectorStores,
       @Value("${app.ai.embedding.batch-size:10}") final int batchSize,
       @Value("${app.ai.embedding.concurrency:8}") final int concurrency) {
+    final var vectorStore = vectorStores.getIfAvailable();
+    if (vectorStore == null) {
+      // The same failure Spring AI's own vector index raises, for the same reason: asking for a
+      // vector index with no store to keep it in is a misconfiguration, not a reason to run
+      // without a tool search.
+      throw new IllegalStateException(
+          "'spring.ai.chat.client.tool-search-advisor.tool-index-type=vector' requires a"
+              + " VectorStore bean in the application context, but none was found");
+    }
     return new StatelessVectorToolIndex(indexing(vectorStore, batchSize, concurrency));
   }
 
