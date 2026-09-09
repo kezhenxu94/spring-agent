@@ -38,6 +38,11 @@ public final class CompositeHomeDir implements HomeDir {
   }
 
   @Override
+  public Path folderPath(Folder folder) {
+    return primary.folderPath(folder);
+  }
+
+  @Override
   public List<Path> roots() {
     final var result = new ArrayList<Path>();
     for (final var member : members) result.addAll(member.roots());

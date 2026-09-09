@@ -18,6 +18,7 @@ import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.Tools;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.Tools.AskUserQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
+import me.kezhenxu94.springagent.core.support.TestI18n;
 import me.kezhenxu94.springagent.core.tools.mcp.McpClientFactory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -53,6 +54,9 @@ class AgentToolsProviderGlobalToolsTest {
     final var workspaces = mock(UserWorkspaceFactory.class);
     when(workspaces.forRequest(eq("ou_1"), nullable(String.class), nullable(String.class)))
         .thenReturn(new UserHome(workspace));
+    // The memory block the provider describes to the model is resolved scope by scope, so
+    // the factory is asked for each home rather than for one composite of them.
+    when(workspaces.forOwner(eq("ou_1"))).thenReturn(new UserHome(workspace));
     try (var context = new AnnotationConfigApplicationContext(GlobalTools.class)) {
       final var provider =
           new AgentToolsProvider(
@@ -62,6 +66,7 @@ class AgentToolsProviderGlobalToolsTest {
               context,
               properties(),
               new Admins(properties()),
+              TestI18n.english(),
               mock(org.springframework.beans.factory.ObjectProvider.class));
 
       final var composition =

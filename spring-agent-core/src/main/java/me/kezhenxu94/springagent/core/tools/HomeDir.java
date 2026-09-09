@@ -37,6 +37,21 @@ public interface HomeDir {
   /** The directory new content of this kind goes into, created if it isn't there yet. */
   Path folder(Folder folder) throws IOException;
 
+  /**
+   * Where content of this kind would go, creating nothing.
+   *
+   * <p>The read path's counterpart to {@link #folder(Folder)}, and not the same question as {@link
+   * #dirs(Folder)}: a caller naming a group's or the tenant's folder in a refusal, or rendering it
+   * into a prompt, needs the answer whether or not anything has been written there yet, and {@code
+   * dirs} leaves an absent directory out entirely. Answering it must not materialise a directory in
+   * shared storage on behalf of somebody who only read — the rule {@code dirs} states at length.
+   *
+   * <p>For a composite this is the primary member's, exactly as {@code folder} is: both answer
+   * "where would a write of mine land", and one of them creating while the other did not would be
+   * two answers to one question.
+   */
+  Path folderPath(Folder folder);
+
   /** Every scope's root, the one written to first. */
   List<Path> roots();
 

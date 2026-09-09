@@ -9,12 +9,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.Locale;
 import java.util.Map;
 import me.kezhenxu94.springagent.core.ContextClassLoaders;
+import me.kezhenxu94.springagent.core.advisors.MemoryToolsAdvisor;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springaicommunity.agent.advisors.AutoMemoryToolsAdvisor;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.rag.generation.augmentation.ContextualQueryAugmenter;
 
@@ -48,16 +48,34 @@ class LocalizedPromptTest {
   @ParameterizedTest
   @ValueSource(strings = {"en", "zh_CN"})
   @DisplayName("every translation of the memory prompt renders as the advisor builds it")
-  void memoryPromptRenders(final String tag) {
-    assertThatCode(
-            () ->
-                AutoMemoryToolsAdvisor.builder()
-                    .memoriesRootDirectory("/tmp/memories")
-                    .memorySystemPrompt(
-                        LocalizedPrompt.resource(
-                            MEMORY_PROMPT, Locale.forLanguageTag(tag.replace('_', '-'))))
-                    .build())
-        .doesNotThrowAnyException();
+  void memoryPromptRenders(final String tag) throws Exception {
+    final var scopes = "- own — /tmp/memories — yours alone; you may write here";
+    final var advisor =
+        MemoryToolsAdvisor.builder()
+            .memoryScopes(scopes)
+            .memorySystemPrompt(
+                LocalizedPrompt.resource(
+                    MEMORY_PROMPT, Locale.forLanguageTag(tag.replace('_', '-'))))
+            .build();
+    // Asserting on the rendered text, not only that building did not throw: a translation that
+    // lost the placeholder altogether renders perfectly well and would leave the model with a
+    // paragraph about memories it was never told the location of.
+    assertThat(advisor).isNotNull();
+    assertThat(renderedPromptOf(advisor)).contains(scopes);
+  }
+
+  /**
+   * What the advisor will append, read back off the built instance.
+   *
+   * <p>Through reflection because the rendered text is the advisor's own business at every other
+   * time: it is assembled once at build and appended to a system message from inside Reactor, so
+   * there is no seam to read it through, and exposing one for a test would widen the class for
+   * nobody else.
+   */
+  private static String renderedPromptOf(final MemoryToolsAdvisor advisor) throws Exception {
+    final var field = MemoryToolsAdvisor.class.getDeclaredField("memoryPrompt");
+    field.setAccessible(true);
+    return (String) field.get(advisor);
   }
 
   /**

@@ -21,10 +21,13 @@ public interface AgentScenario {
    *
    * <p>Coarser than {@link #offers} and not a shorthand for it: {@code offers} rules on the
    * {@code @AgentTool} beans alone, while everything else a run is composed of — the filesystem and
-   * todo tools, the ask, the skills tool, the memory tools, the user's MCP servers and the
-   * application-wide ones — arrives from elsewhere and no per-tool ruling reaches it. Saying no
-   * here is what keeps all of it out, and it is also what spares the run the MCP fan-out, which
-   * dials out to every server the user can reach before the model is asked anything.
+   * todo tools, the ask, the skills tool, the user's MCP servers and the application-wide ones —
+   * arrives from elsewhere and no per-tool ruling reaches it. The memory tools used to be in that
+   * list and are not any more: {@code core.memory.MemoryTools} is an {@code @AgentTool} bean, so
+   * {@code offers} does rule on them. Saying no here still keeps them out, along with the paragraph
+   * that describes them. Saying no here is what keeps all of it out, and it is also what spares the
+   * run the MCP fan-out, which dials out to every server the user can reach before the model is
+   * asked anything.
    */
   default boolean tools() {
     return true;

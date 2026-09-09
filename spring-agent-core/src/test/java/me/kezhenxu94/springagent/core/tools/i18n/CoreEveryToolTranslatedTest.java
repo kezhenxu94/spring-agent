@@ -34,13 +34,14 @@ class CoreEveryToolTranslatedTest extends AbstractEveryToolTranslatedTest {
 
   /**
    * The library's tools that core actually offers, which is not the same list as the one the native
-   * hints register: that list also carries {@code ShellTools}, whose three tools belong to the
-   * local shell backend and are translated in its own bundle, and {@code GlobTool}, {@code
-   * GrepTool} and {@code ListDirectoryTool}, which no bean here publishes.
+   * hints register. Memory is not among them any more: {@code core.memory.MemoryTools} is core's
+   * own class, so the package scan finds it without being told. Its list: that list also carries
+   * {@code ShellTools}, whose three tools belong to the local shell backend and are translated in
+   * its own bundle, and {@code GlobTool}, {@code GrepTool} and {@code ListDirectoryTool}, which no
+   * bean here publishes.
    */
   private static final List<Class<?>> OFFERED_BY_CORE =
       List.of(
-          org.springaicommunity.agent.tools.AutoMemoryTools.class,
           org.springaicommunity.agent.tools.TodoWriteTool.class,
           org.springaicommunity.agent.tools.AskUserQuestionTool.class,
           org.springaicommunity.agent.tools.FileSystemTools.class,

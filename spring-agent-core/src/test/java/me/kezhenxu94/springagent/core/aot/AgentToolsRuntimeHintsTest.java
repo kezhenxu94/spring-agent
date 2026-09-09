@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springaicommunity.agent.tools.AskUserQuestionTool;
-import org.springaicommunity.agent.tools.AutoMemoryTools;
+import org.springaicommunity.agent.tools.FileSystemTools;
 import org.springaicommunity.agent.tools.TodoWriteTool;
 import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
@@ -28,10 +28,14 @@ class AgentToolsRuntimeHintsTest {
   void registersTheToolClassesThemselves() {
     // Without method metadata Spring AI finds no @Tool on the class, and ChatClient.tools() rejects
     // an object with none — so the run fails rather than the tool quietly going missing.
-    assertThat(RuntimeHintsPredicates.reflection().onType(AutoMemoryTools.class)).accepts(hints);
     assertThat(
             RuntimeHintsPredicates.reflection()
                 .onType(TodoWriteTool.class)
+                .withMemberCategory(MemberCategory.INVOKE_DECLARED_METHODS))
+        .accepts(hints);
+    assertThat(
+            RuntimeHintsPredicates.reflection()
+                .onType(FileSystemTools.class)
                 .withMemberCategory(MemberCategory.INVOKE_DECLARED_METHODS))
         .accepts(hints);
   }

@@ -2,7 +2,6 @@ package me.kezhenxu94.springagent.core.aot;
 
 import java.util.List;
 import org.springaicommunity.agent.tools.AskUserQuestionTool;
-import org.springaicommunity.agent.tools.AutoMemoryTools;
 import org.springaicommunity.agent.tools.FileSystemTools;
 import org.springaicommunity.agent.tools.GlobTool;
 import org.springaicommunity.agent.tools.GrepTool;
@@ -38,7 +37,6 @@ public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
    */
   public static final List<Class<?>> TOOL_TYPES =
       List.of(
-          AutoMemoryTools.class,
           TodoWriteTool.class,
           AskUserQuestionTool.class,
           FileSystemTools.class,
@@ -50,7 +48,7 @@ public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
 
   @Override
   public void registerHints(final RuntimeHints hints, final ClassLoader classLoader) {
-    // Core's own prompts: the memory one the AutoMemoryToolsAdvisor is built with, and the
+    // Core's own prompts: the memory one MemoryToolsAdvisor is built with, and the
     // tool-search suffix ToolSearchAdvisorDefaults reads into a property. Both are read while a run
     // is being assembled, so an image without them fails the run rather than losing a paragraph.
     hints.resources().registerPattern("core/prompts/*.md");
@@ -72,10 +70,11 @@ public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
     hints.resources().registerPattern("core/tools.properties");
     hints.resources().registerPattern("core/tools_*.properties");
 
-    // The library defaults those two prompts fall back to, still reachable by an application that
-    // sets a prompt of its own to blank, or that swaps the advisor for one built by hand.
+    // The library default that prompt falls back to, still reachable by an application that sets a
+    // prompt of its own to blank, or that swaps the advisor for one built by hand. The memory
+    // advisor's equivalent is gone with the fork: MemoryToolsAdvisor has no built-in prompt to fall
+    // back to, so nothing can reach the library's copy of one any more.
     hints.resources().registerPattern("DEFAULT_SYSTEM_PROMPT_SUFFIX*.md");
-    hints.resources().registerPattern("prompt/AUTO_MEMORY_*_SYSTEM_PROMPT.md");
 
     // The advisor's own tool. By name because the advisor is switched on by a property and its
     // module need not be on the classpath at all.

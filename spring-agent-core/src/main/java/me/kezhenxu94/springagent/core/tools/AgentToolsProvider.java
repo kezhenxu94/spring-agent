@@ -18,9 +18,11 @@ import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.advisors.AutoSkillToolsAdvisor;
+import me.kezhenxu94.springagent.core.advisors.MemoryToolsAdvisor;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.config.Admins;
+import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.LocalizedPrompt;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
@@ -29,9 +31,9 @@ import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeReference;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeRetrieval;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
+import me.kezhenxu94.springagent.core.memory.MemoryScopes;
 import me.kezhenxu94.springagent.core.tools.mcp.McpClientFactory;
 import me.kezhenxu94.springagent.core.tools.mcp.ServerNameToolPrefixGenerator;
-import org.springaicommunity.agent.advisors.AutoMemoryToolsAdvisor;
 import org.springaicommunity.agent.tools.AskUserQuestionTool;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springaicommunity.agent.tools.FileSystemTools;
@@ -85,8 +87,15 @@ public class AgentToolsProvider {
   private final ApplicationContext applicationContext;
   private final SpringAgentProperties appConfiguration;
 
-  /** Asked only about the tools declared {@link AgentTool#admin()}. */
+  /**
+   * Asked about the tools declared {@link AgentTool#admin()}, and about which memories a run may
+   * write to — an admin may write the tenant's from a one-to-one chat, where nobody else may. See
+   * {@code MemoryScopes.writable}.
+   */
   private final Admins admins;
+
+  /** What the memory block the model reads is written in. */
+  private final CoreMessages messages;
 
   /**
    * The knowledge base, where a {@code spring-agent-rag-*} module supplies one. An {@link
@@ -130,11 +139,15 @@ public class AgentToolsProvider {
    * the ask that ends the turn, whose metadata cannot be set any other way — travels here beside
    * the plain tool objects rather than in a second array that means nothing downstream.
    *
-   * <p>An advisor appears here for the same reason: {@link AutoMemoryToolsAdvisor} is tools too,
-   * adding its callbacks to the request as it passes and a paragraph to the system prompt telling
-   * the model what they are for — which is the only reason it cannot simply be a callback. Only an
-   * advisor that exists to contribute tools belongs in a composition; the ones a run wires up for
-   * its own reasons, chat memory and logging, stay with the run.
+   * <p>An advisor appears here for a related reason, though a narrower one than it used to be:
+   * {@link MemoryToolsAdvisor} is the memory tools' documentation. It contributes no callback — the
+   * tools are an {@code @AgentTool} bean like any other, for the reasons {@code MemoryTools} gives
+   * — but the paragraph naming which memories this run reaches, and which of them it may write to,
+   * has to reach the system message, and a tool cannot put anything there. It travels with the
+   * tools because it is false without them: a run offered no tools must not be told it has a
+   * memory, and a run must not be told about a scope it cannot reach. Only an advisor that exists
+   * for the tools belongs in a composition; the ones a run wires up for its own reasons, chat
+   * memory and logging, stay with the run.
    */
   public record AgentComposition(Object[] tools, List<Advisor> advisors, McpTools mcpTools) {}
 
@@ -185,12 +198,6 @@ public class AgentToolsProvider {
       final boolean answersArriveLater,
       final Consumer<List<KnowledgeReference>> knowledgeHandler)
       throws IOException {
-    final var memoriesRootDirectory =
-        userWorkspaceFactory
-            .forRequest(request.userId(), request.groupId(), request.tenantId())
-            .memories()
-            .toString();
-
     final var tools = new ArrayList<Object>();
     tools.addAll(resolveScenarioTools(request.scenario(), request.userId()));
     tools.add(agentTools.fileSystemTools());
@@ -225,22 +232,47 @@ public class AgentToolsProvider {
 
     final var advisors = new ArrayList<Advisor>();
     knowledgeRetrieval(request, knowledgeHandler).ifPresent(advisors::add);
-    advisors.add(
-        AutoMemoryToolsAdvisor.builder()
-            .memoriesRootDirectory(memoriesRootDirectory)
-            // Core's own prompt, in the workspace's language, rather than the library's: the
-            // advisor appends whatever this is to the end of the system message on every
-            // request, and the default is two thousand words of English. A workspace whose
-            // prompt is not English gets that English tail last and closest to the model, which
-            // is enough to make it reason in English about a conversation it answers in
-            // another language. The text also has to be true of this deployment — the default
-            // says MEMORY.md is always loaded into context, and here nothing loads it.
-            .memorySystemPrompt(LocalizedPrompt.resource(MEMORY_PROMPT, appConfiguration.locale()))
-            .build());
+    memoryScopes(request)
+        .ifPresent(
+            block ->
+                advisors.add(
+                    MemoryToolsAdvisor.builder()
+                        .memoryScopes(block)
+                        // Core's own prompt, in the workspace's language, rather than the
+                        // library's: the advisor appends whatever this is to the end of the system
+                        // message on every request, and the default is two thousand words of
+                        // English. A workspace whose prompt is not English gets that English tail
+                        // last and closest to the model, which is enough to make it reason in
+                        // English about a conversation it answers in another language. The text
+                        // also has to be true of this deployment — the default says MEMORY.md is
+                        // always loaded into context, and here nothing loads it, nor does it know
+                        // that a memory has a scope.
+                        .memorySystemPrompt(
+                            LocalizedPrompt.resource(MEMORY_PROMPT, appConfiguration.locale()))
+                        .build()));
 
     skillOffer(tools).ifPresent(advisors::add);
 
     return new AgentComposition(tools.toArray(), List.copyOf(advisors), agentTools.mcpTools());
+  }
+
+  /**
+   * The block describing this request's memories, or nothing where it has none to describe.
+   *
+   * <p>Empty only where the request carries no user id — an unattended run assembled without one —
+   * and then there is no home to write a memory into either, so the paragraph would be describing
+   * tools that can only refuse. Every ordinary run has at least its own.
+   */
+  private Optional<String> memoryScopes(final AgentRequest request) {
+    final var scopes =
+        MemoryScopes.forRequest(
+            userWorkspaceFactory,
+            admins.isAdmin(request.userId()),
+            request.userId(),
+            request.groupId(),
+            request.tenantId());
+    final var block = scopes.describe(messages);
+    return block.isBlank() ? Optional.empty() : Optional.of(block);
   }
 
   /**

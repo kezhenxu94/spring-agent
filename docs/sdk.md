@@ -389,9 +389,10 @@ Per-request identity reaches a tool through the tool context, under typed keys i
   bean but never wires it into a `ChatClient` itself. Those clients belong to the context and are
   never closed by a run.
 
-It also contributes two advisors, since both are tools in everything but shape:
-`AutoMemoryToolsAdvisor`, which adds the memory tools and the paragraph that explains them, and
-`AutoSkillToolsAdvisor` (`core.advisors`), which counts a turn's tool calls from inside the
+It also contributes two advisors, since both belong with the tools rather than with the run:
+`MemoryToolsAdvisor` (`core.advisors`), which appends the paragraph naming which memories this run
+reaches and which of them it may write to, and `AutoSkillToolsAdvisor` (`core.advisors`), which
+counts a turn's tool calls from inside the
 tool-calling loop and, past `app.ai.tools.skills.tool-call-threshold`, appends a paragraph asking the
 model to offer the user a skill made of what it just worked out. The second writes nothing itself and
 registers no tools — the offer is prose in the reply, and the skill is written by `WriteSkillFile` on
@@ -399,7 +400,12 @@ a later turn if the user agrees. It is only added to runs that were given the sk
 while `app.ai.tools.skills.offer-after-expensive-runs` is on. Both are ordinary advisors with
 builders, so an application assembling its own `ChatClient` can use either directly; the skill one
 takes only a prompt `Resource` (a template over `TOOL_CALL_COUNT`), a threshold and an order, and
-holds no type of this project's own.
+holds no type of this project's own. The memory one is the same shape — a prompt `Resource` over
+`MEMORY_SCOPES` and the rendered block to fill it with — and registers no tools of its own: the six
+memory tools are an `@AgentTool` bean (`core.memory.MemoryTools`), so a scenario's `offers` rules on
+them like any other. This is a fork of the library's `AutoMemoryToolsAdvisor`/`AutoMemoryTools`,
+which take a single memory directory and so cannot reach a group's or the tenant's; the tool names
+and parameter names are unchanged.
 
 Because the set is open-ended and can grow between one turn and the next, turn on Spring AI's
 tool-search advisor (`spring.ai.chat.client.tool-search-advisor.enabled`) unless you know your tool
@@ -501,9 +507,18 @@ Every run carries a user id, and that id — not the process — owns the state.
 `app.storage.location` each identity has a home with `memories/`, `skills/`, `workspace/` and
 `artifacts/`, and the filesystem tools are confined to those roots, so one user's agent cannot read
 another's files. A request that names a `groupId` or a `tenantId` also reaches the group's and the
-tenant's homes, which is how a group chat has knowledge and skills of its own; `{homeDirs}` in the
-system prompt is what tells the model which homes this run can see and who else can read what it
-writes there.
+tenant's homes, which is how a group chat has knowledge, skills and memories of its own;
+`{homeDirs}` in the system prompt is what tells the model which homes this run can see and who else
+can read what it writes there.
+
+The memory tools reach all three, addressed by a `scope` parameter — `own`, `group` or `tenant`,
+parsed by the same `KnowledgeScope.Target` the knowledge tools use. Omitted on a read it means every
+scope the request reaches, read in one call; omitted on a write it means the requester's own. A
+shared write needs somewhere to be shared with: `group` requires a non-blank `groupId`, and `tenant`
+requires a `tenantId` plus either a group chat or an `app.ai.admins` member — a one-to-one chat reads
+what the company remembers without being able to add to it, because nobody else saw what was said
+there. `MemoryScopes` is that decision in one place, and every write outside `own` is logged with the
+user, the chat and the path.
 
 `UserWorkspaceFactory.forRequest(userId, groupId, tenantId)` is the entry point if your own code
 needs the same paths; `HomeDir` names the subdirectories.
