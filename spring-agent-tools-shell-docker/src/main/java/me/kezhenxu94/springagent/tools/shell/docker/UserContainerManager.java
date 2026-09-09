@@ -3,7 +3,9 @@ package me.kezhenxu94.springagent.tools.shell.docker;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -22,9 +24,14 @@ import org.testcontainers.utility.DockerImageName;
  * The per-user sandbox container, and its lifecycle.
  *
  * <p>The counterpart of {@code UserPodManager} in the Kubernetes module, and it deliberately keeps
- * that class's shape: one sandbox per user, created on first use, its working directory the user's
+ * that class's shape: one sandbox per scope, created on first use, its working directory the user's
  * own home under {@code app.storage.location}, and a watchdog inside the container that exits when
  * the user stops using it.
+ *
+ * <p><b>Per scope, not per user</b>, for the reason that class gives: a sandbox carries the group's
+ * and the tenant's homes as well as the personal one, so a container built for a user in one group
+ * chat has the wrong directories mounted for the same user in another. Keying the registry on the
+ * (userId, groupId, tenantId) triple is what stops one being handed to the other.
  *
  * <p>Where the two differ is what outlives this process. A Job's Pod is the cluster's, and a
  * restarted application finds it again by label; a container started through Testcontainers belongs
@@ -39,6 +46,8 @@ public class UserContainerManager implements AutoCloseable {
   public static final String LABEL_APP_VALUE = "spring-agent-shell";
   public static final String LABEL_SHELL_CONTAINER = "springagent.io/shell-container";
   public static final String LABEL_OWNER_USER_ID = "springagent.io/owner-user-id";
+  public static final String LABEL_OWNER_GROUP_ID = "springagent.io/owner-group-id";
+  public static final String LABEL_OWNER_TENANT_ID = "springagent.io/owner-tenant-id";
   public static final String LABEL_SHELL_CONTAINER_ROLE = "springagent.io/shell-container-role";
   public static final String SHELL_CONTAINER_ROLE_ADMIN = "admin";
 
@@ -63,12 +72,32 @@ public class UserContainerManager implements AutoCloseable {
   private final ConcurrentMap<String, Object> locks = new ConcurrentHashMap<>();
 
   /**
-   * The user's sandbox, started if it was not already. Serialised per user rather than globally, so
-   * one user's image pull does not hold up everyone else's commands.
+   * Which sandbox a request means. Not a hash, unlike {@code UserPodManager.scopeKey}: that one has
+   * to survive DNS-1123 as a resource name, whereas this is only ever a key in the two maps above,
+   * so the ids can stay readable in a heap dump. NUL separates them because no id contains one, and
+   * so no two different triples can spell the same key.
    */
-  public GenericContainer<?> ensureContainerFor(final String userId) {
-    synchronized (locks.computeIfAbsent(userId, key -> new Object())) {
-      final var existing = containers.get(userId);
+  private static boolean present(final String id) {
+    return id != null && !id.isBlank();
+  }
+
+  private static String nullToEmpty(final String id) {
+    return id == null ? "" : id;
+  }
+
+  private static String scopeKey(final String userId, final String groupId, final String tenantId) {
+    return userId + '\0' + nullToEmpty(groupId) + '\0' + nullToEmpty(tenantId);
+  }
+
+  /**
+   * The sandbox for this scope, started if it was not already. Serialised per scope rather than
+   * globally, so one user's image pull does not hold up everyone else's commands.
+   */
+  public GenericContainer<?> ensureContainerFor(
+      final String userId, final String groupId, final String tenantId) {
+    final var key = scopeKey(userId, groupId, tenantId);
+    synchronized (locks.computeIfAbsent(key, k -> new Object())) {
+      final var existing = containers.get(key);
       if (existing != null && existing.isRunning()) {
         return existing;
       }
@@ -76,18 +105,26 @@ public class UserContainerManager implements AutoCloseable {
         // The watchdog exited on idle or the hard deadline, or someone stopped it by hand.
         log.info("Shell sandbox container for user {} is gone; starting a fresh one", userId);
         discard(existing);
-        containers.remove(userId);
+        containers.remove(key);
       }
-      final var created = start(userId);
-      containers.put(userId, created);
+      final var created = start(userId, groupId, tenantId);
+      containers.put(key, created);
       return created;
     }
   }
 
-  /** Stop the user's sandbox if one is running. Returns whether there was anything to stop. */
-  public boolean deleteContainerFor(final String userId) {
-    synchronized (locks.computeIfAbsent(userId, key -> new Object())) {
-      final var existing = containers.remove(userId);
+  /**
+   * Stop this scope's sandbox if one is running. Returns whether there was anything to stop.
+   *
+   * <p>This scope's and no other: the same user in another group chat has a sandbox of their own,
+   * with different directories mounted, and restarting the one they are sitting in must not take
+   * that one with it.
+   */
+  public boolean deleteContainerFor(
+      final String userId, final String groupId, final String tenantId) {
+    final var key = scopeKey(userId, groupId, tenantId);
+    synchronized (locks.computeIfAbsent(key, k -> new Object())) {
+      final var existing = containers.remove(key);
       if (existing == null) {
         return false;
       }
@@ -114,7 +151,8 @@ public class UserContainerManager implements AutoCloseable {
     containers.clear();
   }
 
-  private GenericContainer<?> start(final String userId) {
+  private GenericContainer<?> start(
+      final String userId, final String groupId, final String tenantId) {
     final var userHome = userHome(userId);
     try {
       Files.createDirectories(Path.of(userHome));
@@ -127,7 +165,7 @@ public class UserContainerManager implements AutoCloseable {
 
     final var container =
         new GenericContainer<>(DockerImageName.parse(properties.image()))
-            .withLabels(labels(userId))
+            .withLabels(labels(userId, groupId, tenantId))
             .withFileSystemBind(userHome, userHome, BindMode.READ_WRITE)
             .withWorkingDirectory(userHome)
             // In memory, never on the host: a credential exists on disk nowhere except the
@@ -146,6 +184,10 @@ public class UserContainerManager implements AutoCloseable {
             .withStartupTimeout(properties.startupTimeout())
             .withCommand("sh", "-c", watchdogScript());
 
+    for (final var shared : sharedHomes(groupId, tenantId)) {
+      container.withFileSystemBind(shared, shared, BindMode.READ_WRITE);
+    }
+
     if (properties.network() != null && !properties.network().isBlank()) {
       container.withNetworkMode(properties.network());
     }
@@ -155,6 +197,41 @@ public class UserContainerManager implements AutoCloseable {
 
     writeCredentialFiles(container, credentials, credentialsMountPath);
     return container;
+  }
+
+  /**
+   * The group's and the tenant's homes, where this request has them and something has already been
+   * written there — bound at the same path inside and outside, exactly as the personal one is.
+   *
+   * <p>Without these, {@code FileSystemTools} is allowed into all three homes while the shell can
+   * only see one, so {@code Read} of a shared file works and {@code cat} of the same path reports
+   * that it does not exist. {@code UserPodManager} has mounted all three all along; this is the
+   * Docker backend catching up.
+   *
+   * <p><b>Only ones that already exist</b>, and this is not an optimisation. A bind mount whose
+   * source is missing has Docker create it, owned by root, which is both a directory materialised
+   * in shared storage on behalf of somebody who may only have been reading and one the application
+   * itself then cannot write to. So a group's home reaches the sandbox from the first container
+   * started after the group has anything in it — the same "present at the time this Pod is created"
+   * rule {@code UserPodManager} states, and the reason a restart is what picks up a home that
+   * appeared mid-session.
+   */
+  private List<String> sharedHomes(final String groupId, final String tenantId) {
+    final var homes = new ArrayList<String>();
+    if (present(groupId)) {
+      addIfPresent(homes, Path.of("groups", groupId).toString());
+    }
+    if (present(tenantId)) {
+      addIfPresent(homes, Path.of("tenant", tenantId).toString());
+    }
+    return homes;
+  }
+
+  private void addIfPresent(final List<String> homes, final String scopeId) {
+    final var home = Path.of(storageProperties.getLocation(), scopeId).toAbsolutePath();
+    if (Files.isDirectory(home)) {
+      homes.add(home.toString());
+    }
   }
 
   /**
@@ -235,11 +312,20 @@ public class UserContainerManager implements AutoCloseable {
     return name != null && ENV_VAR_NAME.matcher(name).matches();
   }
 
-  private Map<String, String> labels(final String userId) {
+  private Map<String, String> labels(
+      final String userId, final String groupId, final String tenantId) {
     final var labels = new HashMap<String, String>();
     labels.put(LABEL_APP, LABEL_APP_VALUE);
     labels.put(LABEL_SHELL_CONTAINER, "true");
     labels.put(LABEL_OWNER_USER_ID, userId);
+    // The ids as written rather than a scope hash, so that `docker ps --filter label=...` answers
+    // "whose sandbox is this, and for which chat" without anyone having to reproduce a hash.
+    if (present(groupId)) {
+      labels.put(LABEL_OWNER_GROUP_ID, groupId);
+    }
+    if (present(tenantId)) {
+      labels.put(LABEL_OWNER_TENANT_ID, tenantId);
+    }
     if (admins.isAdmin(userId)) {
       labels.put(LABEL_SHELL_CONTAINER_ROLE, SHELL_CONTAINER_ROLE_ADMIN);
     }

@@ -17,7 +17,24 @@ The shell defaults to `none` everywhere. Turn it on deliberately.
 | | |
 | --- | --- |
 | `DockerShellTools` | `Bash`, `BashOutput`, `KillShell`, `RestartShellContainer` |
-| `UserContainerManager` | A container per user, torn down when idle and rebuilt on the next command |
+| `UserContainerManager` | A container per scope, torn down when idle and rebuilt on the next command |
+
+**A sandbox belongs to a scope, not to a person**, and that is worth knowing before sizing a host.
+A container carries the group's and the tenant's homes as well as the personal one, bound at the
+same absolute paths inside and outside — without them `FileSystemTools` can `Read` a shared file
+while the shell reports the same path missing. Docker cannot add a bind mount to a running
+container, so the registry is keyed on the `(userId, groupId, tenantId)` triple: one person active
+in a one-to-one chat and four group chats has five sandboxes, each with its own memory and CPU
+limit. `UserPodManager` in the Kubernetes module has always worked this way; this backend caught up.
+What bounds it is the idle watchdog — `idleTimeout` reclaims a sandbox the moment somebody stops
+running commands in that chat, so the cost is concurrently active scopes rather than chats ever
+visited.
+
+A shared home is mounted only if it already exists when the container starts. A bind mount whose
+source is missing has Docker create it as root, which is both a directory materialised in shared
+storage for somebody who may only have been reading and one this application then cannot write to.
+So a group's home reaches the shell from the first container started after the group has anything in
+it, which is the same "present at the time this Pod is created" rule the Kubernetes backend states.
 
 `image`, `network`, `idleTimeout`, `hardDeadline` and `startupTimeout` are the whole of what a
 deployment sets. Credentials are stored encrypted here rather than as Secrets, which is what

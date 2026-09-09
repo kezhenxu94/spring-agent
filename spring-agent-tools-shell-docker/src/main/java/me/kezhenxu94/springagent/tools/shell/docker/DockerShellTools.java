@@ -93,7 +93,9 @@ Usage notes:
         description);
 
     try {
-      final var container = userContainerManager.ensureContainerFor(userId);
+      final var container =
+          userContainerManager.ensureContainerFor(
+              userId, groupIdFrom(toolContext), tenantIdFrom(toolContext));
       if (Boolean.TRUE.equals(runInBackground)) {
         return runBackground(container, bashId, command);
       }
@@ -135,7 +137,9 @@ Usage notes:
     }
 
     try {
-      final var container = userContainerManager.ensureContainerFor(userId);
+      final var container =
+          userContainerManager.ensureContainerFor(
+              userId, groupIdFrom(toolContext), tenantIdFrom(toolContext));
       // Everything written since the last call, however much that is. What a result costs the
       // model's context is not decided here: LargeResponseInterceptor sees every tool's result and
       // spills an oversized one to the user's workspace, so a cap of our own would only truncate
@@ -214,7 +218,9 @@ Usage notes:
     }
 
     try {
-      final var container = userContainerManager.ensureContainerFor(userId);
+      final var container =
+          userContainerManager.ensureContainerFor(
+              userId, groupIdFrom(toolContext), tenantIdFrom(toolContext));
       final var script =
           String.join(
               "\n",
@@ -262,7 +268,9 @@ Usage notes:
 
     final var userId = userIdFrom(toolContext);
     try {
-      final var deleted = userContainerManager.deleteContainerFor(userId);
+      final var deleted =
+          userContainerManager.deleteContainerFor(
+              userId, groupIdFrom(toolContext), tenantIdFrom(toolContext));
       if (!deleted) {
         return messages.get("bash-no-container");
       }
@@ -398,6 +406,19 @@ Usage notes:
     } catch (final PatternSyntaxException e) {
       return output;
     }
+  }
+
+  /**
+   * The shared scopes this call belongs to, which decide which homes its sandbox has mounted as
+   * well as which sandbox it is. Read here rather than remembered per user: a person moves between
+   * a one-to-one chat and several group chats, and each of those is a different sandbox.
+   */
+  private static String groupIdFrom(final ToolContext context) {
+    return ToolContexts.get(context, ToolContexts.GROUP_ID);
+  }
+
+  private static String tenantIdFrom(final ToolContext context) {
+    return ToolContexts.get(context, ToolContexts.TENANT_ID);
   }
 
   private static String userIdFrom(final ToolContext context) {
