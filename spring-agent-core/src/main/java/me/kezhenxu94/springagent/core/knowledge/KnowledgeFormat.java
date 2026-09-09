@@ -4,6 +4,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import org.springframework.ai.document.Document;
 
 /**
@@ -74,7 +75,7 @@ final class KnowledgeFormat {
     return result.toString();
   }
 
-  static String scopeLabel(final KnowledgeScope.Target target) {
+  static String scopeLabel(final ScopeTarget target) {
     return switch (target) {
       case OWN -> "knowledge-scope-own";
       case GROUP -> "knowledge-scope-group";

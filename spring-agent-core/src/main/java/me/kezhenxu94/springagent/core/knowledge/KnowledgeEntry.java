@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.core.knowledge;
 
 import java.time.Instant;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 
 /**
  * One indexed source as it appears in a listing — a document, not a chunk.
@@ -14,4 +15,4 @@ public record KnowledgeEntry(
     String source,
     int chunkCount,
     Instant createdAt,
-    KnowledgeScope.Target scope) {}
+    ScopeTarget scope) {}

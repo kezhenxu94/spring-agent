@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Locale;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeReference;
-import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import me.kezhenxu94.springagent.core.tools.UserHome;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
@@ -83,10 +83,7 @@ class FeishuCardUpdaterReferencesTest {
   }
 
   private static KnowledgeReference reference(
-      final String docId,
-      final String title,
-      final String source,
-      final KnowledgeScope.Target scope) {
+      final String docId, final String title, final String source, final ScopeTarget scope) {
     return new KnowledgeReference(docId, title, source, scope, 0.8d);
   }
 
@@ -96,8 +93,7 @@ class FeishuCardUpdaterReferencesTest {
   void namesEachDocument() throws Exception {
     updater()
         .onKnowledgeRetrieved(
-            List.of(
-                reference("d-1", "Release runbook", "/w/runbook.md", KnowledgeScope.Target.OWN)));
+            List.of(reference("d-1", "Release runbook", "/w/runbook.md", ScopeTarget.OWN)));
 
     // Written into the panel's body, not the panel: the title lives in the header the insert
     // carried, so only the sources themselves are streamed.
@@ -114,8 +110,8 @@ class FeishuCardUpdaterReferencesTest {
     updater()
         .onKnowledgeRetrieved(
             List.of(
-                reference("d-1", "First", "first.md", KnowledgeScope.Target.OWN),
-                reference("d-2", "Second", "second.md", KnowledgeScope.Target.GROUP)));
+                reference("d-1", "First", "first.md", ScopeTarget.OWN),
+                reference("d-2", "Second", "second.md", ScopeTarget.GROUP)));
 
     final var content = lastWrite().getContentCardElementReqBody().getContent();
     assertThat(content.split("<font color='grey'>", -1)).as("one opening tag per line").hasSize(3);
@@ -137,8 +133,8 @@ class FeishuCardUpdaterReferencesTest {
     updater()
         .onKnowledgeRetrieved(
             List.of(
-                reference("d-1", "Team norms", "norms.md", KnowledgeScope.Target.GROUP),
-                reference("d-2", "Expenses", "expenses.md", KnowledgeScope.Target.TENANT)));
+                reference("d-1", "Team norms", "norms.md", ScopeTarget.GROUP),
+                reference("d-2", "Expenses", "expenses.md", ScopeTarget.TENANT)));
 
     final var content = lastWrite().getContentCardElementReqBody().getContent();
     assertThat(content).contains("this group").contains("company-wide");
@@ -150,7 +146,7 @@ class FeishuCardUpdaterReferencesTest {
     // Retrieval sits inside the tool-calling loop, so a turn making several tool calls reports the
     // same passages once per round. Listing them per report would grow the footer on every call.
     final var updater = updater();
-    final var same = reference("d-1", "Release runbook", "runbook.md", KnowledgeScope.Target.OWN);
+    final var same = reference("d-1", "Release runbook", "runbook.md", ScopeTarget.OWN);
 
     updater.onKnowledgeRetrieved(List.of(same));
     updater.onKnowledgeRetrieved(List.of(same));
@@ -165,10 +161,8 @@ class FeishuCardUpdaterReferencesTest {
   void accumulatesAcrossRounds() throws Exception {
     final var updater = updater();
 
-    updater.onKnowledgeRetrieved(
-        List.of(reference("d-1", "First", "first.md", KnowledgeScope.Target.OWN)));
-    updater.onKnowledgeRetrieved(
-        List.of(reference("d-2", "Second", "second.md", KnowledgeScope.Target.OWN)));
+    updater.onKnowledgeRetrieved(List.of(reference("d-1", "First", "first.md", ScopeTarget.OWN)));
+    updater.onKnowledgeRetrieved(List.of(reference("d-2", "Second", "second.md", ScopeTarget.OWN)));
 
     final var content = lastWrite().getContentCardElementReqBody().getContent();
     assertThat(content).contains("First").contains("Second");
@@ -188,7 +182,7 @@ class FeishuCardUpdaterReferencesTest {
   void doesNotRepeatTheTitleAsSource() throws Exception {
     updater()
         .onKnowledgeRetrieved(
-            List.of(reference("d-1", "Staging URL", "Staging URL", KnowledgeScope.Target.OWN)));
+            List.of(reference("d-1", "Staging URL", "Staging URL", ScopeTarget.OWN)));
 
     final var content = lastWrite().getContentCardElementReqBody().getContent();
     assertThat(content.split("Staging URL", -1)).hasSize(2);
@@ -201,10 +195,7 @@ class FeishuCardUpdaterReferencesTest {
         .onKnowledgeRetrieved(
             List.of(
                 reference(
-                    "d-1",
-                    "Idol v1.5.5",
-                    "https://wiki.example.com/idol-155",
-                    KnowledgeScope.Target.OWN)));
+                    "d-1", "Idol v1.5.5", "https://wiki.example.com/idol-155", ScopeTarget.OWN)));
 
     final var content = lastWrite().getContentCardElementReqBody().getContent();
     // The title carries the link, rather than the address being printed beside it: a wiki URL is
@@ -217,7 +208,7 @@ class FeishuCardUpdaterReferencesTest {
   void filePathIsNotLinked() throws Exception {
     updater()
         .onKnowledgeRetrieved(
-            List.of(reference("d-1", "Runbook", "/w/runbook.md", KnowledgeScope.Target.OWN)));
+            List.of(reference("d-1", "Runbook", "/w/runbook.md", ScopeTarget.OWN)));
 
     final var content = lastWrite().getContentCardElementReqBody().getContent();
     assertThat(content).contains("/w/runbook.md").doesNotContain("](");
@@ -226,9 +217,7 @@ class FeishuCardUpdaterReferencesTest {
   @Test
   @DisplayName("a note that came from the conversation shows its title alone")
   void noSourceShowsTitleOnly() throws Exception {
-    updater()
-        .onKnowledgeRetrieved(
-            List.of(reference("d-1", "Staging URL", "", KnowledgeScope.Target.OWN)));
+    updater().onKnowledgeRetrieved(List.of(reference("d-1", "Staging URL", "", ScopeTarget.OWN)));
 
     final var content = lastWrite().getContentCardElementReqBody().getContent();
     assertThat(content).contains("Staging URL").doesNotContain("](");
@@ -241,9 +230,9 @@ class FeishuCardUpdaterReferencesTest {
     final var updater = updater();
     updater.onKnowledgeRetrieved(
         List.of(
-            reference("d-1", "First", "first.md", KnowledgeScope.Target.OWN),
-            reference("d-2", "Second", "second.md", KnowledgeScope.Target.GROUP),
-            reference("d-3", "Third", "third.md", KnowledgeScope.Target.TENANT)));
+            reference("d-1", "First", "first.md", ScopeTarget.OWN),
+            reference("d-2", "Second", "second.md", ScopeTarget.GROUP),
+            reference("d-3", "Third", "third.md", ScopeTarget.TENANT)));
 
     updater.onFinished(AgentOutcome.COMPLETED);
 
@@ -257,8 +246,7 @@ class FeishuCardUpdaterReferencesTest {
     // Appended naively it would land after the closing tag, leaving a grey title followed by a
     // black count.
     final var updater = updater();
-    updater.onKnowledgeRetrieved(
-        List.of(reference("d-1", "Only one", "one.md", KnowledgeScope.Target.OWN)));
+    updater.onKnowledgeRetrieved(List.of(reference("d-1", "Only one", "one.md", ScopeTarget.OWN)));
 
     updater.onFinished(AgentOutcome.COMPLETED);
 
@@ -283,7 +271,7 @@ class FeishuCardUpdaterReferencesTest {
     // thinks the panel can be the first element the card gains. Everything that arrives after it
     // has to land above it rather than under it, or the card opens with its own footer.
     updater.onKnowledgeRetrieved(
-        List.of(reference("d-1", "Release runbook", "runbook.md", KnowledgeScope.Target.OWN)));
+        List.of(reference("d-1", "Release runbook", "runbook.md", ScopeTarget.OWN)));
     updater.onReasoning("Let me look that up.");
     updater.onContent("Here is what it says.");
 

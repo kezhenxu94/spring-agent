@@ -31,6 +31,7 @@ import me.kezhenxu94.springagent.core.knowledge.KnowledgePage;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeScopeFilter;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeSource;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.rag.retrieval.search.DocumentRetriever;
@@ -244,7 +245,7 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
 
   @Override
   public Optional<KnowledgeDocument> read(
-      final KnowledgeScope scope, final KnowledgeScope.Target owning, final String docId) {
+      final KnowledgeScope scope, final ScopeTarget owning, final String docId) {
     final var chunks = documentChunks(scope.owning(owning), docId);
     if (chunks.isEmpty()) {
       return Optional.empty();
@@ -257,8 +258,7 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
   }
 
   @Override
-  public void delete(
-      final KnowledgeScope scope, final KnowledgeScope.Target owning, final String docId) {
+  public void delete(final KnowledgeScope scope, final ScopeTarget owning, final String docId) {
     // Scoped to one knowledge base rather than to everything the caller may read: a docId
     // belonging to someone else matches nothing instead of deleting their document, and a docId
     // the caller has in two of their own bases deletes the copy they named rather than both.
@@ -268,9 +268,9 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
   @Override
   public Optional<KnowledgeEntry> move(
       final KnowledgeScope scope,
-      final KnowledgeScope.Target owning,
+      final ScopeTarget owning,
       final String docId,
-      final KnowledgeScope.Target target) {
+      final ScopeTarget target) {
     final var from = scope.owning(owning);
     final var chunks = documentChunks(from, docId);
     if (chunks.isEmpty()) {
@@ -459,10 +459,10 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
    * Which knowledge base the document is in, read back from whichever scope field it was stamped
    * with.
    */
-  private static KnowledgeScope.Target targetOf(final Map<String, String> metadata) {
-    if (!string(metadata, KnowledgeMetadata.GROUP).isEmpty()) return KnowledgeScope.Target.GROUP;
-    if (!string(metadata, KnowledgeMetadata.TENANT).isEmpty()) return KnowledgeScope.Target.TENANT;
-    return KnowledgeScope.Target.OWN;
+  private static ScopeTarget targetOf(final Map<String, String> metadata) {
+    if (!string(metadata, KnowledgeMetadata.GROUP).isEmpty()) return ScopeTarget.GROUP;
+    if (!string(metadata, KnowledgeMetadata.TENANT).isEmpty()) return ScopeTarget.TENANT;
+    return ScopeTarget.OWN;
   }
 
   /** Flattens one row of the metadata column to strings. */

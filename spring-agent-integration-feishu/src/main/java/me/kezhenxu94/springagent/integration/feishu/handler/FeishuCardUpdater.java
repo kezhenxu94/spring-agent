@@ -21,8 +21,8 @@ import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeReference;
-import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
 import me.kezhenxu94.springagent.core.tools.DisplayDescription;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import me.kezhenxu94.springagent.core.tools.ToolContextKey;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
@@ -1534,7 +1534,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     return source != null && (source.startsWith("http://") || source.startsWith("https://"));
   }
 
-  private String scopeLabel(final KnowledgeScope.Target scope) {
+  private String scopeLabel(final ScopeTarget scope) {
     return messages.get(
         switch (scope) {
           case GROUP -> "reference-scope-group";

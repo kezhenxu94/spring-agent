@@ -512,7 +512,8 @@ tenant's homes, which is how a group chat has knowledge, skills and memories of 
 can read what it writes there.
 
 The memory tools reach all three, addressed by a `scope` parameter — `own`, `group` or `tenant`,
-parsed by the same `KnowledgeScope.Target` the knowledge tools use. Omitted on a read it means every
+parsed by `core.tools.ScopeTarget`, the one vocabulary the knowledge tools and the browser's
+knowledge endpoints also read. Omitted on a read it means every
 scope the request reaches, read in one call; omitted on a write it means the requester's own. A
 shared write needs somewhere to be shared with: `group` requires a non-blank `groupId`, and `tenant`
 requires a `tenantId` plus either a group chat or an `app.ai.admins` member — a one-to-one chat reads
@@ -635,7 +636,8 @@ filter clause is only ever emitted for a non-blank identity — a blank one woul
 that stores a blank there, which is every other user's.
 
 **A document id names a document only together with the knowledge base holding it**, so `read`,
-`delete` and `move` all take a `KnowledgeScope.Target` saying which of the caller's bases is meant:
+`delete` and `move` all take a `ScopeTarget` (`core.tools`) saying which of the caller's bases is
+meant:
 `read(scope, owning, docId)`, `delete(scope, owning, docId)`, `move(scope, owning, docId, target)`.
 An id is unique inside one base and not across them — the same file, wiki token or URL filed
 privately and company-wide is two documents wearing one id, which is what happens whenever somebody

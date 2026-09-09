@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.core.knowledge;
 
 import java.util.List;
 import java.util.Optional;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.rag.retrieval.search.DocumentRetriever;
 import org.springframework.ai.vectorstore.filter.Filter;
@@ -55,8 +56,7 @@ public interface KnowledgeBase {
    *     {@code docId} identifies a document only together with the base holding it — see {@link
    *     #delete}
    */
-  Optional<KnowledgeDocument> read(
-      KnowledgeScope scope, KnowledgeScope.Target owning, String docId);
+  Optional<KnowledgeDocument> read(KnowledgeScope scope, ScopeTarget owning, String docId);
 
   /**
    * Removes a document and all its chunks, silently doing nothing where {@code owning} holds no
@@ -73,7 +73,7 @@ public interface KnowledgeBase {
    *
    * @param owning which of {@code scope}'s knowledge bases to delete from
    */
-  void delete(KnowledgeScope scope, KnowledgeScope.Target owning, String docId);
+  void delete(KnowledgeScope scope, ScopeTarget owning, String docId);
 
   /**
    * Moves a document into another knowledge base, keeping its id, title, origin and content.
@@ -93,10 +93,7 @@ public interface KnowledgeBase {
    *     {@code scope} may reach
    */
   Optional<KnowledgeEntry> move(
-      KnowledgeScope scope,
-      KnowledgeScope.Target owning,
-      String docId,
-      KnowledgeScope.Target target);
+      KnowledgeScope scope, ScopeTarget owning, String docId, ScopeTarget target);
 
   /**
    * A retriever restricted to what {@code scope} may read, for attaching to a run's advisor chain.
