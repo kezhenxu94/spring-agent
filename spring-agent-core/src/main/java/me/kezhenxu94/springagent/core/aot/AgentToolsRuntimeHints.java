@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.core.aot;
 
 import java.util.List;
+import me.kezhenxu94.springagent.core.tools.SkillsTool;
 import me.kezhenxu94.springagent.core.tools.TodoWriteTool;
 import org.springaicommunity.agent.tools.AskUserQuestionTool;
 import org.springaicommunity.agent.tools.FileSystemTools;
@@ -8,7 +9,6 @@ import org.springaicommunity.agent.tools.GlobTool;
 import org.springaicommunity.agent.tools.GrepTool;
 import org.springaicommunity.agent.tools.ListDirectoryTool;
 import org.springaicommunity.agent.tools.ShellTools;
-import org.springaicommunity.agent.tools.SkillsTool;
 import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
@@ -29,9 +29,9 @@ import org.springframework.aot.hint.RuntimeHintsRegistrar;
 public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
 
   /**
-   * Every tool type spring-ai-agent-utils can hand to a run, plus core's fork of one of them. The
-   * two search tools the library also ships, Brave and web fetch, are left out: nothing here
-   * constructs them.
+   * Every tool type spring-ai-agent-utils can hand to a run, plus core's two forks of ones it ships
+   * — {@code TodoWriteTool} and {@code SkillsTool}. The two search tools the library also ships,
+   * Brave and web fetch, are left out: nothing here constructs them.
    *
    * <p>Public because it is this module's one statement of which tools it takes from that library,
    * and the test that no translation names a tool that no longer exists reads the same list. Adding

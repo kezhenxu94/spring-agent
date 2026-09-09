@@ -48,17 +48,11 @@ class CoreToolTextsParityTest {
     final var found =
         new java.util.HashMap<>(
             ToolTextsInventory.toolsOf("me.kezhenxu94.springagent.core", extras));
-    // The skill tool, which reflection over @Tool methods cannot see: the library builds it as a
-    // FunctionToolCallback, its name and its one parameter coming from a record rather than from an
-    // annotated method. Stated here so a key naming it is still checked, and so that a key naming
-    // anything else about it is still rejected.
-    found.put(
-        "Skill",
-        java.util.Arrays.stream(
-                org.springaicommunity.agent.tools.SkillsTool.SkillsInput.class
-                    .getRecordComponents())
-            .map(java.lang.reflect.RecordComponent::getName)
-            .collect(java.util.stream.Collectors.toUnmodifiableSet()));
+    // Nothing is added for the skills, deliberately. They are tools of their own now — one per
+    // installed skill, named after it, described by its own front matter (see core's SkillsTool) —
+    // so no name a translation could carry is knowable here, and a key or a file naming one is a
+    // key that would never be applied. Leaving them out of the inventory is what makes the
+    // assertions below reject such a key rather than accept it.
     tools = java.util.Map.copyOf(found);
   }
 
