@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
@@ -78,10 +79,11 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   private static final int MAX_QUEUED_MESSAGE_LENGTH = 200;
 
   /**
-   * How many earlier calls get a pane each. A card has a size of its own to stay within and the
-   * whole pane is sent again on every call, so a turn that makes fifty of them cannot carry fifty
-   * transcripts. The ones past this are said in a line rather than dropped in silence, and the
-   * newest are the ones kept: a reader looking at a running turn is looking at what it just did.
+   * How many earlier calls get a pane each. A card has a size of its own to stay within — 30KB, or
+   * 200 elements — and a turn that makes fifty calls cannot carry fifty transcripts without filling
+   * one card after another. The ones past this are said in a line rather than dropped in silence,
+   * and the newest are the ones kept: a reader looking at a running turn is looking at what it just
+   * did.
    */
   private static final int CALLS_SHOWN = 20;
 
@@ -166,6 +168,17 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   private int callsOnEarlierCards;
 
   /**
+   * The first call of the run whose pane is on the card being written to now, which is what the
+   * incremental writes are addressed against: the panes on the card are this call and every call
+   * after it, one each, in the run's own order.
+   *
+   * <p>Moved only by the two things that can move it — a rebuild, which decides afresh what the
+   * pane shows, and the window sliding past a call as another is appended, which deletes that
+   * call's pane. Both keep it equal to what the earlier-calls line inside the pane says.
+   */
+  private int shownFrom;
+
+  /**
    * The topmost of the subagent panels this run has on the card, or null while it has none.
    *
    * <p>What an anchor search landing on {@link FeishuCardElements#SUBAGENTS} resolves to: that
@@ -246,6 +259,23 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
 
   /** How many times the pane has been replaced, which is what makes each replacement its own. */
   private int toolPaneRevision;
+
+  /**
+   * The same for one call's pane, which is rewritten in place as the call comes back. One counter
+   * across every call rather than one each: it is only there to make each write its own, and an
+   * idempotency key is compared with the writes to the card and not with the calls.
+   */
+  private int toolCallRevision;
+
+  /**
+   * Where a call's clock is read, which is {@link System#nanoTime()} outside a test. A monotonic
+   * clock rather than the wall one: how long a call took is an elapsed time, and a card that says a
+   * tool ran for -1.4s because the host stepped its clock is worse than one that says nothing.
+   *
+   * <p>Package-private so a test can hand a run a clock it controls. There is no other way to say
+   * what a card should show for a call that took two seconds without the test taking two seconds.
+   */
+  LongSupplier nanoTime = System::nanoTime;
 
   /** The same, for the task list, which is replaced whole every time it changes. */
   private int todoRevision;
@@ -569,8 +599,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     // call was for: 'Bash' twenty times over is a trail that says nothing, and the description is
     // the one thing that tells one of those calls from the next without opening it. It is then
     // left out of the fields, since the line above them now says it.
-    toolCalls.add(new ToolCall(toolName, description, fields));
-    showToolCalls(true);
+    toolCalls.add(new ToolCall(toolName, description, fields, nanoTime.getAsLong()));
+    addToolCall();
   }
 
   /**
@@ -596,53 +626,211 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     }
     // The oldest call of that tool still waiting, since a round can have several of the same tool
     // out at once and they come back in whatever order they finish in.
-    for (final var call : toolCalls) {
+    for (var index = 0; index < toolCalls.size(); index++) {
+      final var call = toolCalls.get(index);
       if (call.toolName.equals(toolName) && call.result == null) {
-        call.result = readable(toolResult);
-        break;
+        call.returned(readable(toolResult), nanoTime.getAsLong());
+        log.info(
+            "Tool call returned: cardId={}, tool={}, took={}s",
+            card.cardId(),
+            toolName,
+            seconds(call.elapsedNanos));
+        updateToolCall(index);
+        return;
       }
     }
-    showToolCalls(true);
+    log.debug(
+        "A result came back for {} with no call of it still out: cardId={}",
+        toolName,
+        card.cardId());
   }
 
   /**
-   * The pane holding every call the turn has made, as the card should now have it.
+   * The newest call, on the card, as a pane appended to the one holding the rest.
    *
-   * <p>Replaced whole on every call rather than written into: the pane grows a pane per call, and
-   * an insert can only name an element of the card, never one nested in another. The first call
-   * puts it on the card instead, since there is nothing there to replace yet — and it goes on
-   * already holding that call, so no card ever shows an empty pane.
+   * <p>Appended rather than the pane rebuilt around it, which is the whole of why a call's pane
+   * carries an id. Feishu reports a panel's chevron to nobody, so an element sent again is an
+   * element drawn again closed — and a pane rebuilt on every call is every call a reader had opened
+   * snapping shut under them, on a card that is being written to several times a minute. Appending
+   * touches one place: the panes already there are not sent, so nothing about them changes.
+   *
+   * <p>Whole-pane rebuilds are what is left when there is nothing to keep — a card with no pane on
+   * it yet, a pane a write found gone, a window that has to drop a call before the line saying how
+   * many exists to be updated. Each of those is once per card or once per turn rather than once per
+   * call.
+   */
+  private synchronized void addToolCall() {
+    if (elements == null || toolCalls.isEmpty()) {
+      return;
+    }
+    sync();
+    final var hidden = hiddenCalls();
+    if (hidden >= toolCalls.size()) {
+      // Every call this run has made is on an earlier card and it has made none since. A pane
+      // saying so and holding nothing is not worth the space on a card that has just started.
+      return;
+    }
+    if (!toolPaneIntact() || !slideTo(hidden)) {
+      showToolCalls(true);
+      return;
+    }
+    final var index = toolCalls.size() - 1;
+    final var generationBefore = generation;
+    final var appended =
+        card.appendInto(
+            FeishuCardElements.TOOLS,
+            "[" + elements.toolCallPane(paneFor(index)) + "]",
+            keyFor(FeishuCardElements.TOOLS, "call:" + index));
+    if (appended) {
+      log.debug("Tool call {} appended to the pane on card {}", index, card.cardId());
+      return;
+    }
+    // Either the run has moved onto a card whose pane holds nothing yet, or the pane is not what
+    // this updater last saw. Both are answered by building it again: it is the one thing here that
+    // does not depend on what the card already holds.
+    log.info(
+        "The pane on card {} would not take call {}, so it is built again", card.cardId(), index);
+    if (movedOn(generationBefore) || !toolPaneIntact()) {
+      showToolCalls(true);
+    }
+  }
+
+  /**
+   * One call's pane rewritten where it stands, now that the call has come back: what it returned
+   * under what it was given, and how long it took beside the tool that took it.
+   *
+   * <p>The one element sent is that call's own, so a reader who has another call open keeps it
+   * open. The call being rewritten is the exception and cannot be helped — its title has to change,
+   * and a title is not something that can be written into — but it closes only itself, once, at the
+   * moment it stops being the call the run is waiting on.
+   */
+  private synchronized void updateToolCall(final int index) {
+    if (elements == null) {
+      return;
+    }
+    sync();
+    if (!toolPaneIntact()) {
+      showToolCalls(true);
+      return;
+    }
+    if (index < shownFrom || index >= toolCalls.size()) {
+      // Its pane is not on this card: it is on the card the run left, or behind the line standing
+      // for the calls the window has dropped. Either way there is nothing here to rewrite.
+      return;
+    }
+    card.replaceNested(
+        FeishuCardElements.toolCallElementId(index),
+        elements.toolCallPane(paneFor(index)),
+        card.cardId() + ":call:" + index + ":" + (++toolCallRevision));
+  }
+
+  /**
+   * How many of the run's calls the pane on this card does not show one each: the ones left on a
+   * card it filled, which have a pane already up there, and the ones this card has dropped to stay
+   * within its size. Said in a line inside the pane rather than dropped in silence.
+   */
+  private int hiddenCalls() {
+    return Math.max(callsOnEarlierCards, toolCalls.size() - CALLS_SHOWN);
+  }
+
+  /**
+   * Drops the panes of the calls that have fallen out of the window, and says whether the pane can
+   * now be appended to — the line counting them has to be there to be corrected, and it is on the
+   * card only where something was already hidden. So the first call to fall out of the window is
+   * answered with a rebuild, and every one after it incrementally.
+   */
+  private boolean slideTo(final int hidden) {
+    if (hidden <= shownFrom) {
+      return true;
+    }
+    if (shownFrom == 0) {
+      return false;
+    }
+    while (shownFrom < hidden) {
+      card.remove(FeishuCardElements.toolCallElementId(shownFrom));
+      shownFrom++;
+    }
+    card.replaceNested(
+        FeishuCardElements.TOOLS_EARLIER,
+        elements.earlierCallsLine(shownFrom),
+        card.cardId() + ":tools-earlier:" + shownFrom);
+    log.debug("The pane on card {} now shows the calls from {}", card.cardId(), shownFrom);
+    return true;
+  }
+
+  /**
+   * Whether the card still has the pane and every call pane inside it that this updater put there.
+   *
+   * <p>Both halves, because a write that names one of the nested panes is refused for want of that
+   * pane and not for want of the one holding it: {@code FeishuCard} writes the missing id down and
+   * leaves it, since a call's pane has nowhere else on the card it could go. So the remedy is the
+   * pane built again whole, which is also what puts the nested panes back — see {@link
+   * #paneRebuilt(int)}.
+   */
+  private boolean toolPaneIntact() {
+    if (!stillOnCard(FeishuCardElements.TOOLS)) {
+      return false;
+    }
+    for (var index = shownFrom; index < toolCalls.size(); index++) {
+      if (card.lost(FeishuCardElements.toolCallElementId(index))) {
+        log.info(
+            "Card {} no longer has the pane of call {}, so the whole pane goes back on",
+            card.cardId(),
+            index);
+        return false;
+      }
+    }
+    return !card.lost(FeishuCardElements.TOOLS_EARLIER);
+  }
+
+  /** One call as the pane shows it, addressed by the id the run appends and rewrites it under. */
+  private FeishuCardElements.ToolCall paneFor(final int index) {
+    final var call = toolCalls.get(index);
+    return new FeishuCardElements.ToolCall(
+        FeishuCardElements.toolCallElementId(index), call.title(), call.rendered());
+  }
+
+  /**
+   * The pane holding every call the turn has made, built again from nothing and put on the card.
+   *
+   * <p>Not what happens on an ordinary call — see {@link #addToolCall()} — because it closes every
+   * pane nested in it. It is for a card that has no pane yet, a pane a write found gone, and the
+   * end of the run, when the pane is folded away and every chevron under it is behind that one
+   * anyway.
+   *
+   * <p>{@code expanded} carries both meanings, and they go together: the pane is open exactly while
+   * the run is working, and its title says which of the two it is. The count goes on at the end
+   * rather than as it grows, since saying it while the run works would mean rewriting the pane —
+   * and therefore closing what is inside it — on every call.
    */
   private synchronized void showToolCalls(final boolean expanded) {
     if (elements == null || toolCalls.isEmpty()) {
       return;
     }
     sync();
-    final var running = callStillOut();
     // The calls left on a card the run has filled are hidden here for the same reason the oldest
     // are: they have a pane already, on the card above, and the count says how many rather than
     // this pane showing them twice.
-    final var hidden = Math.max(callsOnEarlierCards, toolCalls.size() - CALLS_SHOWN);
+    final var hidden = hiddenCalls();
     if (hidden >= toolCalls.size()) {
       // Every call this run has made is on an earlier card and it has made none since. A pane
       // saying so and holding nothing is not worth the space on a card that has just started.
       return;
     }
-    final var shown =
-        toolCalls.subList(hidden, toolCalls.size()).stream()
-            .map(call -> new FeishuCardElements.ToolCall(call.title(), call.rendered()))
-            .toList();
+    final var shown = new ArrayList<FeishuCardElements.ToolCall>();
+    for (var index = hidden; index < toolCalls.size(); index++) {
+      shown.add(paneFor(index));
+    }
     final var pane =
         elements.toolsPane(
             expanded,
-            running != null
-                // The tool the run is on, not what the model said the call was for: this title
-                // names the whole trail, and a description reading as one call's sentence would
-                // make a pane holding twenty of them look like it holds one.
-                ? messages.get("card-tool-calls", running.toolName)
-                // Nothing is out, so the title names the trail by its size instead. Going on
-                // naming the last call would say the run is on a call that is over, and it is the
-                // title a finished card keeps.
+            expanded
+                // No tool is named: the title is written once, when the pane goes on the card, and
+                // naming the tool of the moment would mean rewriting the pane — and closing every
+                // call a reader had opened — on every call.
+                ? messages.get("card-tool-calls-running")
+                // The run is over, which is the one time the title is rewritten. The count is the
+                // turn's total, the calls behind the earlier-calls line included.
                 : messages.get("card-tool-calls-done", toolCalls.size()),
             hidden,
             shown);
@@ -651,6 +839,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       // and reusing one across replacements would have Feishu take the first and ignore the rest.
       card.replace(
           FeishuCardElements.TOOLS, pane, card.cardId() + ":tools:" + (++toolPaneRevision));
+      paneRebuilt(hidden);
       return;
     }
     final var array = om.createArrayNode();
@@ -659,6 +848,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     if (insertAbove(FeishuCardElements.TOOLS, array.toString(), "tools")) {
       added.add(FeishuCardElements.TOOLS);
       backOnCard(FeishuCardElements.TOOLS);
+      paneRebuilt(hidden);
       return;
     }
     if (movedOn(generationBefore)) {
@@ -669,23 +859,18 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   }
 
   /**
-   * The call the run is waiting on, which is the newest one still out — a round's calls come back
-   * in whatever order they finish in, and the newest is the one a reader is watching for. It names
-   * the pane while it is out; {@code null} once every call is back, and the pane is then named by
-   * how many it holds.
-   *
-   * <p>Naming it is all it gets: every call sits in the pane, the one out included, so that what a
-   * call returned lands with what it was given. Held above the list instead, the newest call showed
-   * what it was given and never what it came back with, and a turn whose last act was a tool call
-   * left that call's result off the card altogether.
+   * Says which calls the pane now shows, and that the card has the panes of all of them again: a
+   * rebuild carries every one of them, so an id a write had found missing is on the card once more
+   * and the next write to it is worth making.
    */
-  private ToolCall callStillOut() {
-    for (var i = toolCalls.size() - 1; i >= 0; i--) {
-      if (toolCalls.get(i).result == null) {
-        return toolCalls.get(i);
-      }
+  private void paneRebuilt(final int hidden) {
+    shownFrom = hidden;
+    card.found(FeishuCardElements.TOOLS_EARLIER);
+    for (var index = hidden; index < toolCalls.size(); index++) {
+      card.found(FeishuCardElements.toolCallElementId(index));
     }
-    return null;
+    log.debug(
+        "The pane on card {} was built again, showing the calls from {}", card.cardId(), hidden);
   }
 
   /**
@@ -693,7 +878,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    * the run is calling tools the calls are the only thing happening, and once there is an answer
    * above them they are an aside behind a chevron. This is the only time it is closed on purpose —
    * Feishu reports a panel's chevron to nobody, so anything more often would be overruling a
-   * reader's own choice rather than setting a default.
+   * reader's own choice rather than setting a default. It is also the one time the title is
+   * rewritten, to say how many calls the turn made in the end.
    */
   private void closeToolsPane() {
     showToolCalls(false);
@@ -804,12 +990,30 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   }
 
   /**
-   * One tool call: the line naming it, what it was called with, and what it returned once it has.
+   * How long a call took, as the card says it: seconds to a tenth. A card is not a profiler — the
+   * question it has to answer is which of the turn's calls is the one that took the time — and a
+   * tenth is enough to answer it while staying short enough to sit in a title.
    *
-   * <p>Mutable in that one field alone, because a call is announced before it has a result and the
-   * pane it sits in is rebuilt on every call after it.
+   * <p>{@code Locale.ROOT}, because it is a number the message then puts in a sentence of its own,
+   * and a decimal comma inside brackets a Chinese card wrote in full-width parentheses reads as two
+   * numbers.
    */
-  private static final class ToolCall {
+  private static String seconds(final long nanos) {
+    return String.format(Locale.ROOT, "%.1f", Math.max(nanos, 0L) / 1_000_000_000.0);
+  }
+
+  /**
+   * One tool call: the line naming it, what it was called with, what it returned once it has, and
+   * how long that took.
+   *
+   * <p>Mutable in the two fields a call gains when it comes back, because a call is announced
+   * before either is known and its pane is rewritten in place when they are.
+   *
+   * <p>An inner class rather than a static one so that it can name the durations in the run's own
+   * language: the rest of the line — the tool, the model's description — is not the card talking
+   * and is not translated, but "(1.4s)" is.
+   */
+  private final class ToolCall {
     private final String toolName;
 
     /** What the model said this call was for, or null on a tool that asks for no description. */
@@ -818,10 +1022,29 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     private final String input;
     private String result;
 
-    private ToolCall(final String toolName, final String description, final String input) {
+    /**
+     * When the call went out, on the monotonic clock, and how long it took once it came back — null
+     * while it is still out, which is also what leaves the duration off its title.
+     */
+    private final long startedAtNanos;
+
+    private Long elapsedNanos;
+
+    private ToolCall(
+        final String toolName,
+        final String description,
+        final String input,
+        final long startedAtNanos) {
       this.toolName = Strings.nullToEmpty(toolName);
       this.description = description;
       this.input = input;
+      this.startedAtNanos = startedAtNanos;
+    }
+
+    /** Says the call is back: what it returned, and how long the run waited for it. */
+    private void returned(final String result, final long atNanos) {
+      this.result = result;
+      this.elapsedNanos = atNanos - startedAtNanos;
     }
 
     /**
@@ -837,9 +1060,15 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
      * field: value} pairs are.
      */
     private String title() {
-      return Strings.isNullOrEmpty(description)
-          ? toolName
-          : toolName + TITLE_SEPARATOR + description;
+      // Beside the tool rather than at the end of the line: what a reader is scanning for is the
+      // call the turn went on, and after a sentence of the model's own the timings would be strewn
+      // down the pane at whatever column each description happened to end in. A call still out has
+      // nothing here, which is also what says it is still out.
+      final var named =
+          elapsedNanos == null
+              ? toolName
+              : toolName + " " + messages.get("card-tool-call-duration", seconds(elapsedNanos));
+      return Strings.isNullOrEmpty(description) ? named : named + TITLE_SEPARATOR + description;
     }
 
     /**
@@ -903,6 +1132,10 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     putBacks.clear();
     firstSubagentPanelId = null;
     callsOnEarlierCards = toolCalls.size();
+    // Nothing of the trail is on the card the run has moved onto, so the first call it makes there
+    // is the first one that card shows. Held in step with callsOnEarlierCards, which is what the
+    // pane's earlier-calls line will say the moment there is a pane again.
+    shownFrom = toolCalls.size();
   }
 
   /** Whether {@code elementId} is on the card the run is writing to now. */
