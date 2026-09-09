@@ -1,5 +1,7 @@
 package me.kezhenxu94.springagent.core.knowledge;
 
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
+
 /**
  * Something to index, and where it should land.
  *
@@ -24,7 +26,7 @@ package me.kezhenxu94.springagent.core.knowledge;
  */
 public record KnowledgeSource(
     KnowledgeScope scope,
-    KnowledgeScope.Target target,
+    ScopeTarget target,
     String title,
     String text,
     String source,
@@ -44,7 +46,7 @@ public record KnowledgeSource(
 
   public static KnowledgeSource ofText(
       final KnowledgeScope scope,
-      final KnowledgeScope.Target target,
+      final ScopeTarget target,
       final String title,
       final String text,
       final String source,
@@ -55,7 +57,7 @@ public record KnowledgeSource(
   /** Content the agent has to go and read, from the place that is also its attribution. */
   public static KnowledgeSource ofPath(
       final KnowledgeScope scope,
-      final KnowledgeScope.Target target,
+      final ScopeTarget target,
       final String title,
       final String path,
       final String docId) {

@@ -4,9 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope.Target;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
 import me.kezhenxu94.springagent.core.support.TestI18n;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -58,11 +58,11 @@ class MemoryScopesTest {
     @Test
     @DisplayName("a blank group or tenant is a scope the request does not have")
     void blankIsAbsent() {
-      assertThat(scopes(false, "ou_1", "", null).readable()).containsExactly(Target.OWN);
+      assertThat(scopes(false, "ou_1", "", null).readable()).containsExactly(ScopeTarget.OWN);
       assertThat(scopes(false, "ou_1", null, "t_3").readable())
-          .containsExactly(Target.OWN, Target.TENANT);
+          .containsExactly(ScopeTarget.OWN, ScopeTarget.TENANT);
       assertThat(scopes(false, "ou_1", "oc_9", "t_3").readable())
-          .containsExactly(Target.OWN, Target.GROUP, Target.TENANT);
+          .containsExactly(ScopeTarget.OWN, ScopeTarget.GROUP, ScopeTarget.TENANT);
     }
   }
 
@@ -74,36 +74,36 @@ class MemoryScopesTest {
     @DisplayName("a one-to-one chat writes only its own, and reads the tenant")
     void p2p() {
       final var s = scopes(false, "ou_1", null, "t_3");
-      assertThat(s.writable(Target.OWN)).isTrue();
-      assertThat(s.writable(Target.GROUP)).isFalse();
-      assertThat(s.writable(Target.TENANT)).isFalse();
+      assertThat(s.writable(ScopeTarget.OWN)).isTrue();
+      assertThat(s.writable(ScopeTarget.GROUP)).isFalse();
+      assertThat(s.writable(ScopeTarget.TENANT)).isFalse();
       // Readable but not writable is the whole point: a p2p run consults what the company
       // remembers without being able to add to it.
-      assertThat(s.has(Target.TENANT)).isTrue();
+      assertThat(s.has(ScopeTarget.TENANT)).isTrue();
     }
 
     @Test
     @DisplayName("a group chat writes all three")
     void group() {
       final var s = scopes(false, "ou_1", "oc_9", "t_3");
-      assertThat(s.writable(Target.OWN)).isTrue();
-      assertThat(s.writable(Target.GROUP)).isTrue();
-      assertThat(s.writable(Target.TENANT)).isTrue();
+      assertThat(s.writable(ScopeTarget.OWN)).isTrue();
+      assertThat(s.writable(ScopeTarget.GROUP)).isTrue();
+      assertThat(s.writable(ScopeTarget.TENANT)).isTrue();
     }
 
     @Test
     @DisplayName("an admin writes the tenant from a one-to-one chat, but there is still no group")
     void admin() {
       final var s = scopes(true, "ou_1", null, "t_3");
-      assertThat(s.writable(Target.TENANT)).isTrue();
-      assertThat(s.writable(Target.GROUP)).isFalse();
+      assertThat(s.writable(ScopeTarget.TENANT)).isTrue();
+      assertThat(s.writable(ScopeTarget.GROUP)).isFalse();
     }
 
     @Test
     @DisplayName("a deployment with no tenant has no tenant memory to write, admin or not")
     void noTenant() {
-      assertThat(scopes(true, "ou_1", "oc_9", null).writable(Target.TENANT)).isFalse();
-      assertThat(scopes(true, "ou_1", "oc_9", null).has(Target.TENANT)).isFalse();
+      assertThat(scopes(true, "ou_1", "oc_9", null).writable(ScopeTarget.TENANT)).isFalse();
+      assertThat(scopes(true, "ou_1", "oc_9", null).has(ScopeTarget.TENANT)).isFalse();
     }
   }
 

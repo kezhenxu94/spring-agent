@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,7 +32,7 @@ class KnowledgeBaseToolsTest {
 
   private final AtomicReference<KnowledgeSource> indexed = new AtomicReference<>();
   private final AtomicReference<KnowledgeEntry> moved = new AtomicReference<>();
-  private final AtomicReference<KnowledgeScope.Target> deleted = new AtomicReference<>();
+  private final AtomicReference<ScopeTarget> deleted = new AtomicReference<>();
   private KnowledgeBaseTools tools;
 
   /** Records what it was asked to store, which is the whole of what these tests are about. */
@@ -50,22 +51,22 @@ class KnowledgeBaseToolsTest {
 
         @Override
         public Optional<KnowledgeDocument> read(
-            final KnowledgeScope scope, final KnowledgeScope.Target owning, final String docId) {
+            final KnowledgeScope scope, final ScopeTarget owning, final String docId) {
           return Optional.empty();
         }
 
         @Override
         public void delete(
-            final KnowledgeScope scope, final KnowledgeScope.Target owning, final String docId) {
+            final KnowledgeScope scope, final ScopeTarget owning, final String docId) {
           deleted.set(owning);
         }
 
         @Override
         public Optional<KnowledgeEntry> move(
             final KnowledgeScope scope,
-            final KnowledgeScope.Target owning,
+            final ScopeTarget owning,
             final String docId,
-            final KnowledgeScope.Target target) {
+            final ScopeTarget target) {
           moved.set(new KnowledgeEntry(docId, docId, "", 1, null, target));
           return Optional.of(moved.get());
         }
@@ -123,7 +124,7 @@ class KnowledgeBaseToolsTest {
     final var result = tools.deleteKnowledge("a-doc", "own", context("om_42"));
 
     assertThat(result).contains("a-doc");
-    assertThat(deleted.get()).isEqualTo(KnowledgeScope.Target.OWN);
+    assertThat(deleted.get()).isEqualTo(ScopeTarget.OWN);
   }
 
   @Nested

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -248,7 +249,7 @@ class KnowledgeScopeFilterTest {
     @Test
     @DisplayName("narrowed to the tenant, the filter is that tenant alone")
     void tenantOnly() {
-      final var only = alice.owning(KnowledgeScope.Target.TENANT);
+      final var only = alice.owning(ScopeTarget.TENANT);
 
       assertThat(printReadable(only)).isEqualTo("tenant EQ \"acme\"");
       assertThat(readableIds(store, only)).containsExactly("acme-wide");
@@ -257,7 +258,7 @@ class KnowledgeScopeFilterTest {
     @Test
     @DisplayName("narrowed to their own, the filter is that owner alone")
     void ownOnly() {
-      final var only = alice.owning(KnowledgeScope.Target.OWN);
+      final var only = alice.owning(ScopeTarget.OWN);
 
       assertThat(printReadable(only)).isEqualTo("owner EQ \"alice\"");
       assertThat(readableIds(store, only)).containsExactly("alice-own");
@@ -380,14 +381,12 @@ class KnowledgeScopeFilterTest {
       assertThat(
               matching(
                   store,
-                  KnowledgeScopeFilter.documentOwnedBy(
-                      scope.owning(KnowledgeScope.Target.OWN), docId)))
+                  KnowledgeScopeFilter.documentOwnedBy(scope.owning(ScopeTarget.OWN), docId)))
           .containsExactly("private");
       assertThat(
               matching(
                   store,
-                  KnowledgeScopeFilter.documentOwnedBy(
-                      scope.owning(KnowledgeScope.Target.TENANT), docId)))
+                  KnowledgeScopeFilter.documentOwnedBy(scope.owning(ScopeTarget.TENANT), docId)))
           .containsExactly("company");
     }
 

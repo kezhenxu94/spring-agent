@@ -19,6 +19,7 @@ import me.kezhenxu94.springagent.core.knowledge.KnowledgePage;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeSource;
 import me.kezhenxu94.springagent.core.storage.StorageProperties;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.websocket.config.WebMessages;
 import me.kezhenxu94.springagent.integration.websocket.config.WebProperties;
@@ -93,8 +94,7 @@ class KnowledgeControllerTest {
   @DisplayName("refuses a company scope for a sign-in that carries no company")
   void tenantNeedsATenant() {
     final var controller = controller(new Recorder(), Set.of(), null);
-    assertThat(controller.targetFor("tenant", user(ME, TENANT)))
-        .isEqualTo(KnowledgeScope.Target.TENANT);
+    assertThat(controller.targetFor("tenant", user(ME, TENANT))).isEqualTo(ScopeTarget.TENANT);
     assertThatThrownBy(() -> controller.targetFor("tenant", user(ME, "")))
         .isInstanceOf(ResponseStatusException.class);
   }
@@ -168,7 +168,7 @@ class KnowledgeControllerTest {
     controller.delete(principal(ME, TENANT), "note:theirs", "own");
 
     assertThat(recorder.deleted)
-        .containsExactly(new Asked(scope(ME, TENANT), KnowledgeScope.Target.OWN, "note:theirs"));
+        .containsExactly(new Asked(scope(ME, TENANT), ScopeTarget.OWN, "note:theirs"));
   }
 
   @Test
@@ -188,8 +188,8 @@ class KnowledgeControllerTest {
         .hasMessageContaining("404");
     assertThat(recorder.readDocuments)
         .containsExactly(
-            new Asked(scope(ME, TENANT), KnowledgeScope.Target.OWN, "note:mine"),
-            new Asked(scope(ME, TENANT), KnowledgeScope.Target.OWN, "note:theirs"));
+            new Asked(scope(ME, TENANT), ScopeTarget.OWN, "note:mine"),
+            new Asked(scope(ME, TENANT), ScopeTarget.OWN, "note:theirs"));
   }
 
   @Test
@@ -216,7 +216,7 @@ class KnowledgeControllerTest {
         .isInstanceOf(ResponseStatusException.class)
         .hasMessageContaining("404");
     assertThat(recorder.moved)
-        .containsExactly(new Asked(scope(ME, TENANT), KnowledgeScope.Target.OWN, "note:theirs"));
+        .containsExactly(new Asked(scope(ME, TENANT), ScopeTarget.OWN, "note:theirs"));
   }
 
   @Test
@@ -231,7 +231,7 @@ class KnowledgeControllerTest {
     controller.delete(principal(ME, TENANT), path, "tenant");
 
     assertThat(recorder.deleted)
-        .containsExactly(new Asked(scope(ME, TENANT), KnowledgeScope.Target.TENANT, path));
+        .containsExactly(new Asked(scope(ME, TENANT), ScopeTarget.TENANT, path));
   }
 
   @Test
@@ -301,7 +301,7 @@ class KnowledgeControllerTest {
     assertThat(source.source()).isEqualTo(source.docId());
     assertThat(source.title()).isEqualTo("notes.md");
     assertThat(source.scope()).isEqualTo(scope(ME, TENANT));
-    assertThat(source.target()).isEqualTo(KnowledgeScope.Target.OWN);
+    assertThat(source.target()).isEqualTo(ScopeTarget.OWN);
     assertThat(result).containsKey("documents");
   }
 
@@ -333,7 +333,7 @@ class KnowledgeControllerTest {
 
     assertThat(recorder.indexed).hasSize(2);
     assertThat(recorder.indexed.get(0).docId()).isNotEqualTo(recorder.indexed.get(1).docId());
-    assertThat(recorder.indexed.get(0).target()).isEqualTo(KnowledgeScope.Target.TENANT);
+    assertThat(recorder.indexed.get(0).target()).isEqualTo(ScopeTarget.TENANT);
   }
 
   @Test
@@ -461,7 +461,7 @@ class KnowledgeControllerTest {
    * document in it. The knowledge base is part of it because an id names a document only together
    * with the base holding it — see {@code KnowledgeBase#delete}.
    */
-  private record Asked(KnowledgeScope scope, KnowledgeScope.Target owning, String docId) {}
+  private record Asked(KnowledgeScope scope, ScopeTarget owning, String docId) {}
 
   /** A knowledge base that stores nothing and remembers who was asked what. */
   private static final class Recorder implements KnowledgeBase {
@@ -486,28 +486,27 @@ class KnowledgeControllerTest {
 
     @Override
     public Optional<KnowledgeDocument> read(
-        final KnowledgeScope scope, final KnowledgeScope.Target owning, final String docId) {
+        final KnowledgeScope scope, final ScopeTarget owning, final String docId) {
       readDocuments.add(new Asked(scope, owning, docId));
       return docId.startsWith("note:mine")
           ? Optional.of(
               new KnowledgeDocument(
-                  new KnowledgeEntry(docId, "Mine", "", 2, null, KnowledgeScope.Target.OWN),
+                  new KnowledgeEntry(docId, "Mine", "", 2, null, ScopeTarget.OWN),
                   "what is stored"))
           : Optional.empty();
     }
 
     @Override
-    public void delete(
-        final KnowledgeScope scope, final KnowledgeScope.Target owning, final String docId) {
+    public void delete(final KnowledgeScope scope, final ScopeTarget owning, final String docId) {
       deleted.add(new Asked(scope, owning, docId));
     }
 
     @Override
     public Optional<KnowledgeEntry> move(
         final KnowledgeScope scope,
-        final KnowledgeScope.Target owning,
+        final ScopeTarget owning,
         final String docId,
-        final KnowledgeScope.Target target) {
+        final ScopeTarget target) {
       moved.add(new Asked(scope, owning, docId));
       return Optional.empty();
     }

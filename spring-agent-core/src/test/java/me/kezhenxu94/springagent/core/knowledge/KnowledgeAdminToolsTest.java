@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -50,26 +51,26 @@ class KnowledgeAdminToolsTest {
                       "om_42",
                       3,
                       Instant.parse("2026-08-01T00:00:00Z"),
-                      KnowledgeScope.Target.OWN)),
+                      ScopeTarget.OWN)),
               false);
         }
 
         @Override
         public Optional<KnowledgeDocument> read(
-            final KnowledgeScope scope, final KnowledgeScope.Target owning, final String docId) {
+            final KnowledgeScope scope, final ScopeTarget owning, final String docId) {
           return Optional.empty();
         }
 
         @Override
         public void delete(
-            final KnowledgeScope scope, final KnowledgeScope.Target owning, final String docId) {}
+            final KnowledgeScope scope, final ScopeTarget owning, final String docId) {}
 
         @Override
         public Optional<KnowledgeEntry> move(
             final KnowledgeScope scope,
-            final KnowledgeScope.Target owning,
+            final ScopeTarget owning,
             final String docId,
-            final KnowledgeScope.Target target) {
+            final ScopeTarget target) {
           return Optional.empty();
         }
 

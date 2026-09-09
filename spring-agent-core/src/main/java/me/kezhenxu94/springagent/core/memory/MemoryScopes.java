@@ -6,9 +6,9 @@ import java.util.ArrayList;
 import java.util.List;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
-import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope.Target;
 import me.kezhenxu94.springagent.core.tools.HomeDir;
 import me.kezhenxu94.springagent.core.tools.HomeDir.Folder;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserHome;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
@@ -70,12 +70,12 @@ public record MemoryScopes(Path own, Path group, Path tenant, boolean admin) {
   }
 
   /** Whether this request has an identity for {@code target} at all. */
-  public boolean has(final Target target) {
+  public boolean has(final ScopeTarget target) {
     return root(target) != null;
   }
 
   /** That scope's memories root, or null where the request has no such identity. */
-  public Path root(final Target target) {
+  public Path root(final ScopeTarget target) {
     return switch (target) {
       case OWN -> own;
       case GROUP -> group;
@@ -87,11 +87,11 @@ public record MemoryScopes(Path own, Path group, Path tenant, boolean admin) {
    * Every scope this request may read, in the order a read answers in: the requester's own first,
    * then what is shared with fewer people, then with more.
    */
-  public List<Target> readable() {
-    final var targets = new ArrayList<Target>();
-    if (own != null) targets.add(Target.OWN);
-    if (group != null) targets.add(Target.GROUP);
-    if (tenant != null) targets.add(Target.TENANT);
+  public List<ScopeTarget> readable() {
+    final var targets = new ArrayList<ScopeTarget>();
+    if (own != null) targets.add(ScopeTarget.OWN);
+    if (group != null) targets.add(ScopeTarget.GROUP);
+    if (tenant != null) targets.add(ScopeTarget.TENANT);
     return List.copyOf(targets);
   }
 
@@ -114,7 +114,7 @@ public record MemoryScopes(Path own, Path group, Path tenant, boolean admin) {
    * chat" would eventually disagree with those, and the disagreement would be a silent write into a
    * directory a whole company reads.
    */
-  public boolean writable(final Target target) {
+  public boolean writable(final ScopeTarget target) {
     return switch (target) {
       case OWN -> own != null;
       case GROUP -> group != null;
@@ -139,7 +139,7 @@ public record MemoryScopes(Path own, Path group, Path tenant, boolean admin) {
       lines.add(
           messages.get(
               "memory-scope",
-              word(target),
+              target.word(),
               root(target),
               messages.get(audienceKey(target)),
               messages.get(writable(target) ? "memory-scope-writable" : "memory-scope-read-only")));
@@ -147,19 +147,7 @@ public record MemoryScopes(Path own, Path group, Path tenant, boolean admin) {
     return String.join("\n", lines);
   }
 
-  /**
-   * The word a tool call addresses this scope by. Lower case and never localized: it is an argument
-   * the model passes back, parsed by {@code Target.named}, not prose for a person to read.
-   */
-  public static String word(final Target target) {
-    return switch (target) {
-      case OWN -> "own";
-      case GROUP -> "group";
-      case TENANT -> "tenant";
-    };
-  }
-
-  private static String audienceKey(final Target target) {
+  private static String audienceKey(final ScopeTarget target) {
     return switch (target) {
       case OWN -> "home-dir-own";
       case GROUP -> "home-dir-group";

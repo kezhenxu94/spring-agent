@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.core.knowledge;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import org.springframework.ai.document.Document;
 
 /**
@@ -14,7 +15,7 @@ import org.springframework.ai.document.Document;
  *     the strongest chunk is the one that explains why the document is here at all
  */
 public record KnowledgeReference(
-    String docId, String title, String source, KnowledgeScope.Target scope, Double score) {
+    String docId, String title, String source, ScopeTarget scope, Double score) {
 
   /**
    * Folds retrieved chunks into one reference per document, keeping the order they were retrieved
@@ -49,14 +50,14 @@ public record KnowledgeReference(
   /**
    * Which knowledge base it came from, read back from whichever scope field it was stamped with.
    */
-  private static KnowledgeScope.Target targetOf(final java.util.Map<String, Object> metadata) {
+  private static ScopeTarget targetOf(final java.util.Map<String, Object> metadata) {
     if (!string(metadata.get(KnowledgeMetadata.GROUP)).isEmpty()) {
-      return KnowledgeScope.Target.GROUP;
+      return ScopeTarget.GROUP;
     }
     if (!string(metadata.get(KnowledgeMetadata.TENANT)).isEmpty()) {
-      return KnowledgeScope.Target.TENANT;
+      return ScopeTarget.TENANT;
     }
-    return KnowledgeScope.Target.OWN;
+    return ScopeTarget.OWN;
   }
 
   private static String string(final Object value) {

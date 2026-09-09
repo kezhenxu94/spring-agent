@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeSource;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.events.config.EventsMessages;
 import me.kezhenxu94.springagent.events.config.EventsProperties;
@@ -173,7 +174,7 @@ public class PlaybookTools {
                   // it
                   // with the ordinary knowledge tools under a doc id the source's filter accepts.
                   new KnowledgeScope(policy.owner().userId(), "", ""),
-                  KnowledgeScope.Target.OWN,
+                  ScopeTarget.OWN,
                   title,
                   text,
                   origin(context),

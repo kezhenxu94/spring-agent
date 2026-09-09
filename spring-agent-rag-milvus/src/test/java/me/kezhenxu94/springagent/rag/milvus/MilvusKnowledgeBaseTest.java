@@ -12,6 +12,7 @@ import me.kezhenxu94.springagent.core.knowledge.KnowledgeEntry;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeMetadata;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeSource;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -115,10 +116,7 @@ class MilvusKnowledgeBaseTest {
   }
 
   private static String store(
-      final KnowledgeScope scope,
-      final KnowledgeScope.Target target,
-      final String title,
-      final String text) {
+      final KnowledgeScope scope, final ScopeTarget target, final String title, final String text) {
     // The title doubles as the document id here: an id is required of every caller, and every
     // title in these tests names one document.
     return knowledgeBase.index(KnowledgeSource.ofText(scope, target, title, text, null, title));
@@ -142,10 +140,10 @@ class MilvusKnowledgeBaseTest {
       final var alice = scope("iso-alice", "iso-eng", "iso-acme");
       final var bob = scope("iso-bob", "", "iso-acme");
 
-      store(alice, KnowledgeScope.Target.OWN, "iso-alice-note", "alice private note");
-      store(bob, KnowledgeScope.Target.OWN, "iso-bob-note", "bob private note");
-      store(alice, KnowledgeScope.Target.GROUP, "iso-eng-note", "engineering runbook");
-      store(alice, KnowledgeScope.Target.TENANT, "iso-acme-note", "company holiday policy");
+      store(alice, ScopeTarget.OWN, "iso-alice-note", "alice private note");
+      store(bob, ScopeTarget.OWN, "iso-bob-note", "bob private note");
+      store(alice, ScopeTarget.GROUP, "iso-eng-note", "engineering runbook");
+      store(alice, ScopeTarget.TENANT, "iso-acme-note", "company holiday policy");
 
       // A group chat: own, group and tenant.
       assertThat(searchTitles(alice, "note"))
@@ -164,7 +162,7 @@ class MilvusKnowledgeBaseTest {
       // The leak the scope filter exists to prevent, asserted where the expression is really
       // converted to Milvus syntax rather than only printed.
       final var loner = scope("iso-loner", "", "");
-      store(loner, KnowledgeScope.Target.OWN, "iso-loner-note", "a note of my own");
+      store(loner, ScopeTarget.OWN, "iso-loner-note", "a note of my own");
 
       assertThat(searchTitles(loner, "note")).containsExactly("iso-loner-note");
     }
@@ -178,7 +176,7 @@ class MilvusKnowledgeBaseTest {
     void listsDocumentsNotChunks() {
       final var owner = scope("list-owner", "", "");
       // Long enough to split, so a chunk-level listing would show this several times over.
-      store(owner, KnowledgeScope.Target.OWN, "list-long", "paragraph of text. ".repeat(400));
+      store(owner, ScopeTarget.OWN, "list-long", "paragraph of text. ".repeat(400));
 
       final var page = knowledgeBase.list(owner, 0, 10);
 
@@ -195,7 +193,7 @@ class MilvusKnowledgeBaseTest {
     void paginates() {
       final var owner = scope("page-owner", "", "");
       for (var i = 0; i < 5; i++) {
-        store(owner, KnowledgeScope.Target.OWN, "page-doc-" + i, "content number " + i);
+        store(owner, ScopeTarget.OWN, "page-doc-" + i, "content number " + i);
       }
 
       final var seen = new ArrayList<String>();
@@ -219,7 +217,7 @@ class MilvusKnowledgeBaseTest {
     @DisplayName("a listing says which knowledge base each document is in")
     void reportsScope() {
       final var alice = scope("label-alice", "label-eng", "label-acme");
-      store(alice, KnowledgeScope.Target.GROUP, "label-group-doc", "shared with the team");
+      store(alice, ScopeTarget.GROUP, "label-group-doc", "shared with the team");
 
       final var groupEntry =
           knowledgeBase.list(alice, 0, 50).entries().stream()
@@ -227,7 +225,7 @@ class MilvusKnowledgeBaseTest {
               .findFirst()
               .orElseThrow();
 
-      assertThat(groupEntry.scope()).isEqualTo(KnowledgeScope.Target.GROUP);
+      assertThat(groupEntry.scope()).isEqualTo(ScopeTarget.GROUP);
     }
   }
 
@@ -238,18 +236,12 @@ class MilvusKnowledgeBaseTest {
     @DisplayName("re-indexing under the same id replaces the document rather than adding a second")
     void replacesInPlace() {
       final var owner = scope("upd-owner", "", "");
-      final var docId =
-          store(owner, KnowledgeScope.Target.OWN, "upd-spec", "the first draft says blue");
+      final var docId = store(owner, ScopeTarget.OWN, "upd-spec", "the first draft says blue");
 
       final var sameId =
           knowledgeBase.index(
               KnowledgeSource.ofText(
-                  owner,
-                  KnowledgeScope.Target.OWN,
-                  "upd-spec",
-                  "the second draft says green",
-                  null,
-                  docId));
+                  owner, ScopeTarget.OWN, "upd-spec", "the second draft says green", null, docId));
 
       assertThat(sameId).isEqualTo(docId);
       final var entries =
@@ -271,18 +263,13 @@ class MilvusKnowledgeBaseTest {
     void cannotReplaceAcrossScopes() {
       final var alice = scope("cross-alice", "", "cross-acme");
       final var tenantDocId =
-          store(alice, KnowledgeScope.Target.TENANT, "cross-policy", "the company policy");
+          store(alice, ScopeTarget.TENANT, "cross-policy", "the company policy");
 
       // Alice can read the tenant document, so a replacement scoped to what she can read rather
       // than what she is writing would let her delete it here.
       knowledgeBase.index(
           KnowledgeSource.ofText(
-              alice,
-              KnowledgeScope.Target.OWN,
-              "cross-policy-mine",
-              "my own take",
-              null,
-              tenantDocId));
+              alice, ScopeTarget.OWN, "cross-policy-mine", "my own take", null, tenantDocId));
 
       final var titles =
           knowledgeBase.list(alice, 0, 50).entries().stream().map(e -> e.title()).toList();
@@ -297,18 +284,16 @@ class MilvusKnowledgeBaseTest {
     @DisplayName("a document reads back as the text it was indexed from, and as its own entry")
     void readsWhatWasStored() {
       final var owner = scope("read-owner", "", "read-acme");
-      final var docId =
-          store(owner, KnowledgeScope.Target.OWN, "read-note", "the badge code is 4321");
+      final var docId = store(owner, ScopeTarget.OWN, "read-note", "the badge code is 4321");
 
-      final var document =
-          knowledgeBase.read(owner, KnowledgeScope.Target.OWN, docId).orElseThrow();
+      final var document = knowledgeBase.read(owner, ScopeTarget.OWN, docId).orElseThrow();
 
       assertThat(document.text()).contains("the badge code is 4321");
       // The entry travels with it, so a caller holding only a search hit does not need a second
       // query for the chunk count and the date.
       assertThat(document.entry().docId()).isEqualTo(docId);
       assertThat(document.entry().title()).isEqualTo("read-note");
-      assertThat(document.entry().scope()).isEqualTo(KnowledgeScope.Target.OWN);
+      assertThat(document.entry().scope()).isEqualTo(ScopeTarget.OWN);
       assertThat(document.entry().chunkCount()).isEqualTo(1);
     }
 
@@ -322,10 +307,9 @@ class MilvusKnowledgeBaseTest {
           java.util.stream.IntStream.range(0, 200)
               .mapToObj(i -> "paragraph " + i + " of the policy. ")
               .reduce("", String::concat);
-      final var docId = store(owner, KnowledgeScope.Target.OWN, "read-policy", text);
+      final var docId = store(owner, ScopeTarget.OWN, "read-policy", text);
 
-      final var document =
-          knowledgeBase.read(owner, KnowledgeScope.Target.OWN, docId).orElseThrow();
+      final var document = knowledgeBase.read(owner, ScopeTarget.OWN, docId).orElseThrow();
 
       assertThat(document.entry().chunkCount()).isGreaterThan(1);
       assertThat(document.text().indexOf("paragraph 0 "))
@@ -337,16 +321,14 @@ class MilvusKnowledgeBaseTest {
     @DisplayName("one id in two knowledge bases reads back as two documents, not as one mixture")
     void readsOneKnowledgeBaseAtATime() {
       final var owner = scope("read-both", "", "read-both-acme");
-      final var docId =
-          store(owner, KnowledgeScope.Target.OWN, "read-shared-id", "the private one");
-      store(owner, KnowledgeScope.Target.TENANT, "read-shared-id", "the company one");
+      final var docId = store(owner, ScopeTarget.OWN, "read-shared-id", "the private one");
+      store(owner, ScopeTarget.TENANT, "read-shared-id", "the company one");
 
       // Read across the caller's whole reach these would come back as one document with both
       // texts in it, ordered by chunk ordinals that mean nothing across two documents.
-      assertThat(knowledgeBase.read(owner, KnowledgeScope.Target.OWN, docId).orElseThrow().text())
+      assertThat(knowledgeBase.read(owner, ScopeTarget.OWN, docId).orElseThrow().text())
           .isEqualTo("the private one");
-      assertThat(
-              knowledgeBase.read(owner, KnowledgeScope.Target.TENANT, docId).orElseThrow().text())
+      assertThat(knowledgeBase.read(owner, ScopeTarget.TENANT, docId).orElseThrow().text())
           .isEqualTo("the company one");
     }
 
@@ -355,10 +337,10 @@ class MilvusKnowledgeBaseTest {
     void isScopedLikeADelete() {
       final var alice = scope("read-alice", "", "");
       final var mallory = scope("read-mallory", "", "");
-      final var docId = store(alice, KnowledgeScope.Target.OWN, "read-private", "alice only");
+      final var docId = store(alice, ScopeTarget.OWN, "read-private", "alice only");
 
-      assertThat(knowledgeBase.read(mallory, KnowledgeScope.Target.OWN, docId)).isEmpty();
-      assertThat(knowledgeBase.read(alice, KnowledgeScope.Target.OWN, docId)).isPresent();
+      assertThat(knowledgeBase.read(mallory, ScopeTarget.OWN, docId)).isEmpty();
+      assertThat(knowledgeBase.read(alice, ScopeTarget.OWN, docId)).isPresent();
     }
   }
 
@@ -370,17 +352,15 @@ class MilvusKnowledgeBaseTest {
     void movesBetweenScopes() {
       final var alice = scope("move-alice", "move-eng", "");
       final var bob = scope("move-bob", "move-eng", "");
-      final var docId =
-          store(alice, KnowledgeScope.Target.OWN, "move-runbook", "how the release goes");
+      final var docId = store(alice, ScopeTarget.OWN, "move-runbook", "how the release goes");
 
       // Bob is in the same group but cannot see Alice's own document.
       assertThat(searchTitles(bob, "release")).doesNotContain("move-runbook");
 
-      final var moved =
-          knowledgeBase.move(alice, KnowledgeScope.Target.OWN, docId, KnowledgeScope.Target.GROUP);
+      final var moved = knowledgeBase.move(alice, ScopeTarget.OWN, docId, ScopeTarget.GROUP);
 
       assertThat(moved).isPresent();
-      assertThat(moved.get().scope()).isEqualTo(KnowledgeScope.Target.GROUP);
+      assertThat(moved.get().scope()).isEqualTo(ScopeTarget.GROUP);
       assertThat(searchTitles(bob, "release")).contains("move-runbook");
       // One document, not the original plus a copy — a listing counts what is really stored.
       assertThat(
@@ -394,10 +374,9 @@ class MilvusKnowledgeBaseTest {
     @DisplayName("a move keeps the content, so the document is still what it said")
     void keepsTheContent() {
       final var owner = scope("move-keep", "", "move-acme");
-      final var docId =
-          store(owner, KnowledgeScope.Target.OWN, "move-policy", "the badge code is 4321");
+      final var docId = store(owner, ScopeTarget.OWN, "move-policy", "the badge code is 4321");
 
-      knowledgeBase.move(owner, KnowledgeScope.Target.OWN, docId, KnowledgeScope.Target.TENANT);
+      knowledgeBase.move(owner, ScopeTarget.OWN, docId, ScopeTarget.TENANT);
 
       final var found = knowledgeBase.search(owner, "badge", 50);
       assertThat(found).isNotEmpty();
@@ -408,7 +387,7 @@ class MilvusKnowledgeBaseTest {
               .filter(e -> "move-policy".equals(e.title()))
               .findFirst()
               .orElseThrow();
-      assertThat(entry.scope()).isEqualTo(KnowledgeScope.Target.TENANT);
+      assertThat(entry.scope()).isEqualTo(ScopeTarget.TENANT);
     }
 
     @Test
@@ -416,12 +395,9 @@ class MilvusKnowledgeBaseTest {
     void cannotMoveWhatYouCannotRead() {
       final var alice = scope("move-owner-alice", "", "");
       final var mallory = scope("move-owner-mallory", "", "");
-      final var docId = store(alice, KnowledgeScope.Target.OWN, "move-private", "alice only");
+      final var docId = store(alice, ScopeTarget.OWN, "move-private", "alice only");
 
-      assertThat(
-              knowledgeBase.move(
-                  mallory, KnowledgeScope.Target.OWN, docId, KnowledgeScope.Target.OWN))
-          .isEmpty();
+      assertThat(knowledgeBase.move(mallory, ScopeTarget.OWN, docId, ScopeTarget.OWN)).isEmpty();
       assertThat(searchTitles(alice, "alice only")).contains("move-private");
       assertThat(searchTitles(mallory, "alice only")).isEmpty();
     }
@@ -432,10 +408,9 @@ class MilvusKnowledgeBaseTest {
       final var alice = scope("move-chunky", "move-chunky-eng", "");
       final var bob = scope("move-chunky-bob", "move-chunky-eng", "");
       final var docId =
-          store(alice, KnowledgeScope.Target.OWN, "move-long", "paragraph of text. ".repeat(400));
+          store(alice, ScopeTarget.OWN, "move-long", "paragraph of text. ".repeat(400));
 
-      final var moved =
-          knowledgeBase.move(alice, KnowledgeScope.Target.OWN, docId, KnowledgeScope.Target.GROUP);
+      final var moved = knowledgeBase.move(alice, ScopeTarget.OWN, docId, ScopeTarget.GROUP);
 
       assertThat(moved).isPresent();
       assertThat(moved.get().chunkCount()).isGreaterThan(1);
@@ -507,12 +482,7 @@ class MilvusKnowledgeBaseTest {
       final var owner = scope("bar-owner", "", "");
       base.index(
           KnowledgeSource.ofText(
-              owner,
-              KnowledgeScope.Target.OWN,
-              "bar-alpha",
-              "all about alpha things",
-              null,
-              "bar-alpha"));
+              owner, ScopeTarget.OWN, "bar-alpha", "all about alpha things", null, "bar-alpha"));
 
       // Automatic retrieval applies the configured threshold, and an orthogonal query scores 0.
       final var retrieved =
@@ -540,7 +510,7 @@ class MilvusKnowledgeBaseTest {
       base.index(
           KnowledgeSource.ofText(
               alice,
-              KnowledgeScope.Target.OWN,
+              ScopeTarget.OWN,
               "bar-alice-doc",
               "alpha secrets of alice",
               null,
@@ -560,15 +530,14 @@ class MilvusKnowledgeBaseTest {
       final var other = scope("bar-other", "", "");
       base.index(
           KnowledgeSource.ofText(
-              agent, KnowledgeScope.Target.OWN, "playbook", "alpha runbook", null, "runbook"));
+              agent, ScopeTarget.OWN, "playbook", "alpha runbook", null, "runbook"));
       base.index(
-          KnowledgeSource.ofText(
-              agent, KnowledgeScope.Target.OWN, "notes", "alpha notes", null, "notes"));
+          KnowledgeSource.ofText(agent, ScopeTarget.OWN, "notes", "alpha notes", null, "notes"));
       // Somebody else's document under the very id the filter names — the case where a filter
       // composed beside the scope instead of under it would hand it over.
       base.index(
           KnowledgeSource.ofText(
-              other, KnowledgeScope.Target.OWN, "theirs", "alpha runbook", null, "runbook"));
+              other, ScopeTarget.OWN, "theirs", "alpha runbook", null, "runbook"));
 
       final var parser = new org.springframework.ai.vectorstore.filter.FilterExpressionTextParser();
       final var retrieved =
@@ -597,9 +566,9 @@ class MilvusKnowledgeBaseTest {
     void deletesWholeDocument() {
       final var owner = scope("del-owner", "", "");
       final var docId =
-          store(owner, KnowledgeScope.Target.OWN, "del-doc", "sentence to remove. ".repeat(400));
+          store(owner, ScopeTarget.OWN, "del-doc", "sentence to remove. ".repeat(400));
 
-      knowledgeBase.delete(owner, KnowledgeScope.Target.OWN, docId);
+      knowledgeBase.delete(owner, ScopeTarget.OWN, docId);
 
       final var titles =
           knowledgeBase.list(owner, 0, 50).entries().stream().map(e -> e.title()).toList();
@@ -614,10 +583,10 @@ class MilvusKnowledgeBaseTest {
       // everything the caller can read would take the company's document away with theirs, and
       // nobody would be able to say which of the two they had asked to remove.
       final var owner = scope("del-both", "", "del-both-acme");
-      final var docId = store(owner, KnowledgeScope.Target.OWN, "del-shared-id", "the private one");
-      store(owner, KnowledgeScope.Target.TENANT, "del-shared-id", "the company one");
+      final var docId = store(owner, ScopeTarget.OWN, "del-shared-id", "the private one");
+      store(owner, ScopeTarget.TENANT, "del-shared-id", "the company one");
 
-      knowledgeBase.delete(owner, KnowledgeScope.Target.OWN, docId);
+      knowledgeBase.delete(owner, ScopeTarget.OWN, docId);
 
       final var left =
           knowledgeBase.list(owner, 0, 50).entries().stream()
@@ -626,9 +595,8 @@ class MilvusKnowledgeBaseTest {
       assertThat(left)
           .singleElement()
           .extracting(KnowledgeEntry::scope)
-          .isEqualTo(KnowledgeScope.Target.TENANT);
-      assertThat(
-              knowledgeBase.read(owner, KnowledgeScope.Target.TENANT, docId).orElseThrow().text())
+          .isEqualTo(ScopeTarget.TENANT);
+      assertThat(knowledgeBase.read(owner, ScopeTarget.TENANT, docId).orElseThrow().text())
           .isEqualTo("the company one");
     }
 
@@ -637,9 +605,9 @@ class MilvusKnowledgeBaseTest {
     void cannotDeleteAnothersDocument() {
       final var alice = scope("delx-alice", "", "");
       final var bob = scope("delx-bob", "", "");
-      final var aliceDoc = store(alice, KnowledgeScope.Target.OWN, "delx-alice-doc", "mine");
+      final var aliceDoc = store(alice, ScopeTarget.OWN, "delx-alice-doc", "mine");
 
-      knowledgeBase.delete(bob, KnowledgeScope.Target.OWN, aliceDoc);
+      knowledgeBase.delete(bob, ScopeTarget.OWN, aliceDoc);
 
       final var titles =
           knowledgeBase.list(alice, 0, 50).entries().stream().map(e -> e.title()).toList();

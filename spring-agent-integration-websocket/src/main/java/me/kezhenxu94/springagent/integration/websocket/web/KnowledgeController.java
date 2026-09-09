@@ -20,6 +20,7 @@ import me.kezhenxu94.springagent.core.knowledge.KnowledgeReference;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeScope;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeSource;
 import me.kezhenxu94.springagent.core.tools.HomeDir;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.websocket.config.WebMessages;
 import me.kezhenxu94.springagent.integration.websocket.security.WebUser;
@@ -359,8 +360,8 @@ public class KnowledgeController {
    * The tenant home is the same shared storage a group's or a tenant's skills already live in, and
    * a run carrying that tenant already reaches it.
    */
-  private HomeDir homeFor(final KnowledgeScope.Target target, final WebUser user) {
-    return target == KnowledgeScope.Target.TENANT
+  private HomeDir homeFor(final ScopeTarget target, final WebUser user) {
+    return target == ScopeTarget.TENANT
         ? workspaces.forTenant(user.tenantId())
         : workspaces.forOwner(user.id());
   }
@@ -416,12 +417,12 @@ public class KnowledgeController {
       return readable;
     }
     final var target =
-        KnowledgeScope.Target.named(scope)
+        ScopeTarget.named(scope)
             .orElseThrow(
                 () ->
                     new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, messages.get("knowledge-scope-unknown", scope)));
-    if (target == KnowledgeScope.Target.GROUP) {
+    if (target == ScopeTarget.GROUP) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, messages.get("knowledge-no-group"));
     }
     final var only = readable.owning(target);
@@ -441,18 +442,18 @@ public class KnowledgeController {
    * this refuses a missing scope, and it refuses a group one for the same reason {@code targetFor}
    * does — this surface puts no group on a request, so no document here is in a group base.
    */
-  KnowledgeScope.Target owningTarget(final KnowledgeScope readable, final String scope) {
+  ScopeTarget owningTarget(final KnowledgeScope readable, final String scope) {
     if (scope == null || scope.isBlank()) {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST, messages.get("knowledge-scope-required"));
     }
     final var target =
-        KnowledgeScope.Target.named(scope)
+        ScopeTarget.named(scope)
             .orElseThrow(
                 () ->
                     new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, messages.get("knowledge-scope-unknown", scope)));
-    if (target == KnowledgeScope.Target.GROUP) {
+    if (target == ScopeTarget.GROUP) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, messages.get("knowledge-no-group"));
     }
     // A base this caller has no identity for names no document at all, and the filter throws on
@@ -475,20 +476,20 @@ public class KnowledgeController {
    * filter ever again. The same reasoning as {@code KnowledgeBaseTools.refuseUnreachableTarget},
    * except that here it can be said before anything is written.
    */
-  KnowledgeScope.Target targetFor(final String scope, final WebUser user) {
+  ScopeTarget targetFor(final String scope, final WebUser user) {
     if (scope == null || scope.isBlank()) {
-      return KnowledgeScope.Target.OWN;
+      return ScopeTarget.OWN;
     }
     final var target =
-        KnowledgeScope.Target.named(scope)
+        ScopeTarget.named(scope)
             .orElseThrow(
                 () ->
                     new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, messages.get("knowledge-scope-unknown", scope)));
-    if (target == KnowledgeScope.Target.GROUP) {
+    if (target == ScopeTarget.GROUP) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, messages.get("knowledge-no-group"));
     }
-    if (target == KnowledgeScope.Target.TENANT && callerScope(user).tenant().isEmpty()) {
+    if (target == ScopeTarget.TENANT && callerScope(user).tenant().isEmpty()) {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST, messages.get("knowledge-no-tenant"));
     }

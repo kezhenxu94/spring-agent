@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import lombok.RequiredArgsConstructor;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import org.springframework.ai.chat.model.ToolContext;
@@ -166,7 +167,7 @@ Usage:
     }
 
     final var readable = KnowledgeScope.forRequest(context);
-    final var target = KnowledgeScope.Target.of(scope);
+    final var target = ScopeTarget.of(scope);
     final var refusal = refuseUnreachableTarget(readable, target);
     if (refusal != null) {
       return refusal;
@@ -278,11 +279,11 @@ Usage:
     // means the caller had no opinion; a scope left out or misspelt here means they did, and
     // reading it as "own" would take a document out of the company knowledge base — or move the
     // private copy of an id and report the company's as moved — because of a typo.
-    final var current = KnowledgeScope.Target.named(from);
+    final var current = ScopeTarget.named(from);
     if (current.isEmpty()) {
       return messages.get("knowledge-current-scope-unknown", from);
     }
-    final var requested = KnowledgeScope.Target.named(to);
+    final var requested = ScopeTarget.named(to);
     if (requested.isEmpty()) {
       return messages.get("knowledge-scope-unknown", to);
     }
@@ -353,7 +354,7 @@ Usage:
     // Not defaulted, for the same reason the move's is not: a delete that fell back to "own" would
     // report a document deleted while the copy the user was looking at, the company's, is still
     // there — and the reverse default would delete a shared document on a typo.
-    final var owning = KnowledgeScope.Target.named(scope);
+    final var owning = ScopeTarget.named(scope);
     if (owning.isEmpty()) {
       return messages.get("knowledge-current-scope-unknown", scope);
     }
@@ -396,12 +397,11 @@ Usage:
    * names nothing — {@code KnowledgeScopeFilter.documentOwnedBy} throws on it rather than quietly
    * matching no rows, so this is what turns that into an answer saying which word was wrong.
    */
-  private String refuseUnreachableTarget(
-      final KnowledgeScope scope, final KnowledgeScope.Target target) {
-    if (target == KnowledgeScope.Target.GROUP && !scope.hasGroup()) {
+  private String refuseUnreachableTarget(final KnowledgeScope scope, final ScopeTarget target) {
+    if (target == ScopeTarget.GROUP && !scope.hasGroup()) {
       return messages.get("knowledge-no-group");
     }
-    if (target == KnowledgeScope.Target.TENANT && !scope.hasTenant()) {
+    if (target == ScopeTarget.TENANT && !scope.hasTenant()) {
       return messages.get("knowledge-no-tenant");
     }
     return null;

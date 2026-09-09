@@ -26,7 +26,7 @@ which is what makes a listener free to wait on a write — see the `notification
 | Package | What lives there |
 | --- | --- |
 | `agent` | `SpringAgent`, `AgentRequest`, `AgentResponseListener`, `AgentScenario`, `BuiltInScenarios`, the run registry |
-| `tools` | `@AgentTool`, `AgentToolsProvider`, `ToolContexts`, the built-in tools, `tools/interceptors/` and the custom `ToolCallingManager` |
+| `tools` | `@AgentTool`, `AgentToolsProvider`, `ToolContexts`, `ScopeTarget`, `HomeDir`/`UserWorkspaceFactory`, the built-in tools, `tools/interceptors/` and the custom `ToolCallingManager` |
 | `dao` | `dao/models/` — the one domain model every backend shares — and `dao/repo/`, the repository contracts each `spring-agent-persistence-*` module implements |
 | `observing` | `Observation`, `Actor`, `Route`, `EventIntake`, `EventIntakes` — how a run starts without anybody talking. Core ships no implementation; see [docs/events.md](../docs/events.md) |
 | `knowledge` | The `KnowledgeBase` SPI and `KnowledgeScopeFilter`, implemented by [`spring-agent-rag-milvus`](../spring-agent-rag-milvus/README.md) |
@@ -50,8 +50,8 @@ classpath for the five other tools it supplies.
 
 Four decisions in there are load-bearing, and each has its reasoning at the code:
 
-- **Scope is a tool parameter**, `own` | `group` | `tenant`, parsed by `knowledge.KnowledgeScope.Target`
-  rather than an enum of memory's own. That enum's `named` is the single list of accepted spellings,
+- **Scope is a tool parameter**, `own` | `group` | `tenant`, parsed by `tools.ScopeTarget` rather
+  than an enum of memory's own. That enum's `named` is the single list of accepted spellings,
   including the `company` synonym, and a second copy is a second thing to drift — the failure being
   a word `IndexKnowledge` accepts and `MemoryCreate` silently reads as `own`. Omitted on a read it
   means every reachable scope; omitted on a write, the requester's own; misspelt, refused either way.
