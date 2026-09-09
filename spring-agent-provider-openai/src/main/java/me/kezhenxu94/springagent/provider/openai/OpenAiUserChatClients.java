@@ -11,6 +11,7 @@ import me.kezhenxu94.springagent.core.usermodels.ReasoningEfforts;
 import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.http.okhttp.OpenAiHttpClientBuilderCustomizer;
@@ -58,6 +59,12 @@ public class OpenAiUserChatClients implements UserChatClients {
    */
   private final OpenAiChatOptions defaults;
 
+  /**
+   * The runtime's own manager, which is what shapes the tool list every client built here offers
+   * the model — see {@link #build}.
+   */
+  private final ToolCallingManager toolCallingManager;
+
   private final List<OpenAiHttpClientBuilderCustomizer> httpClientCustomizers;
   private final Cache<Endpoint, ChatClient> clients;
 
@@ -65,11 +72,13 @@ public class OpenAiUserChatClients implements UserChatClients {
       final ChatClient defaultChatClient,
       final UserModelRegistry registry,
       final OpenAiChatOptions defaults,
+      final ToolCallingManager toolCallingManager,
       final List<OpenAiHttpClientBuilderCustomizer> httpClientCustomizers,
       final int cacheSize) {
     this.defaultChatClient = defaultChatClient;
     this.registry = registry;
     this.defaults = defaults;
+    this.toolCallingManager = toolCallingManager;
     this.httpClientCustomizers = httpClientCustomizers;
     this.clients =
         CacheBuilder.newBuilder().maximumSize(cacheSize).expireAfterAccess(IDLE_TIMEOUT).build();
@@ -201,17 +210,35 @@ public class OpenAiUserChatClients implements UserChatClients {
    * whose rejections stay unreadable — and it is a gateway somebody typed a URL for, which is where
    * unreadable ones come from.
    *
-   * <p>Nothing here wires a tool-calling manager, and that is correct rather than an omission.
-   * Tools are called by the {@code ToolCallingAdvisor} that {@link
-   * me.kezhenxu94.springagent.core.agent.SpringAgent} registers on the prompt, which is shared by
-   * every run whatever client it goes through, so tool interception and localization come along on
-   * their own. The model-level manager is the superseded path.
+   * <p><b>The tool-calling manager is the context's own, and it has to be handed over here.</b> A
+   * {@code ToolCallingManager} does two jobs, and only one of them has moved to the advisor: {@code
+   * executeToolCalls} is the advisor's, so tool interception, file references and the call limits
+   * come along by themselves whatever client a run goes through — but {@code
+   * resolveToolDefinitions} is still the chat model's, called from {@code
+   * OpenAiChatModel.createRequest} to build the request's {@code tools} array. {@code
+   * OpenAiChatModel.Builder} substitutes a plain default for a manager nobody set, so a model built
+   * without one is offered to the endpoint with the runtime's own rewrites of the definition list
+   * missing: no {@link me.kezhenxu94.springagent.core.tools.DisplayDescription} parameter, so no
+   * call on a card or in the CLI has a title, and no localized tool and parameter descriptions.
+   * Spring AI's own auto-configuration passes the bean into the model it builds, which is why the
+   * application's client has never had this problem — and why a client built by hand has to do the
+   * same. It costs nothing at run time: the same singleton, resolving the same callbacks.
+   *
+   * <p>The setter is deprecated for removal in Spring AI 3.0.0, and taken anyway: the deprecation
+   * note is about <em>internal tool execution</em>, which really has moved to the advisor, while
+   * the definition list has not — and there is no other way to reach it. Spring AI's own {@code
+   * OpenAiChatAutoConfiguration} calls the same setter, so whatever it becomes when the removal
+   * lands, this follows it. {@code OpenAiUserModelToolsTest} reads the tool list off the wire, so a
+   * removal that changes where definitions come from fails there rather than silently dropping the
+   * parameter again.
    */
+  @SuppressWarnings("removal")
   private ChatClient build(final Endpoint endpoint) {
     log.info("Building a chat client for {} at {}", endpoint.model(), endpoint.baseUrl());
     final var chatModel =
         OpenAiChatModel.builder()
             .options(optionsFor(defaults, endpoint))
+            .toolCallingManager(toolCallingManager)
             .httpClientBuilderCustomizers(httpClientCustomizers)
             .build();
     return ChatClient.builder(chatModel).build();

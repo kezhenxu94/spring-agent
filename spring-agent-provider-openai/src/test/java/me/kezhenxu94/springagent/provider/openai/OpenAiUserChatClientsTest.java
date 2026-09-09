@@ -14,6 +14,7 @@ import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 
@@ -43,6 +44,9 @@ class OpenAiUserChatClientsTest {
           ChatClient.builder(appModel).build(),
           new UserModelRegistry(mock(UserModelConfigRepo.class), new AesGcmSealer(KEY, "t"), 3),
           appOptions,
+          // Not what these tests are about; OpenAiUserModelToolsTest is where the manager a client
+          // is built with is asserted, on the wire.
+          ToolCallingManager.builder().build(),
           List.of(),
           10);
 

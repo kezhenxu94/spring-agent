@@ -465,7 +465,9 @@ for a `description` of its own keeps it, and that one is what a surface shows. S
 in `DescribingToolCallingManager.resolveToolDefinitions`, which is where a chat model asks for them,
 so an `@AgentTool` bean, a library's tool, an MCP server's tool and your own `ToolCallbackProvider`
 are all offered it alike. A tool taking arbitrary JSON — `additionalProperties: true` — is left alone,
-since a field added there is part of the payload rather than a parameter.
+since a field added there is part of the payload rather than a parameter. Because it is the *model*
+that asks, a `ChatModel` you build yourself has to be built with the context's `ToolCallingManager`
+or its runs lose this — see [A user's own chat model](#a-users-own-chat-model).
 
 It is **required**, so every call has a title rather than the readable-in-places trail an optional one
 buys, and requiring it is safe precisely because it never reaches the tool: nothing behind it can
@@ -937,8 +939,16 @@ their own runs into the same ones:
   application's own resolved options — see `ApplicationEndpoint` for why the model bean's own are
   not enough — and overrides only what makes the endpoint different: base URL, key, model, and the
   reasoning effort the user chose.
-- Tools are called by the `ToolCallingAdvisor` `SpringAgent` registers on the prompt, not by the
-  model, so a hand-built `ChatModel` needs no `ToolCallingManager`. It does need the context's
+- A `ToolCallingManager` does two jobs and only one of them has moved to the advisor. Tool calls are
+  *executed* by the `ToolCallingAdvisor` `SpringAgent` registers on the prompt, so interception,
+  file references and the call limits come along whatever client a run goes through — but the
+  request's tool list is still resolved by the **model**, from the manager it was built with, and
+  `OpenAiChatModel.Builder` substitutes a plain default for one nobody set. So a hand-built
+  `ChatModel` must be handed the context's `ToolCallingManager`, exactly as Spring AI's own
+  auto-configuration hands it to the models it builds; without it that endpoint is offered tool
+  definitions none of the runtime's rewrites reached — no `DisplayDescription` parameter, so no tool
+  call has a title on a card or in the CLI, and no localized tool or parameter descriptions. Nothing
+  fails: the model answers and the tools work. It also needs the context's
   `OpenAiHttpClientBuilderCustomizer` beans, or its provider rejections stay unreadable.
 
 Clients are cached per resolved endpoint rather than per user — two users on the same gateway share
