@@ -628,10 +628,12 @@ class SpringAgentTest {
   }
 
   @Test
-  @DisplayName("a scheduled task's unanswered ask is noted like any other run's")
-  void askingIsRecordedForAScheduledTask() throws Exception {
-    // A firing shares the conversation of the thread the task was created in, so the note reaches
-    // the user's own history as well as the next firing's.
+  @DisplayName("a run with no conversation memory leaves no note, having no history to leave it in")
+  void askingIsNotRecordedWithoutConversationMemory() throws Exception {
+    // A scheduled task neither reads nor writes the conversation — see BuiltInScenarios — so a
+    // note there would be written into a history nothing replays. Every surface takes the same
+    // view from the other end: the ask tool is registered only for a CHAT run, so a firing has no
+    // way to ask in the first place.
     fireAndAwait(unansweredAsk().scenario(BuiltInScenarios.SCHEDULED_TASK));
 
     final var handler = handlerFromRun();
@@ -639,7 +641,7 @@ class SpringAgentTest {
         .isInstanceOf(QuestionNotAnsweredException.class);
 
     assertThat(savedText())
-        .anySatisfy(text -> assertThat(text).contains("now in front of the user"));
+        .noneSatisfy(text -> assertThat(text).contains("now in front of the user"));
   }
 
   @Test

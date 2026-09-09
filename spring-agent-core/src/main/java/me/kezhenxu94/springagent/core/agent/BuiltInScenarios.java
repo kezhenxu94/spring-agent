@@ -15,6 +15,29 @@ public enum BuiltInScenarios implements AgentScenario {
     }
   },
   SCHEDULED_TASK {
+    /**
+     * No conversation memory, in either direction, and this is what keeps a repeating task honest.
+     * A firing speaks in the conversation the task was created in, so reading it back put the
+     * previous occurrence in front of the model — the same prompt, word for word, already answered
+     * with "done, here is the report". The likeliest thing to do with that is to agree that the
+     * work is done and hand yesterday's result back as today's, and no wording beats an identical
+     * prior turn sitting in the window. Each firing therefore starts with nothing behind it but its
+     * own task text, which is the whole of what it was asked to do.
+     *
+     * <p>Nor does it write: a report nobody asked for, appended to a person's thread every morning,
+     * is a history their next question is answered against. The report still reaches them — it is
+     * the run's reply, put on the thread the task was created in — it is only the model's memory
+     * that a firing leaves alone.
+     *
+     * <p>Every surface already assumes this. Each of them registers a question handler only for
+     * {@link #CHAT}, on the grounds that an answer arriving later would have no history to rejoin,
+     * so a firing cannot ask anything and nothing is waiting on a turn that was never written.
+     */
+    @Override
+    public boolean conversationMemory() {
+      return false;
+    }
+
     @Override
     public boolean offers(final Object tool) {
       // A run that fires on a schedule must not be able to schedule more work, which is how one

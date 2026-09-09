@@ -166,7 +166,9 @@ it is off unless `app.events.enabled`, and a source not named in `app.events.sou
 the door.
 
 A third starter is a clock: `ScheduledTaskTool` lets the agent set itself work, and a firing arrives
-as a run with the `SCHEDULED_TASK` scenario, which is what keeps the scheduling tool out of it.
+as a run with the `SCHEDULED_TASK` scenario, which is what keeps the scheduling tool out of it — and
+what keeps conversation memory out of it, so that a daily task cannot read yesterday's occurrence and
+report its result again instead of doing the work.
 
 ## What a run is offered
 
