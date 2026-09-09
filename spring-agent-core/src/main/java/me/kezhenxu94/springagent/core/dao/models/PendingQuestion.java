@@ -41,6 +41,24 @@ public class PendingQuestion {
   private String chatId;
   private String chatType;
 
+  /**
+   * The group and tenant the asking run belonged to, carried forward so the run started to deliver
+   * the answer is scoped the way the original run was — without these, a resumed run looks like a
+   * bare personal request and loses the group's and the tenant's mounted files, memories, knowledge
+   * and shared credentials, since all four are keyed on this pair. Null/blank for an integration or
+   * conversation that has no such scope, same as {@link
+   * me.kezhenxu94.springagent.core.agent.AgentRequest}.
+   *
+   * <p>A surface that can re-derive the scope from a session of its own does that instead and
+   * leaves these unset: the browser's scope comes from who is signed in and never from the request,
+   * so {@code WebQuestionHandler} writes no scope here and {@code QuestionController} reads none
+   * back. These are for a surface where the answer arrives as a bare callback hours later, with
+   * nothing behind it but this row.
+   */
+  private String groupId;
+
+  private String tenantId;
+
   // findByConversationIdAndStatus: a message arriving in the conversation supersedes whatever is
   // still unanswered in it.
   @Indexed private String conversationId;

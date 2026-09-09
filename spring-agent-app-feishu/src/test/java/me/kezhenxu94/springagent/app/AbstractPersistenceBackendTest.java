@@ -354,6 +354,8 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
             .userId(owner())
             .chatId("oc_chat")
             .chatType("p2p")
+            .groupId("oc_group")
+            .tenantId("tenant_a")
             .conversationId(conversation)
             .rootMessageId(conversation)
             .cardId("7355439197428236291")
@@ -371,6 +373,11 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
     assertThat(found.getFirst().cardId()).isEqualTo("7355439197428236291");
     assertThat(found.getFirst().questionsJson()).contains("Which database?");
     assertThat(found.getFirst().expiresAt()).isEqualTo(expiresAt);
+    // The scope the asking run had, which the answer's run is rebuilt with. Losing it here does not
+    // fail anything: the run just starts as a bare personal request, in a sandbox of its own with
+    // none of the group's or the tenant's files, memories, knowledge or credentials.
+    assertThat(found.getFirst().groupId()).isEqualTo("oc_group");
+    assertThat(found.getFirst().tenantId()).isEqualTo("tenant_a");
 
     pendingQuestionRepo.updateStatus(id, PendingQuestion.Status.ANSWERED);
 
@@ -385,6 +392,10 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
     assertThat(reloaded.get().status()).isEqualTo(PendingQuestion.Status.ANSWERED);
     assertThat(reloaded.get().cardId()).isEqualTo("7355439197428236291");
     assertThat(reloaded.get().conversationId()).isEqualTo(conversation);
+    // The partial update touches one field, so everything the answer handler reads has to survive
+    // it — on Redis and MongoDB it is written as such rather than as a save of the whole row.
+    assertThat(reloaded.get().groupId()).isEqualTo("oc_group");
+    assertThat(reloaded.get().tenantId()).isEqualTo("tenant_a");
   }
 
   @Test
