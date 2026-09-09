@@ -44,8 +44,7 @@ class CoreEveryToolTranslatedTest extends AbstractEveryToolTranslatedTest {
   private static final List<Class<?>> OFFERED_BY_CORE =
       List.of(
           org.springaicommunity.agent.tools.AskUserQuestionTool.class,
-          org.springaicommunity.agent.tools.FileSystemTools.class,
-          org.springaicommunity.agent.tools.SkillsTool.class);
+          org.springaicommunity.agent.tools.FileSystemTools.class);
 
   @Override
   protected List<Class<?>> extraTypes() {
@@ -65,9 +64,11 @@ class CoreEveryToolTranslatedTest extends AbstractEveryToolTranslatedTest {
 
   @Override
   protected Set<String> untranslatedAllowed() {
-    // The skill tool is built by the library as a FunctionToolCallback, its description coming from
-    // the skills on disk rather than from an annotation, so there is no static text to translate —
-    // what surrounds it is core/prompts/skill-tool_zh_CN.md, which is a prompt and not a tool text.
-    return Set.of("Skill");
+    // Nothing. The skills are not on the list above any more: they are one FunctionToolCallback per
+    // installed skill, named and described by the skill itself, so there is no static text to
+    // translate and no name to file a translation under. What this deployment does own is the
+    // template around each description — core/prompts/skill-tool_zh_CN.md, which is a prompt rather
+    // than a tool text, and CoreToolsLocalizedEndToEndTest is what checks it lands.
+    return Set.of();
   }
 }

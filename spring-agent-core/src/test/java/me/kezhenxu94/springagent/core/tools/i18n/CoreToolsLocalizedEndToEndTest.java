@@ -102,12 +102,13 @@ class CoreToolsLocalizedEndToEndTest {
   }
 
   /**
-   * The skill tool, which is localized through its template rather than through the definition,
-   * since the library composes the list of installed skills into it. This is the assertion that
-   * both halves happened: the prose is translated and the list is still there.
+   * The skill tools, localized through their template rather than through a definition: there is
+   * one per installed skill, named after it and described by its own front matter, so nothing here
+   * could file a description under a tool name. This is the assertion that both halves happened —
+   * the prose around the description is translated, and the skill's own words survive it.
    */
   @Test
-  @DisplayName("the skill tool is translated through its template, keeping the skills list")
+  @DisplayName("a skill's tool is translated through its template, keeping what the skill says")
   void skillTool(@org.junit.jupiter.api.io.TempDir final java.nio.file.Path skills)
       throws java.io.IOException {
     final var demo = skills.resolve("a-demo-skill");
@@ -117,19 +118,24 @@ class CoreToolsLocalizedEndToEndTest {
         "---\nname: a-demo-skill\ndescription: what it does\n---\nbody\n");
 
     final var builder =
-        org.springaicommunity.agent.tools.SkillsTool.builder()
+        me.kezhenxu94.springagent.core.tools.SkillsTool.builder()
             .addSkillsDirectories(java.util.List.of(skills.toString()));
     LocalizedPrompt.findText(
             me.kezhenxu94.springagent.core.tools.AgentToolsProvider.SKILL_TOOL_PROMPT,
             Locale.of("zh", "CN"))
         .ifPresent(builder::toolDescriptionTemplate);
 
-    final var description = builder.build().getToolDefinition().description();
+    final var callbacks = builder.build().getToolCallbacks();
 
-    assertThat(description).as("the prose is translated").contains("在当前对话中执行一个技能");
-    assertThat(description)
-        .as("and the skills the library formatted in are still there")
-        .contains("a-demo-skill");
-    assertThat(description).as("the slot itself was consumed").doesNotContain("%s");
+    assertThat(callbacks).hasSize(1);
+    final var definition = callbacks[0].getToolDefinition();
+    assertThat(definition.name())
+        .as("the tool is the skill, prefixed out of the way of this repository's own tools")
+        .isEqualTo("skill_a-demo-skill");
+    assertThat(definition.description()).as("the prose is translated").contains("用这个路径");
+    assertThat(definition.description())
+        .as("and what the skill says about itself is still there")
+        .contains("what it does");
+    assertThat(definition.description()).as("the slot itself was consumed").doesNotContain("%s");
   }
 }

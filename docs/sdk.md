@@ -331,7 +331,7 @@ public enum MyScenarios implements AgentScenario {
 
 `tools()` and `offers(tool)` are two gates at different altitudes, and the difference matters.
 `offers` rules on the `@AgentTool` beans alone; everything else a run is composed of — the
-filesystem and todo tools, the ask, the skills tool, the memory tools, the user's MCP servers and
+filesystem and todo tools, the ask, one tool per installed skill, the memory tools, the user's MCP servers and
 the application-wide ones under `spring.ai.mcp.client.*` — comes from elsewhere and no per-tool
 ruling reaches it. So an `offers` that returns false for everything is *not* a run without tools.
 `tools()` returning false is: nothing is composed, and the MCP fan-out is skipped rather than
@@ -506,6 +506,13 @@ Roughly: filesystem (`Read`, `Write`, `Edit`), `TodoWrite`, memories (`MemoryVie
 (`GenerateImage`, `RecognizeImage`, `TranscribeAudio`), `CurrentDateTime`, `AskUserQuestion`, and
 — with a shell module and `app.ai.tools.shell.type` set — `Bash`, `BashOutput`, `KillShell`,
 `RestartShellContainer`.
+
+Beside those, one tool per skill the run's identities have installed, named `skill_<the skill's
+name>` and taking no arguments — calling it returns that skill's instructions and the directory they
+live in. There is no single `Skill` tool to pick a name in: a skill is chosen the way any other tool
+is, which is what lets the tool search retrieve one skill out of a hundred rather than loading every
+description to choose between them. The prefix is what keeps a skill somebody named `Read` from
+landing on the file tool's name. See `core/tools/SkillsTool.java`.
 
 ## Where a user's files live
 

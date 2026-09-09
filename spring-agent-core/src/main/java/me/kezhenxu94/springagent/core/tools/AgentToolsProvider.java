@@ -38,7 +38,6 @@ import me.kezhenxu94.springagent.core.tools.mcp.ServerNameToolPrefixGenerator;
 import org.springaicommunity.agent.tools.AskUserQuestionTool;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springaicommunity.agent.tools.FileSystemTools;
-import org.springaicommunity.agent.tools.SkillsTool;
 import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.model.ToolContext;
@@ -72,11 +71,13 @@ public class AgentToolsProvider {
   public static final String KNOWLEDGE_RETRIEVAL_PROMPT = "knowledge-retrieval";
 
   /**
-   * The skill tool's description template, without its locale suffix or extension.
+   * The skill tools' description template, without its locale suffix or extension.
    *
    * <p>Not under {@code core/prompts/tools/}, where every other tool's description lives, and that
-   * is deliberate: a file there would be applied to the finished definition and would discard the
-   * list of skills the library formats into it.
+   * is deliberate: a file there is applied to one tool, by name, and the tools this describes are
+   * named after whichever skills the user happens to have installed. There is no name to file it
+   * under, so the template is the seam instead — its {@code %s} is one skill's front matter, and
+   * what surrounds it is what every skill tool says for itself.
    */
   public static final String SKILL_TOOL_PROMPT = "skill-tool";
 
@@ -104,8 +105,13 @@ public class AgentToolsProvider {
    */
   private final ObjectProvider<KnowledgeBase> knowledgeBase;
 
+  /**
+   * @param skillTools one tool per skill the request's scopes hold, empty where they hold none. A
+   *     list rather than a single tool because {@link SkillsTool} registers each skill as a tool of
+   *     its own — read that class for why.
+   */
   public record AgentTools(
-      FileSystemTools fileSystemTools, Optional<ToolCallback> skillsTool, McpTools mcpTools) {}
+      FileSystemTools fileSystemTools, List<ToolCallback> skillTools, McpTools mcpTools) {}
 
   /**
    * Live MCP clients built for one request and the tool callbacks derived from them. Must be {@link
@@ -219,7 +225,6 @@ public class AgentToolsProvider {
       tools.add(answersArriveLater ? endsTurnCallback(askTool) : askTool);
     }
 
-    agentTools.skillsTool().ifPresent(tools::add);
     final var callbacks = new ArrayList<ToolCallback>();
     final var mcpCallbacks = agentTools.mcpTools().callbacks();
     if (mcpCallbacks != null) {
@@ -228,6 +233,13 @@ public class AgentToolsProvider {
     callbacks.addAll(globalToolCallbacks());
     rejectDuplicateToolNames(callbacks);
     tools.addAll(callbacks);
+
+    // Last, and checked against the callbacks above, because a skill's name is now a tool name and
+    // a skill is a file the user writes. The skill_ prefix SkillsTool puts on it is what keeps it
+    // out of the way of this repository's own tools; what a prefix cannot rule out is an MCP server
+    // whose own toolPrefix is "skill" landing on the same name. There the skill loses and is left
+    // out, rather than the composition failing — see withoutTakenNames.
+    tools.addAll(withoutTakenNames(agentTools.skillTools(), callbacks));
 
     final var advisors = new ArrayList<Advisor>();
     knowledgeRetrieval(request, knowledgeHandler).ifPresent(advisors::add);
@@ -474,7 +486,8 @@ public class AgentToolsProvider {
    * already, whereas reading one off a {@code @Tool} method means deriving callbacks that would
    * then be thrown away. The names that can collide are the ones assembled from configuration
    * anyway — a duplicate among this repository's own tools is a compile-time-visible mistake, not
-   * something a deployment can cause.
+   * something a deployment can cause, and a skill's name is prefixed out of their namespace
+   * entirely.
    */
   private static void rejectDuplicateToolNames(final List<ToolCallback> callbacks) {
     final var seen = new HashSet<String>(callbacks.size());
@@ -488,6 +501,46 @@ public class AgentToolsProvider {
                 + " (AddMcpServer's toolPrefix) so its tools are named apart.");
       }
     }
+  }
+
+  /**
+   * The skill tools whose names nothing else in this run has taken, and a warning for each one left
+   * out.
+   *
+   * <p>Dropping rather than throwing, unlike {@link #rejectDuplicateToolNames} above, because the
+   * two collisions are not the same mistake. An MCP prefix is configuration somebody chose for this
+   * run and can change before the next one; a skill is a file, written by the user or by the model
+   * on their behalf, and the run that would rename it is composed by this very method. Failing here
+   * would take the fix with it. Nor is there a wrong answer to route to: the tool that keeps the
+   * name is the one the model would have got before any skill existed.
+   *
+   * <p>Only the callbacks are compared, which is all a prefixed skill name can collide with — the
+   * tools this repository declares are named for themselves and none of them begins with {@code
+   * skill_}. Without that prefix this would have to read a name off every {@code @Tool} method in
+   * the run as well.
+   */
+  private static List<ToolCallback> withoutTakenNames(
+      final List<ToolCallback> skillTools, final List<ToolCallback> alreadyOffered) {
+    if (skillTools.isEmpty()) {
+      return skillTools;
+    }
+    final var taken = new HashSet<String>(alreadyOffered.size());
+    for (final var callback : alreadyOffered) {
+      taken.add(callback.getToolDefinition().name());
+    }
+    final var kept = new ArrayList<ToolCallback>(skillTools.size());
+    for (final var skillTool : skillTools) {
+      final var name = skillTool.getToolDefinition().name();
+      if (taken.contains(name)) {
+        log.warn(
+            "Leaving the skill offered as '{}' out of this run: a tool of that name is already"
+                + " offered. Rename the skill, or it stays unreachable.",
+            name);
+        continue;
+      }
+      kept.add(skillTool);
+    }
+    return kept;
   }
 
   /**
@@ -593,28 +646,28 @@ public class AgentToolsProvider {
     final var skillsDirs = home.dirs(HomeDir.Folder.SKILLS).stream().map(Path::toString).toList();
     final var skillsToolBuilder = SkillsTool.builder();
     skillsToolBuilder.addSkillsDirectories(skillsDirs);
-    // This one tool cannot be translated the way every other one is. Its description is composed
-    // rather than declared — the library formats the list of installed skills into it — so
-    // replacing
-    // the finished description would silently drop that list and leave the model told to use only
-    // skills it can no longer see. The template is the seam, and the %s in it is load-bearing.
+    // These tools cannot be translated the way every other one is: there is one per skill, named
+    // after a skill nobody here knew about at build time, and each one's description is the skill's
+    // own front matter — written by whoever wrote the skill, in whatever language they wrote it in.
+    // The template around it is the only part this deployment owns, and its %s is load-bearing.
     //
-    // Nothing ships an English copy: absent a translation the library's own template stands, which
-    // is
+    // Nothing ships an English copy: absent a translation the fork's own template stands, which is
     // why this reads the optional form rather than the one that throws.
     LocalizedPrompt.findText(SKILL_TOOL_PROMPT, appConfiguration.locale())
         .ifPresent(skillsToolBuilder::toolDescriptionTemplate);
-    Optional<ToolCallback> skillsTool;
+    List<ToolCallback> skillTools;
     try {
-      skillsTool = Optional.of(skillsToolBuilder.build());
+      skillTools = List.of(skillsToolBuilder.build().getToolCallbacks());
     } catch (IllegalArgumentException e) {
+      // The one thing build() refuses is having been given no skills at all, which is the ordinary
+      // state of a user who has not written one. A skill it cannot register it leaves out instead.
       log.debug("No skills configured for directories: {}", skillsDirs);
-      skillsTool = Optional.empty();
+      skillTools = List.of();
     }
 
     final var mcpTools = buildMcpTools(userId, chatId, toolContext);
 
-    return new AgentTools(fileSystemTools, skillsTool, mcpTools);
+    return new AgentTools(fileSystemTools, skillTools, mcpTools);
   }
 
   /**
