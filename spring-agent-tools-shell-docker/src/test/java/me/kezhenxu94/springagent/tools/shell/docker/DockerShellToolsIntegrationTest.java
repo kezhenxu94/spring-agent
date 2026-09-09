@@ -64,8 +64,39 @@ class DockerShellToolsIntegrationTest {
     tools.bash("echo hello > from-the-sandbox.txt", null, null, null, CONTEXT);
     assertThat(storage.resolve(USER_ID).resolve("from-the-sandbox.txt")).exists();
 
-    final var first = manager.ensureContainerFor(USER_ID);
-    assertThat(manager.ensureContainerFor(USER_ID)).isSameAs(first);
+    final var first = manager.ensureContainerFor(USER_ID, null, null);
+    assertThat(manager.ensureContainerFor(USER_ID, null, null)).isSameAs(first);
+  }
+
+  @Test
+  @DisplayName("a shared home the request reaches is mounted, so cat of it agrees with Read")
+  void mountsTheSharedHomes() throws Exception {
+    final var groupHome = storage.resolve("groups").resolve("g1");
+    java.nio.file.Files.createDirectories(groupHome);
+    java.nio.file.Files.writeString(groupHome.resolve("MEMORY.md"), "- [Ours](ours.md)\n");
+
+    final var tools = tools(Map.of());
+    final var context = new ToolContext(Map.of("userId", USER_ID, "groupId", "g1", "tenantId", ""));
+
+    // Until the shared homes were mounted, FileSystemTools could Read this path while the shell
+    // reported it missing — the same absolute path, two different answers.
+    final var out =
+        tools.bash("cat " + groupHome.toAbsolutePath() + "/MEMORY.md", null, null, null, context);
+    assertThat(out).contains("- [Ours](ours.md)");
+  }
+
+  @Test
+  @DisplayName("a scope with different shared homes gets a sandbox of its own")
+  void oneSandboxPerScope() throws Exception {
+    java.nio.file.Files.createDirectories(storage.resolve("groups").resolve("g1"));
+    tools(Map.of());
+
+    final var alone = manager.ensureContainerFor(USER_ID, null, null);
+    final var inGroup = manager.ensureContainerFor(USER_ID, "g1", null);
+    // Reusing one for the other would hand a request a container with the wrong directories
+    // mounted, which is why the registry is keyed on the triple rather than on the user.
+    assertThat(inGroup).isNotSameAs(alone);
+    assertThat(manager.ensureContainerFor(USER_ID, "g1", null)).isSameAs(inGroup);
   }
 
   @Test
@@ -75,11 +106,11 @@ class DockerShellToolsIntegrationTest {
 
     // The underscore every Feishu open id carries is legal in a Docker name, so it survives as
     // written — this is the case that has to stay readable.
-    assertThat(manager.ensureContainerFor("ou_7f40fefc8ddae").getContainerName())
+    assertThat(manager.ensureContainerFor("ou_7f40fefc8ddae", null, null).getContainerName())
         .startsWith("/" + UserContainerManager.CONTAINER_NAME_PREFIX + "ou_7f40fefc8ddae-");
     // `@` is not. An id carrying one still starts, under a sanitised name rather than a rejected
     // one.
-    assertThat(manager.ensureContainerFor("user@example").getContainerName())
+    assertThat(manager.ensureContainerFor("user@example", null, null).getContainerName())
         .startsWith("/" + UserContainerManager.CONTAINER_NAME_PREFIX + "user-example-");
   }
 
