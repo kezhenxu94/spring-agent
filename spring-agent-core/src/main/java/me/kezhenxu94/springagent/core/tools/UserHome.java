@@ -34,7 +34,14 @@ public class UserHome implements HomeDir {
 
   @Override
   public Path folder(Folder folder) throws IOException {
-    return Files.createDirectories(resolve(folder));
+    return Files.createDirectories(folderPath(folder));
+  }
+
+  @Override
+  public Path folderPath(Folder folder) {
+    return folder == Folder.WORKSPACE && workspaceRoot != null
+        ? workspaceRoot
+        : root.resolve(folder.dirName());
   }
 
   @Override
@@ -44,7 +51,7 @@ public class UserHome implements HomeDir {
 
   @Override
   public List<Path> dirs(Folder folder) {
-    final var dir = resolve(folder);
+    final var dir = folderPath(folder);
     return Files.isDirectory(dir) ? List.of(dir) : List.of();
   }
 
@@ -57,12 +64,6 @@ public class UserHome implements HomeDir {
 
   @Override
   public boolean containsIn(Folder folder, Path candidate) {
-    return candidate.toAbsolutePath().normalize().startsWith(resolve(folder));
-  }
-
-  private Path resolve(Folder folder) {
-    return folder == Folder.WORKSPACE && workspaceRoot != null
-        ? workspaceRoot
-        : root.resolve(folder.dirName());
+    return candidate.toAbsolutePath().normalize().startsWith(folderPath(folder));
   }
 }

@@ -30,12 +30,43 @@ which is what makes a listener free to wait on a write — see the `notification
 | `dao` | `dao/models/` — the one domain model every backend shares — and `dao/repo/`, the repository contracts each `spring-agent-persistence-*` module implements |
 | `observing` | `Observation`, `Actor`, `Route`, `EventIntake`, `EventIntakes` — how a run starts without anybody talking. Core ships no implementation; see [docs/events.md](../docs/events.md) |
 | `knowledge` | The `KnowledgeBase` SPI and `KnowledgeScopeFilter`, implemented by [`spring-agent-rag-milvus`](../spring-agent-rag-milvus/README.md) |
+| `memory` | The agent's file-based memory in all three scopes: `MemoryTools`, `MemoryScopes`, `MemoryFiles` |
 | `notify` | `Notifier` — say something to a chat with no run behind it; how a conversation is handed between surfaces |
 | `identity`, `security` | Who a run is, and what an `app.ai.admins` member may do |
 | `storage`, `share` | A user's home under `app.storage.location`, and `ShareController` publishing a file |
 | `scheduling` | Scheduled tasks: a schedule is a column on the task, and each occurrence is won by exactly one replica |
 | `usermodels` | Bring-your-own-model: sealed endpoints a person registers, and the `/config` machinery around them. `UserChatClients` and `BuiltinModels` are contracts here — a `spring-agent-provider-*` module implements them |
 | `advisors`, `logging`, `config`, `aot` | Spring AI advisors, structured logging, auto-configuration, native-image hints |
+
+## Memory, and why it is a fork
+
+`memory/` is a fork of `spring-ai-agent-utils`' `AutoMemoryTools` and `AutoMemoryToolsAdvisor`. That
+pair takes one memory directory at construction, and a request here has three — the person's own,
+the group chat's, the tenant's — so there was nowhere to put the other two, and shared memory was
+reachable only by the model remembering to `Read` a path. The tool names and parameter names are
+byte-identical to upstream's, which is what keeps `core/prompts/tools/Memory*` and the parameter
+bundle working; the class names drop the `Auto` prefix because the library's are still on the
+classpath for the five other tools it supplies.
+
+Four decisions in there are load-bearing, and each has its reasoning at the code:
+
+- **Scope is a tool parameter**, `own` | `group` | `tenant`, parsed by `knowledge.KnowledgeScope.Target`
+  rather than an enum of memory's own. That enum's `named` is the single list of accepted spellings,
+  including the `company` synonym, and a second copy is a second thing to drift — the failure being
+  a word `IndexKnowledge` accepts and `MemoryCreate` silently reads as `own`. Omitted on a read it
+  means every reachable scope; omitted on a write, the requester's own; misspelt, refused either way.
+- **Who may write a shared memory** is `MemoryScopes.writable`, keyed on the group root being
+  present rather than on `chatType` — the same thing every other scoped decision here keys on. A
+  one-to-one chat is a room with one witness, so it reads the tenant's memory and cannot add to it;
+  an `app.ai.admins` member is exempt.
+- **Nothing creates a shared directory on a read.** `HomeDir.folderPath` exists for that: it names
+  where a folder would be without making it, which `folder` cannot do and `dirs` will not answer for
+  an absent one. Only `MemoryCreate` and a rename's destination create.
+- **`MemoryFiles` departs from upstream in four places**, all consequences of a root being shared:
+  symlinks are resolved and re-checked against the root and writes open `NOFOLLOW_LINKS` (a link in a
+  group's `memories/` would otherwise expose one member's home to the whole chat); mutations take a
+  per-path lock, since a group's `MEMORY.md` now has concurrent writers; a directory in a shared
+  scope is not deleted whole; and one call's output is capped per scope.
 
 ## Rules this module keeps
 

@@ -31,8 +31,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import me.kezhenxu94.springagent.core.advisors.MemoryToolsAdvisor;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
+import me.kezhenxu94.springagent.core.config.LocalizedPrompt;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
@@ -53,7 +55,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
-import org.springaicommunity.agent.advisors.AutoMemoryToolsAdvisor;
 import org.springaicommunity.agent.tools.AskUserQuestionTool;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
@@ -1127,11 +1128,14 @@ class SpringAgentTest {
         .userMessage(user -> user.text("hi"));
   }
 
-  /** What the real provider composes: the auto-memory tools, delivered as an advisor. */
+  /**
+   * What the real provider composes: the paragraph describing the run's memories, as an advisor.
+   */
   private List<Advisor> autoMemoryAdvisors() {
     return List.of(
-        AutoMemoryToolsAdvisor.builder()
-            .memoriesRootDirectory(memoriesDirectory.toString())
+        MemoryToolsAdvisor.builder()
+            .memoryScopes("- own — " + memoriesDirectory + " — yours alone; you may write here")
+            .memorySystemPrompt(LocalizedPrompt.resource(AgentToolsProvider.MEMORY_PROMPT, null))
             .build());
   }
 

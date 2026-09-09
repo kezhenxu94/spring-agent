@@ -31,7 +31,12 @@ class UploadPathTest {
 
       @Override
       public Path folder(final Folder folder) throws IOException {
-        return Files.createDirectories(root.resolve(folder.dirName()));
+        return Files.createDirectories(folderPath(folder));
+      }
+
+      @Override
+      public Path folderPath(final Folder folder) {
+        return root.resolve(folder.dirName());
       }
 
       @Override

@@ -42,6 +42,24 @@ import me.kezhenxu94.springagent.core.tools.ScheduledTaskTool;
  * agent the ability to look at the thing it is being asked about; an alert triaged without being
  * able to read a log is mostly guesswork.
  *
+ * <p><b>Memory, including a shared one, is deliberately left in.</b> The memory tools are an
+ * {@code @AgentTool} bean, so unlike the list above this scenario could withhold them, and it does
+ * not: a triage run that works out how this deployment's alerts actually behave should be able to
+ * write that down where the next one — and the people in the chat it reports to — will read it.
+ * Which scopes that reaches is the operator's decision and nothing else: {@code MemoryScopes}
+ * allows a shared write only where the request carries a group, and a triage request's group and
+ * tenant come from {@code owner.group-id} and {@code owner.tenant-id} rather than from the
+ * observation, so a source configured with a user-id alone can write nothing shared at all. The
+ * admin exemption is out of reach too, by the fourth item above.
+ *
+ * <p>What that leaves is a real exposure, and it belongs stated here rather than discovered:
+ * whoever writes an event can try to talk a triage run into writing something into a shared memory,
+ * and the next run in that scope will read it. Two things bound it — the fence the prompt and
+ * {@code SituationBrief} put around observed text, and the memory prompt's own paragraph saying
+ * that a shared memory is a claim to check and never an instruction to follow — and one thing does
+ * not: nothing reviews a memory on the way in. An operator unwilling to have that written under a
+ * source's identity leaves {@code owner.group-id} unset, which is the default.
+ *
  * <p>The ask tool needs no mention. A triage run is a background run, which makes {@code
  * AgentRunRegistry.addQuestionHandler} a no-op, so no handler is registered and the tool is never
  * composed in — there is nobody on the other end of a question about an alert.

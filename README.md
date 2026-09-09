@@ -129,8 +129,12 @@ another's files. The same line runs through everything else:
   great many tool calls it also offers one unprompted — it finishes the answer, then asks whether to
   keep the method it worked out, and writes the skill only if you say yes. Turn the offer off with
   `SKILLS_OFFER_AFTER_EXPENSIVE_RUNS=false`, or move the bar with `SKILLS_TOOL_CALL_THRESHOLD`.
-- **Memories** are files in the user's memories directory, written and read back by the agent
-  itself.
+- **Memories** are files the agent writes and reads back itself, in each of the homes a request
+  reaches: your own, the group chat's, and the company's. It names the scope when it saves, so a
+  convention that binds a chat is remembered by the chat rather than by whoever happened to be
+  typing. A shared memory can only be written from a group chat, where the write happens in front
+  of the people it affects — in a one-to-one chat the agent reads the company's memory but saves to
+  your own, unless you are listed in `AI_ADMINS`.
 - **Credentials** are per-user: a Kubernetes Secret mounted into that user's sandbox, or an
   encrypted row, so a token reaches a shell as an environment variable and never a prompt. On
   Kubernetes an operator can also share Secrets they provisioned themselves — with a group, a

@@ -60,6 +60,9 @@ class AgentToolsProviderSkillOfferTest {
     final var workspaces = mock(UserWorkspaceFactory.class);
     when(workspaces.forRequest(eq("ou_1"), nullable(String.class), nullable(String.class)))
         .thenReturn(new UserHome(workspace));
+    // The memory block the provider describes to the model is resolved scope by scope, so
+    // the factory is asked for each home rather than for one composite of them.
+    when(workspaces.forOwner(eq("ou_1"))).thenReturn(new UserHome(workspace));
     try (var context = new AnnotationConfigApplicationContext()) {
       if (withSkillTools) {
         // Registered as the application registers it, annotation and all, since it is the
@@ -78,6 +81,7 @@ class AgentToolsProviderSkillOfferTest {
               context,
               properties,
               new Admins(properties),
+              TestI18n.english(),
               mock(ObjectProvider.class));
       return provider.compose(
           AgentRequest.builder()
