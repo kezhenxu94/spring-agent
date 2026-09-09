@@ -394,7 +394,51 @@ public class FeishuCard {
    */
   public boolean insertBefore(
       final String targetElementId, final String elementsJson, final String uuid) {
-    return await(new Insert(targetElementId, elementsJson, uuid, new CompletableFuture<>()));
+    return await(
+        new Insert(
+            targetElementId,
+            elementsJson,
+            uuid,
+            CreateCardElementTypeEnum.INSERT_BEFORE,
+            true,
+            new CompletableFuture<>()));
+  }
+
+  /**
+   * Adds elements at the end of what {@code parentElementId} holds, rather than beside it on the
+   * card, and returns whether they landed: the one way a container already on the card can be added
+   * to without being rewritten, which is what keeps a reader's chevron where they left it — see
+   * {@code FeishuCardUpdater#addToolCall}.
+   *
+   * <p>Nothing is recovered elsewhere when the container turns out to be gone. An element that
+   * belongs inside a pane has no business on the card beside it — the run's calls would come to
+   * rest in the footer, one line each, in place of the answer's anchors — so the container is
+   * written down as missing instead and its writer, which is what knows how to build one, puts it
+   * back whole on its next write.
+   *
+   * @param uuid an idempotency key, so a retry cannot leave the container holding two copies
+   */
+  public boolean appendInto(
+      final String parentElementId, final String elementsJson, final String uuid) {
+    return await(
+        new Insert(
+            parentElementId,
+            elementsJson,
+            uuid,
+            CreateCardElementTypeEnum.APPEND,
+            false,
+            new CompletableFuture<>()));
+  }
+
+  /**
+   * Takes one element off the card. Queued like a streaming write, since nothing here waits on it:
+   * an element that could not be removed is one line too many on a card, and not worth a run.
+   *
+   * <p>Answers to the element's own id, so a removal queued behind another removal of the same
+   * element supersedes it rather than being sent twice.
+   */
+  public void remove(final String elementId) {
+    enqueue(new Remove(elementId, null));
   }
 
   /**
@@ -428,7 +472,21 @@ public class FeishuCard {
    * ends here.
    */
   public void replace(final String elementId, final String elementJson, final String uuid) {
-    enqueue(new Replace(elementId, elementJson, uuid, null));
+    enqueue(new Replace(elementId, elementJson, uuid, true, null));
+  }
+
+  /**
+   * The same, for an element that lives inside another rather than on the card: one tool call's
+   * pane, the line counting the calls the pane has dropped.
+   *
+   * <p>The difference is what happens when the card turns out not to have it. There is nowhere else
+   * such an element could go — the footer is where the card's own elements are recovered to, and a
+   * call's pane put there would be a line of transcript standing where the spend belongs — so it is
+   * written down as missing and left to its writer, which rebuilds the pane holding it. See {@link
+   * #appendInto}, which answers a missing container the same way and for the same reason.
+   */
+  public void replaceNested(final String elementId, final String elementJson, final String uuid) {
+    enqueue(new Replace(elementId, elementJson, uuid, false, null));
   }
 
   /**
@@ -436,7 +494,7 @@ public class FeishuCard {
    * and so has to know that it is there — see {@code FeishuCardUpdater#spendOnCard}.
    */
   public boolean replaceNow(final String elementId, final String elementJson, final String uuid) {
-    return await(new Replace(elementId, elementJson, uuid, new CompletableFuture<>()));
+    return await(new Replace(elementId, elementJson, uuid, true, new CompletableFuture<>()));
   }
 
   /** Takes the stop button off the card and closes streaming mode, once the run is over. */
@@ -499,10 +557,16 @@ public class FeishuCard {
     }
   }
 
+  /**
+   * @param recover whether an element the card turns out not to have may be put back somewhere else
+   *     — true for the card's own elements, false for one that lives inside another and has nowhere
+   *     else it could go; see {@link #replaceNested}
+   */
   private record Replace(
       String elementId,
       String elementJson,
       String uuid,
+      boolean recover,
       CompletableFuture<Boolean> landed,
       long generation)
       implements Op {
@@ -511,20 +575,29 @@ public class FeishuCard {
         final String elementId,
         final String elementJson,
         final String uuid,
+        final boolean recover,
         final CompletableFuture<Boolean> landed) {
-      this(elementId, elementJson, uuid, landed, 0);
+      this(elementId, elementJson, uuid, recover, landed, 0);
     }
 
     @Override
     public Op forCard(final long generation) {
-      return new Replace(elementId, elementJson, uuid, landed, generation);
+      return new Replace(elementId, elementJson, uuid, recover, landed, generation);
     }
   }
 
+  /**
+   * @param type where these elements go relative to the target: above it on the card, or at the end
+   *     of what it holds
+   * @param recover whether a target the card turns out not to have may be swapped for another; see
+   *     {@link #appendInto}
+   */
   private record Insert(
       String targetElementId,
       String elementsJson,
       String uuid,
+      CreateCardElementTypeEnum type,
+      boolean recover,
       CompletableFuture<Boolean> landed,
       long generation)
       implements Op {
@@ -533,8 +606,10 @@ public class FeishuCard {
         final String targetElementId,
         final String elementsJson,
         final String uuid,
+        final CreateCardElementTypeEnum type,
+        final boolean recover,
         final CompletableFuture<Boolean> landed) {
-      this(targetElementId, elementsJson, uuid, landed, 0);
+      this(targetElementId, elementsJson, uuid, type, recover, landed, 0);
     }
 
     @Override
@@ -544,7 +619,21 @@ public class FeishuCard {
 
     @Override
     public Op forCard(final long generation) {
-      return new Insert(targetElementId, elementsJson, uuid, landed, generation);
+      return new Insert(targetElementId, elementsJson, uuid, type, recover, landed, generation);
+    }
+  }
+
+  /** One element off the card, named by the id it was put there with. */
+  private record Remove(String elementId, CompletableFuture<Boolean> landed, long generation)
+      implements Op {
+
+    Remove(final String elementId, final CompletableFuture<Boolean> landed) {
+      this(elementId, landed, 0);
+    }
+
+    @Override
+    public Op forCard(final long generation) {
+      return new Remove(elementId, landed, generation);
     }
   }
 
@@ -815,6 +904,7 @@ public class FeishuCard {
             case Stream write -> streamed(write);
             case Replace change -> update(change);
             case Insert insert -> insert(insert);
+            case Remove removal -> deleteElement(removal.elementId(), false);
             case Finish ignored -> close();
           };
     } catch (Exception e) {
@@ -1021,7 +1111,7 @@ public class FeishuCard {
                     .cardId(cardId)
                     .createCardElementReqBody(
                         CreateCardElementReqBody.newBuilder()
-                            .type(CreateCardElementTypeEnum.INSERT_BEFORE)
+                            .type(insert.type())
                             .targetElementId(target)
                             .uuid(insert.uuid())
                             .sequence(seq)
@@ -1030,7 +1120,8 @@ public class FeishuCard {
                     .build());
     if (response.getCode() != 0) {
       log.warn(
-          "Failed to insert elements before {}: cardId={}, seq={}, code={}, msg={}",
+          "Failed to insert elements {} {}: cardId={}, seq={}, code={}, msg={}",
+          insert.type().getValue(),
           target,
           cardId,
           seq,
@@ -1046,7 +1137,7 @@ public class FeishuCard {
         synchronized (this) {
           missing.add(target);
         }
-        final var anchor = recoveryAnchorFor(target);
+        final var anchor = insert.recover() ? recoveryAnchorFor(target) : null;
         if (anchor != null) {
           log.info(
               "Card {} has no {}, so the elements go above {} instead", cardId, target, anchor);
@@ -1095,12 +1186,20 @@ public class FeishuCard {
         // rather than only reported — and it is the tool pane and the task list that are replaced,
         // both of which are rewritten on every change and would otherwise stop at the change that
         // found them gone. The element is already serialized, so the array the insert takes is that
-        // one element in brackets.
-        final var anchor = recoveryAnchorFor(change.elementId());
+        // one element in brackets. Not for one that lives inside another, which has nowhere on the
+        // card it could go: see replaceNested.
+        final var anchor = change.recover() ? recoveryAnchorFor(change.elementId()) : null;
         if (anchor != null) {
           log.info("Card {} has no {} to replace, so it is put back", cardId, change.elementId());
           if (insert(
-              new Insert(anchor, "[" + change.elementJson() + "]", change.uuid(), null), anchor)) {
+              new Insert(
+                  anchor,
+                  "[" + change.elementJson() + "]",
+                  change.uuid(),
+                  CreateCardElementTypeEnum.INSERT_BEFORE,
+                  true,
+                  null),
+              anchor)) {
             return true;
           }
         }
@@ -1157,10 +1256,20 @@ public class FeishuCard {
     }
   }
 
-  /** The stop button off the card and streaming mode closed, the run being over. */
+  /**
+   * Takes one element off the card, and says whether the card is now without it — which an element
+   * the card never had already is, so a removal that is told there is no such element has got what
+   * it asked for and is not a failure.
+   *
+   * <p>Made from the thread draining the queue and nowhere else, like every other call here, which
+   * is what lets {@link #close()} use it without queueing anything.
+   *
+   * @param loud whether failing to remove it is worth an error: it is for the stop button, which a
+   *     card left carrying would still offer to stop a run that is over
+   */
   @SneakyThrows
-  private boolean close() {
-    final var removeActionsResponse =
+  private boolean deleteElement(final String elementId, final boolean loud) {
+    final var response =
         feishu
             .cardkit()
             .v1()
@@ -1168,21 +1277,44 @@ public class FeishuCard {
             .delete(
                 DeleteCardElementReq.newBuilder()
                     .cardId(cardId)
-                    // The button inside the spend row, not the row: the spend line stays on the
-                    // card after the run that wrote it has ended.
-                    .elementId(FeishuCardElements.STOP)
+                    .elementId(elementId)
                     .deleteCardElementReqBody(
                         DeleteCardElementReqBody.newBuilder()
                             .sequence(sequence.getAndIncrement())
                             .build())
                     .build());
-    if (removeActionsResponse.getCode() != 0) {
-      log.error(
-          "Failed to remove stop button: cardId={}, code={}, msg={}",
-          cardId,
-          removeActionsResponse.getCode(),
-          removeActionsResponse.getMsg());
+    if (response.getCode() == 0) {
+      wrote();
+      return true;
     }
+    if (response.getCode() == CODE_NO_SUCH_ELEMENT) {
+      log.debug("Card {} had no {} to remove, which is where this was going", cardId, elementId);
+      return true;
+    }
+    if (loud) {
+      log.error(
+          "Failed to remove {}: cardId={}, code={}, msg={}",
+          elementId,
+          cardId,
+          response.getCode(),
+          response.getMsg());
+    } else {
+      log.warn(
+          "Failed to remove {}: cardId={}, code={}, msg={}",
+          elementId,
+          cardId,
+          response.getCode(),
+          response.getMsg());
+    }
+    return false;
+  }
+
+  /** The stop button off the card and streaming mode closed, the run being over. */
+  @SneakyThrows
+  private boolean close() {
+    // The button inside the spend row, not the row: the spend line stays on the card after the run
+    // that wrote it has ended.
+    deleteElement(FeishuCardElements.STOP, true);
     final var stopResponse =
         feishu
             .cardkit()

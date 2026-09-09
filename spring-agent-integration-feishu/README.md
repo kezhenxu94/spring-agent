@@ -43,6 +43,19 @@ that bound is counted; `FEISHU_CARD_ELEMENTS`, `FEISHU_CARD_STREAM_CHARACTERS` a
 The card JSON itself lives in template files (`FEISHU_REPLY_CARD`, `FEISHU_WELCOME_CARD`,
 `FEISHU_UPDATE_CARD`), so a deployment restyles a card without touching Java.
 
+**The tool pane is written to a piece at a time, and this is load-bearing.** Feishu reports a
+panel's chevron to nobody, so an element sent again is an element drawn again *closed* — a pane
+rebuilt on every tool call would snap shut every call a reader had opened, several times a minute.
+So `FeishuCardUpdater` appends one nested pane as a call goes out (`FeishuCard.appendInto`, the
+`append` mode of the element API, which is the one way a container already on the card can be added
+to) and rewrites that one pane as it comes back, carrying what the call returned and how long it
+took. Nothing else on the card is touched. The whole pane is built again only where there is nothing
+to keep: a card with no pane yet, a pane a write found gone, the window dropping its oldest call, and
+the end of the run — which is also the only moment the pane's own title is rewritten, to fold it away
+and say how many calls the turn made in the end. A nested element that goes missing is *not*
+recovered onto the card the way one of the card's own is: a call's transcript standing where the
+footer belongs would be worse than the pane going back on whole, which is what happens instead.
+
 
 ## Text the model reads
 

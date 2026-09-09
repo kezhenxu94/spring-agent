@@ -32,6 +32,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.client.RestTemplate;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -129,13 +130,49 @@ class FeishuCardMissingElementTest {
                     call.<UpdateCardElementReq>getArgument(0).getElementId()));
 
     updater.setToolStatus("Bash", "{\"command\":\"ls -la\"}", null);
-    // The pane is replaced whole from the second call on, and this card has lost it in between.
+    // A second call is appended into the pane rather than rewriting it, and this card has lost the
+    // pane in between — so the append is what finds out.
     missing.add("tools");
     updater.setToolStatus("Read", "{\"path\":\"/etc/hosts\"}", null);
 
-    // The replacement carries the whole element, so it can go back on rather than be reported.
-    assertThat(insertTargets()).containsExactly("usage", "usage");
-    assertThat(insertedIds()).containsExactly("tools", "tools");
+    // The append is refused and, unlike an insert against the card's own order, is not put
+    // somewhere else: a call's pane belongs inside the tool pane and nowhere else, and the footer
+    // is where the card's own elements are recovered to. So the pane itself is what goes back on,
+    // carrying both calls, which is also what puts the nested panes back.
+    assertThat(insertTargets()).containsExactly("usage", "tools", "usage");
+    assertThat(insertedIds()).containsExactly("tools", "tool_call_1", "tools");
+    assertThat(insertedCallIds(2)).containsExactly("tool_call_0", "tool_call_1");
+  }
+
+  @Test
+  @DisplayName("a call's pane that has gone is answered by the pane around it going back on")
+  void aMissingCallPaneRebuildsThePane() throws Exception {
+    when(feishu.cardkit().v1().cardElement().update(any(UpdateCardElementReq.class)))
+        .thenAnswer(
+            call ->
+                resp(
+                    new UpdateCardElementResp(),
+                    call.<UpdateCardElementReq>getArgument(0).getElementId()));
+
+    updater.setToolStatus("Bash", "{\"command\":\"ls -la\"}", null);
+    updater.setToolStatus("Read", "{\"path\":\"/etc/hosts\"}", null);
+
+    // The card loses the first call's pane, and the call then comes back — which is the write that
+    // finds out, since a call is rewritten in place as its result arrives.
+    missing.add("tool_call_0");
+    updater.clearToolStatus("Bash", "{}", "a.txt");
+    assertThat(insertTargets()).containsExactly("usage", "tools");
+
+    // Nothing is recovered on the spot: a call's pane put above the spend row would be a line of
+    // transcript standing where the card's footer belongs. It is written down as gone instead, and
+    // the next thing the run does with the pane builds the pane again — which is what carries every
+    // call's pane back onto the card, the one that went missing among them.
+    updater.setToolStatus("Kubectl", "{\"n\":1}", null);
+    // The pane itself never left, so it is rewritten rather than inserted again, and the third
+    // call is carried by that rewrite rather than appended into a pane that is short of one.
+    assertThat(insertTargets()).containsExactly("usage", "tools");
+    assertThat(callIdsIn(lastUpdateOf("tools")))
+        .containsExactly("tool_call_0", "tool_call_1", "tool_call_2");
   }
 
   @Test
@@ -173,6 +210,32 @@ class FeishuCardMissingElementTest {
                     .path("element_id")
                     .asString())
         .toList();
+  }
+
+  /** The ids of the call panes the {@code index}-th insert of the turn carried, oldest first. */
+  private List<String> insertedCallIds(final int index) throws Exception {
+    return callIdsIn(
+        om.readTree(inserts().get(index).getCreateCardElementReqBody().getElements()).path(0));
+  }
+
+  /** The ids of the panes nested in one tool pane, oldest first. */
+  private static List<String> callIdsIn(final JsonNode pane) {
+    return pane.path("elements")
+        .valueStream()
+        .map(element -> element.path("element_id").asString())
+        .toList();
+  }
+
+  /** One element as it was last rewritten whole. */
+  private JsonNode lastUpdateOf(final String elementId) throws Exception {
+    final var captor = ArgumentCaptor.forClass(UpdateCardElementReq.class);
+    verify(feishu.cardkit().v1().cardElement(), atLeastOnce()).update(captor.capture());
+    final var updates =
+        captor.getAllValues().stream()
+            .filter(request -> elementId.equals(request.getElementId()))
+            .toList();
+    assertThat(updates).as("nothing rewrote " + elementId).isNotEmpty();
+    return om.readTree(updates.get(updates.size() - 1).getUpdateCardElementReqBody().getElement());
   }
 
   private List<CreateCardElementReq> inserts() throws Exception {

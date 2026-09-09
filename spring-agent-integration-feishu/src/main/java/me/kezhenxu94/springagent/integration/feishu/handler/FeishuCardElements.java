@@ -84,9 +84,29 @@ public class FeishuCardElements {
 
   /**
    * One call inside that pane. Not an element of the card — the run builds one per call and nests
-   * them in {@link #TOOLS} — so it is never inserted by id and never carries one.
+   * them in {@link #TOOLS} — so it is never inserted against the card's order and never appears in
+   * {@link #ORDER}. It does carry an id, because the run addresses it: a call's pane is appended to
+   * the tool pane when the call goes out and rewritten in place when it comes back, and both name
+   * it. See {@link #toolCallElementId(int)}.
    */
   private static final String TOOL_CALL = "tool_call";
+
+  /**
+   * The line inside the tool pane standing for the calls the pane no longer shows one each. It has
+   * an id for the same reason a call's pane does: the count on it changes as the window slides, and
+   * rewriting the pane around it to say so is exactly what this design exists to avoid.
+   */
+  static final String TOOLS_EARLIER = "tools_earlier";
+
+  /**
+   * The id of the pane holding the {@code index}-th call the run has made, counting every call of
+   * the turn rather than the ones this card shows — a card the run continued onto starts its
+   * numbering where the card before it left off, so the ids stay the ones the run's own list is
+   * keyed by and no two panes on one card can collide.
+   */
+  static String toolCallElementId(final int index) {
+    return TOOL_CALL + "_" + index;
+  }
 
   /**
    * The run's task list: a panel like the ones above it, titled with how many tasks it holds and
@@ -395,19 +415,22 @@ public class FeishuCardElements {
   }
 
   /**
-   * One tool call as the pane shows it: the line naming the call, and what a reader sees on opening
-   * it. Rendered by {@link FeishuCardUpdater}, which is what knows how a call is worth reading.
+   * One tool call as the pane shows it: the id the run addresses this call's pane by, the line
+   * naming the call, and what a reader sees on opening it. Rendered by {@link FeishuCardUpdater},
+   * which is what knows how a call is worth reading.
    */
-  public record ToolCall(String title, String body) {}
+  public record ToolCall(String elementId, String title, String body) {}
 
   /**
    * The tool pane as a whole element: the run's state in the title, and every call it has made
    * nested inside as a pane of its own, oldest first.
    *
-   * <p>Whole every time, because the pane grows a pane per call and a card element insert can only
-   * name an element of the card, never one inside another. Which is also why {@code expanded} is
-   * passed in: a replacement decides afresh whether the pane is open, so the run has to say each
-   * time what it was.
+   * <p>Not what the run does on every call — appending one pane and rewriting one is, and this
+   * rebuilds the lot, which closes every pane nested in it. It is for the three moments where there
+   * is nothing to keep: putting the pane on a card that has none, putting it back after a write
+   * found it gone, and folding it away as the run ends. Which is why {@code expanded} is passed in:
+   * a replacement decides afresh whether the pane is open, so the run has to say each time what it
+   * was.
    *
    * @param hidden how many calls are too old to be shown a pane each, said in one line rather than
    *     dropped in silence
@@ -421,31 +444,54 @@ public class FeishuCardElements {
     final var elements = (ArrayNode) element.path("elements");
     // The template's one line is the style for the line standing in for the calls too old to show,
     // and nothing else: every call is a pane, so with none dropped the pane holds panes alone.
-    final var line = (ObjectNode) elements.remove(0);
+    elements.remove(0);
     if (hidden > 0) {
-      elements.add(line.put("content", messages.get("card-tool-calls-earlier", hidden)));
+      elements.add(om.readTree(earlierCallsLine(hidden)));
     }
     for (final var call : calls) {
-      elements.add(toolCallPane(call));
+      elements.add(om.readTree(toolCallPane(call)));
     }
     return om.writeValueAsString(element);
   }
 
-  /** One call inside the pane: a pane of its own, closed, opening onto what the call did. */
+  /**
+   * The line standing in for the calls the pane no longer shows one each, as an element of its own:
+   * what the run rewrites in place as the window slides past another call, so that the pane holding
+   * it is left alone and the panes a reader opened stay open.
+   */
   @SneakyThrows
-  private ObjectNode toolCallPane(final ToolCall call) {
-    final var template =
-        (ObjectNode)
-            om.readTree(
-                    messages.renderCard(cardElements.getContentAsString(StandardCharsets.UTF_8)))
-                .get(TOOL_CALL);
-    if (template == null) {
+  public String earlierCallsLine(final int hidden) {
+    final var line = (ObjectNode) template().get(TOOLS).path("elements").get(0);
+    line.put("element_id", TOOLS_EARLIER);
+    line.put("content", messages.get("card-tool-calls-earlier", hidden));
+    return om.writeValueAsString(line);
+  }
+
+  /**
+   * One call inside the pane: a pane of its own, closed, opening onto what the call did.
+   *
+   * <p>Carries the id the run addresses it by, which is what lets a call be appended as it goes out
+   * and rewritten — with what it returned and how long it took — as it comes back, without the pane
+   * around it being touched. Born closed, and only ever born: nothing here reopens it, because
+   * whether it is open is the reader's to decide and Feishu reports a chevron to nobody.
+   */
+  @SneakyThrows
+  public String toolCallPane(final ToolCall call) {
+    final var pane = (ObjectNode) template().get(TOOL_CALL);
+    if (pane == null) {
       throw new IllegalStateException("No '" + TOOL_CALL + "' element in " + cardElements);
     }
-    final var pane = template.deepCopy();
+    pane.put("element_id", call.elementId());
     fillTitle(pane, call.title());
     ((ObjectNode) pane.path("elements").get(0)).put("content", Strings.nullToEmpty(call.body()));
-    return pane;
+    return om.writeValueAsString(pane);
+  }
+
+  /** The template file, read afresh, so that what a caller edits is never the file's own copy. */
+  @SneakyThrows
+  private ObjectNode template() {
+    return (ObjectNode)
+        om.readTree(messages.renderCard(cardElements.getContentAsString(StandardCharsets.UTF_8)));
   }
 
   /**
