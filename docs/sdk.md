@@ -864,6 +864,16 @@ or not yours, deliberately indistinguishable. Frames are `RunEvent` as JSON: `{s
 repositories *and* the conversation-memory repository together, through
 `@ConditionalOnPersistenceBackend`, so the two can never come from different backends.
 
+How much of a conversation is replayed into the next turn is `app.ai.memory.window`, which core's
+`ChatMemoryConfiguration` applies — 200 messages by default, against Spring AI's 20. It is core's
+knob rather than a `spring.ai.chat.memory.*` one because upstream has none: its auto-configuration
+builds the `MessageWindowChatMemory` with the builder's default and reads no property. Counted in
+messages and not in turns, and a turn is several — the memory advisor sits inside the tool-calling
+loop, so a question answered by three tool calls is eight or nine messages. Raising it costs tokens
+on every request *and* a store write of up to that many messages per turn, since the window is
+trimmed by writing the whole of it back. Declaring a `ChatMemory` bean of your own replaces all of
+this; the repository the messages land in is still the one `app.persistence.type` chose.
+
 One domain model serves every backend: the records in `core/dao/models/` carry JPA, MongoDB and
 Redis mapping annotations at once, which works because an annotation whose type is absent at runtime
 is discarded on reflection. Schema is owned by the application (`ddl-auto: update`); there is no
