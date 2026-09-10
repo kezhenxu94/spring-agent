@@ -123,6 +123,28 @@ class FeishuCardStreamThrottleTest {
   }
 
   @Test
+  @DisplayName("two writers each a little behind do not add up to one that is far behind")
+  void theCharacterTriggerIsPerElement() {
+    final var card = card(Duration.ofSeconds(30), 300);
+    // The run and a subagent of it, each streaming into an element of its own on the one card.
+    card.stream("message", "a");
+    assertThat(written).containsExactly("a");
+    card.stream("subagent-message", "b");
+    card.stream("message", "a".repeat(200));
+    card.stream("subagent-message", "b".repeat(200));
+
+    // Four hundred characters are waiting, and neither element is anywhere near three hundred
+    // behind: a reader is not behind anything, and the interval still has thirty seconds to run.
+    // Summed instead, this fired here — and on a card with four subagents it fired on every chunk.
+    assertThat(written).containsExactly("a");
+
+    // One element far enough behind is what the trigger is for, however little the others owe.
+    card.stream("message", "a".repeat(400));
+
+    assertThat(written).containsExactly("a", "b".repeat(200), "a".repeat(400));
+  }
+
+  @Test
   @DisplayName("a run that goes quiet still leaves the card showing what it last said")
   void whatIsHeldBackIsWrittenOnTheClock() {
     final var card = card(Duration.ofMillis(100), 0);

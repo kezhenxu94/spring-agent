@@ -763,7 +763,10 @@ app:
     # run goes, and lengthening it to make one faster is a wasted change: the calls are made on the
     # card's own worker, so this paces that worker and never the run. The character trigger is what
     # stops a burst of text from sitting unsent for the rest of an interval; 0 turns it off and
-    # leaves the clock in sole charge. Neither can lose the end of an answer: whatever is waiting
+    # leaves the clock in sole charge. It is per element and not the sum over them: a card is
+    # written to by the run and by every subagent of it, and summing their lag fired the trigger as
+    # many times sooner as there were writers, which is a round trip per chunk again on a turn that
+    # started a few. Neither can lose the end of an answer: whatever is waiting
     # is written when the interval passes, when the card is changed some other way, and when the
     # run ends.
     #
