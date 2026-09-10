@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.integration.feishu.handler;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 
@@ -227,8 +228,94 @@ class FeishuCardAsyncWriteTest {
   }
 
   @Test
-  @DisplayName("an insert still says whether it landed, and lands after what was queued before it")
-  void insertsAreWaitedForAndOrdered() throws Exception {
+  @DisplayName("an insert says whether it landed, and pays one round trip rather than the batch's")
+  void insertsAreWaitedForAndSentFirst() throws Exception {
+    recordInserts();
+    final var card = card(Duration.ofSeconds(30));
+    // The first thing the card says goes out at once, which is what puts the interval on the
+    // clock: everything below is inside it and so certainly still in the queue.
+    card.stream("message", "The");
+    await()
+        .atMost(Duration.ofSeconds(10))
+        .untilAsserted(() -> assertThat(operations()).containsExactly("stream:The"));
+    card.stream("message", "The quick brown fox");
+    card.stream("subagent-message", "the subagent is working");
+
+    // Nothing can be streamed into an element the card does not have, so this is one of the few
+    // writes whose caller has to know — and its caller is a tool call inside the model's turn. It
+    // is answered after its own round trip, not after everything the run and its subagents queued.
+    assertThat(card.insertBefore("usage", "[{\"element_id\":\"reasoning\"}]", "reasoning"))
+        .isTrue();
+
+    // Sent first, and the rest of the batch behind it: what the insert's caller waited for is one
+    // round trip, whatever the run and its subagents had queued. Not asserted by what had been
+    // sent by the time this returned, which is a race with the worker carrying on with the batch —
+    // the order the calls were made in is the whole of the claim.
+    await()
+        .atMost(Duration.ofSeconds(10))
+        .untilAsserted(
+            () ->
+                assertThat(operations())
+                    .containsExactly(
+                        "stream:The",
+                        "insert:usage",
+                        "stream:The quick brown fox",
+                        "stream:the subagent is working"));
+    assertThat(sequences).isSorted();
+    assertThat(sequences).doesNotHaveDuplicates();
+  }
+
+  @Test
+  @DisplayName("a write waited on does not jump ahead of an earlier write to the same element")
+  void oneElementKeepsItsOrder() throws Exception {
+    final var replaced = new UpdateCardElementResp();
+    replaced.setCode(0);
+    lenient()
+        .when(feishu.cardkit().v1().cardElement().update(any(UpdateCardElementReq.class)))
+        .thenAnswer(
+            invocation -> {
+              final UpdateCardElementReq request = invocation.getArgument(0);
+              calls.add("update:" + request.getUpdateCardElementReqBody().getElement());
+              sequences.add(request.getUpdateCardElementReqBody().getSequence());
+              return replaced;
+            });
+    holdStreaming = true;
+    final var card = card(Duration.ZERO);
+    // Held so that the two replacements below are certainly queued together: what is under test is
+    // the order the queue is drained in.
+    card.stream("message", "the run is working");
+    assertThat(streamingEntered.await(10, TimeUnit.SECONDS)).isTrue();
+
+    card.replace("usage", "{\"spend\":\"one call\"}", "usage:1");
+    releaseStreaming.countDown();
+
+    // Two writes to one element are the same content twice over, so the newer has to land last
+    // however much its caller is waiting: hoisting this one would leave the card showing the
+    // older of the two.
+    assertThat(card.replaceNow("usage", "{\"spend\":\"two calls\"}", "usage:2")).isTrue();
+
+    assertThat(operations())
+        .containsSubsequence("update:{\"spend\":\"one call\"}", "update:{\"spend\":\"two calls\"}");
+  }
+
+  @Test
+  @DisplayName("finishing is not brought forward: what is queued reaches the card before it closes")
+  void finishingIsNotHoisted() {
+    final var card = card(Duration.ofSeconds(30));
+    card.stream("message", "The");
+    await()
+        .atMost(Duration.ofSeconds(10))
+        .untilAsserted(() -> assertThat(operations()).containsExactly("stream:The"));
+    card.stream("message", "The quick brown fox");
+
+    // Streaming mode is closed by the very operation being queued here, so the write in front of
+    // it is the last chance the card has to take what the run last said.
+    finish(card);
+
+    assertThat(contents()).containsExactly("The", "The quick brown fox");
+  }
+
+  private void recordInserts() throws Exception {
     final var inserted = new CreateCardElementResp();
     inserted.setCode(0);
     lenient()
@@ -241,20 +328,6 @@ class FeishuCardAsyncWriteTest {
               sequences.add(body.getSequence());
               return inserted;
             });
-    holdStreaming = true;
-    final var card = card(Duration.ZERO);
-    card.stream("message", "The");
-    assertThat(streamingEntered.await(10, TimeUnit.SECONDS)).isTrue();
-    card.stream("message", "The quick brown fox");
-    releaseStreaming.countDown();
-
-    // Nothing can be streamed into an element the card does not have, so this is one of the few
-    // writes whose caller has to know — and it drains what the run has already said on its way.
-    assertThat(card.insertBefore("usage", "[{\"element_id\":\"reasoning\"}]", "reasoning"))
-        .isTrue();
-
-    assertThat(operations())
-        .containsExactly("stream:The", "stream:The quick brown fox", "insert:usage");
   }
 
   @Test

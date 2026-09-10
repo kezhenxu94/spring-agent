@@ -77,8 +77,8 @@ import org.springframework.web.client.RestTemplate;
  * <p>What a caller cannot then have is the answer: a queued write has not been made yet, so it
  * cannot say whether it landed. The few writes whose caller has to know — putting an element on the
  * card before anything can be streamed into it, and finishing the card — say so by waiting, and pay
- * a round trip for it. They are the ones that happen once per run rather than once per chunk, which
- * is what makes that affordable. See {@link #await}.
+ * a round trip for it. One round trip, and not the batch's: such a write is sent first, so what it
+ * costs does not grow with how much the run and its subagents have queued. See {@link #await}.
  *
  * <p><b>A card has a size, and a turn does not.</b> Feishu refuses a write that would take a card
  * over 30KB or over 200 elements, and neither is a limit a run can be asked to stay within — how
@@ -663,9 +663,14 @@ public class FeishuCard {
   }
 
   /**
-   * Queues {@code op} and waits for it, which is also what drains everything queued ahead of it:
-   * the queue is drained in order, so the run's own words reach the card before the element that is
-   * being put on it or the settings that close it.
+   * Queues {@code op} and waits for it, which is also what gets the queue moving whether or not its
+   * interval has passed: a caller that is blocked is not helped by the card pacing itself.
+   *
+   * <p>What it does not wait for is everything else that was queued. A write with a caller behind
+   * it goes to the front of the batch — see {@link #waitedOnFirst} — so putting an element on the
+   * card costs its caller one round trip rather than one per element the run and its subagents
+   * happened to have waiting. Finishing is the exception and still goes last, since what is queued
+   * has to reach the card before streaming mode closes.
    */
   private boolean await(final Op op) {
     enqueue(op);
@@ -814,20 +819,31 @@ public class FeishuCard {
     if (System.nanoTime() - streamedAt >= streamInterval.toNanos()) {
       return true;
     }
-    return streamCharacters > 0 && queuedCharacters() >= streamCharacters;
+    return streamCharacters > 0 && anElementIsFarBehind();
   }
 
-  /** How far behind the card is, in characters, across every element waiting to be written. */
-  private int queuedCharacters() {
-    var characters = 0;
+  /**
+   * Whether any one element is far enough behind what its writer has for it that waiting out the
+   * rest of the interval would show the reader an answer well behind the run.
+   *
+   * <p>Any one of them and not the sum of them, which is the difference between a card with one
+   * writer and a card with several. A card is written to by the run and by every subagent of it,
+   * each into an element of its own, and summing their lag made the trigger fire as many times
+   * sooner as there were writers: four runs a hundred characters behind are not a reader four
+   * hundred characters behind anything. That fired on nearly every chunk, which is the round trip
+   * per chunk the interval exists to prevent — and every write a caller waits on then had that
+   * whole batch in front of it.
+   */
+  private boolean anElementIsFarBehind() {
     for (final var op : queued) {
-      if (op instanceof Stream waiting) {
-        characters +=
-            Math.abs(
-                waiting.content().length() - sent.getOrDefault(waiting.elementId(), "").length());
+      if (op instanceof Stream waiting
+          && Math.abs(
+                  waiting.content().length() - sent.getOrDefault(waiting.elementId(), "").length())
+              >= streamCharacters) {
+        return true;
       }
     }
-    return characters;
+    return false;
   }
 
   /** Empties the queue, dropping the streaming writes whose content the card already has. */
@@ -845,7 +861,56 @@ public class FeishuCard {
       batch.add(op);
     }
     queued.clear();
-    return batch;
+    return waitedOnFirst(batch);
+  }
+
+  /**
+   * The same batch with each write a caller is waiting on as early in it as it can legally go.
+   *
+   * <p>What this is worth is the whole of what a blocked caller pays. A batch is sent one round
+   * trip at a time from one thread — it has to be, since a card's writes have to arrive in
+   * ascending sequence — and a caller is released as its own write is sent, so a write at the back
+   * of the batch costs its caller every round trip in front of it. The writes callers wait on are
+   * the tool-call ones: putting a call's pane on the card, or a subagent's panel. So a turn's every
+   * tool call used to be delayed by however much the run and its subagents happened to have queued,
+   * which grows with the number of subagents streaming into the card — the run's own answer waiting
+   * on a card write is the thing this class exists to prevent, and it was reaching the tool loop by
+   * this route.
+   *
+   * <p>Safe because a sequence is drawn where the call is made rather than where it was queued, so
+   * the order the queue is drained in is ours to choose. Two orderings are not, and are what stops
+   * the hoist:
+   *
+   * <ul>
+   *   <li>anything naming the same element, since two writes to one element are the same content
+   *       twice over and the newer must land last;
+   *   <li>finishing, which closes streaming mode: everything queued goes out while the card still
+   *       accepts it — see {@link #finish()} — so a finish is never brought forward and nothing is
+   *       brought forward past one.
+   * </ul>
+   *
+   * <p>Waited-on writes keep their order among themselves, for the same reason: the caller of the
+   * second asked for it after the first.
+   */
+  private static List<Op> waitedOnFirst(final List<Op> batch) {
+    final var ordered = new ArrayList<Op>(batch.size());
+    for (final var op : batch) {
+      if (op.landed() == null || op instanceof Finish) {
+        ordered.add(op);
+        continue;
+      }
+      var earliest = 0;
+      for (var i = 0; i < ordered.size(); i++) {
+        final var ahead = ordered.get(i);
+        if (ahead.landed() != null
+            || ahead instanceof Finish
+            || ahead.elementId().equals(op.elementId())) {
+          earliest = i + 1;
+        }
+      }
+      ordered.add(earliest, op);
+    }
+    return ordered;
   }
 
   private void schedulePump() {
