@@ -64,8 +64,9 @@ spring:
       memory:
         # Each of these is read only when app.persistence.type selects the matching backend, which
         # is also the connection the history shares: on jpa the messages land in
-        # spring.datasource beside the domain tables. How much of it is replayed is not configured
-        # here at all — the window is Spring AI's own.
+        # spring.datasource beside the domain tables. Where the messages go is all that is here:
+        # how many of them are replayed into the next turn is app.ai.memory.window, below, which
+        # Spring AI has no property for.
         #
         # Stored is the user's message, the model's answer and, the advisor being inside the
         # tool-calling loop, the calls the turn made and what they returned. Except on jpa, where
@@ -701,6 +702,22 @@ app:
     # application refuses to start on that pairing rather than leaving it to be noticed. If such an
     # identity needs to reach chats it is not in, give that source an identity of its own.
     admins: ${ADMINS:}
+    memory:
+      # How many messages of a conversation are kept, and so replayed into the next turn. Counted
+      # in messages rather than in turns, and a turn here is several: the memory advisor sits
+      # inside the tool-calling loop, so one question answered by reading three files is the
+      # question, the answer, and a call and a result for each tool. Spring AI's own default of 20
+      # is therefore about two exchanges, which is why this is set rather than left alone — an
+      # agent that has forgotten what it was asked two questions ago reads as broken.
+      #
+      # Raising it is paid twice. The window goes into every request, so it is tokens on each turn;
+      # and MessageWindowChatMemory trims by writing the whole kept window back, so it is also a
+      # store write of up to this many messages per turn. Lower it for a small context window or an
+      # expensive model, raise it for a conversation that has to remember a long investigation.
+      #
+      # What is kept is not the same on every backend: JdbcChatMemoryRepository refuses tool
+      # messages, so on jpa this many messages is rather more exchanges than on mongodb or redis.
+      window: ${MEMORY_WINDOW:200}
     embedding:
       # How the tool-search index is built, which is a few hundred tool descriptions embedded at
       # once whenever a user's tool set changes — the first request after a restart, and any

@@ -104,9 +104,9 @@ public class SpringAgent {
   final ObjectProvider<UserChatClients> userChatClients;
 
   /**
-   * Spring AI's own, deliberately: a {@link ChatMemory} bean declared by the application is what
-   * its repository auto-configurations back off from, leaving the in-memory repository in place of
-   * the real one.
+   * Core's own, built by {@code ChatMemoryConfiguration} for the sake of the one thing Spring AI's
+   * auto-configuration will not let a deployment state — how many messages the window keeps. Where
+   * they are stored is still upstream's decision, and still follows {@code app.persistence.type}.
    */
   final ChatMemory chatMemory;
 

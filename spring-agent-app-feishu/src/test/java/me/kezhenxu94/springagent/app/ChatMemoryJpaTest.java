@@ -3,10 +3,12 @@ package me.kezhenxu94.springagent.app;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.stream.IntStream;
 import javax.sql.DataSource;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.repository.jdbc.JdbcChatMemoryRepository;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -29,6 +31,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class ChatMemoryJpaTest extends AbstractIntegrationTest {
 
   @Autowired ApplicationContext context;
+  @Autowired ChatMemory chatMemory;
   @Autowired ChatMemoryRepository chatMemoryRepository;
   @Autowired DataSource dataSource;
 
@@ -44,6 +47,20 @@ class ChatMemoryJpaTest extends AbstractIntegrationTest {
     assertThat(chatMemoryRepository.findByConversationId("conversation-1"))
         .extracting(Message::getText)
         .containsExactly("ping", "pong");
+  }
+
+  @Test
+  @DisplayName("the assembled application keeps app.ai.memory.window messages, not Spring AI's 20")
+  void theWindowIsCoresAndNotUpstreams() {
+    // Asserted here rather than once per backend because the window is not a backend's business —
+    // what it takes is a real application, where core's ChatMemoryConfiguration and Spring AI's
+    // ChatMemoryAutoConfiguration both declare a @ConditionalOnMissingBean ChatMemory and only the
+    // ordering decides which one a deployment runs.
+    chatMemory.add(
+        "conversation-2",
+        IntStream.range(0, 300).<Message>mapToObj(i -> new UserMessage("message " + i)).toList());
+
+    assertThat(chatMemory.get("conversation-2")).hasSize(200);
   }
 
   @Test

@@ -125,6 +125,14 @@ the client was built asking for a model named `""` and the endpoint's rejection 
 gateway rather than a feature nobody turned on. Nothing fails at startup when this is got wrong,
 which is the whole reason it is written down here.
 
+**The conversation window is core's to set, the store is not.** `config/ChatMemoryConfiguration`
+builds the `ChatMemory` bean so that `app.ai.memory.window` means something — Spring AI's
+auto-configuration takes the builder's 20 messages and reads no property, and 20 is about two
+exchanges once every tool call and result is a message of its own. Where the messages land is still
+upstream's business and still follows `app.persistence.type`: the repository auto-configurations back
+off from a `ChatMemoryRepository` and not from a `ChatMemory`, so this bean takes whichever one the
+backend put in the context.
+
 **One domain model serves every backend.** The records in `dao/models/` carry JPA, MongoDB *and* Redis
 mapping annotations at once. That works because an annotation whose type is absent at runtime is
 discarded on reflection, which is why core declares those persistence APIs `compileOnly`.
