@@ -116,6 +116,10 @@ dependencies {
   testImplementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-mongodb'
   testImplementation 'org.springframework.ai:spring-ai-starter-model-chat-memory-repository-redis'
 
+  // Stands in for a remote image in MediaSourcesTest. That class is the only thing in core that
+  // fetches a URL a model named, so it is the only thing here that needs a server to fetch from.
+  testImplementation libs.okhttp.mockwebserver
+
   // No model provider here, not even for tests, and that is worth stating: core's tests build the
   // ChatClient they need from a stub ChatModel, so nothing in this module — main or test — names an
   // endpoint's wire protocol. A provider appearing on this line is the first sign that something

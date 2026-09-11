@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.provider.dashscope;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.net.URI;
 import java.util.List;
@@ -127,6 +128,42 @@ class DashScopeImageModelTest {
     // The order is the order the model reads them in: the instruction applies to what came before.
     assertThat(content.get(0).get("image").asString()).isEqualTo("https://example.test/ref.png");
     assertThat(content.get(1).get("text").asString()).isEqualTo("as a watercolour");
+  }
+
+  @Test
+  @DisplayName("a local reference is refused by name, never sent as the string [B@...")
+  void bytesAreRefusedRatherThanSent() {
+    // Core resolves a local path or file:// URL into bytes before a provider sees it, because that
+    // is what every other provider wants. This endpoint is the exception — it fetches references
+    // itself and has no upload path — and what matters is that it says so.
+    //
+    // It read String.valueOf(media.getData()) before, which for a byte[] yields "[B@1f2a3b4c": a
+    // well-formed request carrying a string that is not a URL, answered with a picture of nothing
+    // in particular. The model could not act on that; it can act on this.
+    final var prompt =
+        new ImagePrompt(
+            List.of(
+                new ImageMessage(
+                    "as a watercolour",
+                    null,
+                    List.of(
+                        Media.builder()
+                            .name("generated-1.png")
+                            .mimeType(MimeTypeUtils.IMAGE_PNG)
+                            .data(
+                                "pretend-png-bytes"
+                                    .getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                            .build()),
+                    Map.of())),
+            ImageOptionsBuilder.builder().n(1).build());
+
+    assertThatThrownBy(() -> model.call(prompt))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("PublishFile")
+        .hasMessageContaining("generated-1.png");
+
+    // And nothing was put on the wire, so there is no half-made request to explain.
+    assertThat(server.getRequestCount()).isZero();
   }
 
   @Test

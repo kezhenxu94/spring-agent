@@ -1,9 +1,6 @@
 package me.kezhenxu94.springagent.core.tools;
 
 import com.google.common.base.Strings;
-import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.IntStream;
@@ -12,11 +9,8 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ToolContext;
-import org.springframework.ai.content.Media;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
-import org.springframework.util.MimeTypeUtils;
-import org.springframework.web.client.RestTemplate;
 
 /**
  * Answers questions about an image with the vision {@code ChatClient} the deployment's provider
@@ -28,7 +22,7 @@ import org.springframework.web.client.RestTemplate;
 @AgentTool
 @RequiredArgsConstructor
 public class VisionTools {
-  private final RestTemplate restTemplate;
+  private final MediaSources mediaSources;
   private final UserWorkspaceFactory userWorkspaceFactory;
   private final CoreMessages messages;
   private final ChatClient visionChatClient;
@@ -36,12 +30,15 @@ public class VisionTools {
   @Tool(
       name = "RecognizeImage",
       description =
-          "Describe what an image shows, or answer a question about it. Takes local paths (only"
-              + " images already saved under the current user's, the current group's, or the"
-              + " tenant's workspace/artifacts directory) or publicly reachable URLs, and several"
-              + " images at once.")
+          "Describe what an image shows, or answer a question about it. Takes local paths or"
+              + " file:// URLs (only images already saved under the current user's, the current"
+              + " group's, or the tenant's workspace/artifacts directory) or publicly reachable"
+              + " http(s) URLs, and several images at once.")
   public String recognizeImage(
-      @ToolParam(description = "The images: absolute local paths, or publicly reachable URLs")
+      @ToolParam(
+              description =
+                  "The images: absolute local paths, file:// URLs as returned by"
+                      + " GenerateImage, or publicly reachable http(s) URLs")
           final List<String> images,
       @ToolParam(
               description = "What to ask about the images; omit it to just have them described",
@@ -61,7 +58,8 @@ public class VisionTools {
     log.debug("Images to recognize for user {}: {}", userId, images);
 
     final var home = userWorkspaceFactory.forRequest(context);
-    final var mediaList = images.stream().map(src -> resolveMedia(src, userId, home)).toList();
+    final var mediaList =
+        images.stream().map(src -> mediaSources.resolve(src, userId, home)).toList();
     if (mediaList.stream().anyMatch(Objects::isNull)) {
       final var failed =
           IntStream.range(0, mediaList.size())
@@ -114,55 +112,6 @@ public class VisionTools {
           mediaList.size(),
           e);
       throw e;
-    }
-  }
-
-  private Media resolveMedia(final String source, final String userId, final HomeDir home) {
-    final var startedAt = System.nanoTime();
-    try {
-      if (source.startsWith("http://") || source.startsWith("https://")) {
-        log.debug("Downloading image from URL: {}", source);
-        final var bytes = restTemplate.getForObject(URI.create(source), byte[].class);
-        if (bytes == null || bytes.length == 0) {
-          log.warn("Nothing to read at image URL: {}", source);
-          return null;
-        }
-        log.info(
-            "Downloaded image {}, size={} bytes, took {} ms",
-            source,
-            bytes.length,
-            elapsedMillis(startedAt));
-        return Media.builder().name(source).mimeType(MimeTypeUtils.IMAGE_PNG).data(bytes).build();
-      }
-      final var path = Path.of(source).toAbsolutePath().normalize();
-      if (!home.contains(path) || !Files.exists(path)) {
-        log.warn(
-            "Rejected image path outside user {} workspace or missing: {} (resolved to {})",
-            userId,
-            source,
-            path);
-        return null;
-      }
-      final var mimeType = Files.probeContentType(path);
-      if (mimeType == null) {
-        log.info("Could not probe mime type of {}, assuming {}", path, MimeTypeUtils.IMAGE_PNG);
-      }
-      final var bytes = Files.readAllBytes(path);
-      log.info(
-          "Read local image {}, mimeType={}, size={} bytes, took {} ms",
-          path,
-          mimeType != null ? mimeType : MimeTypeUtils.IMAGE_PNG_VALUE,
-          bytes.length,
-          elapsedMillis(startedAt));
-      return Media.builder()
-          .name(path.getFileName().toString())
-          .mimeType(
-              mimeType != null ? MimeTypeUtils.parseMimeType(mimeType) : MimeTypeUtils.IMAGE_PNG)
-          .data(bytes)
-          .build();
-    } catch (Exception e) {
-      log.error("Failed to load image: {} (after {} ms)", source, elapsedMillis(startedAt), e);
-      return null;
     }
   }
 
