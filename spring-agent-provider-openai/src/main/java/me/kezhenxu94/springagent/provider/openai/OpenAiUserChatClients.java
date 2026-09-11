@@ -104,11 +104,16 @@ public class OpenAiUserChatClients implements ProviderChatClients {
 
   @Override
   public ChatClient clientFor(final UserModelConfig config) {
+    // Borrowing is keyed on the row carrying no credential of its own, not on it carrying no base
+    // URL. The two coincided while a deployment had one provider; once a row may name a different
+    // one, a row that supplies a key and a model would have had that key ignored in favour of a
+    // deployment credential belonging to another protocol.
+    final var own = registry.tokenOf(config);
     final var builtin = Strings.isNullOrEmpty(config.baseUrl());
     return clientFor(
         new Endpoint(
             builtin ? defaults.getBaseUrl() : config.baseUrl(),
-            builtin ? defaults.getApiKey() : registry.tokenOf(config),
+            Strings.isNullOrEmpty(own) ? defaults.getApiKey() : own,
             // A blank model is read the same way, and only ever happens on
             // UserModelRegistry.DEFAULT_ROW: a row that says how hard the application's model
             // should think without saying which model that is, so that the answer stays whatever

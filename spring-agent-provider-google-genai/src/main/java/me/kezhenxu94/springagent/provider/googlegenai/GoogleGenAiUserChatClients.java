@@ -104,15 +104,53 @@ public class GoogleGenAiUserChatClients implements ProviderChatClients {
 
   @Override
   public ChatClient clientFor(final UserModelConfig config) {
-    final var builtin = Strings.isNullOrEmpty(config.baseUrl());
-    return clientFor(
-        new Endpoint(
-            builtin ? null : config.baseUrl(),
-            builtin ? defaultApiKey : registry.tokenOf(config),
-            // A blank model only ever happens on UserModelRegistry.DEFAULT_ROW: a row saying how
-            // hard the application's model should think without saying which model that is.
-            Strings.isNullOrEmpty(config.model()) ? defaults.getModel() : config.model(),
-            config.reasoningEffort()));
+    return clientFor(endpointFor(registry, defaults, defaultApiKey, config));
+  }
+
+  /**
+   * Which endpoint a stored row names, as its four fields.
+   *
+   * <p>Package-private and static so the rule can be asserted without building a client, which is
+   * where it becomes invisible — the same reason {@code optionsFor} is.
+   *
+   * <p><b>Borrowing is keyed on the row carrying no credential, not on it carrying no base URL.</b>
+   * The two coincided while a deployment had one provider, and stopped coinciding the moment a row
+   * could name one: Gemini's Developer API has a single well-known host, so an ordinary Gemini row
+   * is a key and a model and no URL at all. Read as "the application's own endpoint" it would
+   * authenticate with a deployment credential that, on a deployment serving chat from somebody
+   * else, does not exist — ignoring the key the person typed. The probe would pass, being handed
+   * the token directly, and every run would fail.
+   *
+   * <p>A row that genuinely carries no credential is {@code UserModelRegistry.DEFAULT_ROW}: the
+   * application's own model with an effort of the user's choosing. Borrowing is right there, and
+   * only there.
+   */
+  static Endpoint endpointFor(
+      final UserModelRegistry registry,
+      final GoogleGenAiChatOptions defaults,
+      final String defaultApiKey,
+      final UserModelConfig config) {
+    final var own = registry.tokenOf(config);
+    return new Endpoint(
+        // Blank is the normal case and means the Gemini Developer API's own host; a value here is
+        // an override, for a gateway re-serving the protocol.
+        Strings.emptyToNull(config.baseUrl()),
+        Strings.isNullOrEmpty(own) ? defaultApiKey : own,
+        // A blank model only ever happens on DEFAULT_ROW: a row saying how hard the application's
+        // model should think without saying which model that is.
+        Strings.isNullOrEmpty(config.model())
+            ? (defaults == null ? null : defaults.getModel())
+            : config.model(),
+        config.reasoningEffort());
+  }
+
+  /**
+   * False: the Gemini Developer API has one well-known host, so there is nothing for a person to
+   * type and asking would be asking them to invent something.
+   */
+  @Override
+  public boolean requiresBaseUrl() {
+    return false;
   }
 
   /**
