@@ -30,7 +30,8 @@ class DispatchingUserChatClientsTest {
   private final ChatClient geminiClient = mock(ChatClient.class);
 
   /** A provider that answers with one identifiable client, and records nothing else. */
-  private record StubProvider(String provider, ChatClient client, String effort)
+  private record StubProvider(
+      String provider, ChatClient client, String effort, boolean requiresBaseUrl)
       implements ProviderChatClients {
     @Override
     public ChatClient clientFor(final UserModelConfig config) {
@@ -48,8 +49,10 @@ class DispatchingUserChatClientsTest {
     }
   }
 
-  private final ProviderChatClients openai = new StubProvider("openai", openAiClient, "xhigh");
-  private final ProviderChatClients gemini = new StubProvider("google-genai", geminiClient, "high");
+  private final ProviderChatClients openai =
+      new StubProvider("openai", openAiClient, "xhigh", true);
+  private final ProviderChatClients gemini =
+      new StubProvider("google-genai", geminiClient, "high", false);
 
   private UserModelRegistry registryWith(final UserModelConfig... rows) {
     final var repo = mock(UserModelConfigRepo.class);
@@ -194,5 +197,22 @@ class DispatchingUserChatClientsTest {
     assertThat(clients.defaultProvider()).isNull();
     assertThat(clients.forUser("u1")).isSameAs(applicationClient);
     assertThat(clients.effortInForce("u1")).isNull();
+  }
+
+  @Test
+  @DisplayName("whether a base URL is needed is the chosen provider's answer, not a fixed rule")
+  void baseUrlIsAskedOfTheProvider() {
+    // Gemini's Developer API has one well-known host, so an ordinary Gemini row is a key and a
+    // model and no URL. Requiring one regardless would refuse a registration for want of a field
+    // with nothing to put in it.
+    final var clients = dispatching(registryWith(), "openai");
+
+    assertThat(clients.requiresBaseUrl("google-genai")).isFalse();
+    assertThat(clients.requiresBaseUrl("openai")).isTrue();
+    // Naming none asks the deployment's own.
+    assertThat(clients.requiresBaseUrl(null)).isTrue();
+    // A protocol nobody serves: requiring one is the safer answer about an endpoint that cannot be
+    // reached here anyway.
+    assertThat(clients.requiresBaseUrl("anthropic")).isTrue();
   }
 }

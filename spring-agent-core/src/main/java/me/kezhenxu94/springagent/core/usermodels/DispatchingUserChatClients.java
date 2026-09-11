@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.core.usermodels;
 
 import com.google.common.base.Strings;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,7 +70,11 @@ public class DispatchingUserChatClients implements UserChatClients {
             provider.getClass().getSimpleName());
       }
     }
-    this.byProvider = Map.copyOf(map);
+    // Collections.unmodifiableMap over the LinkedHashMap, not Map.copyOf: that returns a map with
+    // *unspecified* iteration order, and this one is drawn as a list of options somebody picks
+    // from. A select whose entries reorder between restarts is a select nobody can build muscle
+    // memory for, and the order here is the order the context published the providers in.
+    this.byProvider = Collections.unmodifiableMap(map);
     final var configured = map.get(Strings.nullToEmpty(configuredProvider));
     this.fallback =
         configured != null ? configured : (providers.isEmpty() ? null : providers.get(0));
@@ -94,6 +99,12 @@ public class DispatchingUserChatClients implements UserChatClients {
   /** What a row naming no provider is spoken in, or null where nothing serves user models. */
   public String defaultProvider() {
     return fallback == null ? null : fallback.provider();
+  }
+
+  @Override
+  public boolean requiresBaseUrl(final String provider) {
+    final var serving = Strings.isNullOrEmpty(provider) ? fallback : byProvider.get(provider);
+    return serving == null || serving.requiresBaseUrl();
   }
 
   @Override

@@ -59,6 +59,21 @@ public interface ProviderChatClients {
   ChatClient probeClient(UserModelConfig config, String token);
 
   /**
+   * Whether a person registering an endpoint here has to give a base URL.
+   *
+   * <p>True by default, because most protocols are spoken by many hosts and naming one is the whole
+   * point of registering. It is false where the protocol has a single well-known endpoint —
+   * Gemini's Developer API — and there asking for a URL asks somebody to invent one.
+   *
+   * <p>Read by {@code UserModelTools} so the tool does not refuse a registration for want of a
+   * field that has no meaningful value. A provider returning false should still honour a base URL
+   * that is given, since a gateway may re-serve its protocol.
+   */
+  default boolean requiresBaseUrl() {
+    return true;
+  }
+
+  /**
    * How hard this provider's own configured model is asked to think, in {@link ReasoningEfforts}'
    * vocabulary, or null where nothing is configured or this provider built no model here.
    *

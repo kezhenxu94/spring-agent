@@ -58,7 +58,11 @@ The token is stored encrypted and is never shown again, not even to the user who
   public String addChatModel(
       @ToolParam(description = "Short name for this model, used to switch to it later")
           final String name,
-      @ToolParam(description = "The endpoint base URL, e.g. https://api.example.com/v1")
+      @ToolParam(
+              required = false,
+              description =
+                  "The endpoint base URL, e.g. https://api.example.com/v1. Leave it out for a"
+                      + " provider that has one well-known endpoint, such as Gemini's")
           final String baseUrl,
       @ToolParam(
               required = false,
@@ -79,7 +83,13 @@ The token is stored encrypted and is never shown again, not even to the user who
       final ToolContext context) {
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
 
-    if (isBlank(name) || isBlank(baseUrl) || isBlank(model) || isBlank(apiToken)) {
+    if (isBlank(name) || isBlank(model) || isBlank(apiToken)) {
+      return messages.get("user-model-add-incomplete");
+    }
+    // Asked of the provider rather than always required: Gemini's Developer API has one well-known
+    // host, so an ordinary Gemini row is a key and a model and no URL, and refusing it would be
+    // refusing a registration for want of a field with nothing to put in it.
+    if (isBlank(baseUrl) && chatClients.requiresBaseUrl(provider)) {
       return messages.get("user-model-add-incomplete");
     }
     // Rejected rather than dropped: an effort the endpoint will not understand is a model that
@@ -105,13 +115,24 @@ The token is stored encrypted and is never shown again, not even to the user who
 
     final var effort = ReasoningEfforts.normalize(reasoningEffort);
     final var failure =
-        probe.check(provider, baseUrl.trim(), model.trim(), apiToken.trim(), effort);
+        probe.check(
+            provider,
+            isBlank(baseUrl) ? null : baseUrl.trim(),
+            model.trim(),
+            apiToken.trim(),
+            effort);
     if (failure != null) {
       return messages.get("user-model-unreachable", modelName, failure);
     }
 
     registry.save(
-        userId, modelName, provider, baseUrl.trim(), model.trim(), apiToken.trim(), effort);
+        userId,
+        modelName,
+        provider,
+        isBlank(baseUrl) ? null : baseUrl.trim(),
+        model.trim(),
+        apiToken.trim(),
+        effort);
     return messages.get("user-model-added", modelName, model.trim());
   }
 

@@ -48,6 +48,13 @@ public interface UserChatClients {
    */
   String defaultProvider();
 
+  /**
+   * Whether a row naming {@code provider} has to carry a base URL, asked of that provider — or of
+   * the deployment's own where the argument is blank. True where nobody serves it, since refusing
+   * is the safer answer about a protocol this deployment cannot speak anyway.
+   */
+  boolean requiresBaseUrl(String provider);
+
   /** The client {@code userId}'s runs should go through. */
   ChatClient forUser(String userId);
 
