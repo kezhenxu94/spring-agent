@@ -3,6 +3,7 @@ package me.kezhenxu94.springagent.core.config;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.core.tools.AudioTranscriptionTool;
 import me.kezhenxu94.springagent.core.tools.ImageGenerationTools;
+import me.kezhenxu94.springagent.core.tools.MediaSources;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.core.tools.VisionTools;
 import org.springframework.ai.audio.transcription.TranscriptionModel;
@@ -45,15 +46,32 @@ import org.springframework.web.client.RestTemplate;
     })
 public class ModelToolsConfiguration {
 
+  /**
+   * Reads what a model named as an image — a local path, a {@code file://} URL, an {@code http(s)}
+   * one — into bytes a provider can be handed. Shared by the two tools that take images in, rather
+   * than a private method on each, because the workspace confinement it performs is the only thing
+   * standing between a model naming {@code /etc/shadow} and a tool reading it, and a second copy of
+   * that check is a second place for it to be got wrong.
+   *
+   * <p>Unconditional: it reaches no endpoint and holds no configuration, so a deployment with
+   * neither an image nor a vision model simply never calls it.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  MediaSources mediaSources(final RestTemplate restTemplate) {
+    return new MediaSources(restTemplate);
+  }
+
   @Bean
   @AgentTool
   @ConditionalOnBean(ImageModel.class)
   @ConditionalOnMissingBean
   ImageGenerationTools imageGenerationTools(
       final RestTemplate restTemplate,
+      final MediaSources mediaSources,
       final ImageModel imageModel,
       final UserWorkspaceFactory userWorkspaceFactory) {
-    return new ImageGenerationTools(restTemplate, imageModel, userWorkspaceFactory);
+    return new ImageGenerationTools(restTemplate, mediaSources, imageModel, userWorkspaceFactory);
   }
 
   /**
@@ -66,11 +84,11 @@ public class ModelToolsConfiguration {
   @ConditionalOnBean(name = "visionChatClient")
   @ConditionalOnMissingBean
   VisionTools visionTools(
-      final RestTemplate restTemplate,
+      final MediaSources mediaSources,
       final UserWorkspaceFactory userWorkspaceFactory,
       final CoreMessages messages,
       @Qualifier("visionChatClient") final ChatClient visionChatClient) {
-    return new VisionTools(restTemplate, userWorkspaceFactory, messages, visionChatClient);
+    return new VisionTools(mediaSources, userWorkspaceFactory, messages, visionChatClient);
   }
 
   @Bean

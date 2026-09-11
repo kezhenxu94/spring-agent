@@ -18,7 +18,6 @@ import org.springframework.ai.image.ImageOptionsBuilder;
 import org.springframework.ai.image.ImagePrompt;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
-import org.springframework.util.MimeTypeUtils;
 import org.springframework.web.client.RestTemplate;
 
 /**
@@ -34,12 +33,21 @@ import org.springframework.web.client.RestTemplate;
  * <p>Both halves of an {@code ImageResponse} are handled, because providers differ on which they
  * fill: OpenAI answers with base64 by default and a URL on request, DashScope only ever with a URL.
  * Saving the bytes locally either way is what makes the answer the same shape for every surface.
+ *
+ * <p>References go the other way and differ just as much, which is why they are resolved to bytes
+ * here by {@link MediaSources} rather than passed on as the strings a model typed. Google GenAI
+ * wants inline bytes and will not fetch a link of its own; DashScope wants a URL it can fetch and
+ * has no upload path at all; OpenAI's {@code /v1/images/generations} takes no reference of any
+ * kind. Only bytes are a shape every provider can either use or refuse for a reason it can state —
+ * a path or a {@code file://} URL forwarded verbatim is a string one of them would put on the wire
+ * and get an unrelated picture back for.
  */
 @Slf4j
 @AgentTool
 @RequiredArgsConstructor
 public class ImageGenerationTools {
   private final RestTemplate restTemplate;
+  private final MediaSources mediaSources;
   private final ImageModel imageModel;
   private final UserWorkspaceFactory userWorkspaceFactory;
 
@@ -49,15 +57,19 @@ public class ImageGenerationTools {
           "Generate an image from a prompt and return its URL, a file:// one naming where the image"
               + " was saved on this machine, to be shown with markdown as"
               + " ![description](file:///absolute/path.png) and nothing else — whoever renders the"
-              + " answer knows how to turn that into a picture. Also generates from reference"
-              + " images where the configured image provider supports them, passed as"
-              + " referenceImages.")
+              + " answer knows how to turn that into a picture. Also edits and generates from"
+              + " reference images where the configured image provider supports them, passed as"
+              + " referenceImages \u2014 including the file:// URL a previous GenerateImage"
+              + " returned, which needs no publishing first.")
   public List<String> generateImage(
       @ToolParam(description = "The prompt describing the image") final String prompt,
       @ToolParam(
               description =
-                  "Reference images to generate from. The image provider fetches each one itself,"
-                      + " so each has to be a URL it can reach",
+                  "Reference images to generate from or edit: absolute local paths, file:// URLs as"
+                      + " returned by a previous GenerateImage, or publicly reachable http(s) URLs."
+                      + " A local file is sent to the image provider directly, so there is no need"
+                      + " to PublishFile it first. Not every provider accepts reference images, and"
+                      + " one that wants a public URL says so when given a local file",
               required = false)
           final List<String> referenceImages,
       @ToolParam(
@@ -82,19 +94,35 @@ public class ImageGenerationTools {
         prompt,
         referenceImages);
 
+    final var home = userWorkspaceFactory.forRequest(context);
+
+    // Resolved here rather than handed on as URLs, because the usual reference is a file this
+    // machine already holds: GenerateImage answers with file:// URLs into this very directory, so
+    // "edit the one you just made" would otherwise mean publishing it publicly and fetching it
+    // straight back. MediaSources reads a local path into bytes and downloads only a remote one.
+    //
+    // A reference that cannot be read is dropped with a warning rather than failing the call. The
+    // prompt still describes what was wanted, so generating from fewer references beats generating
+    // nothing — which is the opposite of RecognizeImage's choice, where the images are the whole
+    // question.
     final var references = new ArrayList<Media>();
     if (referenceImages != null) {
-      for (final var imgUrl : referenceImages) {
-        references.add(
-            Media.builder()
-                .name(imgUrl)
-                // The reference is a URL the provider fetches for itself, which is why nothing is
-                // downloaded here; the mime type is what Media insists on rather than a claim
-                // about what is at the other end.
-                .mimeType(MimeTypeUtils.IMAGE_PNG)
-                .data(URI.create(imgUrl))
-                .build());
+      for (final var reference : referenceImages) {
+        final var media = mediaSources.resolve(reference, userId, home);
+        if (media == null) {
+          log.warn(
+              "Dropping unreadable reference image {} for user {}; generating without it",
+              reference,
+              userId);
+          continue;
+        }
+        references.add(media);
       }
+      log.info(
+          "Resolved {} of {} reference image(s) for user {}",
+          references.size(),
+          referenceImages.size(),
+          userId);
     }
 
     final var metadata = new HashMap<String, Object>();
@@ -116,7 +144,6 @@ public class ImageGenerationTools {
       return List.of();
     }
 
-    final var home = userWorkspaceFactory.forRequest(context);
     return response.getResults().stream()
         .map(generation -> generation.getOutput())
         .filter(Objects::nonNull)

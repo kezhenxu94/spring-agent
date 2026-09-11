@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.provider.dashscope;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -7,6 +8,7 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.ImageGenerationMetadata;
+import org.springframework.ai.content.Media;
 import org.springframework.ai.image.Image;
 import org.springframework.ai.image.ImageGeneration;
 import org.springframework.ai.image.ImageModel;
@@ -59,7 +61,7 @@ public class DashScopeImageModel implements ImageModel {
     final var content = new ArrayList<Map<String, String>>();
     for (final var message : request.getInstructions()) {
       for (final var media : message.getMedia()) {
-        content.add(Map.of("image", String.valueOf(media.getData())));
+        content.add(Map.of("image", referenceUrl(media)));
       }
     }
     content.add(Map.of("text", prompt));
@@ -112,6 +114,38 @@ public class DashScopeImageModel implements ImageModel {
             .toList();
     log.info("The DashScope image API returned {} image(s)", generations.size());
     return new ImageResponse(generations);
+  }
+
+  /**
+   * The URL DashScope is to fetch a reference image from.
+   *
+   * <p>Core resolves a reference to bytes wherever it can — see {@code MediaSources}, and the
+   * reason is that most providers want the bytes. This one is the exception: it has no upload path
+   * and deliberately none, since it wants a signed OSS object and this project has no bucket. So
+   * bytes are a request this endpoint cannot serve, and saying so is the whole job here.
+   *
+   * <p>Saying so <em>at all</em> is the point. This read {@code String.valueOf(media.getData())}
+   * before, which for a {@code byte[]} produces {@code [B@1f2a3b4c}: a well-formed request carrying
+   * a string that is not a URL, answered with a picture of nothing in particular or a 400 naming
+   * neither the tool nor the file. A tool error naming {@code PublishFile} is something the model
+   * can act on, and acting on it is a step it can take by itself.
+   */
+  private static String referenceUrl(final Media media) {
+    final var data = media.getData();
+    if (data instanceof URI || data instanceof String) {
+      return data.toString();
+    }
+    log.warn(
+        "Refusing a local reference image {} ({}): the DashScope image API fetches references"
+            + " itself and has no upload path",
+        media.getName(),
+        data == null ? "null" : data.getClass().getSimpleName());
+    throw new IllegalArgumentException(
+        ("The configured image provider (DashScope) cannot read a local file as a reference image:"
+                + " it fetches every reference itself. Publish %s first with PublishFile"
+                + " (visibility=public, ttl=30m) and pass the URL it returns as the reference"
+                + " instead.")
+            .formatted(media.getName()));
   }
 
   private static int orOne(final Integer n) {
