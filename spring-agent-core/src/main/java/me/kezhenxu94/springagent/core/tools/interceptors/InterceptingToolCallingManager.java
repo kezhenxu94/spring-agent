@@ -9,6 +9,8 @@ import me.kezhenxu94.springagent.core.agent.QueuedMessages;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.ToolContext;
@@ -48,7 +50,59 @@ public class InterceptingToolCallingManager implements ToolCallingManager {
               .toList();
       prompt = prompt.mutate().chatOptions(options.mutate().toolCallbacks(wrapped).build()).build();
     }
-    return withQueuedMessages(prompt, delegate.executeToolCalls(prompt, chatResponse));
+    return withQueuedMessages(prompt, asJson(delegate.executeToolCalls(prompt, chatResponse)));
+  }
+
+  /**
+   * Every tool response of the turn in the shape Spring AI promises: JSON.
+   *
+   * <p>The backstop, and the only place that sees <em>all</em> of them. {@code
+   * InterceptingToolCallback} covers the answers this project substitutes, but two more are
+   * produced inside {@code DefaultToolCallingManager} itself, after any callback has returned or
+   * instead of calling one at all: a thrown tool becomes {@code
+   * toolExecutionExceptionProcessor.process(ex)}, and a run over the tool-call limit becomes {@code
+   * limitBreach.message()}. Both are prose, and an MCP server that fails is the common way to meet
+   * the first.
+   *
+   * <p>Left unencoded, those reach Gemini as something it cannot parse and end the run on {@code
+   * Stream processing failed}, naming neither the tool nor the failure it was trying to report —
+   * the error about the error is what gets lost. See {@link ToolResultJson}.
+   *
+   * <p>Rebuilt rather than mutated because a {@code ToolResponseMessage} is immutable, and left
+   * alone entirely when nothing needed changing, which is the ordinary turn.
+   */
+  private static ToolExecutionResult asJson(final ToolExecutionResult result) {
+    if (result == null || result.conversationHistory() == null) {
+      return result;
+    }
+    var changed = false;
+    final var history = new ArrayList<Message>(result.conversationHistory().size());
+    for (final var message : result.conversationHistory()) {
+      if (!(message instanceof ToolResponseMessage toolResponses)) {
+        history.add(message);
+        continue;
+      }
+      final var responses = new ArrayList<ToolResponseMessage.ToolResponse>();
+      for (final var response : toolResponses.getResponses()) {
+        final var encoded = ToolResultJson.asJson(response.responseData());
+        changed |= !encoded.equals(response.responseData());
+        responses.add(
+            new ToolResponseMessage.ToolResponse(response.id(), response.name(), encoded));
+      }
+      history.add(
+          ToolResponseMessage.builder()
+              .responses(responses)
+              .metadata(toolResponses.getMetadata())
+              .build());
+    }
+    if (!changed) {
+      return result;
+    }
+    log.debug("Encoded a tool response that was not JSON, so every provider can read it back");
+    return ToolExecutionResult.builder()
+        .conversationHistory(history)
+        .returnDirect(result.returnDirect())
+        .build();
   }
 
   /**
