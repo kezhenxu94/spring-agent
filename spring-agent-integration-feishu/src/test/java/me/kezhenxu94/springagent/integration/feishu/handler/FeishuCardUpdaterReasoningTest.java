@@ -24,6 +24,8 @@ import me.kezhenxu94.springagent.core.tools.TodoWriteTool.Todos;
 import me.kezhenxu94.springagent.core.tools.TodoWriteTool.Todos.Status;
 import me.kezhenxu94.springagent.core.tools.TodoWriteTool.Todos.TodoItem;
 import me.kezhenxu94.springagent.core.tools.UserHome;
+import me.kezhenxu94.springagent.core.usermodels.DispatchingUserChatClients;
+import me.kezhenxu94.springagent.core.usermodels.ReasoningEffortInForce;
 import me.kezhenxu94.springagent.core.usermodels.ReasoningEfforts;
 import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
@@ -40,7 +42,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.core.io.ClassPathResource;
@@ -146,8 +147,11 @@ class FeishuCardUpdaterReasoningTest {
   void theTitleCarriesTheUsersEffort() throws Exception {
     // The label would otherwise report a process-wide property at a run that had nothing to do with
     // it: a user who chose minimal would watch a card claim the deployment's xhigh.
-    final var elements = cardElements(messages, "xhigh");
-    elements.userChatClients = chatClientsWhere("u1", "minimal");
+    // Built exactly as the provider's ReasoningEffortInForce bean builds it, over a real
+    // OpenAiUserChatClients — so this still covers the provider's own resolution and not a stub of
+    // it. OpenAiUserChatClientsEffortTest covers the same method directly.
+    final var elements =
+        cardElements(messages, effortInForce("xhigh", chatClientsWhere("u1", "minimal")));
 
     final var updater = FeishuCardUpdater.forRun(card, om, null, messages, elements, null, "u1");
 
@@ -160,8 +164,9 @@ class FeishuCardUpdaterReasoningTest {
   @Test
   @DisplayName("a user who turned the parameter off gets no brackets, not the deployment's effort")
   void theTitleHonoursNotSent() throws Exception {
-    final var elements = cardElements(messages, "xhigh");
-    elements.userChatClients = chatClientsWhere("u1", ReasoningEfforts.NOT_SENT);
+    final var elements =
+        cardElements(
+            messages, effortInForce("xhigh", chatClientsWhere("u1", ReasoningEfforts.NOT_SENT)));
 
     final var updater = FeishuCardUpdater.forRun(card, om, null, messages, elements, null, "u1");
 
@@ -171,7 +176,13 @@ class FeishuCardUpdaterReasoningTest {
         .contains("<font color='grey'>" + messages.get("card-reasoning") + "</font>");
   }
 
-  /** A resolver that says this user is on the application's model with an effort of their own. */
+  /**
+   * A resolver that says this user is on the application's model with an effort of their own.
+   *
+   * <p>The real {@code OpenAiUserChatClients} behind core's real dispatcher, rather than a stub of
+   * either: what the card prints is the end of a chain that runs through both, and a stub would
+   * assert only that the card renders what it was handed.
+   */
   private static UserChatClients chatClientsWhere(final String userId, final String effort) {
     final var row =
         UserModelConfig.builder()
@@ -191,16 +202,20 @@ class FeishuCardUpdaterReasoningTest {
             .reasoningEffort("xhigh")
             .build();
     final var appModel = OpenAiChatModel.builder().options(appOptions).build();
-    return new OpenAiUserChatClients(
-        ChatClient.builder(appModel).build(),
+    final var registry =
         new UserModelRegistry(
             repo,
             new AesGcmSealer(java.util.Base64.getEncoder().encodeToString(new byte[32]), "test"),
-            3),
-        appOptions,
-        org.springframework.ai.model.tool.ToolCallingManager.builder().build(),
-        List.of(),
-        4);
+            3);
+    final var openai =
+        new OpenAiUserChatClients(
+            registry,
+            appOptions,
+            org.springframework.ai.model.tool.ToolCallingManager.builder().build(),
+            List.of(),
+            4);
+    return new DispatchingUserChatClients(
+        ChatClient.builder(appModel).build(), registry, List.of(openai), openai.provider());
   }
 
   @Test
@@ -359,23 +374,36 @@ class FeishuCardUpdaterReasoningTest {
 
   /** The real elements: what the card gains as the run first has something to put in them. */
   private static FeishuCardElements cardElements(final FeishuMessages messages) {
-    return cardElements(messages, null);
+    return cardElements(messages, (ReasoningEffortInForce) null);
   }
 
   /** The same, for a deployment that states how hard the model should think. */
   private static FeishuCardElements cardElements(
       final FeishuMessages messages, final String effort) {
-    final OpenAiChatProperties chatProperties;
-    if (effort == null) {
-      chatProperties = null;
-    } else {
-      chatProperties = new OpenAiChatProperties();
-      chatProperties.setReasoningEffort(effort);
-    }
+    return cardElements(messages, effort == null ? null : effortInForce(effort, null));
+  }
+
+  private static FeishuCardElements cardElements(
+      final FeishuMessages messages, final ReasoningEffortInForce effortInForce) {
     return new FeishuCardElements(
         new JsonMapper(),
         messages,
         new ClassPathResource("feishu/card-elements.json"),
-        chatProperties);
+        effortInForce);
+  }
+
+  /**
+   * The contract as a {@code spring-agent-provider-*} module publishes it: the deployment's
+   * configured effort, unless the user has registered a model of their own.
+   *
+   * <p>A copy of what {@code OpenAiProviderAutoConfiguration#reasoningEffortInForce} does, kept
+   * here rather than reaching for that bean so the card can be tested without standing up a
+   * provider's auto-configuration. If the two drift, {@code OpenAiUserChatClientsEffortTest} is
+   * what still pins the half that matters.
+   */
+  private static ReasoningEffortInForce effortInForce(
+      final String configured, final UserChatClients clients) {
+    return userId ->
+        (clients == null || userId == null) ? configured : clients.effortInForce(userId);
   }
 }

@@ -3,6 +3,7 @@ package me.kezhenxu94.springagent.integration.feishu.config;
 import com.lark.oapi.Client;
 import me.kezhenxu94.springagent.core.config.ConditionalOnUserModels;
 import me.kezhenxu94.springagent.core.usermodels.BuiltinModels;
+import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import me.kezhenxu94.springagent.core.usermodels.UserModelProbe;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import me.kezhenxu94.springagent.integration.feishu.usermodels.FeishuConfigForm;
@@ -57,11 +58,12 @@ public class FeishuUserModelsConfiguration {
       final UserModelRegistry registry,
       final UserModelProbe probe,
       final BuiltinModels builtins,
+      final UserChatClients chatClients,
       final FeishuConfigForm form,
       final JsonMapper objectMapper,
       final FeishuMessages messages,
       @Qualifier(FeishuAutoConfiguration.TASK_EXECUTOR) final TaskExecutor taskExecutor) {
     return new FeishuConfigHandler(
-        feishu, registry, probe, builtins, form, objectMapper, messages, taskExecutor);
+        feishu, registry, probe, builtins, chatClients, form, objectMapper, messages, taskExecutor);
   }
 }

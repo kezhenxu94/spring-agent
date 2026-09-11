@@ -85,9 +85,13 @@ public class SlackConfigForm {
    */
   public static final String EFFORT_INHERIT_OPTION = "__inherit__";
 
+  /** The provider option standing for "whatever this deployment itself speaks". */
+  public static final String PROVIDER_INHERIT_OPTION = "__provider_default__";
+
   static final String ACTIVE_BLOCK = "sa_cfg_active";
   static final String NAME_BLOCK = "sa_cfg_name";
   static final String BASE_URL_BLOCK = "sa_cfg_baseurl";
+  static final String PROVIDER_BLOCK = "sa_cfg_provider";
   static final String MODEL_BLOCK = "sa_cfg_model";
   static final String EFFORT_BLOCK = "sa_cfg_effort";
   static final String TOKEN_BLOCK = "sa_cfg_token";
@@ -110,8 +114,11 @@ public class SlackConfigForm {
       final List<UserModelConfig> configured,
       final UserModelConfig active,
       final List<String> builtinModels,
-      final String defaultModel) {
-    return blocks(configured, active, builtinModels, defaultModel, false);
+      final String defaultModel,
+      final List<String> providers,
+      final String defaultProvider) {
+    return blocks(
+        configured, active, builtinModels, defaultModel, providers, defaultProvider, false);
   }
 
   /**
@@ -128,8 +135,11 @@ public class SlackConfigForm {
       final List<UserModelConfig> configured,
       final UserModelConfig active,
       final List<String> builtinModels,
-      final String defaultModel) {
-    return blocks(configured, active, builtinModels, defaultModel, true);
+      final String defaultModel,
+      final List<String> providers,
+      final String defaultProvider) {
+    return blocks(
+        configured, active, builtinModels, defaultModel, providers, defaultProvider, true);
   }
 
   private List<LayoutBlock> blocks(
@@ -137,6 +147,8 @@ public class SlackConfigForm {
       final UserModelConfig active,
       final List<String> builtinModels,
       final String defaultModel,
+      final List<String> providers,
+      final String defaultProvider,
       final boolean inMessage) {
     final var activeName = active == null ? null : active.name();
     final var blocks = new ArrayList<LayoutBlock>();
@@ -168,6 +180,11 @@ public class SlackConfigForm {
     blocks.add(SlackBlockKit.markdown(messages.get("config-add-hint")));
     blocks.add(input(NAME_BLOCK, "config-name-label", "config-name-placeholder", false));
     blocks.add(input(BASE_URL_BLOCK, "config-baseurl-label", "config-baseurl-placeholder", false));
+    // Only where there is a choice. One provider module means one protocol, and a select of one
+    // option asks a question with no answers while implying the others are available.
+    if (providers != null && providers.size() > 1) {
+      blocks.add(providerInput(providers, defaultProvider, active));
+    }
     blocks.add(input(MODEL_BLOCK, "config-model-label", "config-model-placeholder", false));
     blocks.add(effortInput(active == null ? null : active.reasoningEffort()));
     blocks.add(input(TOKEN_BLOCK, "config-token-label", "config-token-placeholder", inMessage));
@@ -192,14 +209,16 @@ public class SlackConfigForm {
       final List<UserModelConfig> configured,
       final UserModelConfig active,
       final List<String> builtinModels,
-      final String defaultModel) {
+      final String defaultModel,
+      final List<String> providers,
+      final String defaultProvider) {
     return View.builder()
         .type("modal")
         .callbackId(CALLBACK_ID)
         .title(viewTitle(messages.get("config-title")))
         .submit(ViewSubmit.builder().type("plain_text").text(messages.get("config-submit")).build())
         .close(ViewClose.builder().type("plain_text").text(messages.get("config-close")).build())
-        .blocks(blocks(configured, active, builtinModels, defaultModel))
+        .blocks(blocks(configured, active, builtinModels, defaultModel, providers, defaultProvider))
         .build();
   }
 
@@ -221,6 +240,37 @@ public class SlackConfigForm {
    *
    * @param current what the model in use is set to, or null for the application's own setting
    */
+  /** Which protocol a new endpoint speaks, offering only what this deployment actually serves. */
+  private InputBlock providerInput(
+      final List<String> providers, final String defaultProvider, final UserModelConfig active) {
+    final var options = new ArrayList<OptionObject>();
+    options.add(
+        option(
+            messages.get("config-provider-inherit", String.valueOf(defaultProvider)),
+            PROVIDER_INHERIT_OPTION));
+    providers.forEach(provider -> options.add(option(provider, provider)));
+    final var current = active == null ? null : active.provider();
+    final var initial =
+        options.stream()
+            .filter(
+                option ->
+                    option.getValue().equals(current == null ? PROVIDER_INHERIT_OPTION : current))
+            .findFirst()
+            .orElse(options.get(0));
+    return InputBlock.builder()
+        .blockId(PROVIDER_BLOCK)
+        .optional(true)
+        .label(label(messages.get("config-provider-label")))
+        .element(
+            StaticSelectElement.builder()
+                .actionId(PROVIDER_BLOCK + ACTION_SUFFIX)
+                .placeholder(label(messages.get("config-provider-hint")))
+                .options(options)
+                .initialOption(initial)
+                .build())
+        .build();
+  }
+
   private InputBlock effortInput(final String current) {
     final var options = new ArrayList<OptionObject>();
     options.add(option(messages.get("config-effort-inherit"), EFFORT_INHERIT_OPTION));
@@ -364,6 +414,7 @@ public class SlackConfigForm {
     return new Submission(
         value(state, ACTIVE_BLOCK),
         value(state, NAME_BLOCK),
+        value(state, PROVIDER_BLOCK),
         value(state, BASE_URL_BLOCK),
         value(state, MODEL_BLOCK),
         value(state, EFFORT_BLOCK),
@@ -399,7 +450,24 @@ public class SlackConfigForm {
    * from it in the same press that they correct it.
    */
   public record Submission(
-      String active, String name, String baseUrl, String model, String effort, String token) {
+      String active,
+      String name,
+      String provider,
+      String baseUrl,
+      String model,
+      String effort,
+      String token) {
+
+    /**
+     * The provider as it should be stored: null both for an untouched select and for the option
+     * standing for the deployment's own, which mean the same thing — recording today's name would
+     * freeze a row to a protocol the deployment might later stop speaking.
+     */
+    public String storedProvider() {
+      return provider == null || SlackConfigForm.PROVIDER_INHERIT_OPTION.equals(provider)
+          ? null
+          : provider;
+    }
 
     /**
      * Whether the add fields were filled in at all.

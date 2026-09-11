@@ -33,7 +33,7 @@ Core, correspondingly, names no provider at all — it injects Spring AI's inter
 
 Four things, each because Spring AI has no way to know it:
 
-- **`OpenAiUserChatClients` and `OpenAiBuiltinModels`** — two of the three contracts a provider
+- **`OpenAiUserChatClients` and `OpenAiBuiltinModels`** — two of the contracts a provider
   implements itself (`core/usermodels/`; the third is `ProviderRejection`, below). Spring AI's models are built once, at
   startup, from configuration; "build a client for an endpoint somebody typed into a chat five
   seconds ago" and "ask an endpoint what it serves" are neither of those. Read
@@ -87,13 +87,16 @@ the endpoint's rejection reads like a broken gateway. `OpenAiVisionWiringTest` c
 ## Writing a third provider
 
 If the endpoint speaks this protocol, do not write one — configure this module, the way
-`spring-agent-provider-dashscope` does. If it genuinely does not (Anthropic, Bedrock, Vertex), a new
-`spring-agent-provider-*` module needs, on top of Spring AI's own starter for it:
+`spring-agent-provider-dashscope` does. If it genuinely does not, a new `spring-agent-provider-*`
+module is the shape;
+[`spring-agent-provider-google-genai`](../spring-agent-provider-google-genai/README.md) is the worked
+example, and worth reading first — Gemini *does* serve a compatible endpoint, so that module's README
+opens by earning itself. Such a module needs, on top of Spring AI's own starter for it:
 
 1. an auto-configuration named in `AutoConfiguration.imports`, **and added to the `afterName` list in
    core's `ModelToolsConfiguration`** — it is matched textually, so a module missing from it silently
    loses the image, vision and transcription tools;
-2. implementations of core's `UserChatClients` and `BuiltinModels`, or no per-user models on that
+2. implementations of core's `ProviderChatClients` and `BuiltinModels`, or no per-user models on that
    provider;
 3. a `visionChatClient` bean if vision is a separate endpoint there;
 4. a `ProviderRejection` bean, or rejections that log as bare stack traces;
@@ -102,3 +105,10 @@ If the endpoint speaks this protocol, do not write one — configure this module
 And a rule that applies to any of them: where a setting *is* the switch — a model name, a
 credential — gate it with core's `@ConditionalOnNonBlankProperty`. `@ConditionalOnProperty` calls
 `${SOME_VAR:}` configured when nobody set the variable.
+
+And one thing that module found the hard way, which applies to any third: **Spring AI's model
+auto-configurations are all `matchIfMissing`**, so the moment a second provider can answer for a kind
+of model, "unset means openai" stops being true and a kind naming nothing gets both. Adding a
+provider means naming every `spring.ai.model.*` key in every application's yaml, and checking that
+the starter's own auto-configurations are gated at all — two of Google GenAI's are not, and fail
+startup with no credential.

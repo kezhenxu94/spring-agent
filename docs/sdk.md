@@ -41,7 +41,9 @@ serves.
 
 `spring-agent-provider-openai` is the one to take unless you know otherwise: it is the OpenAI wire
 protocol rather than OpenAI the company, which is what nearly every gateway and self-hosted server
-speaks. Add `spring-agent-provider-dashscope` beside it only for DashScope's own image API and vision
+speaks — Gemini's compatible endpoint included, though `spring-agent-provider-google-genai` is what
+gets Gemini's thinking levels and reference-image editing. Add `spring-agent-provider-dashscope`
+beside it only for DashScope's own image API and vision
 endpoint.
 
 ```groovy
@@ -633,6 +635,33 @@ Everything about it is off by default and per source: `app.events.enabled` gates
 source not named in `app.events.sources` is dropped at the door, so an endpoint nobody set a secret
 for refuses everything.
 
+## Bring your own model
+
+`app.ai.user-models.encryption-key` turns on per-user endpoints: a person registers a base URL, a
+credential, a model name, an optional reasoning effort, and — where the deployment serves more than
+one — **which protocol the endpoint speaks**.
+
+Two contracts, and the split matters:
+
+| | |
+| --- | --- |
+| `ProviderChatClients` | A `spring-agent-provider-*` module implements this: `provider()`, `clientFor(row)`, `probeClient(row, token)`, `configuredEffort()`. One bean per provider, published **whether or not that module built the application's chat model** — which is what lets somebody register an OpenAI endpoint on a Gemini deployment. |
+| `UserChatClients` | Core implements this, once, as `DispatchingUserChatClients` over every `ProviderChatClients` on the classpath. Consumers inject it; nobody else implements it. |
+
+A row's `provider` is null for "the deployment's own", which is what every row written before the
+field existed means and what a person who never opened the select gets. The deployment's own is read
+from `spring.ai.model.chat` rather than from bean order, since bean order no longer says which
+protocol a deployment speaks.
+
+`UserChatClients.providers()` is what a surface draws its select from — exactly the published beans,
+never a fixed list — and `defaultProvider()` is what it preselects. A surface should draw no select
+at all when `providers()` has one entry: a choice of one is a question with no answers, and it
+implies the others are served here.
+
+Everything that used to be duplicated per provider — resolving the active row, falling back to the
+application's client, never throwing — is core's now. A provider implements four methods and nothing
+about registries.
+
 ## The knowledge base
 
 Retrieval over user data lives behind the `KnowledgeBase` SPI in `core/knowledge/` —
@@ -645,6 +674,22 @@ all; `app.ai.rag.enabled` turns automatic retrieval back off.
 This is a different thing from `spring.ai.vectorstore.type`, which backs the **tool-search index**
 only. The two are deliberately independent: a deployment can run the tool index in the heap and the
 knowledge base in Milvus.
+
+**Both Milvus collections are created at a fixed width, and your embedding model has to match it.**
+`app.ai.rag.milvus.embedding-dimension` and `spring.ai.vectorstore.milvus.embedding-dimension`
+default to **1024** — `MilvusKnowledgeProperties` hardcodes that fallback — and Milvus rejects an
+insert whose vectors are a different width rather than degrading. The message is worth recognising
+because nothing in it says "embeddings": a run dies on `Stream processing failed`, and only the
+cause underneath reads `Incorrect dimension for field 'embedding': the no.0 vector's dimension:
+3072 is not equal to field's dimension: 1024`.
+
+This bites hardest on `spring-agent-provider-google-genai`, and unlike the applications shipped here
+an SDK consumer has nothing setting it for them. `gemini-embedding-001` emits **3072** natively and
+Spring AI sends `outputDimensionality` only when `spring.ai.google.genai.embedding.text.dimensions`
+is set — so leaving it unset gives 3072 against a collection built at 1024. Either name 1024 there,
+or raise both Milvus dimensions to 1536 or 3072 (the sizes Google recommends truncating to, the
+model being Matryoshka-trained) and rebuild the collections. A collection built at one width cannot
+be searched at another.
 
 Scoping is one definition, `KnowledgeScopeFilter`, used for retrieval and listing alike, and a
 filter clause is only ever emitted for a non-blank identity — a blank one would match every document
@@ -927,7 +972,8 @@ on being able to store an API token sealed rather than on a flag of its own — 
 takes it through an `ObjectProvider` and falls back to the application's client when nothing is
 there.
 
-`UserChatClients` is a **contract in core, implemented by a provider module** — it and
+`UserChatClients` is **core's own**, implemented once by `DispatchingUserChatClients`; a provider
+implements `ProviderChatClients` instead, one per protocol. See *Bring your own model* above. It and
 `BuiltinModels` are the two things `spring-agent-provider-*` has to write itself, because Spring AI's
 model beans are all built once at startup from configuration and neither "a client for an endpoint
 somebody typed into a chat five seconds ago" nor "ask an endpoint what it serves" is that. What
@@ -970,7 +1016,7 @@ The pieces a consumer would extend or reuse:
 | Type | What it is for |
 | --- | --- |
 | `UserModelRegistry` | The rows, and the one place a token is sealed or opened. `activate` clears every other row of that owner *before* setting the new one, so an interrupted switch leaves none activated rather than two — and none means the application's own model. `setEffort` rewrites one row's reasoning effort and nothing else, keeping the sealed token, which is the only way to change it: the token is never readable again. `setActiveEffort` applies one to whichever model the user is on, creating `DEFAULT_ROW` where that is the application's own. |
-| `UserChatClients` (interface) | Resolving and caching the client, as above — **a provider module implements it**. Never throws: an endpoint that cannot be read is a fallback and a log line, because failing here would fail the run the user needs to fix it. `effortInForce` answers what a run for one user will actually be made with, which is what a surface must label its thinking panel from rather than the deployment's property. |
+| `UserChatClients` (interface) | Choosing a provider per row and resolving the client — **core implements it**; a provider implements `ProviderChatClients`. Never throws: an endpoint that cannot be read is a fallback and a log line, because failing here would fail the run the user needs to fix it. `effortInForce` answers what a run for one user will actually be made with, which is what a surface must label its thinking panel from rather than the deployment's property. |
 | `UserModelProbe` | The pre-save connection test — one tiny completion, since that exercises URL, token, model name **and** reasoning effort together where `GET /models` does not. |
 | `BuiltinModels` (interface) | What the application's own endpoint reports it can serve — **a provider module implements it**; cached and best-effort, and an empty list is an ordinary answer. |
 | `ProviderRejection` (`core/agent/`, interface) | The third and last thing a provider writes itself: reading what an endpoint said when it refused, so `SpringAgent` can log it beside the id of the run it refused. Nothing else can — an advisor rewraps the failure, and the SDK renders a non-JSON error body as the words `400: Unknown`. Asked about every failure of every run, so returning empty must be cheap and must never throw. |
@@ -1012,8 +1058,9 @@ binary breaks at runtime while the JVM build passes.
 | [`spring-agent-integration-feishu`](../spring-agent-integration-feishu/README.md) | Feishu/Lark chats and cards as an agent surface, plus its docs, sheets, base and wiki tools, and drive import/export |
 | [`spring-agent-integration-slack`](../spring-agent-integration-slack/README.md) | Slack channels and Block Kit messages as an agent surface: streaming replies, a stop button, an asynchronous question form, greetings, chat observation and the message/channel/file tools. Written against Bolt, the Slack SDK's own application framework, over a Socket Mode connection |
 | [`spring-agent-rag-milvus`](../spring-agent-rag-milvus/README.md) | The knowledge base, and the only implementation of core's `KnowledgeBase` |
-| [`spring-agent-provider-openai`](../spring-agent-provider-openai/README.md) | Where the models come from, for any endpoint speaking the OpenAI wire protocol — which is nearly all of them. Chat, embeddings, transcription and images are Spring AI's own beans, bound to `spring.ai.openai.*`; on top of them this module implements core's `UserChatClients` and `BuiltinModels`, makes a rejected request's body readable, and narrows OpenAI's image API to what `GenerateImage` promises. **Core carries no provider, so an application needs one of these** |
+| [`spring-agent-provider-openai`](../spring-agent-provider-openai/README.md) | Where the models come from, for any endpoint speaking the OpenAI wire protocol — which is nearly all of them. Chat, embeddings, transcription and images are Spring AI's own beans, bound to `spring.ai.openai.*`; on top of them this module implements core's `ProviderChatClients` and `BuiltinModels`, makes a rejected request's body readable, and narrows OpenAI's image API to what `GenerateImage` promises. **Core carries no provider, so an application needs one of these** |
 | [`spring-agent-provider-dashscope`](../spring-agent-provider-dashscope/README.md) | Alibaba Cloud DashScope, as one credential under `spring.ai.dashscope.*`: its own image API and its vision endpoint, with chat and embeddings contributed to `spring.ai.openai.*` since `compatible-mode` *is* that protocol. Builds on the module above rather than duplicating it |
+| [`spring-agent-provider-google-genai`](../spring-agent-provider-google-genai/README.md) | Google Gemini natively, under `spring.ai.google.genai.*`: thinking levels as a real option, Gemini's own embeddings, and the image models that edit from a reference image. Contributes nothing until `api-key` is set — it filters Spring AI's own Google GenAI auto-configurations out until then, two of which fail startup otherwise |
 | [`spring-agent-integration-websocket`](../spring-agent-integration-websocket/README.md) | A browser as an agent surface: a single-page UI, the REST endpoints behind it, and runs streamed live over STOMP/WebSocket. Contributes no `SecurityFilterChain` — the including application owns that and wires in this module's `WebAuthoritiesMapper` — and needs `@EnableScheduling` on it |
 | [`spring-agent-app-webui`](../spring-agent-app-webui/README.md) | The deployable that is nothing but the runtime and the module above; not published, it ships as an image |
 | [`spring-agent-app-web-feishu`](../spring-agent-app-web-feishu/README.md) | The same deployable with the Feishu surface as well, so a conversation can be handed between a chat and a browser; not published, it ships as an image |

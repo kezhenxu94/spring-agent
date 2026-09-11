@@ -7,8 +7,8 @@ import java.time.Duration;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
+import me.kezhenxu94.springagent.core.usermodels.ProviderChatClients;
 import me.kezhenxu94.springagent.core.usermodels.ReasoningEfforts;
-import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.model.tool.ToolCallingManager;
@@ -17,7 +17,7 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.http.okhttp.OpenAiHttpClientBuilderCustomizer;
 
 /**
- * {@link UserChatClients} over an OpenAI-compatible endpoint.
+ * {@link ProviderChatClients} over an OpenAI-compatible endpoint.
  *
  * <p>A client per endpoint rather than per user, and cached. Both halves are load-bearing.
  *
@@ -40,7 +40,10 @@ import org.springframework.ai.openai.http.okhttp.OpenAiHttpClientBuilderCustomiz
  * it replaces ages out.
  */
 @Slf4j
-public class OpenAiUserChatClients implements UserChatClients {
+public class OpenAiUserChatClients implements ProviderChatClients {
+
+  /** As Spring AI spells it under {@code spring.ai.model.*}, so there is one vocabulary. */
+  public static final String PROVIDER = "openai";
 
   /**
    * How long an endpoint nobody has used is kept. Long enough that a user's own model is not
@@ -48,7 +51,6 @@ public class OpenAiUserChatClients implements UserChatClients {
    */
   private static final Duration IDLE_TIMEOUT = Duration.ofMinutes(30);
 
-  private final ChatClient defaultChatClient;
   private final UserModelRegistry registry;
 
   /**
@@ -69,76 +71,17 @@ public class OpenAiUserChatClients implements UserChatClients {
   private final Cache<Endpoint, ChatClient> clients;
 
   public OpenAiUserChatClients(
-      final ChatClient defaultChatClient,
       final UserModelRegistry registry,
       final OpenAiChatOptions defaults,
       final ToolCallingManager toolCallingManager,
       final List<OpenAiHttpClientBuilderCustomizer> httpClientCustomizers,
       final int cacheSize) {
-    this.defaultChatClient = defaultChatClient;
     this.registry = registry;
     this.defaults = defaults;
     this.toolCallingManager = toolCallingManager;
     this.httpClientCustomizers = httpClientCustomizers;
     this.clients =
         CacheBuilder.newBuilder().maximumSize(cacheSize).expireAfterAccess(IDLE_TIMEOUT).build();
-  }
-
-  /**
-   * The client {@code userId}'s runs should go through.
-   *
-   * <p>Never throws and never returns null. A user whose stored endpoint cannot be read — a rotated
-   * encryption key, a row written by a different deployment — gets the application's model and a
-   * line in the log, because failing here would fail the very run they would use to fix it.
-   */
-  @Override
-  public ChatClient forUser(final String userId) {
-    if (Strings.isNullOrEmpty(userId)) {
-      return defaultChatClient;
-    }
-    try {
-      final var active = registry.active(userId);
-      if (active.isEmpty()) {
-        return defaultChatClient;
-      }
-      return clientFor(active.get());
-    } catch (Exception e) {
-      log.warn(
-          "Could not resolve the chat model {} chose; falling back to the application's own",
-          userId,
-          e);
-      return defaultChatClient;
-    }
-  }
-
-  /**
-   * The reasoning effort a run for this user will actually be made with, or null where the
-   * parameter is not sent at all.
-   *
-   * <p>Here rather than at the caller because this is the class that decides it, and a surface that
-   * tells the user how hard their model was asked to think must not answer that question from the
-   * deployment's configuration: a user on a model of their own would be shown a number that had
-   * nothing to do with their run.
-   *
-   * <p>Never throws, for the reason {@link #forUser} does not: a label is not worth failing a run
-   * over, and an unreadable row means the run went to the application's model anyway.
-   */
-  @Override
-  public String effortInForce(final String userId) {
-    final var configured = defaults.getReasoningEffort();
-    if (Strings.isNullOrEmpty(userId)) {
-      return configured;
-    }
-    try {
-      final var chosen = registry.active(userId).map(UserModelConfig::reasoningEffort).orElse(null);
-      if (chosen == null) {
-        return configured;
-      }
-      return ReasoningEfforts.NOT_SENT.equals(chosen) ? null : chosen;
-    } catch (Exception e) {
-      log.warn("Could not resolve the reasoning effort {} chose", userId, e);
-      return configured;
-    }
   }
 
   /**
@@ -149,6 +92,16 @@ public class OpenAiUserChatClients implements UserChatClients {
    * the model asked for, or not even that. That is what keeps the application's credentials out of
    * the database while still letting somebody choose among the models it already pays for.
    */
+  @Override
+  public String provider() {
+    return PROVIDER;
+  }
+
+  @Override
+  public String configuredEffort() {
+    return defaults.getReasoningEffort();
+  }
+
   @Override
   public ChatClient clientFor(final UserModelConfig config) {
     final var builtin = Strings.isNullOrEmpty(config.baseUrl());

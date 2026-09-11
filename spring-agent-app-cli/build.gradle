@@ -21,10 +21,11 @@ ext.nativeImageName = 'spring-agent-cli'
 // rather than by TOOLS_SHELL_TYPE at runtime. `local` matches application.yaml's default and is
 // what makes the binary useful with nothing installed; -PnativeBackends overrides it.
 //
-// `image-openai` for the same reason and to the same end: this application's application.yaml sets
-// no spring.ai.model.image, which on the JVM means Spring AI's default of `openai`, and the native
-// build would otherwise bake `none` and quietly ship a binary with no GenerateImage tool. There is
-// no image-dashscope to choose here — spring-agent-provider-dashscope is not on this classpath.
+// `image-openai` for the same reason and to the same end: this application's application.yaml now
+// names spring.ai.model.image explicitly as `openai`, and the native build would otherwise bake
+// `none` and quietly ship a binary with no GenerateImage tool. `image-google-genai` is the other
+// value worth baking here; there is still no image-dashscope, since
+// spring-agent-provider-dashscope is not on this classpath.
 ext.nativeDefaultBackends = 'shell-local,image-openai'
 
 if (providers.gradleProperty('native').present) {
@@ -43,11 +44,20 @@ dependencies {
   // Selecting a different backend means adding its module here, not flipping a property.
   implementation project(':spring-agent-persistence-jpa')
 
-  // Only the OpenAI-compatible provider, for the same reason there is only one persistence
-  // backend here: a laptop points OPENAI_BASE_URL at whatever gateway it uses, and the modules that
-  // exist to carry a vendor's own APIs — DashScope's image endpoint, its vision host — are weight a
-  // command line never asks for. It carries the starter, so nothing else names it.
+  // Two providers, not three. DashScope is still absent for the reason it always was: what that
+  // module carries is a vendor's own APIs — its image endpoint, its vision host — and a laptop
+  // points OPENAI_BASE_URL at whatever gateway it uses, DashScope's compatible-mode included.
+  //
+  // Gemini is here because it is not that case. Its chat, embeddings and image generation are not
+  // the OpenAI protocol, so a command line pointed at Gemini through a compatibility endpoint gets
+  // neither thinking levels nor reference-image editing, and trips over the `include_obfuscation`
+  // field Spring AI emits — which is a thing a laptop hits as readily as a server.
+  //
+  // Carrying it is what makes spring.ai.model.* in application.yaml load-bearing here: Spring AI's
+  // conditions are matchIfMissing, so with two providers present a kind that names nothing gets
+  // both and the application fails to start. That file names all three kinds now.
   implementation project(':spring-agent-provider-openai')
+  implementation project(':spring-agent-provider-google-genai')
 
   implementation libs.spring.shell.starter
   implementation libs.spring.ai.agent.utils

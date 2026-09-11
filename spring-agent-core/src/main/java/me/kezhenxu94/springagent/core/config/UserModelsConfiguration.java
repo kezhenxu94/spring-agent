@@ -4,15 +4,21 @@ import me.kezhenxu94.springagent.core.dao.repo.UserModelConfigRepo;
 import me.kezhenxu94.springagent.core.security.AesGcmSealer;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.core.usermodels.BuiltinModels;
+import me.kezhenxu94.springagent.core.usermodels.DispatchingUserChatClients;
+import me.kezhenxu94.springagent.core.usermodels.ProviderChatClients;
 import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import me.kezhenxu94.springagent.core.usermodels.UserModelCommand;
 import me.kezhenxu94.springagent.core.usermodels.UserModelProbe;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import me.kezhenxu94.springagent.core.usermodels.UserModelTools;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
 
 /**
  * Lets a user run their own chat model, but only where their API tokens can be stored sealed.
@@ -62,6 +68,32 @@ public class UserModelsConfiguration {
     return new UserModelCommand(registry, messages);
   }
 
+  /**
+   * The one {@link UserChatClients} a deployment has, over whichever providers are on its
+   * classpath.
+   *
+   * <p>Core's rather than a provider's since a row may now name which protocol it speaks, and
+   * choosing between modules is not something any one module can do. A provider contributes a
+   * {@link me.kezhenxu94.springagent.core.usermodels.ProviderChatClients} instead.
+   *
+   * <p>{@code ObjectProvider} for the chat client because this is built during the same refresh
+   * that builds it; the list may be empty, and then every row falls back to the application's own
+   * model with a warning rather than the context failing.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  UserChatClients userChatClients(
+      @Qualifier("chatClient") final ChatClient defaultChatClient,
+      final UserModelRegistry registry,
+      final ObjectProvider<ProviderChatClients> providers,
+      final Environment environment) {
+    return new DispatchingUserChatClients(
+        defaultChatClient,
+        registry,
+        providers.orderedStream().toList(),
+        environment.getProperty("spring.ai.model.chat"));
+  }
+
   @Bean
   @ConditionalOnMissingBean
   UserModelProbe userModelProbe(
@@ -75,7 +107,10 @@ public class UserModelsConfiguration {
   @AgentTool
   @ConditionalOnMissingBean
   UserModelTools userModelTools(
-      final UserModelRegistry registry, final UserModelProbe probe, final CoreMessages messages) {
-    return new UserModelTools(registry, probe, messages);
+      final UserModelRegistry registry,
+      final UserModelProbe probe,
+      final UserChatClients chatClients,
+      final CoreMessages messages) {
+    return new UserModelTools(registry, probe, chatClients, messages);
   }
 }

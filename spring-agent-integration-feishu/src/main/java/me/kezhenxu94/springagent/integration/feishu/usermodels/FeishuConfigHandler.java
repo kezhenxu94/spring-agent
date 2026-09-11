@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import me.kezhenxu94.springagent.core.usermodels.BuiltinModels;
+import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import me.kezhenxu94.springagent.core.usermodels.UserModelProbe;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
@@ -42,6 +43,15 @@ public class FeishuConfigHandler {
   private final UserModelRegistry registry;
   private final UserModelProbe probe;
   private final BuiltinModels builtins;
+
+  /**
+   * Only for {@link UserChatClients#providers()} and {@link UserChatClients#defaultProvider()}: the
+   * card offers a protocol select of exactly what this deployment's classpath serves, and nothing
+   * else. Asked of the bean rather than listed here so a provider module added or dropped changes
+   * the card with it.
+   */
+  private final UserChatClients chatClients;
+
   private final FeishuConfigForm form;
   private final JsonMapper objectMapper;
   private final FeishuMessages messages;
@@ -61,7 +71,15 @@ public class FeishuConfigHandler {
             final var active = registry.active(userId).orElse(null);
             // Best-effort, and never on the critical path: an endpoint that will not list its
             // models leaves this empty and the card offers the single built-in entry instead.
-            send(chatId, form.card(configured, active, builtins.list(), builtins.defaultModel()));
+            send(
+                chatId,
+                form.card(
+                    configured,
+                    active,
+                    builtins.list(),
+                    builtins.defaultModel(),
+                    chatClients.providers(),
+                    chatClients.defaultProvider()));
           } catch (Exception e) {
             log.error("Could not open the model settings for {} in {}", userId, chatId, e);
             sendText(chatId, messages.get("config-failed"));
@@ -211,8 +229,9 @@ public class FeishuConfigHandler {
       return;
     }
     final var effort = submission.storedEffort();
+    final var provider = submission.storedProvider();
     final var failure =
-        probe.check(submission.baseUrl(), submission.model(), submission.token(), effort);
+        probe.check(provider, submission.baseUrl(), submission.model(), submission.token(), effort);
     if (failure != null) {
       sendText(chatId, messages.get("config-add-failed", submission.name(), failure));
       return;
@@ -220,6 +239,7 @@ public class FeishuConfigHandler {
     registry.save(
         userId,
         submission.name(),
+        provider,
         submission.baseUrl(),
         submission.model(),
         submission.token(),

@@ -185,12 +185,15 @@ public class UserModelRegistry {
    * replaces it, keeping whether it was the one in use — editing the token of the model you are
    * talking through should not silently move you off it.
    *
+   * @param provider which protocol the endpoint speaks, or null for the deployment's own — see
+   *     {@link me.kezhenxu94.springagent.core.dao.models.UserModelConfig#provider}
    * @param reasoningEffort as {@link ReasoningEfforts} spells it, or null to leave the
    *     application's own setting in place
    */
   public UserModelConfig save(
       final String userId,
       final String name,
+      final String provider,
       final String baseUrl,
       final String model,
       final String token,
@@ -201,6 +204,7 @@ public class UserModelRegistry {
             .id(UserModelConfig.idFor(userId, name))
             .ownerId(userId)
             .name(name)
+            .provider(blankToNull(provider))
             .baseUrl(baseUrl)
             .model(model)
             .apiKeyCipher(sealer.seal(token))
@@ -208,6 +212,11 @@ public class UserModelRegistry {
             .activated(wasActive.orElse(false))
             .updatedAt(Instant.now())
             .build());
+  }
+
+  /** Empty means "the deployment's own", which is what null records. */
+  private static String blankToNull(final String value) {
+    return value == null || value.isBlank() ? null : value.trim();
   }
 
   /**

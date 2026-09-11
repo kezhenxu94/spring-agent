@@ -7,6 +7,8 @@ import me.kezhenxu94.springagent.core.config.ConditionalOnNonBlankProperty;
 import me.kezhenxu94.springagent.core.config.ConditionalOnUserModels;
 import me.kezhenxu94.springagent.core.config.UserModelsProperties;
 import me.kezhenxu94.springagent.core.usermodels.BuiltinModels;
+import me.kezhenxu94.springagent.core.usermodels.ProviderChatClients;
+import me.kezhenxu94.springagent.core.usermodels.ReasoningEffortInForce;
 import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import me.kezhenxu94.springagent.provider.openai.aot.OpenAiSdkRuntimeHints;
@@ -202,32 +204,100 @@ public class OpenAiProviderAutoConfiguration {
         defaultChatModel.getOptions(), commonProperties, chatProperties);
   }
 
+  /**
+   * How hard this deployment's model is asked to think, said in core's vocabulary — which here is
+   * also the wire's, since core's ladder is the OpenAI one.
+   *
+   * <p>Unconditional on user models, unlike the two beans below, and that is the point of the
+   * contract: a deployment where nobody may register a model of their own still has an effort in
+   * force — the configured one, for everybody — and a surface that wants to print it should not
+   * have to know whether the feature is on, nor reach for {@code OpenAiChatProperties} and thereby
+   * stop working the moment another provider serves the chat model.
+   *
+   * <p>Read off the resolved options rather than the properties bean for the reason {@link
+   * ApplicationEndpoint} exists: the chat block's value overrides the connection's, and doing that
+   * arithmetic twice is how the two drift.
+   */
   @Bean
-  @ConditionalOnUserModels
+  @ConditionalOnBean(OpenAiChatModel.class)
   @ConditionalOnMissingBean
-  UserChatClients userChatClients(
-      @Qualifier("chatClient") final ChatClient defaultChatClient,
-      final OpenAiChatModel defaultChatModel,
+  ReasoningEffortInForce reasoningEffortInForce(
+      final OpenAiChatModel chatModel,
       final OpenAiCommonProperties commonProperties,
       final OpenAiChatProperties chatProperties,
+      final ObjectProvider<UserChatClients> userChatClients) {
+    final var configured =
+        resolvedOptions(chatModel, commonProperties, chatProperties).getReasoningEffort();
+    return userId -> {
+      final var clients = userChatClients.getIfAvailable();
+      if (clients == null || userId == null) {
+        return configured;
+      }
+      return clients.effortInForce(userId);
+    };
+  }
+
+  /**
+   * How a user's own OpenAI-compatible endpoint is reached.
+   *
+   * <p><b>Deliberately not conditional on this module having built the application's chat
+   * model.</b> That is the change that lets somebody register an OpenAI endpoint on a deployment
+   * whose own chat model is Gemini's: core's {@code DispatchingUserChatClients} picks between
+   * providers per row, so this one has to exist wherever it might be named, not only where it won.
+   *
+   * <p>Which is why every OpenAI-specific input is an {@code ObjectProvider}. With {@code
+   * spring.ai.model.chat} naming another provider, Spring AI's OpenAI auto-configuration backs off
+   * and takes its properties beans with it — so there is no application endpoint to copy defaults
+   * from, and there should not be: a user's own endpoint on a protocol this deployment does not
+   * otherwise speak inherits nothing but this provider's own defaults, and the row carries the base
+   * URL, the credential and the model, which is everything the endpoint needs.
+   */
+  @Bean
+  @ConditionalOnUserModels
+  @ConditionalOnMissingBean(name = "openAiProviderChatClients")
+  ProviderChatClients openAiProviderChatClients(
+      final ObjectProvider<OpenAiChatModel> chatModel,
+      final ObjectProvider<OpenAiCommonProperties> commonProperties,
+      final ObjectProvider<OpenAiChatProperties> chatProperties,
       final UserModelRegistry registry,
-      // The context's own, because a chat model built by hand is offered a plain default in its
-      // place and then asks the endpoint for a tool list none of the runtime's rewrites reached —
-      // see OpenAiUserChatClients#build. Spring AI hands its own models this same bean.
       final ToolCallingManager toolCallingManager,
       final List<OpenAiHttpClientBuilderCustomizer> httpClientCustomizers,
       final UserModelsProperties properties) {
     return new OpenAiUserChatClients(
-        defaultChatClient,
         registry,
-        resolvedOptions(defaultChatModel, commonProperties, chatProperties),
+        applicationDefaults(chatModel, commonProperties, chatProperties),
+        // The context's own manager, so a client built here offers the endpoint the same tool
+        // definitions every other run does — see OpenAiUserChatClients#build.
         toolCallingManager,
         httpClientCustomizers,
         properties.cacheSize());
   }
 
+  /**
+   * The options a user's endpoint starts from: the application's own where this module built the
+   * chat model, and this provider's bare defaults where it did not.
+   *
+   * <p>Copying the application's matters when it is an OpenAI one — Spring AI takes supplied
+   * options whole rather than merging, so anything not copied is silently dropped, which {@code
+   * OpenAiUserChatClients#build} sets out. Where the application is on another provider there is
+   * nothing to copy and nothing that would be right to copy.
+   */
+  private static OpenAiChatOptions applicationDefaults(
+      final ObjectProvider<OpenAiChatModel> chatModel,
+      final ObjectProvider<OpenAiCommonProperties> commonProperties,
+      final ObjectProvider<OpenAiChatProperties> chatProperties) {
+    final var model = chatModel.getIfAvailable();
+    final var common = commonProperties.getIfAvailable();
+    final var chat = chatProperties.getIfAvailable();
+    if (model == null || common == null || chat == null) {
+      return OpenAiChatOptions.builder().build();
+    }
+    return resolvedOptions(model, common, chat);
+  }
+
   @Bean
   @ConditionalOnUserModels
+  @ConditionalOnBean(OpenAiChatModel.class)
   @ConditionalOnMissingBean
   BuiltinModels builtinModels(
       final OpenAiChatModel defaultChatModel,

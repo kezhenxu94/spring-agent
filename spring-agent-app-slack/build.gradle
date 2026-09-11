@@ -91,22 +91,34 @@ dependencies {
   implementation project(':spring-agent-rag-milvus')
 
   // Where the models come from. Core carries no provider at all, so an application has to name one;
-  // both are here so that which one serves a run is configuration rather than a rebuild — see
+  // all three are here so that which one serves a run is configuration rather than a rebuild — see
   // spring.ai.model.* in application.yaml.
   //
-  // Both on one classpath is not the ambiguity two chat surfaces would be. Spring AI's own
+  // Three on one classpath is not the ambiguity two chat surfaces would be. Spring AI's own
   // conditions gate each kind of model on spring.ai.model.<kind> naming its provider, so exactly
-  // one answers per kind, and there is no switch of ours for them to disagree with.
+  // one answers per kind, and there is no switch of ours for them to disagree with. But those
+  // conditions are `matchIfMissing`, so with more than one provider present a kind that names
+  // nothing gets *every* provider rather than a default one — which is why application.yaml now
+  // names chat, embedding and image explicitly instead of relying on unset meaning openai.
+  // GoogleGenAiProviderCoexistenceTest is what pins that.
   //
-  // Neither line is decoration. provider-openai is what serves chat, embeddings and the endpoints a
+  // No line here is decoration. provider-openai is what serves chat, embeddings and the endpoints a
   // person registers for themselves — on DashScope too, whose compatible-mode *is* that protocol —
   // and provider-dashscope adds only what DashScope does differently: its image API and its vision
-  // endpoint. It depends on the first as `implementation`, so dropping this line would leave the
+  // endpoint. It depends on the first as `implementation`, so dropping that line would leave the
   // OpenAI provider on the runtime classpath but off the compile one, which is not a state to
   // depend on. Taking it commits nothing: it contributes nothing until
   // spring.ai.dashscope.api-key names a key.
+  //
+  // provider-google-genai is Gemini spoken natively rather than through a compatibility shim:
+  // thinking levels as a real option, Gemini's own embeddings, and the image models that edit from
+  // a reference image. It commits nothing either, and rather more deliberately than the other two —
+  // two of Spring AI's Google GenAI auto-configurations are ungated and fail startup with no
+  // credential, so the module filters all of them out until spring.ai.google.genai.api-key names a
+  // key. See GoogleGenAiAutoConfigurationFilter.
   implementation project(':spring-agent-provider-openai')
   implementation project(':spring-agent-provider-dashscope')
+  implementation project(':spring-agent-provider-google-genai')
 
   implementation 'org.springframework.boot:spring-boot-starter-actuator'
   implementation 'org.springframework.boot:spring-boot-starter-security'

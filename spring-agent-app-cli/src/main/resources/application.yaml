@@ -91,19 +91,83 @@ spring:
     #           url: https://api.githubcopilot.com/mcp/
     #           headers:
     #             Authorization: Bearer ${GITHUB_MCP_TOKEN}
-    # No spring.ai.model.* here, unlike the servers. This application carries only
-    # spring-agent-provider-openai, so `openai` — Spring AI's default for every kind — is the only
-    # answer there is, and stating it would suggest a choice a command line does not have.
+    # Which provider serves each kind of model. Spring AI's own switch, not one of this project's.
     #
-    # Image generation therefore follows Spring AI's own default, which is on: whether
-    # OPENAI_BASE_URL actually serves /v1/images/generations is the gateway's business. It is
-    # DashScope's image API that a laptop does not get, along with the vision tool, since neither
-    # exists without spring-agent-provider-dashscope.
+    # Stated rather than left to a default, and that is not a style choice. Every model
+    # auto-configuration Spring AI ships is `matchIfMissing`, so "unset means openai" holds only
+    # while one provider is on the classpath. This application carries two —
+    # spring-agent-provider-openai and spring-agent-provider-google-genai — so a kind that names
+    # nothing would get *both*, and the application would fail to start with two ChatModel beans.
+    #
+    # Note that embeddings take two keys with the same value. `embedding` is what Spring AI's OpenAI
+    # auto-configuration reads and `embedding.text` is what its Google GenAI one reads, so naming
+    # only one of them silences one provider and leaves the other matching by default. Setting both
+    # is correct in either direction and does not depend on remembering which is which.
+    # GoogleGenAiProviderCoexistenceTest covers all of this by name.
+    #
+    # `openai` throughout is the laptop default: OPENAI_BASE_URL points at whatever gateway is in
+    # use, DashScope's and Gemini's compatible-mode endpoints included. Set all four to
+    # `google-genai` and name GEMINI_API_KEY to talk to Gemini natively instead — which is what
+    # gets thinking levels and reference-image editing.
+    #
+    # Image generation is `openai` rather than the servers' `none`, which is the one place this file
+    # deliberately differs from theirs: a command line generating an image is not a deployment
+    # quietly spending somebody's budget, and whether OPENAI_BASE_URL actually serves
+    # /v1/images/generations is the gateway's business. A native binary bakes this decision at build
+    # time — see nativeDefaultBackends in build.gradle.
+    model:
+      chat: ${CHAT_MODEL_PROVIDER:openai}
+      embedding: ${EMBEDDING_MODEL_PROVIDER:openai}
+      embedding.text: ${EMBEDDING_MODEL_PROVIDER:openai}
+      image: ${IMAGE_MODEL_PROVIDER:openai}
+      # Not a choice — Spring AI ships no Google GenAI TranscriptionModel — but a way to turn the
+      # TranscribeAudio tool off. Left at `openai` the tool is registered against whatever
+      # OPENAI_BASE_URL names, which a gateway serving no transcription answers with a 404 every
+      # time; set it to `none` there, and on any google-genai-only setup.
+      audio:
+        transcription: ${TRANSCRIPTION_MODEL_PROVIDER:openai}
+    # Google Gemini's own API: Spring AI's spring-ai-google-genai over Google's official
+    # com.google.genai SDK, which calls {model}:generateContent on generativelanguage.googleapis.com
+    # rather than /chat/completions. Gemini's OpenAI-compatible endpoint is a different thing and
+    # works through spring.ai.openai above; this is what has thinking levels and reference-image
+    # editing.
+    #
+    # Read by spring-agent-provider-google-genai, which contributes nothing at all until api-key
+    # names a key — two of Spring AI's Google GenAI auto-configurations are ungated and would
+    # otherwise fail startup here, so the module filters every one of them out while this is blank.
+    # See GoogleGenAiAutoConfigurationFilter.
+    google:
+      genai:
+        api-key: ${GEMINI_API_KEY:}
+        chat:
+          # No default: Gemini has no default chat model and refuses an empty name with a message
+          # that reads like a broken endpoint. GoogleGenAiConnectionCheck says so at startup
+          # instead, and only when a switch above actually names google-genai.
+          model: ${GEMINI_CHAT_MODEL:}
+        embedding:
+          text:
+            model: ${GEMINI_EMBEDDING_MODEL:}
+            # 1024 to agree with every other provider's default here. gemini-embedding-001 emits
+            # 3072 and is Matryoshka-trained, so 768, 1536 and 3072 are the sizes Google recommends
+            # truncating to; any value from 1 to 3072 is accepted. Nothing here has a fixed width —
+            # this application's vector store is the in-heap one — so changing it costs only a
+            # re-index, unlike on the servers, where Milvus refuses an insert that disagrees.
+            dimensions: ${GEMINI_EMBEDDING_DIMENSIONS:1024}
+        image:
+          # gemini-2.5-flash-image is Spring AI's default and is the model that edits from reference
+          # images; gemini-3-pro-image is the slower, better one.
+          model: ${GEMINI_IMAGE_MODEL:gemini-2.5-flash-image}
     openai:
-      base-url: ${OPENAI_BASE_URL}
-      api-key: ${OPENAI_API_KEY}
+      # Empty defaults rather than required values, and that changed when this application gained a
+      # second provider. A required placeholder is resolved whenever anything binds the block —
+      # which the transcription auto-configuration does even when chat and embeddings have gone to
+      # Gemini — so a google-genai-only laptop would fail to start on a variable it has no reason
+      # to set. Leaving a needed one blank is still caught, and caught better: OpenAiConnectionCheck
+      # names the missing variable at startup, where an unresolved placeholder names a property.
+      base-url: ${OPENAI_BASE_URL:}
+      api-key: ${OPENAI_API_KEY:}
       chat:
-        model: ${OPENAI_MODEL}
+        model: ${OPENAI_MODEL:}
         temperature: 0
         # How much the model thinks before it answers, and as much as there is: the ladder the SDK
         # knows is minimal, medium, high, xhigh, none. `xhigh` because this agent's turns are tool
@@ -128,9 +192,9 @@ spring:
         # and naming the options here adds `include_obfuscation` to the request, which endpoints
         # other than OpenAI's reject. See the app's application.yaml.
       embedding:
-        base-url: ${EMBEDDING_BASE_URL}
-        api-key: ${EMBEDDING_API_KEY}
-        model: ${EMBEDDING_MODEL}
+        base-url: ${EMBEDDING_BASE_URL:}
+        api-key: ${EMBEDDING_API_KEY:}
+        model: ${EMBEDDING_MODEL:}
         dimensions: 1024
     vectorstore:
       # `simple` and nothing else here: it keeps the tool-search index in the heap and mirrors it to

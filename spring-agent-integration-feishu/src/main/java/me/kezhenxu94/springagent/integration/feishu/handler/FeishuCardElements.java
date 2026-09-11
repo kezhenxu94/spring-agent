@@ -7,10 +7,9 @@ import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
-import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
+import me.kezhenxu94.springagent.core.usermodels.ReasoningEffortInForce;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
-import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
@@ -168,30 +167,27 @@ public class FeishuCardElements {
   private final Resource cardElements;
 
   /**
-   * The chat options a run is sent with, for the one of them the card reports: how hard the model
-   * was asked to think, shown in the thinking panel's title.
+   * How hard the model behind this run is being asked to think, for the thinking panel's title.
    *
-   * <p>The bean the autoconfiguration binds, rather than the same property read back through a
-   * placeholder of our own: a setting that belongs to another module is then named once, where it
-   * is declared, instead of a second time here where a rename upstream would leave this silently
-   * blank.
-   */
-  private final OpenAiChatProperties chatProperties;
-
-  /**
-   * Present only where users may choose a model of their own, which is where the deployment's
-   * configured effort stops being the answer for every run: a user on a model of theirs, or on the
-   * application's model with an effort of their own, is asked to think as hard as <i>they</i>
-   * chose.
+   * <p>Core's contract rather than a provider's properties bean, and that distinction is the whole
+   * of what this field has to teach. This used to be {@code OpenAiChatProperties}, which was two
+   * bugs at once: on a deployment serving chat from another provider the bean does not exist, so
+   * the card surface failed the entire context over a label; and every provider has this concept
+   * anyway — Gemini's is a {@code thinkingLevel} enum beside a numeric budget — so even where it
+   * did resolve it was the wrong setting to read. {@link ReasoningEffortInForce} is what each
+   * provider translates its own spelling into, and it already accounts for a user who registered a
+   * model of their own, which is why no {@code UserChatClients} is needed here any more.
    *
-   * <p>Injected into the field rather than taken on the constructor, and not final, for two reasons
-   * that point the same way: the bean exists only where {@code app.ai.user-models.encryption-key}
-   * is set, and this class is built by hand in a great many tests that have nothing to do with
-   * which model a run went through. Null is an ordinary state, and means the deployment's own
-   * setting.
+   * <p>Nullable, because a provider may publish none and because this class is built by hand in a
+   * great many tests with nothing to say about model providers. Null means no effort is shown,
+   * which is also what it means when a deployment states none.
+   *
+   * <p>The annotation reaches the generated constructor parameter without help, unlike
+   * {@code @Value} above: JSpecify's {@code @Nullable} is {@code TYPE_USE}, so javac writes it onto
+   * the parameter's type and Spring reads it there. No {@code lombok.copyableAnnotations} entry is
+   * needed, and adding one would be a line that does nothing.
    */
-  @Autowired(required = false)
-  UserChatClients userChatClients;
+  @Nullable private final ReasoningEffortInForce reasoningEffortInForce;
 
   /**
    * The element written into, for one the card carries and an insert names, or null where the two
@@ -510,20 +506,18 @@ public class FeishuCardElements {
 
   /**
    * How hard the model was asked to think, or null where nothing was asked: a deployment that
-   * states no effort, a user who turned the parameter off, or a chat model that is not
-   * OpenAI-shaped. Never read back from an answer, because it is not in one — a chat completion
-   * reports the reasoning tokens it produced but never the effort it was asked for, so the request
-   * side is the only side that knows.
+   * states no effort, a user who turned the parameter off, or a provider that publishes no {@link
+   * ReasoningEffortInForce}. Never read back from an answer, because it is not in one — a
+   * completion reports the reasoning tokens it produced but never the effort it was asked for, so
+   * the request side is the only side that knows.
    *
-   * <p>Which is why it has to be asked of the same code that builds the request. Reading the
-   * deployment's property alone was right while every run went through one model; with a user able
-   * to choose, it is a label reporting somebody else's setting.
+   * <p>Which is why it has to be asked of the side that builds the request, and of a contract
+   * rather than of one provider's configuration: the deployment's property alone was right while
+   * every run went through one model on one provider, and is now wrong twice over — a user may have
+   * chosen their own, and the provider may not be the one whose property is being read.
    */
   private String reasoningEffort(final String userId) {
-    if (userChatClients == null || userId == null) {
-      return chatProperties == null ? null : chatProperties.getReasoningEffort();
-    }
-    return userChatClients.effortInForce(userId);
+    return reasoningEffortInForce == null ? null : reasoningEffortInForce.forUser(userId);
   }
 
   /** One element as the JSON array the card element API takes for an insert. */

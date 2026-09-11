@@ -20,9 +20,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.model.tool.ToolCallingManager;
-import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.context.support.ResourceBundleMessageSource;
@@ -124,7 +122,6 @@ class OpenAiUserModelToolsTest {
             .maxRetries(0)
             .build();
     return new OpenAiUserChatClients(
-        ChatClient.builder(OpenAiChatModel.builder().options(appOptions).build()).build(),
         new UserModelRegistry(mock(UserModelConfigRepo.class), new AesGcmSealer(KEY, "t"), 3),
         appOptions,
         manager,

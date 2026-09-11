@@ -95,6 +95,8 @@ public class FeishuMessages {
         .replace("{baseUrlPlaceholder}", jsonEscaped(get("config-baseurl-placeholder")))
         .replace("{modelLabel}", jsonEscaped(get("config-model-label")))
         .replace("{modelPlaceholder}", jsonEscaped(get("config-model-placeholder")))
+        .replace("{providerLabel}", jsonEscaped(get("config-provider-label")))
+        .replace("{providerHint}", jsonEscaped(get("config-provider-hint")))
         .replace("{effortLabel}", jsonEscaped(get("config-effort-label")))
         .replace("{effortHint}", jsonEscaped(get("config-effort-hint")))
         .replace("{tokenLabel}", jsonEscaped(get("config-token-label")))

@@ -1,0 +1,14 @@
+# Stands in for a real application's file, and specifically for the present-but-empty case: every
+# application.yaml in this repository spells its settings ${SOME_VAR:}, so a variable nobody set
+# leaves the property present and empty rather than absent — which is what GoogleGenAiDefaults has
+# to fill past, and what GoogleGenAiAutoConfigurationFilter has to read as "not configured".
+#
+# The blanks are written literally rather than as ${VAR:} placeholders so that these tests do not
+# depend on what the developer running them happens to have exported.
+spring:
+  ai:
+    google:
+      genai:
+        api-key: ""
+        embedding:
+          api-key: ""

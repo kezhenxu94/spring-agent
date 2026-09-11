@@ -31,7 +31,8 @@ class SlackConfigFormTest {
   @Test
   @DisplayName("the built-in model is always offered, even with nothing registered")
   void defaultAlwaysOffered() {
-    final var options = options(form.blocks(List.of(), null, List.of(), "gpt-4o"));
+    final var options =
+        options(form.blocks(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai"));
 
     assertThat(options).hasSize(1);
     assertThat(options.get(0).getValue()).isEqualTo(SlackConfigForm.DEFAULT_OPTION);
@@ -40,7 +41,10 @@ class SlackConfigFormTest {
   @Test
   @DisplayName("the models the endpoint lists become options, the configured one as the default")
   void listsBuiltinModels() {
-    final var options = options(form.blocks(List.of(), null, List.of("gpt-4o", "o3"), "gpt-4o"));
+    final var options =
+        options(
+            form.blocks(
+                List.of(), null, List.of("gpt-4o", "o3"), "gpt-4o", List.of("openai"), "openai"));
 
     assertThat(options).hasSize(2);
     assertThat(options.get(0).getValue()).isEqualTo(SlackConfigForm.DEFAULT_OPTION);
@@ -50,7 +54,8 @@ class SlackConfigFormTest {
   @Test
   @DisplayName("a listing that omits the configured model still offers a way back to it")
   void defaultAlwaysReachable() {
-    final var options = options(form.blocks(List.of(), null, List.of("o3"), "gpt-4o"));
+    final var options =
+        options(form.blocks(List.of(), null, List.of("o3"), "gpt-4o", List.of("openai"), "openai"));
 
     assertThat(options.get(0).getValue()).isEqualTo(SlackConfigForm.DEFAULT_OPTION);
   }
@@ -63,7 +68,10 @@ class SlackConfigFormTest {
       many.add("model-%03d".formatted(i));
     }
 
-    final var options = options(form.blocks(List.of(), builtin("model-240"), many, "model-200"));
+    final var options =
+        options(
+            form.blocks(
+                List.of(), builtin("model-240"), many, "model-200", List.of("openai"), "openai"));
 
     // Slack refuses a static select with more than 100 options, so the cap is what stands between
     // a large gateway and no settings form at all.
@@ -78,7 +86,14 @@ class SlackConfigFormTest {
   @DisplayName("the user's own endpoints come after the built-in ones")
   void userModelsLast() {
     final var options =
-        options(form.blocks(List.of(config("kimi")), config("kimi"), List.of("gpt-4o"), "gpt-4o"));
+        options(
+            form.blocks(
+                List.of(config("kimi")),
+                config("kimi"),
+                List.of("gpt-4o"),
+                "gpt-4o",
+                List.of("openai"),
+                "openai"));
 
     assertThat(options).hasSize(2);
     assertThat(options.get(1).getValue()).isEqualTo("kimi");
@@ -87,7 +102,7 @@ class SlackConfigFormTest {
   @Test
   @DisplayName("the modal declares itself submittable and routes back by callback id")
   void modalIsWellFormed() {
-    final var view = form.view(List.of(), null, List.of(), "gpt-4o");
+    final var view = form.view(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai");
 
     assertThat(view.getType()).isEqualTo("modal");
     assertThat(view.getCallbackId()).isEqualTo(SlackConfigForm.CALLBACK_ID);
@@ -99,8 +114,10 @@ class SlackConfigFormTest {
   @Test
   @DisplayName("the in-message fallback carries its own submit button, the modal does not")
   void fallbackHasSubmitButton() {
-    final var modal = form.blocks(List.of(), null, List.of(), "gpt-4o");
-    final var message = form.messageBlocks(List.of(), null, List.of(), "gpt-4o");
+    final var modal =
+        form.blocks(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai");
+    final var message =
+        form.messageBlocks(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai");
 
     // A modal submits itself; a message needs something to press, and the two must not be mixed up
     // or one of the two ways in silently stops working.
@@ -111,16 +128,38 @@ class SlackConfigFormTest {
   @Test
   @DisplayName("the in-message fallback warns that the token will be visible, the modal does not")
   void fallbackWarnsAboutTheToken() {
-    assertThat(tokenHint(form.messageBlocks(List.of(), null, List.of(), "gpt-4o"))).isNotNull();
-    assertThat(tokenHint(form.blocks(List.of(), null, List.of(), "gpt-4o"))).isNull();
+    assertThat(
+            tokenHint(
+                form.messageBlocks(
+                    List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai")))
+        .isNotNull();
+    assertThat(
+            tokenHint(
+                form.blocks(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai")))
+        .isNull();
   }
 
   @Test
   @DisplayName("both ways in offer the same choices")
   void bothFormsOfferTheSameOptions() {
-    final var modal = options(form.blocks(List.of(config("kimi")), null, List.of("o3"), "gpt-4o"));
+    final var modal =
+        options(
+            form.blocks(
+                List.of(config("kimi")),
+                null,
+                List.of("o3"),
+                "gpt-4o",
+                List.of("openai"),
+                "openai"));
     final var message =
-        options(form.messageBlocks(List.of(config("kimi")), null, List.of("o3"), "gpt-4o"));
+        options(
+            form.messageBlocks(
+                List.of(config("kimi")),
+                null,
+                List.of("o3"),
+                "gpt-4o",
+                List.of("openai"),
+                "openai"));
 
     assertThat(message.stream().map(OptionObject::getValue).toList())
         .isEqualTo(modal.stream().map(OptionObject::getValue).toList());
@@ -129,7 +168,8 @@ class SlackConfigFormTest {
   @Test
   @DisplayName("every input is optional, so the form can be submitted to change only one thing")
   void inputsAreOptional() {
-    final var blocks = form.blocks(List.of(), null, List.of(), "gpt-4o");
+    final var blocks =
+        form.blocks(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai");
 
     assertThat(blocks)
         .filteredOn(InputBlock.class::isInstance)
@@ -188,7 +228,9 @@ class SlackConfigFormTest {
   @DisplayName("how hard to think is a list, and the whole list")
   void effortIsAList() {
     final var values =
-        effortOptions(form.blocks(List.of(), null, List.of(), "gpt-4o")).stream()
+        effortOptions(
+                form.blocks(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai"))
+            .stream()
             .map(OptionObject::getValue)
             .toList();
 
@@ -203,7 +245,8 @@ class SlackConfigFormTest {
   void preselectsEffort() {
     final var active = config("kimi").toBuilder().reasoningEffort("high").build();
 
-    final var blocks = form.blocks(List.of(active), active, List.of(), "gpt-4o");
+    final var blocks =
+        form.blocks(List.of(active), active, List.of(), "gpt-4o", List.of("openai"), "openai");
 
     assertThat(effortElement(blocks).getInitialOption().getValue()).isEqualTo("high");
   }
@@ -211,7 +254,8 @@ class SlackConfigFormTest {
   @Test
   @DisplayName("a model with no effort of its own shows the application's setting")
   void preselectsInherit() {
-    final var blocks = form.blocks(List.of(), null, List.of(), "gpt-4o");
+    final var blocks =
+        form.blocks(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai");
 
     assertThat(effortElement(blocks).getInitialOption().getValue())
         .isEqualTo(SlackConfigForm.EFFORT_INHERIT_OPTION);
@@ -269,5 +313,45 @@ class SlackConfigFormTest {
         .map(block -> ((StaticSelectElement) block.getElement()).getOptions())
         .findFirst()
         .orElseThrow();
+  }
+
+  // --- the protocol select ----------------------------------------------------------------
+
+  @Test
+  @DisplayName("one provider draws no protocol select at all")
+  void oneProviderDrawsNoSelect() {
+    // A select of one option asks a question with no answers, and implies the others are served.
+    final var blocks =
+        form.blocks(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai");
+
+    assertThat(providerBlock(blocks)).isNull();
+  }
+
+  @Test
+  @DisplayName("two providers draw a select of exactly those two, and nothing else")
+  void theSelectOffersOnlyWhatIsServed() {
+    final var blocks =
+        form.blocks(
+            List.of(), null, List.of(), "gpt-4o", List.of("openai", "google-genai"), "openai");
+
+    final var select = (StaticSelectElement) providerBlock(blocks).getElement();
+    assertThat(select.getOptions()).hasSize(3);
+    assertThat(select.getOptions().get(0).getValue())
+        .isEqualTo(SlackConfigForm.PROVIDER_INHERIT_OPTION);
+    assertThat(select.getOptions().get(1).getValue()).isEqualTo("openai");
+    assertThat(select.getOptions().get(2).getValue()).isEqualTo("google-genai");
+    // The deployment's own is preselected, which is what a row naming nothing means.
+    assertThat(select.getInitialOption().getValue())
+        .isEqualTo(SlackConfigForm.PROVIDER_INHERIT_OPTION);
+  }
+
+  /** The protocol input block, or null where the form drew none. */
+  private static InputBlock providerBlock(final List<LayoutBlock> blocks) {
+    return blocks.stream()
+        .filter(InputBlock.class::isInstance)
+        .map(InputBlock.class::cast)
+        .filter(block -> SlackConfigForm.PROVIDER_BLOCK.equals(block.getBlockId()))
+        .findFirst()
+        .orElse(null);
   }
 }

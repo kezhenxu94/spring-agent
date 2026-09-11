@@ -39,10 +39,18 @@ public class UserModelProbe {
    * @return null when the endpoint answered, otherwise why it did not, in words fit to show a user
    */
   public String check(
-      final String baseUrl, final String model, final String token, final String reasoningEffort) {
+      final String provider,
+      final String baseUrl,
+      final String model,
+      final String token,
+      final String reasoningEffort) {
     final var config =
         UserModelConfig.builder()
             .name("probe")
+            // The row is not stored, but it has to name the protocol: the whole point of a probe is
+            // to test what will actually be spoken to the endpoint, and on a deployment carrying
+            // two providers that is a choice rather than a given.
+            .provider(provider == null || provider.isBlank() ? null : provider.trim())
             .baseUrl(baseUrl)
             .model(model)
             .reasoningEffort(ReasoningEfforts.normalize(reasoningEffort))

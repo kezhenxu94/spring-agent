@@ -30,6 +30,10 @@ public class UserModelTools {
 
   private final UserModelRegistry registry;
   private final UserModelProbe probe;
+
+  /** Only for {@link UserChatClients#providers()}: which protocols this deployment can speak. */
+  private final UserChatClients chatClients;
+
   private final CoreMessages messages;
 
   @Tool(
@@ -56,6 +60,13 @@ The token is stored encrypted and is never shown again, not even to the user who
           final String name,
       @ToolParam(description = "The endpoint base URL, e.g. https://api.example.com/v1")
           final String baseUrl,
+      @ToolParam(
+              required = false,
+              description =
+                  "Which protocol the endpoint speaks. Omit for this deployment's own, which is"
+                      + " almost always right. Ask the user only if they mention a provider whose"
+                      + " protocol differs from it; call ListChatModels to see which are served")
+          final String provider,
       @ToolParam(description = "The model name as the endpoint spells it") final String model,
       @ToolParam(description = "The API token for this endpoint") final String apiToken,
       @ToolParam(
@@ -85,13 +96,22 @@ The token is stored encrypted and is never shown again, not even to the user who
       return messages.get("user-model-too-many", registry.maxPerUser());
     }
 
+    // Checked before the probe rather than after: a protocol nobody serves cannot be tested, and
+    // the endpoint's silence would be reported as the user's URL being wrong.
+    if (!isBlank(provider) && !chatClients.providers().contains(provider.trim())) {
+      return messages.get(
+          "user-model-bad-provider", provider.trim(), String.join(", ", chatClients.providers()));
+    }
+
     final var effort = ReasoningEfforts.normalize(reasoningEffort);
-    final var failure = probe.check(baseUrl.trim(), model.trim(), apiToken.trim(), effort);
+    final var failure =
+        probe.check(provider, baseUrl.trim(), model.trim(), apiToken.trim(), effort);
     if (failure != null) {
       return messages.get("user-model-unreachable", modelName, failure);
     }
 
-    registry.save(userId, modelName, baseUrl.trim(), model.trim(), apiToken.trim(), effort);
+    registry.save(
+        userId, modelName, provider, baseUrl.trim(), model.trim(), apiToken.trim(), effort);
     return messages.get("user-model-added", modelName, model.trim());
   }
 

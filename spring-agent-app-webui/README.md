@@ -22,10 +22,11 @@ Then open <http://localhost:8080>.
 [docker](../spring-agent-tools-shell-docker/README.md) shell ·
 [rag-milvus](../spring-agent-rag-milvus/README.md) ·
 [provider-openai](../spring-agent-provider-openai/README.md) /
-[provider-dashscope](../spring-agent-provider-dashscope/README.md).
+[provider-dashscope](../spring-agent-provider-dashscope/README.md) /
+[provider-google-genai](../spring-agent-provider-google-genai/README.md).
 
 The model variables are the Feishu server's — the `OPENAI_*`/`EMBEDDING_*` set, or
-`DASHSCOPE_API_KEY` in their place — and so are the three switches and the tool bounds; see
+`DASHSCOPE_API_KEY` or `GEMINI_API_KEY` in their place — and so are the three switches and the tool bounds; see
 [that page](../spring-agent-app-feishu/README.md#the-variables-with-no-defaults). A deployment moving
 between the two should not silently get different limits.
 

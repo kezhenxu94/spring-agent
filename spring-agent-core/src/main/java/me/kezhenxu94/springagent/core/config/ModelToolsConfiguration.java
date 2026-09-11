@@ -42,7 +42,8 @@ import org.springframework.web.client.RestTemplate;
 @AutoConfiguration(
     afterName = {
       "me.kezhenxu94.springagent.provider.openai.OpenAiProviderAutoConfiguration",
-      "me.kezhenxu94.springagent.provider.dashscope.DashScopeProviderAutoConfiguration"
+      "me.kezhenxu94.springagent.provider.dashscope.DashScopeProviderAutoConfiguration",
+      "me.kezhenxu94.springagent.provider.googlegenai.GoogleGenAiProviderAutoConfiguration"
     })
 public class ModelToolsConfiguration {
 

@@ -56,7 +56,26 @@ public class UserModelConfig {
 
   @Indexed private String name;
 
-  /** The endpoint's base URL, as {@code spring.ai.openai.base-url} would give it. */
+  /**
+   * Which protocol the endpoint speaks — {@code openai}, {@code google-genai} — spelled as Spring
+   * AI spells it under {@code spring.ai.model.*}, so an operator and a user share one vocabulary.
+   *
+   * <p><b>Null means the deployment's own provider</b>, which is what every row written before this
+   * field existed means and what a person who never opened the select gets. That is the only safe
+   * reading: those rows were registered against whichever module built the chat model, and they
+   * still work.
+   *
+   * <p>Not {@code @Indexed}: it is only ever read after {@code findByOwnerId}, which is indexed
+   * already, and a Redis index over a two-valued field would be one set holding half the table —
+   * the same reasoning as {@code activated} below.
+   */
+  private String provider;
+
+  /**
+   * The endpoint's base URL, as that provider spells one: the whole endpoint on {@code openai} (the
+   * OpenAI SDK appends nothing to it), and on {@code google-genai} an override for the Gemini
+   * Developer API's own host, which is normally left blank.
+   */
   private String baseUrl;
 
   /** The model to ask for, as the endpoint names it. */

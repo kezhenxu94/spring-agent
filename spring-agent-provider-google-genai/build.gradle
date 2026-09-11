@@ -1,0 +1,39 @@
+plugins {
+  id 'springagent.java-library-conventions'
+}
+
+description = 'The Google GenAI model provider for spring-agent-core: Gemini chat with its own thinking levels, Gemini embeddings, and the Gemini image models that edit from reference images.'
+
+dependencies {
+  api project(':spring-agent-core')
+
+  // The three starters, not the bare clients, and for the reason spring-agent-provider-openai gives
+  // about its own: Spring AI's auto-configuration binds `spring.ai.google.genai.*`, publishes the
+  // ChatModel, EmbeddingModel and ImageModel, and gates each on `spring.ai.model.<kind>` being
+  // `google-genai`. That switch is the whole of how a deployment picks a provider here, and
+  // reimplementing any of it would be a second source of truth for the same properties.
+  //
+  // Two of the five auto-configurations they carry are unsafe on a classpath that has no Gemini
+  // key — see GoogleGenAiAutoConfigurationFilter, which is what makes depending on them safe.
+  //
+  // api rather than implementation because GoogleGenAiChatOptions and Client appear in this
+  // module's own bean signatures.
+  api 'org.springframework.ai:spring-ai-starter-model-google-genai'
+  api 'org.springframework.ai:spring-ai-starter-model-google-genai-embedding'
+  api 'org.springframework.ai:spring-ai-starter-model-google-genai-image'
+
+  implementation libs.guava
+
+  // MockEnvironment, for GoogleGenAiAutoConfigurationFilterTest: the filter reads the environment
+  // before anything is bound, so it is tested against one rather than through a context.
+  // The OpenAI provider, on the test classpath only: GoogleGenAiProviderCoexistenceTest is about
+  // what two providers do to one another, which cannot be asserted with one of them absent. Not a
+  // main-source dependency — nothing here compiles against an OpenAI type, unlike
+  // spring-agent-provider-dashscope, which is genuinely built on that protocol.
+  testImplementation project(':spring-agent-provider-openai')
+
+  testImplementation 'org.springframework:spring-test'
+  // Stands in for the endpoint in GoogleGenAiAgentImageModelTest, which is what pins the one thing
+  // this module puts on the wire itself: fetching a reference image Gemini will not fetch.
+  testImplementation libs.okhttp.mockwebserver
+}

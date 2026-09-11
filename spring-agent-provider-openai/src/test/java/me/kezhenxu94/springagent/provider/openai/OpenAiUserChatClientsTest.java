@@ -8,12 +8,11 @@ import java.util.List;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import me.kezhenxu94.springagent.core.dao.repo.UserModelConfigRepo;
 import me.kezhenxu94.springagent.core.security.AesGcmSealer;
+import me.kezhenxu94.springagent.core.usermodels.ProviderChatClients;
 import me.kezhenxu94.springagent.core.usermodels.ReasoningEfforts;
-import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
@@ -39,9 +38,8 @@ class OpenAiUserChatClientsTest {
 
   private final OpenAiChatModel appModel = OpenAiChatModel.builder().options(appOptions).build();
 
-  private final UserChatClients clients =
+  private final ProviderChatClients clients =
       new OpenAiUserChatClients(
-          ChatClient.builder(appModel).build(),
           new UserModelRegistry(mock(UserModelConfigRepo.class), new AesGcmSealer(KEY, "t"), 3),
           appOptions,
           // Not what these tests are about; OpenAiUserModelToolsTest is where the manager a client

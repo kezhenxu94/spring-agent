@@ -16,16 +16,23 @@ plain `bootBuildImage` does not silently turn into a native build.
 
 ## What it carries
 
-[core](../spring-agent-core/README.md), [jpa](../spring-agent-persistence-jpa/README.md) and
-[provider-openai](../spring-agent-provider-openai/README.md), and nothing else. No chat platform, no
-webhook receiver, no Milvus. Everything lives in SQLite under `~/.spring-agent`.
+[core](../spring-agent-core/README.md), [jpa](../spring-agent-persistence-jpa/README.md),
+[provider-openai](../spring-agent-provider-openai/README.md) and
+[provider-google-genai](../spring-agent-provider-google-genai/README.md), and nothing else. No chat
+platform, no webhook receiver, no Milvus. Everything lives in SQLite under `~/.spring-agent`.
 
-One model provider rather than a choice of them, for the same reason there is one persistence
-backend: a laptop points `OPENAI_BASE_URL` at whatever gateway it uses, and a module that exists to
-carry a vendor's own APIs is weight a command line never asks for. So there is no `RecognizeImage`
-here — that needs DashScope's vision endpoint — and `GenerateImage` reaches
-`/v1/images/generations` on whatever `OPENAI_BASE_URL` names, which a gateway that proxies only chat
-will answer with a 404.
+Two model providers rather than all of them. DashScope is absent for the same reason there is one
+persistence backend: what that module carries is a vendor's own APIs, and a laptop points
+`OPENAI_BASE_URL` at whatever gateway it uses, DashScope's compatible-mode included. Gemini is here
+because it is not that case — its chat, embeddings and image generation are genuinely not the OpenAI
+protocol, so reaching it through a compatibility endpoint costs thinking levels and reference-image
+editing, and trips over a field Spring AI emits that Gemini rejects. Set `CHAT_MODEL_PROVIDER` and
+`EMBEDDING_MODEL_PROVIDER` to `google-genai` and name `GEMINI_API_KEY` to use it; leave them alone
+and nothing about this binary changes. So there is no `RecognizeImage` here — this application names
+no vision model, and Gemini needs none since its chat models already see images — and `GenerateImage`
+reaches `/v1/images/generations` on whatever `OPENAI_BASE_URL` names, which a gateway that proxies
+only chat will answer with a 404. Setting `IMAGE_MODEL_PROVIDER=google-genai` points it at Gemini's
+image models instead, which is also the one way to edit an image from a reference here.
 
 ## Using it
 
