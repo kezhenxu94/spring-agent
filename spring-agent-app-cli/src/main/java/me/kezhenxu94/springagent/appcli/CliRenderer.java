@@ -14,6 +14,8 @@ import me.kezhenxu94.springagent.core.tools.ToolContextKey;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.jline.utils.WCWidth;
 import org.springframework.ai.chat.metadata.Usage;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Shows one agent run in the terminal. The counterpart of {@code FeishuCardUpdater}: per run rather
@@ -33,6 +35,9 @@ public class CliRenderer implements AgentResponseListener, TodoEventHandler {
    */
   public static final ToolContextKey<CliRenderer> TOOL_CONTEXT_KEY =
       new ToolContexts.Key<>("CliRenderer", CliRenderer.class);
+
+  /** Only ever asked to read one value back, so one shared instance and no configuration. */
+  private static final JsonMapper JSON = JsonMapper.builder().build();
 
   private static final int MAX_TOOL_INPUT = 120;
   private static final int MAX_TOOL_RESULT_LINES = 5;
@@ -199,10 +204,11 @@ public class CliRenderer implements AgentResponseListener, TodoEventHandler {
    * meant anyway.
    */
   public void onToolResult(final String toolResult) {
-    if (toolResult == null || toolResult.isBlank()) {
+    final var text = readable(toolResult);
+    if (text.isBlank()) {
       return;
     }
-    final var lines = toolResult.strip().lines().toList();
+    final var lines = text.strip().lines().toList();
     for (final var line : lines.subList(0, Math.min(lines.size(), MAX_TOOL_RESULT_LINES))) {
       write("    " + console.dim(truncate(line, Math.max(8, console.width() - 6))) + "\n");
     }
@@ -213,6 +219,32 @@ public class CliRenderer implements AgentResponseListener, TodoEventHandler {
               + "\n");
     }
     bulletOwed = true;
+  }
+
+  /**
+   * What a tool returned, as text rather than as the wire carried it.
+   *
+   * <p>A result reaches us JSON-encoded, so one that is a plain string arrives quoted and escaped —
+   * its newlines written as two characters. Which meant the "first few lines" above were one line:
+   * a whole shell log, on one line, in quotes. Reading it back gives the lines to the reader.
+   *
+   * <p>The counterparts in {@code FeishuCardUpdater} and {@code SlackMessageUpdater} do the same,
+   * and each lays an object out in its own way — a card's fields, Slack's. There is nothing to lay
+   * out here: this column is a few dim lines under a call, so anything that is not a plain string
+   * is shown as the JSON it is.
+   */
+  private static String readable(final String toolResult) {
+    final var text = Strings.nullToEmpty(toolResult).strip();
+    if (!text.startsWith("\"")) {
+      return text;
+    }
+    try {
+      final var node = JSON.readTree(text);
+      return node.isString() ? node.stringValue() : text;
+    } catch (JacksonException e) {
+      // Not JSON at all, so it is whatever the tool wrote, which is what to show.
+      return text;
+    }
   }
 
   @Override

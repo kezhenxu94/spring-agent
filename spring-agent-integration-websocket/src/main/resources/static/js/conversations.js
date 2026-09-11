@@ -16,7 +16,7 @@ import { onNarrowScreen, sidebarOpen } from './sidebar.js';
 import { chatRoute, go } from './route.js';
 import { renderQuestion } from './questions.js';
 import { attachRun, closeStream } from './stream.js';
-import { appendTurn, renderEmptyTranscript } from './transcript.js';
+import { appendTools, appendTurn, renderEmptyTranscript } from './transcript.js';
 import { bus, state } from './state.js';
 
 export async function loadConversations() {
@@ -162,7 +162,9 @@ export async function openConversation(id) {
   } finally {
     drawn();
   }
-  turns.forEach((turn) => appendTurn(turn.role, turn.text));
+  turns.forEach((turn) => (turn.role === 'tools'
+    ? appendTools(turn.tools ?? [])
+    : appendTurn(turn.role, turn.text)));
   if (!turns.length) renderEmptyTranscript();
 
   // Then what the transcript cannot say: is something happening, and is the agent waiting on me.

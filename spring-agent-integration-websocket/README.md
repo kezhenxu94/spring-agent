@@ -33,6 +33,17 @@ Journals live in the heap of whichever replica ran the turn — see
 means for a deployment with more than one. `WEB_JOURNAL_RETENTION` and `WEB_JOURNAL_MAX_RUNS` bound
 what is kept.
 
+That bound is why `ChatSessions.transcript` draws tool calls too, and not only what was said. A
+journal is the live view and is gone after a restart or an eviction; chat memory is what survives,
+so a reloaded conversation reads the calls back out of it. It is drawn **through `RunView` itself**
+rather than by markup that resembles it, so the two cannot drift: `appendTools` in `transcript.js`
+feeds that class the same event shapes the stream feeds it, and one tools row per *turn* is what
+matches the one fold a run draws for itself. What a replay lacks is only the journal — no sequence
+number in the gutter, and the outcome set at once so the rail does not animate.
+
+Only a backend that stores tool calls has any to draw: `redis` and `mongodb` do, `jpa` does not, so
+a conversation with no tools row is the ordinary case there rather than a fault.
+
 ## Reaching a store without a run in between
 
 This is the one surface that does. `KnowledgeController` puts core's `KnowledgeBase` SPI behind

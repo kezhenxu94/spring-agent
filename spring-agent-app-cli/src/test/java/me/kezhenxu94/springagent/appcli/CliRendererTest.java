@@ -151,6 +151,32 @@ class CliRendererTest {
   }
 
   @Test
+  void readsBackAToolResultTheWireEncoded() {
+    // A result arrives JSON-encoded, so a tool that returns a string arrives quoted with its
+    // newlines written as two characters. Printed as it came, a whole shell log was one line — and
+    // the "first few lines" ceiling below never applied, because there was only ever one.
+    when(console.dim(anyString())).thenAnswer(passThrough());
+
+    renderer.onToolResult("\"bash_id: shell_1\\n\\nroot\\n\"");
+
+    final var output = written.toString();
+    assertThat(output).contains("bash_id: shell_1").contains("root").doesNotContain("\\n");
+    // And the quotes the encoding added are gone with it.
+    assertThat(output).doesNotContain("\"bash_id");
+  }
+
+  @Test
+  void leavesAToolResultThatIsNotJsonAlone() {
+    // Which is most of them: a tool returning an object arrives as one, and there is nothing to
+    // lay it out as in a column of dim lines.
+    when(console.dim(anyString())).thenAnswer(passThrough());
+
+    renderer.onToolResult("{\"exitCode\":0}");
+
+    assertThat(written.toString()).contains("{\"exitCode\":0}");
+  }
+
+  @Test
   void printsTheTodoList() {
     when(console.dim(anyString())).thenAnswer(passThrough());
     when(console.bold(anyString())).thenAnswer(passThrough());
