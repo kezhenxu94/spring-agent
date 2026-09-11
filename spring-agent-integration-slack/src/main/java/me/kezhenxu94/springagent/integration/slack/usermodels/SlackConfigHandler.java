@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import me.kezhenxu94.springagent.core.usermodels.BuiltinModels;
+import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import me.kezhenxu94.springagent.core.usermodels.UserModelProbe;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import me.kezhenxu94.springagent.integration.slack.config.SlackMessages;
@@ -44,6 +45,14 @@ public class SlackConfigHandler {
   private final UserModelRegistry registry;
   private final UserModelProbe probe;
   private final BuiltinModels builtins;
+
+  /**
+   * Only for {@link UserChatClients#providers()} and {@link UserChatClients#defaultProvider()}: the
+   * form offers a protocol select of exactly what this deployment's classpath serves. Asked of the
+   * bean rather than listed here, so a provider module added or dropped changes the form with it.
+   */
+  private final UserChatClients chatClients;
+
   private final SlackConfigForm form;
   private final SlackMessages messages;
 
@@ -68,7 +77,14 @@ public class SlackConfigHandler {
       final var active = registry.active(userId).orElse(null);
       // Best-effort, and never on the critical path: an endpoint that will not list its models
       // leaves this empty and the modal offers the single built-in entry instead.
-      final var view = form.view(configured, active, builtins.list(), builtins.defaultModel());
+      final var view =
+          form.view(
+              configured,
+              active,
+              builtins.list(),
+              builtins.defaultModel(),
+              chatClients.providers(),
+              chatClients.defaultProvider());
       final var response = slack.viewsOpen(r -> r.triggerId(ctx.getTriggerId()).view(view));
       if (!response.isOk()) {
         log.error("Could not open the model settings for {}: {}", userId, response.getError());
@@ -215,7 +231,13 @@ public class SlackConfigHandler {
             final var configured = registry.list(userId);
             final var active = registry.active(userId).orElse(null);
             final var blocks =
-                form.messageBlocks(configured, active, builtins.list(), builtins.defaultModel());
+                form.messageBlocks(
+                    configured,
+                    active,
+                    builtins.list(),
+                    builtins.defaultModel(),
+                    chatClients.providers(),
+                    chatClients.defaultProvider());
             final var response =
                 slack.chatPostMessage(
                     r -> r.channel(channelId).blocks(blocks).text(messages.get("config-title")));
@@ -269,8 +291,9 @@ public class SlackConfigHandler {
       return;
     }
     final var effort = submission.storedEffort();
+    final var provider = submission.storedProvider();
     final var failure =
-        probe.check(submission.baseUrl(), submission.model(), submission.token(), effort);
+        probe.check(provider, submission.baseUrl(), submission.model(), submission.token(), effort);
     if (failure != null) {
       say(channelId, messages.get("config-add-failed", submission.name(), failure));
       return;
@@ -278,6 +301,7 @@ public class SlackConfigHandler {
     registry.save(
         userId,
         submission.name(),
+        provider,
         submission.baseUrl(),
         submission.model(),
         submission.token(),

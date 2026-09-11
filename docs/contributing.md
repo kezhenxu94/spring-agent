@@ -109,6 +109,7 @@ spring-agent-integration-websocket    a browser as a surface: the SPA, its REST 
 spring-agent-rag-milvus               the knowledge base; the only KnowledgeBase implementation
 spring-agent-provider-openai          the OpenAI wire protocol, and so most gateways
 spring-agent-provider-dashscope       DashScope's own image API and vision endpoint; builds on the above
+spring-agent-provider-google-genai    Gemini natively: thinking levels, its embeddings, reference-image editing
 spring-agent-app-feishu               deployable server, Feishu surface; depends on every optional module
 spring-agent-app-slack                the same server, Slack surface
 spring-agent-app-cli                  laptop command line; jpa + local shell only
@@ -513,6 +514,18 @@ at all.** If the endpoint speaks the OpenAI wire protocol, configure `spring-age
 and stop; that covers nearly every gateway, self-hosted server and cloud inference product, and it is
 what `spring-agent-provider-dashscope` does for chat, embeddings and transcription.
 
+Whether Spring AI ships a starter for the provider is **not** what decides this. A starter publishes
+model beans and knows nothing of core's own contracts — `ProviderChatClients`, `BuiltinModels`,
+`ProviderRejection`, and an `ImageModel` that reads `ImageGenerationMetadata` — so a provider that
+needs any of those needs a module whether or not it is first-class upstream.
+`spring-agent-provider-openai` and `spring-agent-provider-google-genai` are both exactly that: a
+Spring AI starter plus those contracts, and little else. `spring-agent-provider-dashscope` is the
+one that is different, because Spring AI ships nothing for it at all.
+
+What a starter's existence changes is the *size* of the module, not the need for it. The question to
+ask is whether the endpoint's protocol is already served here, not whether upstream has heard of the
+vendor.
+
 Selection is **Spring AI's own `spring.ai.model.<kind>`**, not a switch of this project's. There is
 no `ConditionalOnProviderBackend` beside the persistence and shell trios, deliberately: Spring AI
 gates every model auto-configuration it ships on those keys already, and a second switch over the
@@ -525,7 +538,7 @@ starter for it:
 1. an auto-configuration named in `AutoConfiguration.imports`, **and added to the `afterName` list in
    core's `ModelToolsConfiguration`** — matched textually, so a module missing from it silently loses
    the image, vision and transcription tools;
-2. implementations of core's `UserChatClients` and `BuiltinModels` (`core/usermodels/`), two of the
+2. implementations of core's `ProviderChatClients` and `BuiltinModels` (`core/usermodels/`), two of the
    three contracts a provider writes itself — Spring AI's models are all built once at startup from
    configuration, and neither "build a client for an endpoint somebody typed into a chat" nor "ask an
    endpoint what it serves" is that. Skip them and that provider simply has no per-user models;

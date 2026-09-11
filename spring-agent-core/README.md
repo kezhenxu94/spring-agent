@@ -35,7 +35,7 @@ which is what makes a listener free to wait on a write — see the `notification
 | `identity`, `security` | Who a run is, and what an `app.ai.admins` member may do |
 | `storage`, `share` | A user's home under `app.storage.location`, and `ShareController` publishing a file |
 | `scheduling` | Scheduled tasks: a schedule is a column on the task, and each occurrence is won by exactly one replica |
-| `usermodels` | Bring-your-own-model: sealed endpoints a person registers, and the `/config` machinery around them. `UserChatClients` and `BuiltinModels` are contracts here — a `spring-agent-provider-*` module implements them |
+| `usermodels` | Bring-your-own-model: sealed endpoints a person registers, and the `/config` machinery around them. `ProviderChatClients` and `BuiltinModels` are contracts here — a `spring-agent-provider-*` module implements them, one per protocol; `UserChatClients` is core's own dispatcher over whichever are on the classpath, which is what lets a row name its protocol |
 | `advisors`, `logging`, `config`, `aot` | Spring AI advisors, structured logging, auto-configuration, native-image hints |
 
 ## Memory, and why it is a fork
@@ -106,7 +106,7 @@ knowing before changing anything near a model:
   where the deployment has that model**, ordered with `@AutoConfiguration(afterName = ...)` naming each
   provider's class as a string. A provider missing from that list silently loses those three tools; a
   deployment with no such model gets no tool rather than one that always fails.
-- `usermodels`' `UserChatClients` and `BuiltinModels`, and `agent/ProviderRejection`, are the only
+- `usermodels`' `ProviderChatClients` and `BuiltinModels`, and `agent/ProviderRejection`, are the only
   three contracts a provider has to implement itself. Everything else it offers is a Spring AI
   interface. Read each one's javadoc for why Spring AI has no counterpart — briefly: its models are
   built once at startup from configuration, and none of "build a client for an endpoint somebody typed

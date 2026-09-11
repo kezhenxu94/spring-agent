@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.core.usermodels;
 
+import java.util.List;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import org.springframework.ai.chat.client.ChatClient;
 
@@ -28,6 +29,24 @@ import org.springframework.ai.chat.client.ChatClient;
  * would fail the very run they would use to fix it.
  */
 public interface UserChatClients {
+
+  /**
+   * Which protocols a row may name on this deployment, as {@link ProviderChatClients#provider()}
+   * spells them — exactly the provider modules on the classpath, and never a fixed list.
+   *
+   * <p>Here so a form can draw a select of what is actually served rather than of what exists in
+   * the world: offering a protocol no module implements would let somebody register an endpoint
+   * that can only ever fail, which is the shape of mistake this project avoids everywhere else. A
+   * deployment carrying one provider returns one entry, and a surface should then draw nothing at
+   * all — there is no choice to make.
+   */
+  List<String> providers();
+
+  /**
+   * What a row naming no provider is spoken in, or null where nothing serves user models. The value
+   * a form should preselect, and what every row written before the field existed means.
+   */
+  String defaultProvider();
 
   /** The client {@code userId}'s runs should go through. */
   ChatClient forUser(String userId);

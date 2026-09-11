@@ -103,28 +103,119 @@ spring:
     #             Authorization: Bearer ${GITHUB_MCP_TOKEN}
     # Which provider serves each kind of model. Spring AI's own switch, not one of this project's:
     # every model auto-configuration it ships is gated on the matching key here, so naming a
-    # provider here is what makes the others back off. Both spring-agent-provider-openai and
-    # spring-agent-provider-dashscope are on the classpath; exactly one wins per kind.
+    # provider is what makes the others back off. Three are on the classpath —
+    # spring-agent-provider-openai, -dashscope and -google-genai — and exactly one wins per kind.
     #
-    # `chat`, `embedding` and `audio.transcription` are left unset, which means `openai` — and that
-    # is right even on DashScope, whose endpoints are the OpenAI wire protocol (`compatible-mode`).
-    # spring.ai.dashscope.* below is what points that client at DashScope.
-    #
-    # `image` is the one that genuinely differs: DashScope generates images through an API of its
-    # own — reference images, and a size vocabulary OpenAI's has no field for — while OpenAI's is
-    # /v1/images/generations. So this one has to be chosen: `dashscope`, `openai`, or `none`.
-    #
-    # `none` by default, and deliberately, for the same reason app.ai.tools.shell.type is: an image
-    # provider is a paid third-party API this deployment would start calling on the model's say-so,
-    # and neither other value is safe to assume. `openai` on a gateway that proxies chat but not
-    # images answers 404s to every call; `dashscope` needs a DashScope key, which a deployment
-    # running elsewhere has no reason to hold.
-    #
-    # With `none` there is no ImageModel bean and therefore no GenerateImage tool at all — a model
-    # that is not offered a tool does better than one offered a tool that always fails. See
-    # ModelToolsConfiguration in core.
+    # `audio.transcription` has only one provider that serves it at all, so naming it is a way of
+    # switching the TranscribeAudio tool off rather than of choosing — see below.
     model:
+      # Named explicitly rather than left unset, and that changed when a third provider arrived.
+      # Every model auto-configuration Spring AI ships is `matchIfMissing`, so "unset means openai"
+      # held only while the classpath had one provider that could answer. With three, a kind that
+      # names nothing gets *every* provider that serves it, and the application fails to start with
+      # two ChatModel beans. GoogleGenAiProviderCoexistenceTest is what pins this.
+      #
+      # `openai` is the default here and is right on DashScope too, whose endpoints are the OpenAI
+      # wire protocol (`compatible-mode`) — spring.ai.dashscope.* below is what points that client
+      # at DashScope. Set these to `google-genai` and name GEMINI_API_KEY to talk to Gemini natively
+      # instead, which is what gets thinking levels, Gemini's own embeddings, and image models that
+      # edit from a reference image.
+      chat: ${CHAT_MODEL_PROVIDER:openai}
+      # Embeddings take two keys with the same value, and this is a trap rather than redundancy:
+      # Spring AI's OpenAI auto-configuration is gated on `embedding` while its Google GenAI one is
+      # gated on `embedding.text`. Naming only one of them silences one provider and leaves the
+      # other matching by default — which happens to give the right answer, but only by accident of
+      # which key was named. Setting both is correct in either direction.
+      #
+      # Note these are independent of `chat` above: DashScope embeddings beside a Gemini chat model
+      # is a supported combination and needs nothing but the two blocks below being configured.
+      embedding: ${EMBEDDING_MODEL_PROVIDER:openai}
+      embedding.text: ${EMBEDDING_MODEL_PROVIDER:openai}
+      # `image` is the one that genuinely differs between providers: DashScope generates through an
+      # API of its own — reference images, and a size vocabulary OpenAI's has no field for — Gemini
+      # through `generateContent` with inline image parts, and OpenAI through
+      # /v1/images/generations, which takes a prompt and nothing else.
+      #
+      # `none` by default, and deliberately, for the same reason app.ai.tools.shell.type is: an
+      # image provider is a paid third-party API this deployment would start calling on the model's
+      # say-so, and no other value is safe to assume. `openai` on a gateway that proxies chat but
+      # not images answers 404s to every call; the other two need a credential a deployment running
+      # elsewhere has no reason to hold.
+      #
+      # With `none` there is no ImageModel bean and therefore no GenerateImage tool at all — a model
+      # that is not offered a tool does better than one offered a tool that always fails. See
+      # ModelToolsConfiguration in core.
       image: ${IMAGE_MODEL_PROVIDER:none}
+      # Transcription has exactly one provider here — Spring AI ships no Google GenAI or DashScope
+      # TranscriptionModel — so this switch is not about choosing, it is about turning the tool off.
+      #
+      # It matters because the OpenAI transcription auto-configuration builds a model from whatever
+      # spring.ai.openai.audio.transcription names, and blank names nothing: core then registers
+      # TranscribeAudio against a client with no endpoint, and the model is offered a tool that
+      # cannot ever work. A deployment serving no transcription — every google-genai-only one, and
+      # any gateway that proxies chat alone — should set this to `none`, which makes Spring AI's
+      # auto-configuration back off and takes the tool away with it.
+      #
+      # `openai` by default so that deployments where it works today keep it.
+      audio:
+        transcription: ${TRANSCRIPTION_MODEL_PROVIDER:openai}
+    # Google Gemini's own API: Spring AI's spring-ai-google-genai over Google's official
+    # com.google.genai SDK, which calls {model}:generateContent and {model}:embedContent on
+    # generativelanguage.googleapis.com. Not /chat/completions, and so nothing above under
+    # spring.ai.openai applies to it.
+    #
+    # (Gemini does also serve an OpenAI-compatible endpoint, and pointing OPENAI_BASE_URL at it is a
+    # supported way to use Gemini here. It is a different thing from this block, and it costs the
+    # thinking levels, the embeddings and the reference-image editing this one has — see
+    # spring-agent-provider-google-genai/README.md.)
+    #
+    # Read by spring-agent-provider-google-genai, which is a module for the same reason
+    # spring-agent-provider-openai is one rather than because Spring AI lacks support: Spring AI's
+    # starter publishes the models, and core's own contracts — UserChatClients, BuiltinModels,
+    # ProviderRejection, and the ImageModel that reads ImageGenerationMetadata — are things no
+    # starter knows about.
+    #
+    # Nothing below does anything until api-key is set — and rather more literally than for the
+    # other two providers. Two of Spring AI's five Google GenAI auto-configurations carry no
+    # spring.ai.model.* condition at all and fail startup when no credential is configured, so the
+    # module removes every one of them while this is blank. See GoogleGenAiAutoConfigurationFilter.
+    #
+    # Only the Gemini Developer API is served here: one key, no project, no location, no
+    # service-account file. Setting Spring AI's Vertex AI properties instead is refused at startup
+    # rather than half-supported — see GoogleGenAiConnectionCheck.
+    google:
+      genai:
+        api-key: ${GEMINI_API_KEY:}
+        chat:
+          # No default, because Gemini has none: an empty model name is refused with a message that
+          # reads like a broken endpoint. GoogleGenAiConnectionCheck fails startup instead, and only
+          # when spring.ai.model.chat above actually names google-genai.
+          model: ${GEMINI_CHAT_MODEL:}
+        embedding:
+          text:
+            model: ${GEMINI_EMBEDDING_MODEL:}
+            # 1024 to agree with the two Milvus dimensions below and with every other provider's
+            # default here, not because it is Gemini's own. gemini-embedding-001 emits 3072 and is
+            # Matryoshka-trained, so 768, 1536 and 3072 are the sizes Google recommends truncating
+            # to; any value from 1 to 3072 is accepted.
+            #
+            # Disagreeing is not a soft failure. Milvus refuses the insert outright —
+            # `Incorrect dimension for field 'embedding': the no.0 vector's dimension: 1536 is not
+            # equal to field's dimension: 1024` — which surfaces as a run failing on
+            # `Stream processing failed`, naming neither embeddings nor this setting. So moving to
+            # 1536 or 3072 means moving VECTORSTORE_MILVUS_DIMENSION and RAG_MILVUS_DIMENSION with
+            # it, and rebuilding both collections: a collection built at one dimension cannot be
+            # searched at another.
+            dimensions: ${GEMINI_EMBEDDING_DIMENSIONS:1024}
+        image:
+          # gemini-2.5-flash-image is Spring AI's own default and the model that edits from
+          # reference images; gemini-3-pro-image is the slower, better one. Unlike chat and
+          # embeddings this one has a default, so naming nothing still works.
+          model: ${GEMINI_IMAGE_MODEL:gemini-2.5-flash-image}
+        # No vision block, and that is an absence with a reason: Gemini's chat models are natively
+        # multimodal, so RecognizeImage goes through the application's own client rather than a
+        # second endpoint. spring.ai.openai.vision and spring.ai.dashscope.vision exist because on
+        # those providers it genuinely is a different model.
     # Alibaba Cloud DashScope, as one credential. Read by spring-agent-provider-dashscope, which
     # publishes the two things DashScope does differently — its image API and its vision endpoint —
     # and contributes the rest to spring.ai.openai.* above, since chat and embeddings there are the
@@ -281,7 +372,12 @@ spring:
           host: ${MILVUS_HOST:localhost}
           port: ${MILVUS_PORT:19530}
         collection-name: spring_agent_bot_tool_index
-        embedding-dimension: 1024
+        # Has to equal whichever embedding model is in force — spring.ai.openai.embedding
+        # .dimensions, or the DashScope or Gemini equivalent above. A variable rather than a
+        # literal because those are variables: a deployment on a 1536- or 3072-dimension model has
+        # to be able to move this without editing the file, and Milvus refuses an insert whose
+        # width disagrees rather than degrading.
+        embedding-dimension: ${VECTORSTORE_MILVUS_DIMENSION:1024}
         initialize-schema: true
   datasource:
     # WAL and a busy timeout because concurrent agent streams write to it and SQLite serialises

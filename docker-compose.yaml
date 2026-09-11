@@ -59,8 +59,12 @@
 # on a fresh clone, but the application will not start without at least OPENAI_BASE_URL,
 # OPENAI_API_KEY, OPENAI_MODEL and the EMBEDDING_* trio — or, on DashScope, DASHSCOPE_API_KEY plus
 # DASHSCOPE_CHAT_MODEL and DASHSCOPE_EMBEDDING_MODEL, one credential covering every endpoint but no
-# endpoint having a default model. Image generation is off either way until IMAGE_MODEL_PROVIDER
-# names a provider; see spring-agent-provider-dashscope/README.md.
+# endpoint having a default model — or, on Gemini, GEMINI_API_KEY plus GEMINI_CHAT_MODEL and
+# GEMINI_EMBEDDING_MODEL with CHAT_MODEL_PROVIDER and EMBEDDING_MODEL_PROVIDER set to google-genai.
+# Those switches are per kind, so the sets mix: a Gemini chat model over DashScope embeddings needs
+# one line from each. Image generation is off in every case until IMAGE_MODEL_PROVIDER names a
+# provider; see spring-agent-provider-dashscope/README.md and
+# spring-agent-provider-google-genai/README.md.
 #
 # Every published port is overridable through a *_HOST_PORT variable, because a machine that
 # already runs a Redis or a MongoDB is the normal case rather than the exception:

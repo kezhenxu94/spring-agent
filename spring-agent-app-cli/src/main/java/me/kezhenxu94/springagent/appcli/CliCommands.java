@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.appcli;
 
 import java.util.Comparator;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import me.kezhenxu94.springagent.appcli.config.CliProperties;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
@@ -8,8 +9,10 @@ import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.config.ConditionalOnUserModels;
 import me.kezhenxu94.springagent.core.tools.AgentToolsProvider;
 import me.kezhenxu94.springagent.core.usermodels.UserModelCommand;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiCommonProperties;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.shell.core.command.Command;
@@ -82,10 +85,26 @@ public class CliCommands {
             });
   }
 
+  /**
+   * What this run is actually talking to.
+   *
+   * <p>The model name comes from the {@code ChatModel} bean rather than from any provider's
+   * properties, because this application carries two providers and the one serving a run is {@code
+   * spring.ai.model.chat}'s choice. Asking OpenAI's properties would print the model a Gemini
+   * deployment is not using — or, since those properties only exist while that auto-configuration
+   * ran, fail to start it at all.
+   *
+   * <p>The endpoint is the part that has no provider-neutral answer: {@code ChatOptions} carries a
+   * model name and nothing about where it is. So it is shown when the OpenAI connection is the one
+   * in force and omitted otherwise, which is honest — on Gemini the endpoint is Google's and not
+   * something a deployment chose. Both are {@code ObjectProvider} so that their absence is a
+   * missing line rather than a context that will not start.
+   */
   @Bean
   Command cliModelCommand(
-      final OpenAiChatProperties chatProperties,
-      final OpenAiCommonProperties connectionProperties,
+      final ChatModel chatModel,
+      final ObjectProvider<OpenAiChatProperties> chatProperties,
+      final ObjectProvider<OpenAiCommonProperties> connectionProperties,
       final CliConsole console,
       final CliMessages messages) {
     return Command.builder()
@@ -95,15 +114,35 @@ public class CliCommands {
         .execute(
             context -> {
               final var writer = context.outputWriter();
-              writer.println(label(console, messages, "label-model") + chatProperties.getModel());
-              // The chat properties override the connection ones when set, which is the order
-              // Spring AI itself resolves them in.
-              final var baseUrl =
-                  chatProperties.getBaseUrl() == null || chatProperties.getBaseUrl().isBlank()
-                      ? connectionProperties.getBaseUrl()
-                      : chatProperties.getBaseUrl();
-              writer.println(label(console, messages, "label-base") + baseUrl);
+              final var options = chatModel.getDefaultOptions();
+              writer.println(
+                  label(console, messages, "label-model")
+                      + (options == null ? "" : options.getModel()));
+              baseUrl(chatProperties.getIfAvailable(), connectionProperties.getIfAvailable())
+                  .ifPresent(url -> writer.println(label(console, messages, "label-base") + url));
             });
+  }
+
+  /**
+   * The endpoint the OpenAI connection names, where that is the connection in force.
+   *
+   * <p>The chat properties override the connection ones when set, which is the order Spring AI
+   * itself resolves them in.
+   */
+  private static Optional<String> baseUrl(
+      final OpenAiChatProperties chatProperties,
+      final OpenAiCommonProperties connectionProperties) {
+    if (chatProperties != null
+        && chatProperties.getBaseUrl() != null
+        && !chatProperties.getBaseUrl().isBlank()) {
+      return Optional.of(chatProperties.getBaseUrl());
+    }
+    if (connectionProperties != null
+        && connectionProperties.getBaseUrl() != null
+        && !connectionProperties.getBaseUrl().isBlank()) {
+      return Optional.of(connectionProperties.getBaseUrl());
+    }
+    return Optional.empty();
   }
 
   @Bean

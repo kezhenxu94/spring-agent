@@ -128,6 +128,24 @@
       "content": "{baseUrlPlaceholder}"
     }
   },
+  "providerLabel": {
+    "tag": "markdown",
+    "content": "{providerLabel}",
+    "text_align": "left",
+    "text_size": "normal_v2"
+  },
+  "providerSelect": {
+    "tag": "select_static",
+    "name": "cfg_provider",
+    "type": "default",
+    "width": "fill",
+    "required": false,
+    "placeholder": {
+      "tag": "plain_text",
+      "content": "{providerHint}"
+    },
+    "options": []
+  },
   "modelInput": {
     "tag": "input",
     "name": "cfg_model",

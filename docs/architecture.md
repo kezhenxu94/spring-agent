@@ -297,6 +297,7 @@ flowchart BT
     rag[rag-milvus]
     prov[provider-openai]
     dash[provider-dashscope]
+    genai[provider-google-genai]
     apps[the deployable applications]
 
     pers --> core
@@ -308,6 +309,7 @@ flowchart BT
     rag --> core
     prov --> core
     dash --> prov
+    genai --> core
     apps --> pers
     apps --> shell
     apps --> surf
@@ -316,6 +318,7 @@ flowchart BT
     apps --> rag
     apps --> prov
     apps --> dash
+    apps --> genai
 ```
 
 Every arrow points at core, with two exceptions, both of which are an implementation depending on
@@ -326,7 +329,7 @@ bytes. Both are written down in the modules' own READMEs.
 
 `spring-agent-core` must stay free of any persistence backend **and of any model provider** —
 `checkRuntimeClasspathIsolation` fails the build if Hibernate, the Mongo driver, Jedis, Milvus,
-fabric8 or the OpenAI SDK reach its runtime classpath. The OpenAI entries are the easiest to
+fabric8 or a provider SDK — OpenAI's or Gemini's — reach its runtime classpath. The provider entries are the easiest to
 reintroduce by accident and the hardest to notice: a provider SDK arriving there costs every consumer
 the weight of a provider they did not choose, and nothing else in the build would say so. Where a name
 genuinely has to cross that line it is duplicated as a string with a comment on both sides saying so —

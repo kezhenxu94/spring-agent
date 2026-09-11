@@ -30,19 +30,21 @@ class FeishuConfigFormTest {
   @Test
   @DisplayName("the card parses, and every label placeholder has been filled")
   void rendersValidJson() throws Exception {
-    final var card = om.readTree(form.card(List.of(), null, List.of(), "gpt-4o"));
+    final var card =
+        om.readTree(form.card(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai"));
 
     assertThat(card.path("schema").asString()).isEqualTo("2.0");
     // A placeholder left behind means a key was added to the template and not to
     // renderConfigForm, which reaches the user as the literal word in braces sitting in the card.
-    assertThat(form.card(List.of(), null, List.of(), "gpt-4o"))
+    assertThat(form.card(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai"))
         .doesNotContainPattern("\\{[a-zA-Z]+\\}");
   }
 
   @Test
   @DisplayName("the built-in model is always offered, even with nothing registered")
   void defaultAlwaysOffered() throws Exception {
-    final var card = om.readTree(form.card(List.of(), null, List.of(), "gpt-4o"));
+    final var card =
+        om.readTree(form.card(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai"));
 
     final var options = select(card).path("options");
     assertThat(options).hasSize(1);
@@ -55,7 +57,13 @@ class FeishuConfigFormTest {
   void preselectsActive() throws Exception {
     final var card =
         om.readTree(
-            form.card(List.of(config("kimi"), config("glm")), config("glm"), List.of(), "gpt-4o"));
+            form.card(
+                List.of(config("kimi"), config("glm")),
+                config("glm"),
+                List.of(),
+                "gpt-4o",
+                List.of("openai"),
+                "openai"));
 
     // 1-based, and the built-in model occupies the first slot, so the second endpoint is third.
     assertThat(select(card).path("initial_index").asInt()).isEqualTo(3);
@@ -65,7 +73,8 @@ class FeishuConfigFormTest {
   @Test
   @DisplayName("the token field is masked")
   void tokenIsMasked() throws Exception {
-    final var card = om.readTree(form.card(List.of(), null, List.of(), "gpt-4o"));
+    final var card =
+        om.readTree(form.card(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai"));
 
     final var token =
         elements(card)
@@ -79,7 +88,10 @@ class FeishuConfigFormTest {
   @Test
   @DisplayName("the dropdown carries no label, which Feishu rejects the whole card over")
   void selectHasNoLabel() throws Exception {
-    final var card = om.readTree(form.card(List.of(config("kimi")), null, List.of(), "gpt-4o"));
+    final var card =
+        om.readTree(
+            form.card(
+                List.of(config("kimi")), null, List.of(), "gpt-4o", List.of("openai"), "openai"));
 
     // select_static has neither label nor label_position — unlike input, which has both. Sending
     // one does not get ignored: the card is refused with `200621 unknown property`, which reaches
@@ -91,7 +103,10 @@ class FeishuConfigFormTest {
   @Test
   @DisplayName("the models the endpoint lists become options, the configured one as the default")
   void listsBuiltinModels() throws Exception {
-    final var card = om.readTree(form.card(List.of(), null, List.of("gpt-4o", "o3"), "gpt-4o"));
+    final var card =
+        om.readTree(
+            form.card(
+                List.of(), null, List.of("gpt-4o", "o3"), "gpt-4o", List.of("openai"), "openai"));
 
     final var options = select(card).path("options");
     assertThat(options).hasSize(2);
@@ -105,7 +120,9 @@ class FeishuConfigFormTest {
   @Test
   @DisplayName("a listing that omits the configured model still offers a way back to it")
   void defaultAlwaysReachable() throws Exception {
-    final var card = om.readTree(form.card(List.of(), null, List.of("o3"), "gpt-4o"));
+    final var card =
+        om.readTree(
+            form.card(List.of(), null, List.of("o3"), "gpt-4o", List.of("openai"), "openai"));
 
     final var options = select(card).path("options");
     assertThat(options.get(0).path("value").asString()).isEqualTo(FeishuConfigForm.DEFAULT_OPTION);
@@ -116,7 +133,14 @@ class FeishuConfigFormTest {
   @DisplayName("a built-in model in use is the one preselected")
   void preselectsBuiltin() throws Exception {
     final var card =
-        om.readTree(form.card(List.of(), builtin("o3"), List.of("gpt-4o", "o3"), "gpt-4o"));
+        om.readTree(
+            form.card(
+                List.of(),
+                builtin("o3"),
+                List.of("gpt-4o", "o3"),
+                "gpt-4o",
+                List.of("openai"),
+                "openai"));
 
     assertThat(select(card).path("initial_index").asInt()).isEqualTo(2);
   }
@@ -126,7 +150,13 @@ class FeishuConfigFormTest {
   void userModelsAfterBuiltins() throws Exception {
     final var card =
         om.readTree(
-            form.card(List.of(config("kimi")), config("kimi"), List.of("gpt-4o"), "gpt-4o"));
+            form.card(
+                List.of(config("kimi")),
+                config("kimi"),
+                List.of("gpt-4o"),
+                "gpt-4o",
+                List.of("openai"),
+                "openai"));
 
     final var options = select(card).path("options");
     assertThat(options).hasSize(2);
@@ -142,7 +172,8 @@ class FeishuConfigFormTest {
       many.add("model-%03d".formatted(i));
     }
 
-    final var card = om.readTree(form.card(List.of(), null, many, "model-200"));
+    final var card =
+        om.readTree(form.card(List.of(), null, many, "model-200", List.of("openai"), "openai"));
 
     // Feishu refuses the whole card over this rather than truncating, so the cap is the thing
     // standing between a large gateway and no settings card at all.
@@ -158,7 +189,10 @@ class FeishuConfigFormTest {
       many.add("model-%03d".formatted(i));
     }
 
-    final var card = om.readTree(form.card(List.of(), builtin("model-240"), many, "model-200"));
+    final var card =
+        om.readTree(
+            form.card(
+                List.of(), builtin("model-240"), many, "model-200", List.of("openai"), "openai"));
 
     final var values =
         select(card).path("options").valueStream().map(o -> o.path("value").asString()).toList();
@@ -229,7 +263,8 @@ class FeishuConfigFormTest {
   @Test
   @DisplayName("how hard to think is a list, and the whole list")
   void effortIsAList() throws Exception {
-    final var card = om.readTree(form.card(List.of(), null, List.of(), "gpt-4o"));
+    final var card =
+        om.readTree(form.card(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai"));
 
     final var values =
         effortSelect(card)
@@ -248,7 +283,9 @@ class FeishuConfigFormTest {
   void preselectsEffort() throws Exception {
     final var active = config("kimi").toBuilder().reasoningEffort("high").build();
 
-    final var card = om.readTree(form.card(List.of(active), active, List.of(), "gpt-4o"));
+    final var card =
+        om.readTree(
+            form.card(List.of(active), active, List.of(), "gpt-4o", List.of("openai"), "openai"));
 
     final var index = effortSelect(card).path("initial_index").asInt();
     // 1-based, and the application's own setting is the first option, so the values follow it.
@@ -259,7 +296,8 @@ class FeishuConfigFormTest {
   @Test
   @DisplayName("a model with no effort of its own shows the application's setting")
   void preselectsInherit() throws Exception {
-    final var card = om.readTree(form.card(List.of(), null, List.of(), "gpt-4o"));
+    final var card =
+        om.readTree(form.card(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai"));
 
     assertThat(effortSelect(card).path("initial_index").asInt()).isEqualTo(1);
     assertThat(effortSelect(card).path("options").get(0).path("value").asString())
@@ -275,7 +313,14 @@ class FeishuConfigFormTest {
         UserModelConfig.builder().name("@").reasoningEffort("max").activated(true).build();
 
     final var card =
-        om.readTree(form.card(List.of(), defaultRow, List.of("a-model", "gpt-4o"), "gpt-4o"));
+        om.readTree(
+            form.card(
+                List.of(),
+                defaultRow,
+                List.of("a-model", "gpt-4o"),
+                "gpt-4o",
+                List.of("openai"),
+                "openai"));
 
     final var index = select(card).path("initial_index").asInt();
     assertThat(select(card).path("options").get(index - 1).path("value").asString())
@@ -285,7 +330,8 @@ class FeishuConfigFormTest {
   @Test
   @DisplayName("the effort caption is the size of the field labels it sits between")
   void effortCaptionMatchesTheLabels() throws Exception {
-    final var card = om.readTree(form.card(List.of(), null, List.of(), "gpt-4o"));
+    final var card =
+        om.readTree(form.card(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai"));
 
     // It stands in for an input's label, select_static having none of its own, so it has to read as
     // one rather than as the smaller section captions.
@@ -366,5 +412,70 @@ class FeishuConfigFormTest {
         .valueStream()
         .filter(node -> "select_static".equals(node.path("tag").asString("")))
         .toList();
+  }
+
+  // --- the protocol select ----------------------------------------------------------------
+
+  @Test
+  @DisplayName("one provider draws no protocol select at all")
+  void oneProviderDrawsNoSelect() throws Exception {
+    // Most deployments carry one provider module, so most cards should show none of this: a select
+    // of one option is a question with no answers, and it implies the others are available here.
+    final var card =
+        om.readTree(form.card(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai"));
+
+    assertThat(providerSelect(card)).isNull();
+  }
+
+  @Test
+  @DisplayName("two providers draw a select of exactly those two, and nothing else")
+  void theSelectOffersOnlyWhatIsServed() throws Exception {
+    // The point of asking UserChatClients rather than listing providers by hand: offering a
+    // protocol no module implements would let somebody register an endpoint that can only fail.
+    final var card =
+        om.readTree(
+            form.card(
+                List.of(), null, List.of(), "gpt-4o", List.of("openai", "google-genai"), "openai"));
+
+    final var options = providerSelect(card).path("options");
+    assertThat(options).hasSize(3);
+    assertThat(options.get(0).path("value").asString())
+        .isEqualTo(FeishuConfigForm.PROVIDER_INHERIT_OPTION);
+    assertThat(options.get(1).path("value").asString()).isEqualTo("openai");
+    assertThat(options.get(2).path("value").asString()).isEqualTo("google-genai");
+    // The deployment's own is preselected, which is what a row naming nothing means.
+    assertThat(providerSelect(card).path("initial_index").asInt()).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("a row already on a protocol has that one preselected")
+  void theSelectPreselectsTheRowsProtocol() throws Exception {
+    final var active =
+        UserModelConfig.builder().name("mine").provider("google-genai").model("m").build();
+    final var card =
+        om.readTree(
+            form.card(
+                List.of(active),
+                active,
+                List.of(),
+                "gpt-4o",
+                List.of("openai", "google-genai"),
+                "openai"));
+
+    // 1-based, and the deployment's own occupies the first slot, so the second protocol is third.
+    assertThat(providerSelect(card).path("initial_index").asInt()).isEqualTo(3);
+  }
+
+  /** The protocol select, or null where the card drew none. */
+  private static tools.jackson.databind.JsonNode providerSelect(
+      final tools.jackson.databind.JsonNode card) {
+    for (final var element : card.path("body").path("elements")) {
+      for (final var inner : element.path("elements")) {
+        if ("cfg_provider".equals(inner.path("name").asString())) {
+          return inner;
+        }
+      }
+    }
+    return null;
   }
 }

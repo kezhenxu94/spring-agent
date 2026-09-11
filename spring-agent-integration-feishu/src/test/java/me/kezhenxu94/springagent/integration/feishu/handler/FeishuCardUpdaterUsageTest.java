@@ -21,6 +21,7 @@ import java.util.Map;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.ModelPricing;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.ModelPricing.Currency;
 import me.kezhenxu94.springagent.core.tools.UserHome;
+import me.kezhenxu94.springagent.core.usermodels.ReasoningEffortInForce;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,7 +34,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.metadata.DefaultUsage;
-import org.springframework.ai.model.openai.autoconfigure.OpenAiChatProperties;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.client.RestTemplate;
 import tools.jackson.databind.JsonNode;
@@ -140,7 +140,7 @@ class FeishuCardUpdaterUsageTest {
                 new JsonMapper(),
                 messages,
                 new ClassPathResource("feishu/card-elements.json"),
-                chatPropertiesWithEffort("xhigh")),
+                effortInForce("xhigh")),
             null);
 
     updater.onModel("the-model");
@@ -286,11 +286,9 @@ class FeishuCardUpdaterUsageTest {
     return footers.get(footers.size() - 1).getContentCardElementReqBody().getContent();
   }
 
-  /** The chat options a deployment stating an effort is configured with. */
-  private static OpenAiChatProperties chatPropertiesWithEffort(final String effort) {
-    final var properties = new OpenAiChatProperties();
-    properties.setReasoningEffort(effort);
-    return properties;
+  /** What a provider reports for a deployment that states an effort and has no user models. */
+  private static ReasoningEffortInForce effortInForce(final String effort) {
+    return userId -> effort;
   }
 
   /** The real elements: what the card gains as the run first has something to put in them. */

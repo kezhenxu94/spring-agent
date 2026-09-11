@@ -3,6 +3,7 @@ package me.kezhenxu94.springagent.integration.slack.config;
 import com.slack.api.methods.MethodsClient;
 import me.kezhenxu94.springagent.core.config.ConditionalOnUserModels;
 import me.kezhenxu94.springagent.core.usermodels.BuiltinModels;
+import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import me.kezhenxu94.springagent.core.usermodels.UserModelProbe;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import me.kezhenxu94.springagent.integration.slack.usermodels.SlackConfigForm;
@@ -50,9 +51,11 @@ public class SlackUserModelsConfiguration {
       final UserModelRegistry registry,
       final UserModelProbe probe,
       final BuiltinModels builtins,
+      final UserChatClients chatClients,
       final SlackConfigForm form,
       final SlackMessages messages,
       @Qualifier(SlackAutoConfiguration.TASK_EXECUTOR) final TaskExecutor taskExecutor) {
-    return new SlackConfigHandler(slack, registry, probe, builtins, form, messages, taskExecutor);
+    return new SlackConfigHandler(
+        slack, registry, probe, builtins, chatClients, form, messages, taskExecutor);
   }
 }

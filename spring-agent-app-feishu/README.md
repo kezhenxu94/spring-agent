@@ -27,13 +27,14 @@ Or from a clone: `./gradlew :spring-agent-app-feishu:bootRun`.
 [docker](../spring-agent-tools-shell-docker/README.md) shell ·
 [rag-milvus](../spring-agent-rag-milvus/README.md) ·
 [provider-openai](../spring-agent-provider-openai/README.md) /
-[provider-dashscope](../spring-agent-provider-dashscope/README.md).
+[provider-dashscope](../spring-agent-provider-dashscope/README.md) /
+[provider-google-genai](../spring-agent-provider-google-genai/README.md).
 
 Carrying a module is not turning it on. What each one needs is on its own page.
 
 ## The variables with no defaults
 
-The application will not start without a model to talk to, and there are two ways to give it one.
+The application will not start without a model to talk to, and there are three ways to give it one.
 
 **Either** the OpenAI-compatible set — `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`,
 `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL` — which any gateway or self-hosted
@@ -47,6 +48,17 @@ protocol. The two model names still have to be given: no endpoint has a default 
 one is refused by all of them. `DASHSCOPE_BASE_URL` is optional and is a **host with no path** —
 `https://dashscope-intl.aliyuncs.com`, or your workspace's
 `https://ws-<id>.<region>.maas.aliyuncs.com` — with the paths appended for you.
+
+**Or** the Gemini set: `GEMINI_API_KEY`, `GEMINI_CHAT_MODEL` and `GEMINI_EMBEDDING_MODEL`, with
+`CHAT_MODEL_PROVIDER`, `EMBEDDING_MODEL_PROVIDER` and — if you want image generation —
+`IMAGE_MODEL_PROVIDER` set to `google-genai`. That is Gemini spoken natively rather than through its
+OpenAI-compatible endpoint, which is what gets thinking levels, Gemini's own embeddings and image
+models that edit from a reference image; see
+[spring-agent-provider-google-genai](../spring-agent-provider-google-genai/README.md).
+
+The three provider switches are per *kind*, so these sets mix: DashScope embeddings under a Gemini
+chat model is `CHAT_MODEL_PROVIDER=google-genai` beside `DASHSCOPE_API_KEY`, with
+`EMBEDDING_MODEL_PROVIDER` left at `openai`.
 
 An explicit `OPENAI_*` wins over the DashScope one, so moving a single model at a time works.
 

@@ -181,6 +181,11 @@ forbidOnRuntimeClasspath(
       'redis.clients',
       'io.lettuce',
       'com.openai',
+      // The Gemini SDK, for exactly the reason com.openai is above it: core names no provider, and
+      // spring-agent-provider-google-genai is where this belongs. It is a heavy one — auto-value,
+      // the Google auth and HTTP client stacks, a shaded Kotlin runtime — so it arriving here would
+      // cost every consumer who chose another provider.
+      'com.google.genai',
     ],
     modules: [
       'spring-data-jpa',

@@ -280,13 +280,20 @@ The quickest of them:
 docker run --env-file .env -p 8080:8080 ghcr.io/kezhenxu94/spring-agent:latest
 ```
 
-It needs to be told where the models are and which models to ask for, and there are two ways to say
+It needs to be told where the models are and which models to ask for, and there are three ways to say
 it. Either the six OpenAI-compatible variables — `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`,
 `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL` — which is what any gateway or
 self-hosted server takes; or, on Alibaba Cloud DashScope, `DASHSCOPE_API_KEY` plus the two model
 names, `DASHSCOPE_CHAT_MODEL` and `DASHSCOPE_EMBEDDING_MODEL`, since one credential covers every
 DashScope endpoint but no endpoint has a default model. Add `DASHSCOPE_BASE_URL` — a host, with no
 path — for the international endpoint or a Model Studio workspace.
+
+Or, on Google Gemini, `GEMINI_API_KEY` plus `GEMINI_CHAT_MODEL` and `GEMINI_EMBEDDING_MODEL`, with
+`CHAT_MODEL_PROVIDER` and `EMBEDDING_MODEL_PROVIDER` set to `google-genai`. Gemini is reachable
+through its OpenAI-compatible endpoint with the first set too; naming the provider is what gets its
+thinking levels, its own embeddings, and image models that edit from a reference image. The provider
+switches are per *kind*, so the sets mix — a Gemini chat model over DashScope embeddings is one line
+from each.
 
 Nothing starts without one of those sets: the application says which variable is missing rather than
 failing on the first run. The embedding model is needed even if you index nothing, since tool search

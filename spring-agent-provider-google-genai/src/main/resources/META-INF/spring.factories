@@ -1,0 +1,12 @@
+# An AutoConfigurationImportFilter rather than a condition, because what has to be prevented is
+# Spring AI's own auto-configurations being evaluated at all: two of them are ungated and throw when
+# no Gemini credential is set, which would break every deployment merely carrying this module. See
+# GoogleGenAiAutoConfigurationFilter for the whole reasoning.
+org.springframework.boot.autoconfigure.AutoConfigurationImportFilter=\
+  me.kezhenxu94.springagent.provider.googlegenai.GoogleGenAiAutoConfigurationFilter
+
+# An EnvironmentPostProcessor for the same reason DashScopeDefaults is one: it has to run before
+# anything binds spring.ai.google.genai.*, and it only ever fills a blank target. See
+# GoogleGenAiDefaults for the one setting Spring AI does not resolve from the common block.
+org.springframework.boot.EnvironmentPostProcessor=\
+  me.kezhenxu94.springagent.provider.googlegenai.GoogleGenAiDefaults

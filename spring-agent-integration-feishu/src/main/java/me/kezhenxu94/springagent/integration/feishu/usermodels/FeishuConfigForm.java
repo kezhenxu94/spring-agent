@@ -69,9 +69,13 @@ public class FeishuConfigForm {
    */
   public static final String EFFORT_INHERIT_OPTION = "__inherit__";
 
+  /** The provider option standing for "whatever this deployment itself speaks". */
+  public static final String PROVIDER_INHERIT_OPTION = "__provider_default__";
+
   static final String ACTIVE = "cfg_active";
   static final String NAME = "cfg_name";
   static final String BASE_URL = "cfg_baseurl";
+  static final String PROVIDER = "cfg_provider";
   static final String MODEL = "cfg_model";
   static final String EFFORT = "cfg_effort";
   static final String TOKEN = "cfg_token";
@@ -99,7 +103,9 @@ public class FeishuConfigForm {
       final List<UserModelConfig> configured,
       final UserModelConfig active,
       final List<String> builtinModels,
-      final String defaultModel)
+      final String defaultModel,
+      final List<String> providers,
+      final String defaultProvider)
       throws IOException {
     final var activeName = active == null ? null : active.name();
     final var root = (ObjectNode) objectMapper.readTree(rendered());
@@ -124,6 +130,14 @@ public class FeishuConfigForm {
     formElements.add(root.path("addHint").deepCopy());
     formElements.add(root.path("nameInput").deepCopy());
     formElements.add(root.path("baseUrlInput").deepCopy());
+    // Only where there is a choice to make. A deployment carrying one provider module can serve
+    // exactly one protocol, and a select of one option is a question with no answers — worse, it
+    // suggests the others exist somewhere. Most deployments carry one, so most cards show none of
+    // this, which is the point of asking UserChatClients rather than listing providers by hand.
+    if (providers != null && providers.size() > 1) {
+      formElements.add(root.path("providerLabel").deepCopy());
+      formElements.add(providerSelect(root, providers, defaultProvider, active));
+    }
     formElements.add(root.path("modelInput").deepCopy());
     formElements.add(root.path("effortLabel").deepCopy());
     formElements.add(effortSelect(root, active == null ? null : active.reasoningEffort()));
@@ -224,6 +238,41 @@ public class FeishuConfigForm {
    *
    * @param current what the model in use is set to, or null for the application's own setting
    */
+  /**
+   * Which protocol a new endpoint speaks, offering only what this deployment actually serves.
+   *
+   * <p>The first option stands for the deployment's own, which is what a row naming nothing means
+   * and what all but a handful of rows will want. Naming it in the option's text rather than
+   * leaving it blank, because "the default" tells a person nothing about what their key will be
+   * sent as.
+   */
+  private ObjectNode providerSelect(
+      final ObjectNode root,
+      final List<String> providers,
+      final String defaultProvider,
+      final UserModelConfig active) {
+    final var select = (ObjectNode) root.path("providerSelect").deepCopy();
+    final var options = (ArrayNode) select.path("options");
+    options.add(
+        option(
+            root,
+            messages.get("config-provider-inherit", String.valueOf(defaultProvider)),
+            PROVIDER_INHERIT_OPTION));
+    for (final var provider : providers) {
+      options.add(option(root, provider, provider));
+    }
+    // initial_index is 1-based, and the first option is the deployment's own.
+    var selected = 1;
+    if (active != null && active.provider() != null) {
+      final var found = providers.indexOf(active.provider());
+      if (found >= 0) {
+        selected = found + 2;
+      }
+    }
+    select.put("initial_index", selected);
+    return select;
+  }
+
   private ObjectNode effortSelect(final ObjectNode root, final String current) {
     final var select = (ObjectNode) root.path("effortSelect").deepCopy();
     final var options = (ArrayNode) select.path("options");
@@ -336,6 +385,7 @@ public class FeishuConfigForm {
     return new Submission(
         text(formValue, ACTIVE),
         text(formValue, NAME),
+        text(formValue, PROVIDER),
         text(formValue, BASE_URL),
         text(formValue, MODEL),
         text(formValue, EFFORT),
@@ -365,7 +415,24 @@ public class FeishuConfigForm {
    *     own model, or null if the dropdown was left alone
    */
   public record Submission(
-      String active, String name, String baseUrl, String model, String effort, String token) {
+      String active,
+      String name,
+      String provider,
+      String baseUrl,
+      String model,
+      String effort,
+      String token) {
+
+    /**
+     * The provider as it should be stored: null both for an untouched select and for the option
+     * standing for the deployment's own, which is the same thing — a row naming no provider is
+     * spoken in whatever the deployment speaks, and recording today's name would freeze it.
+     */
+    public String storedProvider() {
+      return provider == null || FeishuConfigForm.PROVIDER_INHERIT_OPTION.equals(provider)
+          ? null
+          : provider;
+    }
 
     /**
      * Whether the add fields were filled in at all.

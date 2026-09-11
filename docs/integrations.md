@@ -66,6 +66,7 @@ so both modules below may sit on one classpath and exactly one wins per kind of 
 | --- | --- |
 | [`spring-agent-provider-openai`](../spring-agent-provider-openai/README.md) | The OpenAI wire protocol, and so most gateways: chat, embeddings, transcription, images, per-user endpoints |
 | [`spring-agent-provider-dashscope`](../spring-agent-provider-dashscope/README.md) | Alibaba Cloud DashScope: its own image API, its vision endpoint, one credential for the compatible rest |
+| [`spring-agent-provider-google-genai`](../spring-agent-provider-google-genai/README.md) | Google Gemini spoken natively: thinking levels, Gemini's own embeddings, and the image models that edit from a reference image |
 
 The second depends on the first — an `implementation` dependency, so it exposes none of it — which
 is the one exception to rule 1 below outside the event sources, and is stated in both READMEs rather
@@ -91,7 +92,9 @@ A module is an integration if it does all of this and nothing more:
 1. **It depends on core, and on nothing beside it.** A compile dependency points from an integration
    to `spring-agent-core`, never the other way, and never from one integration to another — the
    exceptions being an event source, which depends on `spring-agent-events` as well because that is
-   the SPI it implements, and `spring-agent-provider-dashscope`, for the reason given above. Where
+   the SPI it implements, and `spring-agent-provider-dashscope`, for the reason given above.
+   `spring-agent-provider-google-genai` is deliberately not a third exception: it depends on core and
+   on Spring AI's own Google GenAI starters, and on no sibling. Where
    a name has to be shared across that line it is duplicated as a string with a comment on both
    sides saying so.
 2. **It ships an auto-configuration** that component-scans its own package, named in
