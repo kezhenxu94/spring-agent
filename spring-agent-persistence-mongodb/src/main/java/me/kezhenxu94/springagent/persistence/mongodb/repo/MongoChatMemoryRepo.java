@@ -2,7 +2,6 @@ package me.kezhenxu94.springagent.persistence.mongodb.repo;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -78,7 +77,29 @@ public class MongoChatMemoryRepo implements ChatMemoryRepository {
    */
   @Document(COLLECTION)
   public record Entry(String conversationId, Body message, Instant timestamp, Integer sequenceId) {
-    public record Body(String content, String type, Map<String, Object> metadata) {}
+
+    /**
+     * What is kept of one message: its text and its role, and deliberately not its metadata.
+     *
+     * <p>This used to carry {@code Map<String, Object> metadata} straight off the message, which
+     * was a divergence from the other two backends nobody had written down — Spring AI's JDBC
+     * repository, which serves {@code jpa} and {@code redis} here, selects {@code content, type,
+     * timestamp} and has never stored any. So nothing in this project can depend on it, because a
+     * deployment on either of those has never had it.
+     *
+     * <p>Keeping it was actively harmful. A message's metadata is provider telemetry, and a
+     * provider is free to put its own SDK objects in there: on {@code google-genai} it holds a
+     * {@code com.google.genai.types.FinishReason}, which Mongo writes happily as a sub-document and
+     * then cannot read back — {@code Failed to instantiate ... using constructor NO_CONSTRUCTOR},
+     * surfacing as every run in that conversation dying on {@code Stream processing failed}. None
+     * of it is needed to replay a conversation, which is the whole job here.
+     *
+     * <p>Dropping the component rather than ignoring the field is what repairs a database that
+     * already holds such documents: Spring Data maps a record by its constructor parameters, so a
+     * field nothing asks for is no longer read, and a conversation written before this becomes
+     * readable again.
+     */
+    public record Body(String content, String type) {}
   }
 
   private final MongoTemplate mongoTemplate;
@@ -135,8 +156,7 @@ public class MongoChatMemoryRepo implements ChatMemoryRepository {
       entries.add(
           new Entry(
               conversationId,
-              new Entry.Body(
-                  message.getText(), message.getMessageType().name(), message.getMetadata()),
+              new Entry.Body(message.getText(), message.getMessageType().name()),
               now,
               position));
     }
@@ -152,12 +172,10 @@ public class MongoChatMemoryRepo implements ChatMemoryRepository {
   /** Null for a type this backend does not keep, which the caller filters out. */
   private static Message message(final Entry entry) {
     final var content = entry.message().content() == null ? "" : entry.message().content();
-    final var metadata =
-        entry.message().metadata() == null ? Map.<String, Object>of() : entry.message().metadata();
     return switch (entry.message().type()) {
-      case "USER" -> UserMessage.builder().text(content).metadata(metadata).build();
-      case "ASSISTANT" -> AssistantMessage.builder().content(content).properties(metadata).build();
-      case "SYSTEM" -> SystemMessage.builder().text(content).metadata(metadata).build();
+      case "USER" -> UserMessage.builder().text(content).build();
+      case "ASSISTANT" -> AssistantMessage.builder().content(content).build();
+      case "SYSTEM" -> SystemMessage.builder().text(content).build();
       case "TOOL" -> null;
       default -> {
         // Skipped rather than thrown, where upstream throws: a single unreadable row would

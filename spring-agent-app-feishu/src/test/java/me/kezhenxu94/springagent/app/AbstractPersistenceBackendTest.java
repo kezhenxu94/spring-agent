@@ -655,6 +655,42 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
   }
 
   @Test
+  @DisplayName("a message whose metadata carries a provider's own object still reads back")
+  void chatMemorySurvivesProviderMetadata() {
+    // Message metadata is provider telemetry, and a provider is free to put its own SDK types in
+    // it. Spring AI's JDBC repository — which serves jpa and redis here — stores content, type and
+    // timestamp and never any metadata, so no backend may depend on it; MongoDB's kept it, wrote
+    // the object as a sub-document and could not read it back. On google-genai the object is a
+    // FinishReason with no default constructor, and the failure was not one unreadable message but
+    // every run in that conversation dying on `Stream processing failed`.
+    //
+    // Deliberately an object that cannot be reconstructed from a document rather than a Gemini
+    // type: the invariant is about metadata this backend cannot own, and naming a provider's class
+    // here would put a model provider on core's test classpath.
+    final var conversationId = owner() + "-provider-metadata";
+    final var unreconstructable =
+        new Object() {
+          @Override
+          public String toString() {
+            return "no-default-constructor";
+          }
+        };
+
+    final var answer = new AssistantMessage("Hello, how can I help?");
+    answer.getMetadata().put("finishReason", unreconstructable);
+
+    chatMemoryRepository.saveAll(conversationId, List.of(new UserMessage("hi"), answer));
+
+    // Reading is the half that broke, and the conversation is what has to survive — not the
+    // telemetry, which nothing replays.
+    assertThat(chatMemoryRepository.findByConversationId(conversationId))
+        .extracting(Message::getMessageType, Message::getText)
+        .containsExactly(
+            org.assertj.core.groups.Tuple.tuple(MessageType.USER, "hi"),
+            org.assertj.core.groups.Tuple.tuple(MessageType.ASSISTANT, "Hello, how can I help?"));
+  }
+
+  @Test
   @DisplayName("a conversation reads back in the order it was said")
   void chatMemoryPreservesTheOrderOfATurn() {
     final var conversationId = owner() + "-transcript";
