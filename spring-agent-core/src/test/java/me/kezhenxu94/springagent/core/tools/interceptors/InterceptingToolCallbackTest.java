@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.core.tools.interceptors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -64,7 +65,7 @@ class InterceptingToolCallbackTest {
     assertThat(seen)
         .allSatisfy(input -> assertThat(input).contains("@file:").doesNotContain("1,2,3"));
     assertThat(seen).hasSize(2);
-    assertThat(result).isEqualTo("ok");
+    assertThat(result).isEqualTo("\"ok\"");
   }
 
   @Test
@@ -115,7 +116,7 @@ class InterceptingToolCallbackTest {
                 delegate, List.of(refusing("Refused: not yours")), refs(), messages())
             .call("{\"path\":\"/tmp/x\"}", CONTEXT);
 
-    assertThat(result).isEqualTo("Refused: not yours");
+    assertThat(result).isEqualTo("\"Refused: not yours\"");
     assertThat(delegate.received).as("the tool ran anyway").isNull();
   }
 
@@ -133,7 +134,7 @@ class InterceptingToolCallbackTest {
                 messages())
             .call("{\"path\":\"/tmp/x\"}", CONTEXT);
 
-    assertThat(result).isEqualTo("Refused: not yours");
+    assertThat(result).isEqualTo("\"Refused: not yours\"");
     assertThat(seen).as("beforeCall of the interceptor ahead of the refusal").hasSize(1);
     assertThat(results)
         .as("its afterCall, with the refusal as the result")
@@ -219,7 +220,7 @@ class InterceptingToolCallbackTest {
             .call("not json at all", CONTEXT);
 
     assertThat(delegate.received).isEqualTo("not json at all");
-    assertThat(result).isEqualTo("ok");
+    assertThat(result).isEqualTo("\"ok\"");
   }
 
   private static ToolCallInterceptor refusing(final String message) {
@@ -287,7 +288,13 @@ class InterceptingToolCallbackTest {
     @Override
     public String call(String toolInput) {
       received = toolInput;
-      return "ok";
+      // A JSON string literal, because that is what a real callback returns: Spring AI's
+      // DefaultToolCallResultConverter runs toJson over every tool's return value, so a method
+      // answering `ok` reaches this class as `"ok"`. Returning bare `ok` here made the stub the one
+      // caller in the world that broke ToolCallback's contract, and hid that
+      // InterceptingToolCallback
+      // has to keep it.
+      return "\"ok\"";
     }
 
     @Override
@@ -323,5 +330,94 @@ class InterceptingToolCallbackTest {
     source.setDefaultEncoding("UTF-8");
     source.setFallbackToSystemLocale(false);
     return new CoreMessages(source, new SpringAgentProperties(null, Locale.ENGLISH, null, null));
+  }
+
+  // --- what this callback hands back is JSON, because ToolCallback promises it is ---------
+
+  @Test
+  @DisplayName("a result an interceptor replaced with prose comes back as JSON")
+  void aReplacedResultIsJson() {
+    // The production failure this exists for: LargeResponseInterceptor swaps a big result for a
+    // sentence telling the model where it was saved. That sentence is not JSON, and Gemini parses
+    // what it is given — GoogleGenAiChatModel threw "Failed to parse JSON", which surfaced as a run
+    // dying on "Stream processing failed", naming neither the tool nor the interceptor.
+    final var callback =
+        new InterceptingToolCallback(
+            new RecordingCallback(ToolMetadata.builder().build()),
+            List.of(replacingWith("the result was too large, saved to /tmp/x.json")),
+            refs(),
+            messages());
+
+    final var result = callback.call("{}", CONTEXT);
+
+    assertThat(result).isEqualTo("\"the result was too large, saved to /tmp/x.json\"");
+    assertThatCode(() -> new tools.jackson.databind.json.JsonMapper().readTree(result))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  @DisplayName("a refusal comes back as JSON too, being an answer the tool never gave")
+  void aRefusalIsJson() {
+    final var callback =
+        new InterceptingToolCallback(
+            new RecordingCallback(ToolMetadata.builder().build()),
+            List.of(refusingWith("not allowed here")),
+            refs(),
+            messages());
+
+    assertThat(callback.call("{}", CONTEXT)).isEqualTo("\"not allowed here\"");
+  }
+
+  @Test
+  @DisplayName("arguments the model did not finish writing come back as JSON")
+  void malformedArgumentsAreJson() {
+    final var callback =
+        new InterceptingToolCallback(
+            new RecordingCallback(ToolMetadata.builder().build()), List.of(), refs(), messages());
+
+    final var result = callback.call("{\"unterminated", CONTEXT);
+
+    assertThatCode(() -> new tools.jackson.databind.json.JsonMapper().readTree(result))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  @DisplayName("a result that is already JSON is passed through, not quoted a second time")
+  void jsonIsNotDoubleEncoded() {
+    // The ordinary path: Spring AI's DefaultToolCallResultConverter has already run toJson over the
+    // tool's return value, so re-encoding here would reach the model as a quoted blob of text where
+    // an object was expected.
+    final var callback =
+        new InterceptingToolCallback(
+            new RecordingCallback(ToolMetadata.builder().build()),
+            List.of(replacingWith("{\"files\":[\"a.txt\"]}")),
+            refs(),
+            messages());
+
+    assertThat(callback.call("{}", CONTEXT)).isEqualTo("{\"files\":[\"a.txt\"]}");
+  }
+
+  /** An interceptor that throws the result away and answers with something of its own. */
+  private static ToolCallInterceptor replacingWith(final String replacement) {
+    return new ToolCallInterceptor() {
+      @Override
+      public String afterCall(
+          final String toolName,
+          final String toolInput,
+          final String toolResult,
+          final ToolContext toolContext) {
+        return replacement;
+      }
+    };
+  }
+
+  private static ToolCallInterceptor refusingWith(final String why) {
+    return new ToolCallInterceptor() {
+      @Override
+      public String beforeCall(
+          final String toolName, final String toolInput, final ToolContext toolContext) {
+        throw new ToolCallInterceptor.CallRefused(why);
+      }
+    };
   }
 }
