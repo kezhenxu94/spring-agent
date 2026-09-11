@@ -882,7 +882,10 @@ class SpringAgentTest {
 
     final var history = executeAsk(manager, ToolCallbacks.from(tool));
 
-    assertThat(history).containsExactly("NOT ANSWERED YET. End your turn.");
+    // JSON-encoded, because a tool response is JSON by Spring AI's own contract and this note is
+    // one Spring AI's exception processor produced rather than a tool — see ToolResultJson. The
+    // note itself is unchanged, which is what this test is about; only its encoding is.
+    assertThat(history).containsExactly("\"NOT ANSWERED YET. End your turn.\"");
     // Once, not once per interceptor or per round of the manager.
     assertThat(asked).hasValue(1);
   }

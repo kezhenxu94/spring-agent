@@ -71,41 +71,11 @@ public class InterceptingToolCallback implements ToolCallback {
    */
   private String handle(final String toolInput, final ToolContext toolContext) {
     try (var ignored = RunMdc.of(toolContext)) {
-      return asJson(intercepted(toolInput, toolContext));
-    }
-  }
-
-  /**
-   * What this callback hands back, in the shape {@code ToolCallback} promises: JSON.
-   *
-   * <p>Easy to miss, because a tool method here returns an ordinary sentence and the promise is
-   * kept for it by somebody else — Spring AI's {@code DefaultToolCallResultConverter} runs {@code
-   * toJson} over every return value, so {@code "the file was written"} reaches the wire as a quoted
-   * JSON string. This class is the one place that answers <em>without</em> calling the tool: a
-   * refusal, arguments the model did not finish writing, or a result an interceptor replaced
-   * wholesale. Those were plain prose, and so not JSON at all.
-   *
-   * <p>Nothing noticed while every deployment spoke the OpenAI protocol, which puts the string into
-   * the tool message verbatim and never looks at it. Gemini does look: a {@code functionResponse}
-   * carries a {@code Map}, so {@code GoogleGenAiChatModel} parses what it is given and throws
-   * {@code Failed to parse JSON} — which surfaces as a run dying on {@code Stream processing
-   * failed}, naming neither the tool nor the interceptor that rewrote it.
-   *
-   * <p>Normalising here rather than at each of the three substitution sites is deliberate: this is
-   * the boundary the contract is about, and a fourth substitution added later is covered without
-   * anybody remembering to.
-   */
-  private static String asJson(final String result) {
-    if (result == null) {
-      return "null";
-    }
-    try {
-      // Already JSON — the ordinary case, since an uninterrupted call returns what the converter
-      // produced. Passed through untouched rather than re-encoded, which would double-quote it.
-      MAPPER.readTree(result);
-      return result;
-    } catch (JacksonException e) {
-      return MAPPER.writeValueAsString(result);
+      // The shape ToolCallback promises, for the three answers here that no tool produced: a
+      // refusal, arguments the model did not finish writing, and a result an interceptor replaced.
+      // See ToolResultJson, and InterceptingToolCallingManager for the producers beyond any
+      // callback's reach.
+      return ToolResultJson.asJson(intercepted(toolInput, toolContext));
     }
   }
 
