@@ -134,7 +134,7 @@ class SpringAgentTest {
             messagesIn(Locale.ENGLISH),
             listenerProvider(),
             contributorProvider(),
-            // Present, as on a JPA or MongoDB deployment; Redis has no such bean.
+            // Present, as on a JPA deployment; Redis and MongoDB keep tool messages, so have none.
             recorderProvider(new AskedQuestionsRecorder(chatMemory, messagesIn(Locale.ENGLISH))),
             // The plain advisor rather than the tool-search one an application configures: what is
             // under test here is the conversation history the agent turns back on, which both

@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.persistence.mongodb.repo;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
@@ -18,42 +19,62 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 
 /**
- * A conversation, in the order it was said.
+ * A conversation, in the order it was said, tool calls and all.
  *
  * <p><b>Why this exists rather than Spring AI's {@code MongoChatMemoryRepository}.</b> That one
- * stamps each message with {@code Instant.now()} as it maps the list to documents, and reads them
- * back sorted by that timestamp. A turn is saved in one call — the user's message and the answer to
- * it together — so the whole list is mapped inside a few microseconds, and BSON stores a date to
- * millisecond precision: every message of a turn lands on the same millisecond. The sort then has
- * nothing to order them by, MongoDB breaks the tie however it likes, and a two-message conversation
- * comes back answer-first.
+ * gets two things wrong, and neither can be fixed from outside it.
+ *
+ * <p>It stamps each message with {@code Instant.now()} as it maps the list to documents, and reads
+ * them back sorted by that timestamp. A turn is saved in one call — the user's message and the
+ * answer to it together — so the whole list is mapped inside a few microseconds, and BSON stores a
+ * date to millisecond precision: every message of a turn lands on the same millisecond. The sort
+ * then has nothing to order them by, MongoDB breaks the tie however it likes, and a two-message
+ * conversation comes back answer-first.
  *
  * <p>That is not merely a display bug. The same memory is what the model is given as the history of
  * the conversation, so a scrambled read teaches it that it answered before it was asked — and on
  * the next turn it is reasoning about a transcript that never happened.
  *
- * <p>The fix is the one Spring AI's JDBC repository already uses: store the position explicitly and
- * order by it. {@code sequenceId} is that position, and the collection is unchanged — {@code
- * ai_chat_memory}, same documents, one field more — so a deployment that has been running the
- * upstream repository keeps its history. Those older documents have no {@code sequenceId}, which is
- * why {@code timestamp} remains the secondary sort: they read exactly as well (or as badly) as they
- * did before, and the next turn in a conversation rewrites the whole of it with positions, since
- * that is what {@link #saveAll} does.
+ * <p>And it drops every {@link ToolResponseMessage} and every {@link AssistantMessage} carrying
+ * tool calls, because its document had nowhere to put a call's id, name or arguments. A run that
+ * used a tool therefore left a conversation with the reasoning removed: the model is told it
+ * answered, never that it looked anything up, so the next turn cannot build on what a tool
+ * returned. Ordering matters twice over here, because a provider rejects a tool response that is
+ * not immediately preceded by the assistant message requesting it.
  *
- * <p><b>This is meant to be deleted.</b> spring-projects/spring-ai#6895 makes the upstream
- * repository do the same thing — one timestamp for the batch, a top-level {@code sequenceId} per
- * position — and stores tool calls besides. Its documents and these are the same documents, and the
- * two sorts differ only in which key they name first, so a conversation written by either reads
- * correctly through the other and no migration is needed in either direction. When a release
- * carrying that change is picked up, deleting this class means also: dropping {@code
- * chatMemoryRepository} and {@code @EnableConfigurationProperties(MongoChatMemoryProperties.class)}
- * from {@code MongoPersistenceAutoConfiguration}, dropping {@code SUPERSEDED_BY_MONGODB} from
- * core's {@code PersistenceAutoConfigurationFilter}, pointing {@code ChatMemoryMongoTest} back at
- * the upstream type, dropping the {@code Entry} hints from {@code MongoPersistenceRuntimeHints},
- * and narrowing {@code AskedQuestionsRecorder} to JPA alone — its whole reason on this backend is
- * that a tool call left no trace, which that change fixes. {@code
- * AbstractPersistenceBackendTest#chatMemoryPreservesTheOrderOfATurn} is what confirms the swap, and
- * what would notice if it were wrong.
+ * <p>The fix to both is the one Spring AI's Redis repository already uses for tool calls and its
+ * JDBC one for ordering: store the position explicitly and order by it, and keep {@code toolCalls}
+ * and {@code toolResponses} on the document. The collection is unchanged — {@code ai_chat_memory},
+ * same documents, three fields more — so a deployment that has been running the upstream repository
+ * keeps its history.
+ *
+ * <p><b>TODO: this is meant to be deleted.</b> <a
+ * href="https://github.com/spring-projects/spring-ai/pull/6895">spring-projects/spring-ai#6895</a>
+ * makes the upstream repository do all of the above, and this class is deliberately written to that
+ * pull request's storage shape: the same field names, the same BSON types, the same treatment of a
+ * document written before either field existed. A conversation written by either reads correctly
+ * through the other and no migration is needed in either direction. When a release carrying that
+ * change is picked up, deleting this class means also: dropping {@code chatMemoryRepository} and
+ * {@code @EnableConfigurationProperties(MongoChatMemoryProperties.class)} from {@code
+ * MongoPersistenceAutoConfiguration}, dropping {@code SUPERSEDED_BY_MONGODB} from core's {@code
+ * PersistenceAutoConfigurationFilter}, pointing {@code ChatMemoryMongoTest} back at the upstream
+ * type, and dropping the hints from {@code MongoPersistenceRuntimeHints}. {@code
+ * AbstractPersistenceBackendTest#chatMemoryPreservesTheOrderOfATurn} and {@code
+ * ChatMemoryMongoTest} are what confirm the swap, and what would notice if it were wrong.
+ *
+ * <p>Two differences from that pull request are deliberate and outlive it, so a straight swap is
+ * not quite a straight swap:
+ *
+ * <ul>
+ *   <li>Message metadata is not stored — see {@link Entry.Body} for why keeping it broke whole
+ *       conversations on one provider. Upstream keeps it, and a document holding a field nothing
+ *       asks for is simply not read, so the swap is still safe in that direction.
+ *   <li>The sort names {@code sequenceId} first and {@code timestamp} second, where upstream names
+ *       them the other way round. Both are correct — a conversation is rewritten whole, so every
+ *       document of one shares a timestamp — and they differ only for documents written before
+ *       {@code sequenceId} existed, which this order reads exactly as well (or as badly) as the
+ *       upstream repository did before it.
+ * </ul>
  *
  * <p>One caveat that outlives the swap: the compound index is created only when missing, so a
  * deployment that has already created the two-field one keeps it and the new sort is served by a
@@ -79,7 +100,8 @@ public class MongoChatMemoryRepo implements ChatMemoryRepository {
   public record Entry(String conversationId, Body message, Instant timestamp, Integer sequenceId) {
 
     /**
-     * What is kept of one message: its text and its role, and deliberately not its metadata.
+     * What is kept of one message: its text, its role, and whatever tool calling it carried —
+     * deliberately not its metadata.
      *
      * <p>This used to carry {@code Map<String, Object> metadata} straight off the message, which
      * was a divergence from the other two backends nobody had written down — Spring AI's JDBC
@@ -98,8 +120,25 @@ public class MongoChatMemoryRepo implements ChatMemoryRepository {
      * already holds such documents: Spring Data maps a record by its constructor parameters, so a
      * field nothing asks for is no longer read, and a conversation written before this becomes
      * readable again.
+     *
+     * <p>Tool calling is the opposite case, and the reason these two are stored rather than
+     * summarised into text: they are Spring AI's own records, whose components are strings, so
+     * there is nothing a provider can smuggle into them.
+     *
+     * @param content the text, which is genuinely null on an assistant message that only asks for a
+     *     tool and is kept null rather than coerced, so that such a message round-trips as itself
+     * @param toolCalls what an assistant message asked for, empty on every other kind. Null on a
+     *     document written before this field existed, which for an assistant message is the same
+     *     thing as empty
+     * @param toolResponses what a tool message answered with, empty on every other kind. Null on a
+     *     document written before this field existed, which for a tool message is <em>not</em> the
+     *     same thing as empty — see {@link MongoChatMemoryRepo#message}
      */
-    public record Body(String content, String type) {}
+    public record Body(
+        String content,
+        String type,
+        List<AssistantMessage.ToolCall> toolCalls,
+        List<ToolResponseMessage.ToolResponse> toolResponses) {}
   }
 
   private final MongoTemplate mongoTemplate;
@@ -122,41 +161,32 @@ public class MongoChatMemoryRepo implements ChatMemoryRepository {
 
   @Override
   public void saveAll(final String conversationId, final List<Message> messages) {
-    // Dropped rather than stored, matching what the upstream repository and the JDBC one do: a tool
-    // response and the assistant message carrying its call are only meaningful as a pair inside the
-    // turn that made them, and a history that has one without the other is refused by the model.
-    // core's AskedQuestionsRecorder is what leaves a readable trace of an ask on this backend.
-    final var persistable =
-        messages.stream()
-            .filter(
-                it ->
-                    !(it instanceof ToolResponseMessage)
-                        && !(it instanceof AssistantMessage assistant && assistant.hasToolCalls()))
-            .toList();
-    if (persistable.size() < messages.size()) {
-      log.debug(
-          "Dropping {} tool message(s) of conversation {}, which MongoDB chat memory does not keep",
-          messages.size() - persistable.size(),
-          conversationId);
-    }
-
     // Rewritten whole, which is the contract: ChatMemory hands over the conversation as it should
     // now be, trimmed to its window, rather than the delta.
     deleteByConversationId(conversationId);
-    if (persistable.isEmpty()) {
+    if (messages.isEmpty()) {
       return;
     }
     // One timestamp for the whole conversation rather than one per message, which is the honest
     // thing: they were all written at this moment, and a BSON date could not tell them apart
     // anyway. sequenceId is what orders them.
     final var now = Instant.now();
-    final var entries = new java.util.ArrayList<Entry>(persistable.size());
-    for (var position = 0; position < persistable.size(); position++) {
-      final var message = persistable.get(position);
+    final var entries = new ArrayList<Entry>(messages.size());
+    for (var position = 0; position < messages.size(); position++) {
+      final var message = messages.get(position);
+      final var toolCalls =
+          message instanceof AssistantMessage assistant
+              ? assistant.getToolCalls()
+              : List.<AssistantMessage.ToolCall>of();
+      final var toolResponses =
+          message instanceof ToolResponseMessage tool
+              ? tool.getResponses()
+              : List.<ToolResponseMessage.ToolResponse>of();
       entries.add(
           new Entry(
               conversationId,
-              new Entry.Body(message.getText(), message.getMessageType().name()),
+              new Entry.Body(
+                  message.getText(), message.getMessageType().name(), toolCalls, toolResponses),
               now,
               position));
     }
@@ -169,14 +199,33 @@ public class MongoChatMemoryRepo implements ChatMemoryRepository {
         Query.query(Criteria.where("conversationId").is(conversationId)), Entry.class);
   }
 
-  /** Null for a type this backend does not keep, which the caller filters out. */
+  /** Null for a message this backend cannot rebuild, which the caller filters out. */
   private static Message message(final Entry entry) {
-    final var content = entry.message().content() == null ? "" : entry.message().content();
-    return switch (entry.message().type()) {
+    final var body = entry.message();
+    // A user or system message has to have text; only an assistant one may be null.
+    final var content = body.content() == null ? "" : body.content();
+    return switch (body.type()) {
       case "USER" -> UserMessage.builder().text(content).build();
-      case "ASSISTANT" -> AssistantMessage.builder().content(content).build();
+      case "ASSISTANT" ->
+          AssistantMessage.builder()
+              .content(body.content())
+              .toolCalls(body.toolCalls() == null ? List.of() : body.toolCalls())
+              .build();
       case "SYSTEM" -> SystemMessage.builder().text(content).build();
-      case "TOOL" -> null;
+      case "TOOL" -> {
+        if (body.toolResponses() == null) {
+          // Written before this backend stored tool responses, when the whole message was dropped
+          // on the way in. There is nothing to rebuild it from, and a tool message with no
+          // responses is worse than none: the provider is handed an answer to a call it cannot see
+          // the question for. Absent is what says so — a tool message genuinely saved with no
+          // responses stores an empty array and is kept.
+          log.debug(
+              "Skipping a tool message of conversation {} written before tool responses were kept",
+              entry.conversationId());
+          yield null;
+        }
+        yield ToolResponseMessage.builder().responses(body.toolResponses()).build();
+      }
       default -> {
         // Skipped rather than thrown, where upstream throws: a single unreadable row would
         // otherwise make a whole conversation unopenable, and the conversation is the thing worth
@@ -184,7 +233,7 @@ public class MongoChatMemoryRepo implements ChatMemoryRepository {
         log.warn(
             "Ignoring a message of conversation {} with unsupported type {}",
             entry.conversationId(),
-            entry.message().type());
+            body.type());
         yield null;
       }
     };

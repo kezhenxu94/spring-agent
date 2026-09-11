@@ -1,13 +1,14 @@
-// What a conversation looks like when nothing is running: the turns chat memory kept, and the
-// invitation shown where there are none.
+// What a conversation looks like when nothing is running: the turns chat memory kept, the tool calls
+// it kept beside them, and the invitation shown where there are none.
 //
-// Both halves are drawn as markdown, through the same sanitiser. That the person wrote one of them
-// is not a reason to trust it: a replayed transcript is whatever chat memory holds, which includes
-// turns another surface wrote.
+// The two kinds of turn are drawn as markdown, through the same sanitiser. That the person wrote one
+// of them is not a reason to trust it: a replayed transcript is whatever chat memory holds, which
+// includes turns another surface wrote. A tool call is not markdown at all — name, arguments and
+// result go in through textContent, having come from whatever the tool read.
 
 import { t } from './i18n.js';
 import { $, scrollToEnd, transcriptAtEnd } from './dom.js';
-import { markdown } from './render.js';
+import { RunView, markdown } from './render.js';
 import { bus } from './state.js';
 
 /**
@@ -53,6 +54,40 @@ export function renderEmptyTranscript() {
   body.textContent = t('empty.body');
   empty.append(heading, body);
   transcript.append(empty);
+}
+
+/**
+ * The tool calls one assistant message made, as a replayed conversation shows them.
+ *
+ * Drawn through `RunView` rather than rebuilt here, which is the whole point: a person looking at a
+ * conversation they reloaded is looking at the same run they watched, and a second set of markup
+ * that merely resembled the first would drift away from it the next time render.js changed. So the
+ * fold, the rail, the dot, the tick and the `.tool-io` blocks are not copied — they are the same
+ * code, fed the same event shapes the stream feeds it.
+ *
+ * Two things differ, and both are the absence of a journal rather than a choice of style. The
+ * gutter carries no sequence number, because chat memory has no cursor — see `row` in render.js.
+ * And the outcome is set straight away, so the rail does not run its travelling highlight: that
+ * animation means "this is still moving", and nothing replayed is.
+ */
+export function appendTools(tools) {
+  const transcript = $('transcript');
+  transcript.querySelector('.empty-state')?.remove();
+  const view = new RunView(transcript);
+  // Before the rows rather than after, so the rail is never live even for a frame. COMPLETED is
+  // not a claim about how the run ended — chat memory does not keep that — it is only what says
+  // the run is over; the two outcomes that are drawn differently are set by a live run alone.
+  view.onFinished({ outcome: 'COMPLETED' });
+  tools.forEach((tool) => {
+    view.onTool({ id: tool.id, name: tool.name, input: tool.input });
+    // A call with no result is one the conversation holds no answer to — the run was stopped, or
+    // memory was trimmed between the two — and it keeps the dot a running call has rather than
+    // being drawn as though it had come back.
+    if (tool.result !== null && tool.result !== undefined) {
+      view.onToolResult({ id: tool.id, result: tool.result });
+    }
+  });
+  return view.root;
 }
 
 export function appendTurn(role, text) {

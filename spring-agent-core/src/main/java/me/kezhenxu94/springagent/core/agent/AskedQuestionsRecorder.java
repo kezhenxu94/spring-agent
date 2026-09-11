@@ -13,18 +13,21 @@ import org.springframework.stereotype.Component;
 /**
  * Leaves a plain assistant message in the conversation saying the questions were put to the user.
  *
- * <p>A workaround for the backends that need one. Asking is a tool call, and {@code
- * JdbcChatMemoryRepository} and the MongoDB repository keep neither the tool response nor the
- * assistant message carrying it. A later run replaying the conversation would see no sign anything
- * had been asked and ask again, which the outstanding-ask guard then refuses — leaving the model
- * with a question it believes it never put and no way forward.
+ * <p>A workaround for the one backend that needs one. Asking is a tool call, and {@code
+ * JdbcChatMemoryRepository} — which serves {@code jpa} here — keeps neither the tool response nor
+ * the assistant message carrying it. A later run replaying the conversation would see no sign
+ * anything had been asked and ask again, which the outstanding-ask guard then refuses — leaving the
+ * model with a question it believes it never put and no way forward.
  *
- * <p>Redis keeps tool messages, so no bean exists there.
+ * <p>Redis keeps tool messages, and so does {@code MongoChatMemoryRepo}, so no bean exists on
+ * either. On a backend that keeps them the ask is already in the conversation as the call that made
+ * it, and a note beside it would be the agent telling the model a second time, in prose, something
+ * the transcript already says.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@ConditionalOnPersistenceBackend({Type.JPA, Type.MONGODB})
+@ConditionalOnPersistenceBackend(Type.JPA)
 public class AskedQuestionsRecorder {
 
   private final ChatMemory chatMemory;

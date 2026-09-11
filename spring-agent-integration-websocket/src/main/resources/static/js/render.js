@@ -29,6 +29,51 @@ function el(tag, className, text) {
   return node;
 }
 
+/**
+ * A tool's arguments or its result, as something a person can read.
+ *
+ * Both arrive as JSON: the arguments are what the model wrote, and a result is whatever the tool
+ * returned, serialized on its way back to the model. So a tool that returns a string arrives as a
+ * quoted literal with its newlines escaped — `"bash_id: shell_1\n\nroot\n"` — which is the least
+ * readable form of the most-read thing in a run. Parsed back and re-rendered: a string becomes its
+ * own text, an object or a list becomes indented JSON, and anything that is not JSON at all is left
+ * exactly as it came.
+ *
+ * A result the server truncated at `MAX_TOOL_RESULT_CHARACTERS` (see WebRunRenderer) is no longer
+ * valid JSON, and long shell output is exactly what gets truncated — so leaving that case alone
+ * would leave the commonest result the one still full of `\n`. A cut string literal is recoverable:
+ * close the quote the cut took away and parse that instead, keeping the ellipsis that says there
+ * was more. Anything the cut left unrecoverable — it landed mid-escape, or the value was an object
+ * rather than a string — is shown exactly as it came, which is the honest outcome.
+ *
+ * A number or a boolean is left as its own text too: `42` is already what it says, and unwrapping
+ * it would only risk turning a tool's exact output into a rounded one.
+ */
+function readable(text) {
+  if (typeof text !== 'string' || !text) return text;
+  try {
+    const value = JSON.parse(text);
+    if (typeof value === 'string') return value;
+    if (value !== null && typeof value === 'object') return JSON.stringify(value, null, 2);
+    return text;
+  } catch {
+    return truncatedString(text);
+  }
+}
+
+/** The server's marker for a result it cut short, which is a cut it made in the JSON. */
+const TRUNCATED = '\n…';
+
+function truncatedString(text) {
+  if (!text.startsWith('"')) return text;
+  const cut = text.endsWith(TRUNCATED);
+  try {
+    return JSON.parse(`${cut ? text.slice(0, -TRUNCATED.length) : text}"`) + (cut ? TRUNCATED : '');
+  } catch {
+    return text;
+  }
+}
+
 const PROSE = 'prose max-w-none text-[14.5px] leading-[1.7]';
 const LABEL = 'font-mono text-[10px] font-medium uppercase tracking-[0.14em]';
 
@@ -67,7 +112,12 @@ export class RunView {
    */
   row(kind, node) {
     const row = el('div', `run-row run-row-${kind}`);
-    row.append(el('span', 'run-seq', String(this.seq).padStart(3, '0')), node);
+    // Empty rather than 000 where there is no number to show. A conversation replayed out of chat
+    // memory is drawn through this same view — see appendTools in transcript.js — and chat memory
+    // holds no journal, so there is no cursor to be honest about. The span stays either way,
+    // because it is what reserves the gutter the rail is drawn in.
+    const seq = this.seq ? String(this.seq).padStart(3, '0') : '';
+    row.append(el('span', 'run-seq', seq), node);
     this.body.append(row);
     return row;
   }
@@ -129,7 +179,7 @@ export class RunView {
     const state = el('span', 'tool-state text-mist', '·');
     head.append(state);
     item.append(head);
-    if (data.input) item.append(el('pre', 'tool-io', data.input));
+    if (data.input) item.append(el('pre', 'tool-io', readable(data.input)));
     panel.list.append(item);
     this.toolCalls.set(data.id, { item, state });
     panel.count.textContent = this.toolCalls.size;
@@ -140,7 +190,7 @@ export class RunView {
     if (!call) return;
     call.state.textContent = '✓';
     call.state.className = 'tool-state text-settled';
-    if (data.result) call.item.append(el('pre', 'tool-io tool-out', data.result));
+    if (data.result) call.item.append(el('pre', 'tool-io tool-out', readable(data.result)));
   }
 
   // ── subagents ─────────────────────────────────────────────────────────────────────────────
