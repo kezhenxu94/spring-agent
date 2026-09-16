@@ -353,7 +353,7 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
       final String content,
       final String userOpenId,
       final FeishuTools feishuTools) {
-    log.info("Adding content to chat: {}, {}, {}", messageID, messageType, content);
+    log.debug("Adding content to chat: {}, {}, {}", messageID, messageType, content);
     try {
       // Feishu stickers are sent as a bare file_key, indistinguishable from a plain file message
       // by content shape alone, so the outer msg_type is the only reliable discriminator.
