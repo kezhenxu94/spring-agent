@@ -128,3 +128,32 @@ the log line instead.
 What is *not* shared is the run journal a browser reads: it lives in the heap of whichever replica
 is running the turn, so a page can only follow a run in its own process. That is a constraint on
 handing a conversation between a chat and the browser rather than on replicas as such — see above.
+
+## Letting the agent search the web
+
+Off unless a deployment sets `app.ai.tools.web-search.brave.api-key` (`BRAVE_API_KEY`). With a key
+there is one more tool, `WebSearch`, backed by [Brave Search](https://brave.com/search/api/) — a
+query in, a list of titles, URLs and snippets out. Without one there is no such tool, rather than a
+tool that fails every call: the key *is* the switch, which is why it is gated with
+`ConditionalOnNonBlankProperty` and why there is no `enabled` flag beside it.
+
+What it costs:
+
+- **Money, per search.** `result-count` (`BRAVE_RESULT_COUNT`, 10 by default, 20 is Brave's ceiling)
+  decides how much one search buys.
+- **Context.** Every result is read into the window whether the model uses it or not, and a turn may
+  search several times.
+- **Untrusted text in the middle of a run.** What comes back is pages written by strangers. The
+  tool's description
+  ([`core/prompts/tools/WebSearch.md`](../spring-agent-core/src/main/resources/core/prompts/tools/WebSearch.md))
+  tells the model to read them as evidence about the world and never as instructions addressed to
+  it, which is a mitigation and not a guarantee. Weigh it against what else that run holds — a
+  deployment whose agent also has a shell, credentials and MCP servers is handing an injected page a
+  larger blast radius than one answering questions. This is the same reasoning as
+  [`docs/events.md`](events.md)'s on payload text, and the answer is the same: identity is the
+  boundary, so do not pair it with an `app.ai.admins` identity that has nothing to gain from it.
+
+What it cannot do: domain filtering. `allowedDomains` and `blockedDomains` are applied here, after
+Brave has answered and been billed, so they narrow what the model reads and not what a search costs.
+A `site:` operator written into the query itself is narrowed by Brave and is the cheaper way to say
+the same thing; the tool's description says so, so the model usually reaches for it.

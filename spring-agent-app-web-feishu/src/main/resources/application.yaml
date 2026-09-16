@@ -1286,6 +1286,28 @@ app:
       # rather than a truncation: half a JSON argument is malformed JSON that a lenient parser may
       # accept part of, which is a corrupted document rather than a failed call.
       max-inlined-input-chars: ${TOOLS_MAX_INLINED_INPUT_CHARS:300000}
+      web-search:
+        brave:
+          # A Brave Search subscription token, and the whole of the switch: set it and the agent is
+          # offered a WebSearch tool, leave it and there is no such tool at all. There is no
+          # `enabled` flag beside it because a search with no token is not a mode — see
+          # WebSearchToolsConfiguration, and note that this is why the key is gated with
+          # @ConditionalOnNonBlankProperty rather than @ConditionalOnProperty: unset, the line below
+          # makes the property present and empty, which the latter would call configured.
+          #
+          # Off by default for the same reason app.ai.tools.shell.type is `none`: it dials out to a
+          # third party, it is billed per search, and what comes back is pages written by strangers
+          # that land in the model's context. The tool's description says to treat them as evidence
+          # and never as instructions (core/prompts/tools/WebSearch.md), which is a mitigation
+          # rather than a guarantee — weigh that before turning it on for a deployment whose agent
+          # also holds a shell or real credentials.
+          #
+          # A key is issued at https://brave.com/search/api/; the free tier is one query a second.
+          api-key: ${BRAVE_API_KEY:}
+          # How many results one search asks for. Every one of them is paid for and every one of
+          # them is read into the context window, so this is the knob that decides what a search
+          # costs in both currencies. Brave's own ceiling is 20; the default is the library's.
+          result-count: ${BRAVE_RESULT_COUNT:10}
       publish-file:
         # Where the links PublishFile hands out point: the address a colleague, or anyone holding a
         # public link, reaches this application on. ShareController serves them under /share/, so

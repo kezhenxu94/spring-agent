@@ -6,3 +6,4 @@ me.kezhenxu94.springagent.core.config.LocalShellToolsConfiguration
 me.kezhenxu94.springagent.core.config.KnowledgeToolsConfiguration
 me.kezhenxu94.springagent.core.config.ModelToolsConfiguration
 me.kezhenxu94.springagent.core.config.UserModelsConfiguration
+me.kezhenxu94.springagent.core.config.WebSearchToolsConfiguration

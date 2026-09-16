@@ -40,11 +40,17 @@ class CoreEveryToolTranslatedTest extends AbstractEveryToolTranslatedTest {
    * ShellTools}, whose three tools belong to the local shell backend and are translated in its own
    * bundle, and {@code GlobTool}, {@code GrepTool} and {@code ListDirectoryTool}, which no bean
    * here publishes.
+   *
+   * <p>Brave's {@code WebSearch} is here because {@code WebSearchToolsConfiguration} publishes it,
+   * and it is checked like any other even though it is off unless a deployment has a key: a tool
+   * that only some deployments are offered is still English in every one of them if nobody
+   * translates it.
    */
   private static final List<Class<?>> OFFERED_BY_CORE =
       List.of(
           org.springaicommunity.agent.tools.AskUserQuestionTool.class,
-          org.springaicommunity.agent.tools.FileSystemTools.class);
+          org.springaicommunity.agent.tools.FileSystemTools.class,
+          org.springaicommunity.agent.tools.BraveWebSearchTool.class);
 
   @Override
   protected List<Class<?>> extraTypes() {

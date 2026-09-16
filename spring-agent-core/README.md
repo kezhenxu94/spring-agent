@@ -88,6 +88,30 @@ released, delete this class, point every import back at `org.springaicommunity.a
 scan finds it while it is core's own, and stops when it is not. It stays in
 `aot/AgentToolsRuntimeHints`' list either way: nothing declares it a bean, so AOT never sees it.
 
+## Web search, and why it is off
+
+`config/WebSearchToolsConfiguration` publishes the library's `BraveWebSearchTool` as `WebSearch`,
+and only where `app.ai.tools.web-search.brave.api-key` holds something. The key is the whole of the
+switch — there is no `enabled` beside it, because a search with no subscription token is not a mode
+— so this is the `ConditionalOnNonBlankProperty` case the rules below describe, and getting it wrong
+would offer a tool whose every call comes back unauthorised.
+
+Two things about it are worth knowing before changing anything here:
+
+- **The English description is overridden**, in `core/prompts/tools/WebSearch.md`. Upstream's text
+  addresses Claude by name and claims the search is US-only, neither of which is true of every
+  deployment; the base file is the supported way to correct English this module cannot edit, since
+  every locale inherits what it does not override. The replacement is also where the model is told
+  that a result is evidence and never an instruction.
+- **It is one of the two library search tools**, and the other — web fetch — is deliberately not
+  published. Nothing here constructs it, so it stays out of `aot/AgentToolsRuntimeHints`' list as
+  well: fetching a page is what a shell backend or an MCP server is for, and neither of those arrives
+  by putting core on a classpath.
+
+Operators configure it in
+[`application.yaml`](../spring-agent-app-feishu/src/main/resources/application.yaml); what turning it
+on costs is written down in [docs/advanced.md](../docs/advanced.md).
+
 ## Rules this module keeps
 
 **No persistence backend and no model provider, ever.** `checkRuntimeClasspathIsolation` (wired into
