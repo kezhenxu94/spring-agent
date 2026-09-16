@@ -4,6 +4,7 @@ import java.util.List;
 import me.kezhenxu94.springagent.core.tools.SkillsTool;
 import me.kezhenxu94.springagent.core.tools.TodoWriteTool;
 import org.springaicommunity.agent.tools.AskUserQuestionTool;
+import org.springaicommunity.agent.tools.BraveWebSearchTool;
 import org.springaicommunity.agent.tools.FileSystemTools;
 import org.springaicommunity.agent.tools.GlobTool;
 import org.springaicommunity.agent.tools.GrepTool;
@@ -30,8 +31,9 @@ public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
 
   /**
    * Every tool type spring-ai-agent-utils can hand to a run, plus core's two forks of ones it ships
-   * — {@code TodoWriteTool} and {@code SkillsTool}. The two search tools the library also ships,
-   * Brave and web fetch, are left out: nothing here constructs them.
+   * — {@code TodoWriteTool} and {@code SkillsTool}. The library's web fetch tool is left out:
+   * nothing here constructs it. Brave is on the list because {@code WebSearchToolsConfiguration}
+   * does construct it, on a deployment that has given it a key.
    *
    * <p>Public because it is this module's one statement of which tools it takes from that library,
    * and the test that no translation names a tool that no longer exists reads the same list. Adding
@@ -47,7 +49,8 @@ public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
           ShellTools.class,
           GlobTool.class,
           GrepTool.class,
-          ListDirectoryTool.class);
+          ListDirectoryTool.class,
+          BraveWebSearchTool.class);
 
   @Override
   public void registerHints(final RuntimeHints hints, final ClassLoader classLoader) {
