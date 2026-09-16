@@ -45,10 +45,12 @@ class GenAiByomTest extends AbstractIntegrationTest {
     assertThat(context.getBeansOfType(UserChatClients.class)).hasSize(1);
 
     final var clients = context.getBean(UserChatClients.class);
-    // Both provider modules are carried here, and both publish their client factory whether or not
-    // they built the chat model — which is what makes the protocol select in /config a real choice
-    // rather than decoration. Exactly these two, and nothing that no module implements.
-    assertThat(clients.providers()).containsExactlyInAnyOrder("openai", "google-genai");
+    // Every provider module carried here publishes its client factory whether or not it built the
+    // chat model — which is what makes the protocol select in /config a real choice rather than
+    // decoration. Exactly these three, and nothing that no module implements: DashScope is absent
+    // deliberately, since it speaks the OpenAI protocol and registers no factory of its own.
+    assertThat(clients.providers())
+        .containsExactlyInAnyOrder("openai", "google-genai", "anthropic");
     // spring.ai.model.chat is what says which a row naming none is spoken in — not bean order,
     // which no longer indicates anything now that both are always published.
     assertThat(clients.defaultProvider()).isEqualTo("google-genai");

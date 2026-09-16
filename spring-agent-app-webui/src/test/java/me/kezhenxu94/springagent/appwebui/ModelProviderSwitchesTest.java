@@ -105,6 +105,34 @@ class ModelProviderSwitchesTest {
   }
 
   @Test
+  @DisplayName("the Anthropic block is present and contributes nothing until chat names it")
+  void anthropicIsInertByDefault() throws Exception {
+    final var properties = applicationYaml();
+
+    // The backend defaults to Anthropic's own API, so carrying the module changes nothing about a
+    // deployment that never mentions Claude.
+    assertThat(properties)
+        .containsEntry("spring.ai.anthropic.backend", "${ANTHROPIC_BACKEND:anthropic}");
+    assertThat(properties).containsEntry("spring.ai.anthropic.api-key", "${ANTHROPIC_API_KEY:}");
+    // No default model, deliberately, even though AnthropicChatOptions has one: an unset model
+    // there is not an error, it is a silent substitution of a model nobody chose — and on the
+    // vertex backend a name Vertex spells differently and answers with a 404.
+    assertThat(properties)
+        .containsEntry("spring.ai.anthropic.chat.model", "${ANTHROPIC_CHAT_MODEL:}");
+    // 8192 rather than the SDK's 4096: going over max_tokens is not an error either, the turn just
+    // stops mid-sentence with stop_reason=max_tokens and nothing in the log.
+    assertThat(properties)
+        .containsEntry("spring.ai.anthropic.chat.max-tokens", "${ANTHROPIC_MAX_TOKENS:8192}");
+    // 30 minutes, matching the OpenAI block. The SDK's own default is 60 seconds, which a run that
+    // streams a long answer and calls tools routinely exceeds.
+    assertThat(properties).containsEntry("spring.ai.anthropic.timeout", "${ANTHROPIC_TIMEOUT:30m}");
+    // The Vertex trio, all empty: naming a project is what turns that backend on.
+    assertThat(properties)
+        .containsEntry("spring.ai.anthropic.vertex.project-id", "${ANTHROPIC_VERTEX_PROJECT:}")
+        .containsEntry("spring.ai.anthropic.vertex.location", "${ANTHROPIC_VERTEX_LOCATION:}");
+  }
+
+  @Test
   @DisplayName(
       "transcription is switchable, which is how a deployment without one turns the tool off")
   void transcriptionIsSwitchable() throws Exception {

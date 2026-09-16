@@ -61,6 +61,11 @@
 # DASHSCOPE_CHAT_MODEL and DASHSCOPE_EMBEDDING_MODEL, one credential covering every endpoint but no
 # endpoint having a default model — or, on Gemini, GEMINI_API_KEY plus GEMINI_CHAT_MODEL and
 # GEMINI_EMBEDDING_MODEL with CHAT_MODEL_PROVIDER and EMBEDDING_MODEL_PROVIDER set to google-genai.
+# or, on Anthropic, CHAT_MODEL_PROVIDER=anthropic plus ANTHROPIC_API_KEY and ANTHROPIC_CHAT_MODEL —
+# or, for Claude served by a Google Cloud project, ANTHROPIC_BACKEND=vertex with
+# ANTHROPIC_VERTEX_PROJECT and ANTHROPIC_VERTEX_LOCATION and no key at all, the credential coming
+# from the workload identity the container already runs under. Anthropic serves no embeddings, so
+# that set is always paired with one of the others.
 # Those switches are per kind, so the sets mix: a Gemini chat model over DashScope embeddings needs
 # one line from each. Image generation is off in every case until IMAGE_MODEL_PROVIDER names a
 # provider; see spring-agent-provider-dashscope/README.md and

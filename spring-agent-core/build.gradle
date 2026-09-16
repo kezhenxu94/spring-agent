@@ -186,6 +186,11 @@ forbidOnRuntimeClasspath(
       // the Google auth and HTTP client stacks, a shaded Kotlin runtime — so it arriving here would
       // cost every consumer who chose another provider.
       'com.google.genai',
+      // The Anthropic SDK, for the same reason as the two above it. It is heavier than either —
+      // over eight thousand classes, a Kotlin runtime, okhttp, and a Jackson 2 stack beside the
+      // Jackson 3 the rest of this runtime is on — and spring-agent-provider-anthropic is where it
+      // belongs.
+      'com.anthropic',
     ],
     modules: [
       'spring-data-jpa',
@@ -205,4 +210,7 @@ forbidOnRuntimeClasspath(
       'spring-ai-openai',
       'spring-ai-autoconfigure-model-openai',
       'spring-ai-starter-model-openai',
+      'spring-ai-anthropic',
+      'spring-ai-autoconfigure-model-anthropic',
+      'spring-ai-starter-model-anthropic',
     ])

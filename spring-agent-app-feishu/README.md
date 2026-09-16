@@ -56,7 +56,21 @@ OpenAI-compatible endpoint, which is what gets thinking levels, Gemini's own emb
 models that edit from a reference image; see
 [spring-agent-provider-google-genai](../spring-agent-provider-google-genai/README.md).
 
-The three provider switches are per *kind*, so these sets mix: DashScope embeddings under a Gemini
+**Or** the Anthropic set: `CHAT_MODEL_PROVIDER=anthropic` with `ANTHROPIC_API_KEY` and
+`ANTHROPIC_CHAT_MODEL`. Claude served by a Google Cloud project that holds the entitlement is the
+same set with `ANTHROPIC_BACKEND=vertex`, `ANTHROPIC_VERTEX_PROJECT` and
+`ANTHROPIC_VERTEX_LOCATION` and **no key at all** — the credential comes from Application Default
+Credentials, so `gcloud auth application-default login` on a laptop or the workload identity on GKE
+or Cloud Run, with `ANTHROPIC_VERTEX_CREDENTIALS` naming a service-account JSON where there is
+neither. Note that a Vertex model is dated with `@` rather than a hyphen:
+`claude-sonnet-4-5@20250929`.
+
+Unlike the other three this set never stands alone. Anthropic serves no embeddings, no image
+generation and no transcription, so `EMBEDDING_MODEL_PROVIDER` has to name somebody who does — which
+the per-kind switches make ordinary rather than a workaround. See
+[spring-agent-provider-anthropic](../spring-agent-provider-anthropic/README.md).
+
+The provider switches are per *kind*, so these sets mix: DashScope embeddings under a Gemini
 chat model is `CHAT_MODEL_PROVIDER=google-genai` beside `DASHSCOPE_API_KEY`, with
 `EMBEDDING_MODEL_PROVIDER` left at `openai`.
 

@@ -1,0 +1,48 @@
+plugins {
+  id 'springagent.java-library-conventions'
+}
+
+description = 'The Anthropic model provider for spring-agent-core: Claude chat served either by Anthropic directly or by a Google Vertex AI project, chosen by configuration.'
+
+dependencies {
+  api project(':spring-agent-core')
+
+  // The starter, not the bare client, for the reason the other providers give about theirs: Spring
+  // AI's auto-configuration binds `spring.ai.anthropic.*`, publishes the ChatModel, and gates it on
+  // `spring.ai.model.chat` being `anthropic`. That switch is the whole of how a deployment picks a
+  // provider here, and reimplementing any of it would be a second source of truth for the same
+  // properties.
+  //
+  // Unlike Google GenAI's, the one auto-configuration it carries is safe on a classpath with no
+  // credential: it is gated on spring.ai.model.chat, and the SDK raises NoCredentialsException
+  // lazily rather than from the bean method. AnthropicCarriedButUnconfiguredTest is what pins that,
+  // because the day it stops being true this module needs the import filter that one does.
+  //
+  // api rather than implementation because AnthropicChatModel and AnthropicChatOptions appear in
+  // this module's own bean signatures.
+  api 'org.springframework.ai:spring-ai-starter-model-anthropic'
+
+  // The Vertex backend. One class — com.anthropic.vertex.backends.VertexBackend — implementing the
+  // SDK's own Backend interface, which is all that separates "talk to api.anthropic.com with a key"
+  // from "talk to a GCP project with a signed token". Spring AI's own HTTP client drives that
+  // interface generically, so the whole Vertex path is this dependency plus VertexAnthropicClients.
+  //
+  // It brings google-auth-library-oauth2-http with it, which is where Application Default
+  // Credentials come from; nothing else here needs a Google dependency.
+  //
+  // implementation rather than api: no Vertex type appears in a bean signature, and a consumer of
+  // this module has no reason to compile against one.
+  implementation libs.anthropic.vertex
+
+  implementation libs.guava
+
+  // The OpenAI provider, on the test classpath only: AnthropicProviderCoexistenceTest is about what
+  // two providers do to one another, which cannot be asserted with one of them absent. Not a
+  // main-source dependency — nothing here compiles against an OpenAI type.
+  testImplementation project(':spring-agent-provider-openai')
+
+  testImplementation 'org.springframework:spring-test'
+  // Stands in for Vertex in VertexAnthropicClientsTest, which pins the one thing this module puts
+  // on the wire itself: the host, the path shape and the Bearer token a Vertex request carries.
+  testImplementation libs.okhttp.mockwebserver
+}

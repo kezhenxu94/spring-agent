@@ -44,7 +44,9 @@ protocol rather than OpenAI the company, which is what nearly every gateway and 
 speaks — Gemini's compatible endpoint included, though `spring-agent-provider-google-genai` is what
 gets Gemini's thinking levels and reference-image editing. Add `spring-agent-provider-dashscope`
 beside it only for DashScope's own image API and vision
-endpoint.
+endpoint, and `spring-agent-provider-anthropic` for Claude — either from Anthropic or from a Google
+Cloud project, which is one module because the two differ only in the host and the signature. That
+one serves chat alone, so it is always taken beside a provider that serves embeddings.
 
 ```groovy
 implementation 'me.kezhenxu94:spring-agent-core:<version>'
@@ -1061,6 +1063,7 @@ binary breaks at runtime while the JVM build passes.
 | [`spring-agent-provider-openai`](../spring-agent-provider-openai/README.md) | Where the models come from, for any endpoint speaking the OpenAI wire protocol — which is nearly all of them. Chat, embeddings, transcription and images are Spring AI's own beans, bound to `spring.ai.openai.*`; on top of them this module implements core's `ProviderChatClients` and `BuiltinModels`, makes a rejected request's body readable, and narrows OpenAI's image API to what `GenerateImage` promises. **Core carries no provider, so an application needs one of these** |
 | [`spring-agent-provider-dashscope`](../spring-agent-provider-dashscope/README.md) | Alibaba Cloud DashScope, as one credential under `spring.ai.dashscope.*`: its own image API and its vision endpoint, with chat and embeddings contributed to `spring.ai.openai.*` since `compatible-mode` *is* that protocol. Builds on the module above rather than duplicating it |
 | [`spring-agent-provider-google-genai`](../spring-agent-provider-google-genai/README.md) | Google Gemini natively, under `spring.ai.google.genai.*`: thinking levels as a real option, Gemini's own embeddings, and the image models that edit from a reference image. Contributes nothing until `api-key` is set — it filters Spring AI's own Google GenAI auto-configurations out until then, two of which fail startup otherwise |
+| [`spring-agent-provider-anthropic`](../spring-agent-provider-anthropic/README.md) | Anthropic's Claude under `spring.ai.anthropic.*`, chat only. `backend` chooses between Anthropic's own API and a Vertex AI project — the same protocol to a different host, signed differently — so an organisation buying Claude through GCP needs no other module. Serves no embeddings, images or transcription, so it is always configured beside a provider that does |
 | [`spring-agent-integration-websocket`](../spring-agent-integration-websocket/README.md) | A browser as an agent surface: a single-page UI, the REST endpoints behind it, and runs streamed live over STOMP/WebSocket. Contributes no `SecurityFilterChain` — the including application owns that and wires in this module's `WebAuthoritiesMapper` — and needs `@EnableScheduling` on it |
 | [`spring-agent-app-webui`](../spring-agent-app-webui/README.md) | The deployable that is nothing but the runtime and the module above; not published, it ships as an image |
 | [`spring-agent-app-web-feishu`](../spring-agent-app-web-feishu/README.md) | The same deployable with the Feishu surface as well, so a conversation can be handed between a chat and a browser; not published, it ships as an image |

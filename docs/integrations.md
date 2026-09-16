@@ -60,15 +60,23 @@ The whole of this, including how a source is configured and what a triage run is
 A provider is where a model actually lives. Core names none: it injects Spring AI's `ChatModel`,
 `EmbeddingModel`, `TranscriptionModel` and `ImageModel` and lets whichever module published them
 answer. Selection is **Spring AI's own `spring.ai.model.*`** rather than a switch of this project's,
-so both modules below may sit on one classpath and exactly one wins per kind of model.
+so every module below may sit on one classpath and exactly one wins per kind of model.
 
 | Module | What it is |
 | --- | --- |
 | [`spring-agent-provider-openai`](../spring-agent-provider-openai/README.md) | The OpenAI wire protocol, and so most gateways: chat, embeddings, transcription, images, per-user endpoints |
 | [`spring-agent-provider-dashscope`](../spring-agent-provider-dashscope/README.md) | Alibaba Cloud DashScope: its own image API, its vision endpoint, one credential for the compatible rest |
 | [`spring-agent-provider-google-genai`](../spring-agent-provider-google-genai/README.md) | Google Gemini spoken natively: thinking levels, Gemini's own embeddings, and the image models that edit from a reference image |
+| [`spring-agent-provider-anthropic`](../spring-agent-provider-anthropic/README.md) | Anthropic's Claude: chat only, served either by Anthropic or by a Google Cloud project through Vertex AI |
 
-The second depends on the first — an `implementation` dependency, so it exposes none of it — which
+The Anthropic module is the only one carrying a switch of its own, and the only one that serves a
+single kind of model. `spring.ai.anthropic.backend` chooses whether the same protocol is spoken to
+Anthropic or to a Vertex project — a different question from which provider serves a kind of model,
+which is why it is not a second copy of `spring.ai.model.*`. And because Anthropic has no embeddings
+API, a deployment on Claude always names another provider for embeddings; the switches being per
+kind is what makes that ordinary rather than a workaround.
+
+The DashScope module depends on the OpenAI one — an `implementation` dependency, so it exposes none of it — which
 is the one exception to rule 1 below outside the event sources, and is stated in both READMEs rather
 than left in a build file: DashScope's chat and embedding endpoints *are* the OpenAI protocol, so the
 alternative is a second copy of the same SDK plumbing sending the same bytes. An application that can
@@ -93,8 +101,9 @@ A module is an integration if it does all of this and nothing more:
    to `spring-agent-core`, never the other way, and never from one integration to another — the
    exceptions being an event source, which depends on `spring-agent-events` as well because that is
    the SPI it implements, and `spring-agent-provider-dashscope`, for the reason given above.
-   `spring-agent-provider-google-genai` is deliberately not a third exception: it depends on core and
-   on Spring AI's own Google GenAI starters, and on no sibling. Where
+   `spring-agent-provider-google-genai` and `spring-agent-provider-anthropic` are deliberately not
+   further exceptions: each depends on core and on the Spring AI starter for its own SDK, and on no
+   sibling. Where
    a name has to be shared across that line it is duplicated as a string with a comment on both
    sides saying so.
 2. **It ships an auto-configuration** that component-scans its own package, named in

@@ -43,7 +43,13 @@ import org.springframework.web.client.RestTemplate;
     afterName = {
       "me.kezhenxu94.springagent.provider.openai.OpenAiProviderAutoConfiguration",
       "me.kezhenxu94.springagent.provider.dashscope.DashScopeProviderAutoConfiguration",
-      "me.kezhenxu94.springagent.provider.googlegenai.GoogleGenAiProviderAutoConfiguration"
+      "me.kezhenxu94.springagent.provider.googlegenai.GoogleGenAiProviderAutoConfiguration",
+      // Anthropic contributes none of the three models these tools need — no image, no
+      // transcription, no separate vision endpoint — so nothing here is conditional on it. It is
+      // listed anyway, because the ordering contract is "after every provider" rather than "after
+      // the providers that happen to matter today", and a provider left out as a special case is
+      // one nobody would remember to add when it grows a model.
+      "me.kezhenxu94.springagent.provider.anthropic.AnthropicProviderAutoConfiguration"
     })
 public class ModelToolsConfiguration {
 
