@@ -280,7 +280,7 @@ The quickest of them:
 docker run --env-file .env -p 8080:8080 ghcr.io/kezhenxu94/spring-agent:latest
 ```
 
-It needs to be told where the models are and which models to ask for, and there are three ways to say
+It needs to be told where the models are and which models to ask for, and there are four ways to say
 it. Either the six OpenAI-compatible variables — `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`,
 `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL` — which is what any gateway or
 self-hosted server takes; or, on Alibaba Cloud DashScope, `DASHSCOPE_API_KEY` plus the two model
@@ -295,6 +295,14 @@ thinking levels, its own embeddings, and image models that edit from a reference
 switches are per *kind*, so the sets mix — a Gemini chat model over DashScope embeddings is one line
 from each.
 
+Or, on Anthropic, `CHAT_MODEL_PROVIDER=anthropic` with `ANTHROPIC_API_KEY` and
+`ANTHROPIC_CHAT_MODEL`. Claude can also be served by a Google Cloud project that holds the
+entitlement: set `ANTHROPIC_BACKEND=vertex` with `ANTHROPIC_VERTEX_PROJECT` and
+`ANTHROPIC_VERTEX_LOCATION` instead of a key, and the credential comes from `gcloud` or from the
+workload identity the deployment already runs under. Anthropic serves no embeddings, so this set is
+always paired with one of the others for `EMBEDDING_MODEL_PROVIDER` — which the per-kind switches
+make ordinary rather than a workaround.
+
 Nothing starts without one of those sets: the application says which variable is missing rather than
 failing on the first run. The embedding model is needed even if you index nothing, since tool search
 is built by embedding tool descriptions. Each application's page lists what else it needs.
@@ -306,7 +314,7 @@ application:
 | --- | --- | --- |
 | `app.persistence.type` (`PERSISTENCE_TYPE`) | `jpa` (SQLite, no server needed), `mongodb`, `redis` | `jpa` |
 | `app.ai.tools.shell.type` (`TOOLS_SHELL_TYPE`) | `none`, `kubernetes`, `docker`, `local` | `none` |
-| `spring.ai.model.image` (`IMAGE_MODEL_PROVIDER`) | `none`, `openai`, `dashscope` | `none` |
+| `spring.ai.model.image` (`IMAGE_MODEL_PROVIDER`) | `none`, `openai`, `dashscope`, `google-genai` | `none` |
 
 The shell defaults to `none` because it runs commands the model wrote. Turn it on deliberately, and
 prefer `kubernetes` or `docker`, which give each user a disposable sandbox, over `local`, which does
