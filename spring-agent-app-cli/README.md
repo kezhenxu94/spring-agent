@@ -21,10 +21,10 @@ plain `bootBuildImage` does not silently turn into a native build.
 [provider-google-genai](../spring-agent-provider-google-genai/README.md), and nothing else. No chat
 platform, no webhook receiver, no Milvus. Everything lives in SQLite under `~/.spring-agent`.
 
-Two model providers rather than all of them. DashScope is absent for the same reason there is one
-persistence backend: what that module carries is a vendor's own APIs, and a laptop points
-`OPENAI_BASE_URL` at whatever gateway it uses, DashScope's compatible-mode included. Gemini is here
-because it is not that case — its chat, embeddings and image generation are genuinely not the OpenAI
+Three model providers rather than all of them. DashScope is the one absent, for the same reason
+there is one persistence backend: what that module carries is a vendor's own APIs, and a laptop
+points `OPENAI_BASE_URL` at whatever gateway it uses, DashScope's compatible-mode included. Gemini
+is here because it is not that case — its chat, embeddings and image generation are genuinely not the OpenAI
 protocol, so reaching it through a compatibility endpoint costs thinking levels and reference-image
 editing, and trips over a field Spring AI emits that Gemini rejects. Set `CHAT_MODEL_PROVIDER` and
 `EMBEDDING_MODEL_PROVIDER` to `google-genai` and name `GEMINI_API_KEY` to use it; leave them alone
@@ -33,6 +33,14 @@ no vision model, and Gemini needs none since its chat models already see images 
 reaches `/v1/images/generations` on whatever `OPENAI_BASE_URL` names, which a gateway that proxies
 only chat will answer with a 404. Setting `IMAGE_MODEL_PROVIDER=google-genai` points it at Gemini's
 image models instead, which is also the one way to edit an image from a reference here.
+
+Claude is here for the same reason as Gemini and one more: it is not the OpenAI protocol either, so a
+compatibility endpoint costs thinking, prompt caching and the service tier — and a laptop is where
+somebody most often has a Claude subscription of their own, or a `gcloud` login that already reaches
+a Vertex project. Set `CHAT_MODEL_PROVIDER=anthropic` with `ANTHROPIC_API_KEY` and
+`ANTHROPIC_CHAT_MODEL`, or `ANTHROPIC_BACKEND=vertex` with `ANTHROPIC_VERTEX_PROJECT` and
+`ANTHROPIC_VERTEX_LOCATION` and no key at all. It serves chat alone, so `EMBEDDING_MODEL_PROVIDER`
+stays pointed at one of the others.
 
 ## Using it
 

@@ -44,20 +44,28 @@ dependencies {
   // Selecting a different backend means adding its module here, not flipping a property.
   implementation project(':spring-agent-persistence-jpa')
 
-  // Two providers, not three. DashScope is still absent for the reason it always was: what that
-  // module carries is a vendor's own APIs — its image endpoint, its vision host — and a laptop
-  // points OPENAI_BASE_URL at whatever gateway it uses, DashScope's compatible-mode included.
+  // Three providers, not four, and the line is drawn by protocol rather than by taste. DashScope is
+  // the one still absent, for the reason it always was: what that module carries is a vendor's own
+  // APIs — its image endpoint, its vision host — and a laptop points OPENAI_BASE_URL at whatever
+  // gateway it uses, DashScope's compatible-mode included.
   //
   // Gemini is here because it is not that case. Its chat, embeddings and image generation are not
   // the OpenAI protocol, so a command line pointed at Gemini through a compatibility endpoint gets
   // neither thinking levels nor reference-image editing, and trips over the `include_obfuscation`
   // field Spring AI emits — which is a thing a laptop hits as readily as a server.
   //
-  // Carrying it is what makes spring.ai.model.* in application.yaml load-bearing here: Spring AI's
-  // conditions are matchIfMissing, so with two providers present a kind that names nothing gets
-  // both and the application fails to start. That file names all three kinds now.
+  // Claude is here for the same reason and one more. It is not the OpenAI protocol either, so a
+  // compatibility endpoint costs thinking, prompt caching and the service tier; and a laptop is
+  // where somebody most often has a Claude subscription of their own, or a `gcloud` login that
+  // already reaches a Vertex project. Leaving it out would make this the one application here that
+  // cannot talk to Claude at all.
+  //
+  // Carrying them is what makes spring.ai.model.* in application.yaml load-bearing here: Spring AI's
+  // conditions are matchIfMissing, so with several providers present a kind that names nothing gets
+  // all of them and the application fails to start. That file names every kind now.
   implementation project(':spring-agent-provider-openai')
   implementation project(':spring-agent-provider-google-genai')
+  implementation project(':spring-agent-provider-anthropic')
 
   implementation libs.spring.shell.starter
   implementation libs.spring.ai.agent.utils

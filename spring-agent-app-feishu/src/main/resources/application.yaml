@@ -120,6 +120,11 @@ spring:
       # at DashScope. Set these to `google-genai` and name GEMINI_API_KEY to talk to Gemini natively
       # instead, which is what gets thinking levels, Gemini's own embeddings, and image models that
       # edit from a reference image.
+      #
+      # `anthropic` is the fourth value chat takes, and the only one that serves chat alone — see
+      # spring.ai.anthropic below, where ANTHROPIC_BACKEND additionally chooses between Anthropic's
+      # own API and a Google Cloud project. Naming it here means naming somebody else for
+      # embeddings, since Anthropic serves none.
       chat: ${CHAT_MODEL_PROVIDER:openai}
       # Embeddings take two keys with the same value, and this is a trap rather than redundancy:
       # Spring AI's OpenAI auto-configuration is gated on `embedding` while its Google GenAI one is
@@ -216,6 +221,83 @@ spring:
         # multimodal, so RecognizeImage goes through the application's own client rather than a
         # second endpoint. spring.ai.openai.vision and spring.ai.dashscope.vision exist because on
         # those providers it genuinely is a different model.
+    # Anthropic's Claude models. Read by spring-agent-provider-anthropic, over Spring AI's
+    # spring-ai-anthropic and the official com.anthropic SDK, which calls /v1/messages — not
+    # /chat/completions, so nothing under spring.ai.openai below applies to it.
+    #
+    # Chat only. Anthropic serves no embeddings, no image generation and no transcription, so a
+    # deployment on Claude always names another provider for those kinds. That is supported rather
+    # than a workaround — spring.ai.model.* is per kind — but it does mean "run it on Claude" is
+    # never one variable: spring.ai.model.embedding and .embedding.text still have to name somebody
+    # who serves embeddings, or there is no knowledge base and no tool-search index.
+    # AnthropicProviderCoexistenceTest is what pins that.
+    #
+    # Nothing below does anything until spring.ai.model.chat above names `anthropic`.
+    anthropic:
+      # Which host the Claude protocol is spoken to: `anthropic` for Anthropic's own API with an
+      # API key, or `vertex` for a Google Cloud project with an OAuth token — which is how an
+      # organisation that buys Claude through GCP reaches it.
+      #
+      # This one *is* a switch of this project's, unlike spring.ai.model.* above, and the difference
+      # is worth keeping straight: that switch chooses which provider serves a kind of model, this
+      # one chooses which host the same provider's protocol goes to. The request body, the options,
+      # the streaming and the tool protocol are identical either way, which is why this is one
+      # module with a backend rather than two modules. Spring AI has no property for it — its own
+      # auto-configuration hard-wires Anthropic's backend — so on `vertex` the module publishes the
+      # chat model itself and Spring AI's backs off. See AnthropicVertexAutoConfiguration.
+      backend: ${ANTHROPIC_BACKEND:anthropic}
+      # Only read on the `anthropic` backend; `vertex` authenticates with Google credentials and
+      # needs no key at all.
+      #
+      # Leaving this blank while spring.ai.model.chat names `anthropic` is refused at startup rather
+      # than allowed, and that is a guard rather than pedantry: with no key configured the SDK falls
+      # back to ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN in the *process* environment, so a
+      # deployment that forgot this would not fail on a machine that exports one — it would work,
+      # and bill whoever owns that key. See AnthropicConnectionCheck.
+      api-key: ${ANTHROPIC_API_KEY:}
+      # Blank means api.anthropic.com. A value here is for a gateway re-serving the protocol, and is
+      # ignored on the `vertex` backend, whose host is derived from the location below.
+      base-url: ${ANTHROPIC_BASE_URL:}
+      # 30 minutes, matching spring.ai.openai.chat.timeout below and for the same reason. The SDK's
+      # own default is 60 seconds, which is routinely less than a run takes once it streams a long
+      # answer and calls tools in between; the symptom of that default is a run dying partway
+      # through with a read timeout and no explanation from the endpoint.
+      timeout: ${ANTHROPIC_TIMEOUT:30m}
+      chat:
+        # No default, even though AnthropicChatOptions has one. An unset model there is not an
+        # error: Spring AI substitutes a Claude model silently, so the deployment runs on one nobody
+        # chose. On the `vertex` backend that is wrong twice over, because Vertex spells model ids
+        # its own way — older ones carry an `@` date (claude-sonnet-4-5@20250929, not
+        # claude-sonnet-4-5-20250929) while newer ones are undated (claude-opus-5, claude-sonnet-5)
+        # — so the substituted name is one the project refuses with a 404 that reads like a broken
+        # project. AnthropicConnectionCheck fails startup instead, and only when spring.ai.model.chat
+        # actually names anthropic. Take the id from the Model Garden card rather than from
+        # Anthropic's own docs.
+        model: ${ANTHROPIC_CHAT_MODEL:}
+        # Anthropic requires max_tokens on every request, and the SDK defaults it to 4096 — low for
+        # a run that calls tools and then writes a long answer. Going over it is not an error
+        # either: the turn simply stops, with stop_reason=max_tokens and nothing in the log. Named
+        # here so the default is this project's rather than the SDK's.
+        max-tokens: ${ANTHROPIC_MAX_TOKENS:8192}
+      # Only read when backend is `vertex`.
+      vertex:
+        project-id: ${ANTHROPIC_VERTEX_PROJECT:}
+        # A Vertex region, or `global`. It decides the hostname as well as the placement —
+        # <location>-aiplatform.googleapis.com, with `global`, `us` and `eu` having hosts of their
+        # own — so a location that does not serve the model answers 404 rather than falling back.
+        #
+        # `global` is what Google recommends and is the cheapest: it routes dynamically for
+        # availability, while a named region or the `us`/`eu` multi-regions carry a 10% premium and
+        # exist for data residency or provisioned throughput. It also decides which models are
+        # reachable — the newest Claude models are served only from `global` and the multi-regions,
+        # so pinning a single region limits what this deployment can ask for.
+        location: ${ANTHROPIC_VERTEX_LOCATION:}
+        # Blank means Application Default Credentials, which is the normal case and covers all three
+        # usual ways a deployment proves itself: `gcloud auth application-default login` on a
+        # laptop, GOOGLE_APPLICATION_CREDENTIALS pointing at a file, and workload identity on GKE or
+        # Cloud Run. A path or classpath: URL here names a service-account JSON instead, for a
+        # deployment running outside Google Cloud with a mounted secret.
+        credentials-location: ${ANTHROPIC_VERTEX_CREDENTIALS:}
     # Alibaba Cloud DashScope, as one credential. Read by spring-agent-provider-dashscope, which
     # publishes the two things DashScope does differently — its image API and its vision endpoint —
     # and contributes the rest to spring.ai.openai.* above, since chat and embeddings there are the

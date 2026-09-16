@@ -110,6 +110,7 @@ spring-agent-rag-milvus               the knowledge base; the only KnowledgeBase
 spring-agent-provider-openai          the OpenAI wire protocol, and so most gateways
 spring-agent-provider-dashscope       DashScope's own image API and vision endpoint; builds on the above
 spring-agent-provider-google-genai    Gemini natively: thinking levels, its embeddings, reference-image editing
+spring-agent-provider-anthropic       Claude, from Anthropic or from a Vertex AI project; chat only
 spring-agent-app-feishu               deployable server, Feishu surface; depends on every optional module
 spring-agent-app-slack                the same server, Slack surface
 spring-agent-app-cli                  laptop command line; jpa + local shell only
@@ -518,7 +519,8 @@ Whether Spring AI ships a starter for the provider is **not** what decides this.
 model beans and knows nothing of core's own contracts — `ProviderChatClients`, `BuiltinModels`,
 `ProviderRejection`, and an `ImageModel` that reads `ImageGenerationMetadata` — so a provider that
 needs any of those needs a module whether or not it is first-class upstream.
-`spring-agent-provider-openai` and `spring-agent-provider-google-genai` are both exactly that: a
+`spring-agent-provider-openai`, `spring-agent-provider-google-genai` and
+`spring-agent-provider-anthropic` are all exactly that: a
 Spring AI starter plus those contracts, and little else. `spring-agent-provider-dashscope` is the
 one that is different, because Spring AI ships nothing for it at all.
 

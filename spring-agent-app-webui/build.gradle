@@ -63,16 +63,16 @@ dependencies {
   implementation project(':spring-agent-rag-milvus')
 
   // Where the models come from. Core carries no provider at all, so an application has to name one;
-  // all three are here so that which one serves a run is configuration rather than a rebuild — see
+  // all four are here so that which one serves a run is configuration rather than a rebuild — see
   // spring.ai.model.* in application.yaml.
   //
-  // Three on one classpath is not the ambiguity two chat surfaces would be. Spring AI's own
+  // Four on one classpath is not the ambiguity two chat surfaces would be. Spring AI's own
   // conditions gate each kind of model on spring.ai.model.<kind> naming its provider, so exactly
   // one answers per kind, and there is no switch of ours for them to disagree with. But those
   // conditions are `matchIfMissing`, so with more than one provider present a kind that names
   // nothing gets *every* provider rather than a default one — which is why application.yaml now
   // names chat, embedding and image explicitly instead of relying on unset meaning openai.
-  // GoogleGenAiProviderCoexistenceTest is what pins that.
+  // GoogleGenAiProviderCoexistenceTest and AnthropicProviderCoexistenceTest are what pin that.
   //
   // No line here is decoration. provider-openai is what serves chat, embeddings and the endpoints a
   // person registers for themselves — on DashScope too, whose compatible-mode *is* that protocol —
@@ -91,6 +91,20 @@ dependencies {
   implementation project(':spring-agent-provider-openai')
   implementation project(':spring-agent-provider-dashscope')
   implementation project(':spring-agent-provider-google-genai')
+
+  // provider-anthropic is Claude, and it carries a second switch of its own that the other three do
+  // not: spring.ai.anthropic.backend chooses whether the same protocol is spoken to Anthropic or to
+  // a Google Cloud project. That is what makes this one module rather than two — an organisation
+  // that buys Claude through GCP sends an identical request body to a different host, signed
+  // differently — and it is why there is code here at all rather than only a starter: Spring AI's
+  // own auto-configuration hard-wires Anthropic's backend and exposes no seam for another.
+  //
+  // Chat only. Anthropic serves no embeddings, no image generation and no transcription, so a
+  // deployment on Claude always names another provider for those kinds — supported rather than a
+  // workaround, since spring.ai.model.* is per kind. It commits nothing until spring.ai.model.chat
+  // names `anthropic`; AnthropicCarriedButUnconfiguredTest is what pins that, because the day it
+  // stops being true this module needs the import filter provider-google-genai has.
+  implementation project(':spring-agent-provider-anthropic')
 
   // Its whole surface, and the only integration it takes: the pages, the REST endpoints and the
   // STOMP broker a run streams over. Deliberately no chat platform — this application logs people

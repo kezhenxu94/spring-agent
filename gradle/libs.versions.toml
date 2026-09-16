@@ -43,6 +43,14 @@ jedis = "7.4.1"
 # because MockWebServer and okhttp share internals and a mismatch fails at run time, not at compile
 # time. Test-only, so it never reaches a published runtime classpath.
 okhttp = "4.12.0"
+# Not BOM-managed: the spring-ai BOM manages spring-ai-anthropic but knows nothing of the Anthropic
+# SDK's Vertex artifact, which is not a dependency of it. The two ship from one release train and
+# `anthropic-java-vertex` implements `com.anthropic.backends.Backend`, an interface the SDK makes no
+# compatibility promise about across versions — so this must equal whatever anthropic-java-core
+# spring-ai-anthropic resolves to. Check with
+# `./gradlew :spring-agent-provider-anthropic:dependencies --configuration runtimeClasspath`
+# before bumping either side; a mismatch fails at run time, not at compile time.
+anthropic-sdk = "2.52.0"
 sqlite-jdbc = "3.53.2.1"
 testcontainers = "2.0.3"
 
@@ -61,6 +69,7 @@ spring-ai-bom = { module = "org.springframework.ai:spring-ai-bom", version.ref =
 # spring-shell-jline optional, and the terminal UI the agent's questions are drawn with lives there.
 spring-shell-starter = { module = "org.springframework.shell:spring-shell-starter-ffm", version.ref = "spring-shell" }
 jedis = { module = "redis.clients:jedis", version.ref = "jedis" }
+anthropic-vertex = { module = "com.anthropic:anthropic-java-vertex", version.ref = "anthropic-sdk" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
 okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver", version.ref = "okhttp" }
 larksuite-oapi = { module = "com.larksuite.oapi:oapi-sdk", version.ref = "larksuite-oapi" }
