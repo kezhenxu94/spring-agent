@@ -118,6 +118,21 @@ export function scrollToEnd(force) {
 }
 
 /**
+ * A leading mark on the sidebar's axis.
+ *
+ * Every glyph in that column sits in a box of one width — a section's icon, the +, a row's live
+ * dot, the avatar — so that the names beside them line up and folding the column to a rail moves
+ * none of them. The box itself is .side-glyph in sidebar.css, which is where the geometry and the
+ * reason for it are written down; this is how a list puts its dot in one.
+ */
+export function glyph(mark) {
+  const box = document.createElement('span');
+  box.className = 'side-glyph';
+  box.append(mark);
+  return box;
+}
+
+/**
  * The second line of a sidebar row: what is true about the thing named on the line above.
  *
  * One builder for the lists that have one, because they are read in one column and have to agree. A
@@ -125,12 +140,12 @@ export function scrollToEnd(force) {
  * how often, how many — goes here, quiet and small, in the order the lists share. The conversation
  * list and the knowledge list have nothing to add that is worth a line, and so are a single one.
  *
- * Indented past the dot so it hangs under the name rather than under the dot's own column, which is
- * what keeps two lines reading as one row.
+ * Indented by a glyph box and the gap after it, so it hangs under the name rather than under the
+ * dot's own column, which is what keeps two lines reading as one row.
  */
 export function rowMeta() {
   const meta = document.createElement('span');
-  meta.className = 'flex w-full items-center gap-1.5 pl-3.5 text-[10px] text-mist';
+  meta.className = 'flex w-full items-center gap-1.5 pl-[1.55rem] text-[10px] text-mist';
   return meta;
 }
 
