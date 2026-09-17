@@ -5,7 +5,7 @@
 // there. The same path on a first visit, a reload mid-answer, and a return an hour later.
 
 import { t } from './i18n.js';
-import { $, scrollToEnd } from './dom.js';
+import { $, glyph, scrollToEnd } from './dom.js';
 import { api } from './api.js';
 import { toast } from './toast.js';
 import { skeletonList, skeletonTranscript } from './busy.js';
@@ -34,6 +34,10 @@ export async function loadConversations() {
     // becomes anything.
     done();
     renderConversationList();
+    // What the rail's activity line reads off — it lives in an earlier layer than this file, so it
+    // listens for this rather than being called. Announced in the finally for the same reason the
+    // list is drawn there: a failed reload is still the moment the rail's reading may have changed.
+    bus.emit('conversations:loaded');
   }
 }
 
@@ -61,10 +65,10 @@ function row(conversation) {
   // task's next run or a document's size, when a conversation was last spoken to answers no
   // question somebody has while looking for it — the list is already in that order.
   const open = document.createElement('button');
-  open.className = 'row-open flex w-full items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left '
+  open.className = 'row-open flex w-full items-center gap-[0.55rem] rounded-md py-1 pl-[0.625rem] pr-7 text-left '
     + 'text-[13px] transition '
     + (current
-      ? 'bg-zinc-200/70 font-medium dark:bg-rail'
+      ? 'row-on font-medium'
       : 'text-zinc-600 group-hover:bg-zinc-100 dark:text-mist dark:group-hover:bg-rail/60');
 
   // Filled and pulsing while a run is going, an empty ring otherwise. The ring rather than nothing
@@ -78,7 +82,9 @@ function row(conversation) {
   const title = document.createElement('span');
   title.className = 'min-w-0 flex-1 truncate';
   title.textContent = conversation.title || t('nav.untitled');
-  open.append(dot, title);
+  // The dot in the same box a section's icon sits in — see .side-glyph in sidebar.css. It is what
+  // puts this title under the name of the section it belongs to rather than 13px to the left of it.
+  open.append(glyph(dot), title);
   // Navigated to rather than opened here: the route is what decides what is on screen, and the
   // handler it reaches closes the drawer.
   open.addEventListener('click', () => go(chatRoute(conversation.id)));

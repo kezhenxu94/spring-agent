@@ -53,55 +53,6 @@
   to { opacity: 0; transform: translateY(0.35rem); }
 }
 
-/* ─────────────────────────────── the segmented control ───────────────────────────────
- *
- * One of a small fixed set, where seeing the alternatives is worth the width — which in this page
- * is the sidebar's tab strip and nothing else. The theme and the language are chosen from a menu
- * instead: they are set once and then never again, and a strip standing open for them spends the
- * sidebar's last inch on a decision nobody is making.
- *
- * No state colour. Amber, teal, violet and coral say something specific about a run everywhere else
- * on this page, and spending one here would make the chrome look like something the agent is doing.
- * Selection is carried by contrast and a raised surface instead.
- */
-
-.seg {
-  display: grid;
-  place-items: center;
-  width: 1.65rem;
-  height: 1.5rem;
-  border-radius: 0.375rem;
-  color: var(--fg-dim);
-  transition: color 120ms ease, background 120ms ease;
-}
-.seg:hover { color: var(--fg); }
-.seg:focus-visible {
-  outline: 2px solid var(--mist);
-  outline-offset: 1px;
-}
-/* The selected segment has to read as raised at a glance, without borrowing a state colour. On
-   dark that means a surface clearly lighter than the sidebar it sits on — --code-bg is only a few
-   points off the panel and disappeared. On light it is white plus a hairline shadow, which is the
-   same idea the other way up. */
-.seg-on {
-  color: var(--paper);
-  background: var(--edge);
-}
-:root:not(.dark) .seg-on {
-  color: var(--fg);
-  background: #fff;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.07), inset 0 0 0 1px var(--line);
-}
-
-/* The same control doing navigation rather than settings: as wide as the sidebar allows, and tall
-   enough to read as somewhere to press rather than a preference. Both dimensions have to be undone
-   here rather than with a utility class, because this stylesheet is linked after the one Tailwind's
-   browser build injects and so wins at equal specificity — the same trap as .drawer-only. */
-.seg-tab {
-  width: auto;
-  height: 1.85rem;
-}
-
 .menu {
   z-index: 40;
   padding: 0.25rem;

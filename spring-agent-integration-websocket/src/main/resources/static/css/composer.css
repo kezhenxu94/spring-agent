@@ -93,15 +93,6 @@
 /* The size the sidebar's footer uses, where two of these sit beside a name and an id in 270px. */
 .tool-button-sm { width: 1.65rem; height: 1.65rem; }
 
-/* Signing out, and nothing else so far. Coral is the alarm colour and this is the one control in
-   the chrome that ends something, but it is also a control nobody is looking for until they are —
-   so it says so on hover and on focus rather than sitting there in red. */
-.tool-button-danger:hover {
-  color: var(--alarm-fg);
-  background: color-mix(in oklch, var(--alarm) 10%, transparent);
-}
-.tool-button-danger:focus-visible { color: var(--alarm-fg); }
-
 /* The frame, and nothing else in it: the padding that the text sits on belongs to the field rather
  * than here, because the field is the scroller and padding on a scroller's parent is padding the
  * text slides out from under.
@@ -207,10 +198,11 @@
 
 /* A toolbar button that is on, for the one that toggles rather than acts.
  *
- * Takes its treatment from .seg-on in chrome.css rather than inventing a second way to look
- * selected, and for the reason given there: a state colour would read as a status — something
- * succeeded, something needs attention — where all this says is "this is switched on". A raised
- * surface says that without claiming anything.
+ * A raised surface rather than a state colour, which is the rule the whole page keeps: amber, teal,
+ * violet and coral each say something specific about a run, and spending one here would read as a
+ * status — something succeeded, something needs attention — where all this says is "this is switched
+ * on". The sidebar's selected section makes the same choice a different way, with a tick; see
+ * .side-row in sidebar.css.
  *
  * The dim when off is here rather than on .tool-button because it is only wanted for a button
  * carrying somebody else's brand mark: at full saturation beside a monochrome paperclip, a

@@ -72,13 +72,21 @@ the agent act with the logged-in person's credentials, files and MCP servers.
 
 ## The page
 
-Plain ES modules under `src/main/resources/static/js`, no bundler. Two rules there are load-bearing.
+Plain ES modules under `src/main/resources/static/js`, no bundler. Three rules there are load-bearing.
 
 **Modules are layered.** The core first (`state`, `dom`, `i18n`, `render`, `api`, `toast`, `route`),
 then `status`/`theme`/`sidebar`, then the features, then `app.js` as the only file importing across
 all of them. A module imports only ones earlier than itself, and a backward edge goes over the `bus`
 in `state.js`. A cycle does not fail loudly: it resolves a binding to `undefined` and throws on
 whichever path nobody clicked.
+
+**The column is a rail with a readout.** The sidebar's left 3.25rem is the instrument — the mark,
+the three sections, the one action, what the agent is doing, who is signed in — and the rest of it is
+whatever the selected section is listing. The fold in its header takes the readout away and leaves
+the rail, so a folded sidebar is still navigable rather than gone, and the choice is remembered in
+`localStorage`. Every glyph in the column sits in a box of one width on one axis, which is what makes
+a fold look like a fold rather than a redraw; the geometry and the reasons are in `css/sidebar.css`,
+and changing one of the five rows that state it means changing all five.
 
 **Navigation is one-way.** `route.js` owns the hash (`#/chat/<id>`, `#/tasks/<id>`, `#/kb/<docId>`), a
 click calls `go`, and `app.js`'s `dispatch` decides what is on screen. Nothing opens a thing and then

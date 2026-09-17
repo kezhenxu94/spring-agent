@@ -5,7 +5,7 @@
 // which is why this section offers no "new" button and says so instead.
 
 import { t } from './i18n.js';
-import { $, rowMeta } from './dom.js';
+import { $, glyph, rowMeta } from './dom.js';
 import { api } from './api.js';
 import { toast } from './toast.js';
 import { skeletonList } from './busy.js';
@@ -76,14 +76,14 @@ function row(task) {
   // The two-line row every sidebar list uses: the name on one line, what is true about it on the
   // next. This list is the one that has the most to say there — a task's name is its prompt, and
   // what tells two of them apart at a glance is when they come round and how often.
-  open.className = 'row-open flex w-full flex-col gap-0.5 rounded-md py-1.5 pl-2 pr-7 text-left '
+  open.className = 'row-open flex w-full flex-col gap-0.5 rounded-md py-1.5 pl-[0.625rem] pr-7 text-left '
     + 'text-[13px] transition '
     + (current
-      ? 'bg-zinc-200/70 font-medium dark:bg-rail'
+      ? 'row-on font-medium'
       : 'text-zinc-600 group-hover:bg-zinc-100 dark:text-mist dark:group-hover:bg-rail/60');
 
   const line = document.createElement('span');
-  line.className = 'flex w-full items-center gap-2';
+  line.className = 'flex w-full items-center gap-[0.55rem]';
   // Where a conversation's dot says it is live, a task's says it is waiting — violet, the colour
   // this page uses for the agent waiting on something rather than working.
   const dot = document.createElement('span');
@@ -91,7 +91,7 @@ function row(task) {
   const text = document.createElement('span');
   text.className = 'min-w-0 flex-1 truncate';
   text.textContent = taskName(task);
-  line.append(dot, text);
+  line.append(glyph(dot), text);
 
   open.append(line, meta(task));
   open.addEventListener('click', () => go(tasksRoute(task.id)));

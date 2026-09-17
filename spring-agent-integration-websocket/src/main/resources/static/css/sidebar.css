@@ -1,0 +1,206 @@
+/* ─────────────────────────────────────── the sidebar ───────────────────────────────────────
+ *
+ * A rail with a readout beside it. The rail is the column's left 3.25rem — the mark, the three
+ * sections, the one action, what the agent is doing, who is signed in. The readout is whatever the
+ * rail's selection is showing: the conversations, the schedule, the knowledge base. The fold in the
+ * header takes the readout away and leaves the rail, so a folded sidebar is still navigable rather
+ * than gone, and the run gets the width back.
+ *
+ * Every glyph in this column — a section's icon, the +, the activity dot, the avatar — sits in a
+ * 1rem box 1.125rem in from the column's edge, so its centre is 1.625rem: exactly half the folded
+ * rail. Folding therefore moves no glyph by a pixel. The labels slide out from under themselves and
+ * the instrument stays where it was, which is the difference between a fold and a redraw. That is
+ * why the section rows, the action row, the activity line and the account row all state the same
+ * padding rather than each taking whatever looked right on its own — change one and you have to
+ * change all five, and the comment is here so that it is obvious which five.
+ */
+
+/* The width is animated, which is the one transition in this column. The run beside it is laid out
+   by the same flex row, so it widens as this narrows with nothing to keep in step. */
+#sidebar { transition: width 160ms cubic-bezier(0.2, 0.7, 0.3, 1); }
+
+/* ─────────────────────────────── the rail's rows ───────────────────────────────
+ *
+ * One shape for every row on the rail, whatever it does: a glyph, a label, and the room for one
+ * more control at the end. A section navigates, the action starts a conversation, the account row
+ * opens a menu — they look the same because they are the same kind of thing, the column's own
+ * controls, as against the lists below them which are the things it holds.
+ */
+.side-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  height: 1.9rem;
+  padding-inline: 0.625rem;
+  border-radius: 0.45rem;
+  font-size: 13px;
+  color: var(--fg-dim);
+  text-align: left;
+  transition: color 120ms ease, background 120ms ease;
+}
+.side-row:hover { color: var(--fg); background: var(--code-bg); }
+.side-row:focus-visible { outline: 2px solid var(--mist); outline-offset: -2px; }
+
+/* The row you are on — the section in the rail, and the conversation, task or document in the list
+ * under it. One definition, because it is one idea and the two are read down one column: a second
+ * grey for the same fact is the kind of thing that makes a column look assembled rather than
+ * designed.
+ *
+ * No state colour. Amber, teal, violet and coral each say something specific about a run, and "this
+ * is the one you are looking at" is not one of them, so this is carried by a surface a shade off the
+ * ground. --line is that shade and it is already defined on both sides of the theme — #E4E7EC on
+ * light, #1F2736 on dark — which is why a border token is the right one to read here rather than a
+ * pair of literals that would have to be kept in step by hand.
+ */
+.row-on,
+.side-row[aria-selected="true"] { color: var(--fg); background: var(--line); }
+
+/* Which section, as against which row in it. The surface above says "you are here" for both, so the
+ * tick is what says which of the two "here" is the wider one — and it is the reason a section can
+ * share a list row's surface without the two becoming ambiguous.
+ *
+ * It reaches out of the row into the nav's own padding, which is what puts it hard against the
+ * column's edge rather than floating 0.5rem inside it. A row stretched to the edge instead would
+ * have nowhere to round. */
+.side-row[aria-selected="true"] { font-weight: 500; }
+.side-row[aria-selected="true"]::before {
+  content: "";
+  position: absolute;
+  left: -0.5rem;
+  top: 50%;
+  translate: 0 -50%;
+  width: 2px;
+  height: 1.05rem;
+  border-radius: 1px;
+  background: var(--fg);
+}
+
+/* The 1rem box every glyph sits in, and the thing that actually holds the axis.
+ *
+ * Not everything in it is 1rem: the mark is 1.5rem and the avatar 1.25rem, both on purpose — a
+ * round or a pictorial shape has to be optically larger than a line icon to read as the same size.
+ * So the child is taken out of flow and centred on the box's centre rather than laid out inside it.
+ * Grid centring will not do this job: an item wider than its track is aligned to the track's start
+ * instead of overflowing both ways, which put the mark 4px right of every glyph under it. */
+.side-glyph {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+.side-glyph > * {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  /* The box is deliberately smaller than some of the things in it, and Tailwind's preflight puts
+     `max-width: 100%` on every image so that a photograph cannot break a layout. Together those
+     squeeze an image glyph to the box's width while its height stands — which is a 1.25rem avatar
+     drawn 1rem wide, a circle rendered as an oval, and the same for a deployment's own logo once
+     brand.js swaps the shipped mark for an <img>. A max-width always beats a width, so the clamp
+     has to be lifted here rather than argued with. */
+  max-width: none;
+}
+
+/* The `display` above is an author rule, and the only thing saying `[hidden]` means invisible is the
+   browser's own stylesheet, which every author rule beats regardless of specificity — the same trap
+   as .tool-button and .drawer-only. The one action is hidden this way off its own section. */
+.side-row[hidden] { display: none; }
+
+.side-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ─────────────────────────────── what the agent is doing ───────────────────────────────
+ *
+ * The one thing this column says that nothing else on the page does: whether anything is happening
+ * at all. A conversation's own row carries a live dot, but only while that row is in view and only
+ * about itself — so somebody who has scrolled the list, or who is reading a document, has no way to
+ * know a run is going on somewhere behind them. This line is that way.
+ *
+ * It is not a status strip: there is no "idle", and when there is nothing to report the line is not
+ * there. The dot carries the colour — signal for a run going, waiting for a question nobody has
+ * answered — and the words stay dim, exactly as a conversation row's dot is coloured and its title
+ * is not. Small mono caps, because it is a reading off an instrument rather than a sentence.
+ */
+.side-activity {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  height: 1.75rem;
+  padding-inline: 0.625rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--fg-dim);
+}
+/* An author `display` again, so the attribute needs saying out loud — the same lesson as
+   .tool-button and .drawer-only. */
+.side-activity[hidden] { display: none; }
+
+/* Not while this column is a drawer. At that width it is already off screen unless somebody opened
+ * it, the control for that is the header's own toggle, and the fold rules below are guarded by the
+ * same media query — so a fold button there is a control that does nothing at all when pressed.
+ *
+ * `max-md:hidden` cannot do this job, for the reason .drawer-only in chrome.css spells out at
+ * length: this button also carries .tool-button, which sets a display of its own in a stylesheet
+ * linked after the one Tailwind's browser build injects, so at one class each the utility loses. An
+ * id here, which loses to nothing. */
+@media (max-width: 767.98px) {
+  #fold-sidebar { display: none; }
+}
+
+/* ─────────────────────────────── folded ───────────────────────────────
+ *
+ * Every rule here is inside the media query, class and all. Below md this column is a drawer that
+ * slides over the run, where folding it to a rail means nothing — and a fold left switched on from
+ * a wide window would otherwise follow the reader onto a phone and hide the labels of a drawer that
+ * is, at that width, the whole navigation. Guarding the rules rather than the class means JavaScript
+ * does not have to remember that.
+ */
+@media (min-width: 768px) {
+  /* 3.25rem of rail, plus the column's own 1px rule.
+   *
+   * The +1px is not a fudge. Boxes here are border-box, so a flat 3.25rem would spend a pixel of
+   * the rail on the border and leave a 51px content box — and then the two ways things find the
+   * axis disagree by half a pixel: a row's glyph is placed 1.125rem from the left edge, while the
+   * header's mark and fold are centred in whatever the content box happens to be. Adding the border
+   * back makes that box exactly 3.25rem, and both land on 1.625rem. */
+  #sidebar.is-collapsed { width: calc(3.25rem + 1px); }
+  /* Nothing sticks out during the 160ms the width is animating. */
+  #sidebar.is-collapsed { overflow: hidden; }
+
+  /* Two classes, so this beats the single-class utilities and .tool-button's own display without
+     an !important — the trap .drawer-only next door is named after. */
+  #sidebar.is-collapsed .collapse-hide { display: none; }
+  #sidebar.is-collapsed .side-label { display: none; }
+
+  /* The header is the one place the axis changes: the mark and the fold cannot sit side by side in
+     3.25rem, so they stack. Both are already on the rail's centre line, so neither moves sideways
+     to get there. */
+  #sidebar.is-collapsed .side-head {
+    flex-direction: column;
+    gap: 0.3rem;
+    padding-inline: 0;
+    padding-bottom: 0.5rem;
+  }
+
+  /* The glyph on the rail's axis, and the row no wider than the rail. The padding is untouched:
+     0.5rem of nav padding plus 0.625rem here puts the 1rem box's centre at 1.625rem, and half of
+     3.25rem is 1.625rem. */
+  #sidebar.is-collapsed .side-row,
+  #sidebar.is-collapsed .side-activity { gap: 0; }
+
+  /* Pointing the way the panel will go: into the column to fold, out of it to unfold. One glyph
+     mirrored rather than two drawn, which also moves the bar in it to the side the panel is on. */
+  #sidebar.is-collapsed .fold-glyph { transform: scaleX(-1); }
+}
