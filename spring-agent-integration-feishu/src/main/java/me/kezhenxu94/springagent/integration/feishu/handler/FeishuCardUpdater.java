@@ -1572,6 +1572,12 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     if (elements == null || Strings.isNullOrEmpty(reasoningSoFar)) {
       return;
     }
+    // A deployment that does not want the thinking shown — see FeishuCardElements#showsReasoning.
+    // Here, at the one place the pane is written to, rather than by leaving the element out of the
+    // template: the panel is added by its first write, so nothing else has to know it is off.
+    if (!elements.showsReasoning()) {
+      return;
+    }
     // Before the new thinking lands, so that a card the run has just moved onto carries on from
     // what was on the card it left rather than from the first thought of the turn.
     sync();

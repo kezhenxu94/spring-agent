@@ -190,6 +190,36 @@ public class FeishuCardElements {
   @Nullable private final ReasoningEffortInForce reasoningEffortInForce;
 
   /**
+   * Whether a run's thinking is shown at all: the panel, and the stream of thought written into it.
+   *
+   * <p>A switch rather than a constant because what the thinking costs a reader differs by
+   * deployment. It is the longest thing on most cards and it is not what the run is saying, so a
+   * workspace that reads cards on a phone, or one whose model narrates at length, may want the
+   * answer and nothing above it — while a deployment watching the agent work wants to see the
+   * reasoning as it arrives. On, because the pane arrives closed and costs a reader who does not
+   * open it one line.
+   *
+   * <p>Only the showing of it. Nothing here asks the model to think less: how hard it is asked is
+   * {@link ReasoningEffortInForce} above, and a run with this off still thinks, still pays for the
+   * tokens and still reports them in the spend line.
+   *
+   * <p>A constructor argument with a default of its own rather than one supplied by {@link
+   * me.kezhenxu94.springagent.integration.feishu.config.FeishuCardDefaults}, matching {@link
+   * #cardElements}: unlike the streaming rates there, an unset value here is not a rate the API
+   * cannot live with — it is simply the behaviour every deployment had before the switch existed.
+   */
+  @Value("${app.feishu.card-reasoning:true}")
+  private final boolean cardReasoning;
+
+  /**
+   * Whether the card carries a thinking panel, asked before a run streams into one — see {@link
+   * #cardReasoning}.
+   */
+  boolean showsReasoning() {
+    return cardReasoning;
+  }
+
+  /**
    * The element written into, for one the card carries and an insert names, or null where the two
    * are the same element. A panel is inserted whole and streamed into by its body, so a body that
    * has gone from the card is a panel that has to be put back.

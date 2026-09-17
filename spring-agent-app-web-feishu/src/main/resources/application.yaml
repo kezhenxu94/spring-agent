@@ -856,6 +856,18 @@ app:
     # as above; a file of your own may restyle these five elements, but the card above has to keep
     # the footer they are anchored to (see FeishuCardElements).
     card-elements: ${FEISHU_CARD_ELEMENTS:classpath:/feishu/card-elements.json}
+    # Whether the card shows what the model thought on its way to the answer: a panel above the
+    # answer, born closed, that the thinking is streamed into as it arrives. On, because the pane
+    # costs a reader who does not open it one line, and a run that is working for a while has
+    # nothing else to show for itself until the answer starts.
+    #
+    # Turn it off for a workspace that wants the answer and nothing above it — the thinking is the
+    # longest thing on most cards, and it is how the run got there rather than what it is saying.
+    # It only stops it being shown: the model still thinks, the tokens are still paid for and still
+    # counted in the spend line, and how hard it is asked to think is the reasoning effort of the
+    # model behind the run (see the `app.ai.models` block and /config). A subagent's thinking is
+    # never shown either way — its panel has nowhere to put it.
+    card-reasoning: ${FEISHU_CARD_REASONING:true}
     # What somebody is greeted with the first time they open a chat with the bot, and what they are
     # shown afterwards when the agent has learned to do something they have not been told about.
     # Two halves, because the words and the frame around them are edited by different people at
