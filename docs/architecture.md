@@ -282,7 +282,9 @@ flowchart LR
 
 The scope is derived from the session in both paths and never from the request, so the page can
 reach exactly what a run started from it could — with one exception, an `app.ai.admins` member
-naming an owner on a read, which mirrors `KnowledgeAdminTools` and goes no further.
+naming an owner on a read or on a delete, which mirrors what `KnowledgeAdminTools` and
+`PlaybookTools` already allow and goes no further: nothing is ever filed into somebody else's
+knowledge base from here.
 
 ## What may depend on what
 

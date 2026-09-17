@@ -52,8 +52,10 @@ import org.springframework.web.server.ResponseStatusException;
  * <p><b>Whose knowledge base is decided by the authenticated principal, never by the request.</b>
  * The scope is built from the principal exactly as {@code ChatController} builds an {@code
  * AgentRequest} — so a page cannot read a knowledge base a run started from it could not. The one
- * exception is {@code owner}, which an admin may name on the read endpoints, mirroring {@code
- * KnowledgeAdminTools} and going no further than it does: no write ever accepts one.
+ * exception is {@code owner}, which an admin may name on the read endpoints and on {@link #delete},
+ * mirroring what {@code KnowledgeAdminTools} and {@code PlaybookTools} already allow between them:
+ * an identity nobody logs in as is one whose documents nobody else could otherwise remove. No other
+ * write accepts one — nothing here files a document into somebody else's knowledge base.
  *
  * <p>A deployment with no {@link KnowledgeBase} bean is a supported deployment, not a broken one —
  * the knowledge base exists only where {@code spring-agent-rag-milvus} is on the classpath and
@@ -315,20 +317,38 @@ public class KnowledgeController {
    * half of what names the document. See {@link KnowledgeBase#delete} — deleting an id across
    * everything the caller may read would take the company's copy of a file along with their own
    * private copy of it, and there would be no way for them to say which they meant.
+   *
+   * <p><b>The one write that accepts an {@code owner}</b>, and the exception is narrow on purpose.
+   * An event source's {@code owner.user-id} is an identity nobody logs in as, {@code PlaybookTools}
+   * writes the playbooks steering its triage runs into that identity's knowledge base, and until
+   * this there was no way to take one out again: not by its author, who is not that identity, and
+   * not by that identity, which is not a person. A stale playbook could only be overwritten, never
+   * removed — and a document that cannot be removed is one a deployment has to live with forever.
+   *
+   * <p>It reaches no further than the reading does. {@link #readableScope} refuses anybody not in
+   * {@code app.ai.admins}, and what it returns for an owner is that person's own knowledge base
+   * with no group and no tenant — so naming an owner and {@code tenant} together is refused by
+   * {@link #owningTarget} rather than quietly deleting from the admin's own company base.
    */
   @DeleteMapping
   public ResponseEntity<Void> delete(
       @AuthenticationPrincipal final OAuth2User principal,
       @RequestParam("docId") final String docId,
-      @RequestParam("scope") final String scope) {
+      @RequestParam("scope") final String scope,
+      @RequestParam(required = false) final String owner) {
 
     final var user = ChatController.user(principal);
-    final var caller = callerScope(user);
-    final var owning = owningTarget(caller, scope);
+    final var reach = readableScope(user, owner);
+    final var owning = owningTarget(reach, scope);
     // Scoped, so a docId belonging to somebody else matches nothing rather than being refused —
     // which is also what keeps this from being a way to ask whether a document exists.
-    knowledgeBase().delete(caller, owning, docId);
-    log.info("Knowledge document {} deleted from {} by {}", docId, owning, user.id());
+    knowledgeBase().delete(reach, owning, docId);
+    log.info(
+        "Knowledge document {} deleted from {} of {} by {}",
+        docId,
+        owning,
+        reach.owner(),
+        user.id());
     return ResponseEntity.noContent().build();
   }
 

@@ -56,7 +56,11 @@ Rules that hold there and must keep holding:
 
 - **The scope is derived from the session, never from the request**, exactly as `ChatController`
   derives a run's. The one exception is that an `app.ai.admins` member may name an `owner` on the
-  *read* endpoints, mirroring `KnowledgeAdminTools`; no write accepts one.
+  *read* endpoints and on `DELETE`, mirroring what `KnowledgeAdminTools` and `PlaybookTools` allow
+  between them: a source's playbooks are written into an identity nobody logs in as, so without a
+  delete that names one they could be overwritten and never removed. No other write accepts an
+  owner, and the one that does reaches only that identity's *own* knowledge base — naming an owner
+  and `tenant` together is refused rather than deleting from the admin's company base.
 - **Every endpoint answers 404 where no `KnowledgeBase` bean exists**, and `/api/me` reports that
   first so the page never offers the section.
 - **A document id travels in the query string or the body, never in the path.** A document indexed

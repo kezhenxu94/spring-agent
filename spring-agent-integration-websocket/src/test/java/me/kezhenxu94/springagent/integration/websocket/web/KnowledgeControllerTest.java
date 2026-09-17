@@ -165,10 +165,52 @@ class KnowledgeControllerTest {
   void deleteIsScoped() {
     final var recorder = new Recorder();
     final var controller = controller(recorder, Set.of(ME), null);
-    controller.delete(principal(ME, TENANT), "note:theirs", "own");
+    controller.delete(principal(ME, TENANT), "note:theirs", "own", null);
 
     assertThat(recorder.deleted)
         .containsExactly(new Asked(scope(ME, TENANT), ScopeTarget.OWN, "note:theirs"));
+  }
+
+  @Test
+  @DisplayName("an admin may delete from the knowledge base of an identity nobody logs in as")
+  void adminDeletesAnothersDocument() {
+    // The one write that takes an owner. A source's triage playbooks are written into an identity
+    // that is not a person, so without this a stale one could be overwritten and never removed.
+    final var recorder = new Recorder();
+    final var controller = controller(recorder, Set.of(ME), null);
+
+    controller.delete(principal(ME, TENANT), "note:playbook", "own", "agent-triage");
+
+    // That identity's own knowledge base, and no tenant — the same scope the admin read it with,
+    // rather than one carrying the admin's own company.
+    assertThat(recorder.deleted)
+        .containsExactly(
+            new Asked(
+                new KnowledgeScope("agent-triage", "", ""), ScopeTarget.OWN, "note:playbook"));
+  }
+
+  @Test
+  @DisplayName("refuses a non-admin naming an owner when deleting")
+  void deletingAnothersDocumentIsAdminOnly() {
+    final var controller = controller(new Recorder(), Set.of(), null);
+    assertThatThrownBy(
+            () -> controller.delete(principal(ME, TENANT), "note:theirs", "own", "ou_someone_else"))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("403");
+  }
+
+  @Test
+  @DisplayName("an admin naming an owner reaches that person's own base and no company one")
+  void adminDeleteCannotReachACompanyBase() {
+    // Naming an owner leaves no tenant to narrow to, so this is refused rather than deleting from
+    // the admin's own company knowledge base while reporting somebody else's.
+    final var recorder = new Recorder();
+    final var controller = controller(recorder, Set.of(ME), null);
+    assertThatThrownBy(
+            () -> controller.delete(principal(ME, TENANT), "note:shared", "tenant", "agent-triage"))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("400");
+    assertThat(recorder.deleted).isEmpty();
   }
 
   @Test
@@ -228,7 +270,7 @@ class KnowledgeControllerTest {
     // slashes are rejected before the method is reached; unencoded, they are more path segments.
     final var path = "/var/agent/ou_me/artifacts/report.pdf";
 
-    controller.delete(principal(ME, TENANT), path, "tenant");
+    controller.delete(principal(ME, TENANT), path, "tenant", null);
 
     assertThat(recorder.deleted)
         .containsExactly(new Asked(scope(ME, TENANT), ScopeTarget.TENANT, path));
@@ -251,7 +293,7 @@ class KnowledgeControllerTest {
     // An id is unique inside one knowledge base and not across them, so a delete that fell back
     // to "own" would report the document the caller is looking at as gone while it is still there.
     final var controller = controller(new Recorder(), Set.of(), null);
-    assertThatThrownBy(() -> controller.delete(principal(ME, TENANT), "note:mine", null))
+    assertThatThrownBy(() -> controller.delete(principal(ME, TENANT), "note:mine", null, null))
         .isInstanceOf(ResponseStatusException.class)
         .hasMessageContaining("400");
   }
@@ -262,7 +304,7 @@ class KnowledgeControllerTest {
     // owning(TENANT) on a sign-in with no company leaves an all-blank scope, which names no
     // document — KnowledgeScopeFilter throws on one rather than matching nothing.
     final var controller = controller(new Recorder(), Set.of(), null);
-    assertThatThrownBy(() -> controller.delete(principal(ME, ""), "note:mine", "tenant"))
+    assertThatThrownBy(() -> controller.delete(principal(ME, ""), "note:mine", "tenant", null))
         .isInstanceOf(ResponseStatusException.class)
         .hasMessageContaining("400");
   }
@@ -357,7 +399,7 @@ class KnowledgeControllerTest {
   void withoutAKnowledgeBase() {
     final var controller =
         new KnowledgeController(provider(null), admins(Set.of()), null, messages(), properties());
-    assertThatThrownBy(() -> controller.delete(principal(ME, TENANT), "anything", "own"))
+    assertThatThrownBy(() -> controller.delete(principal(ME, TENANT), "anything", "own", null))
         .isInstanceOf(ResponseStatusException.class)
         .hasMessageContaining("404");
   }

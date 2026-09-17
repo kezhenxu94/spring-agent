@@ -151,20 +151,24 @@
 .row-menu:focus-visible { opacity: 1; outline: 2px solid var(--mist); outline-offset: 1px; }
 .group:hover .row-menu { opacity: 1; }
 
-/* The conversation list is the exception, and only it: its rows are one line of title and nothing
- * else, so a ⋯ sitting on every one of them at 45% is a second column of grey dots down the whole
- * sidebar, competing with the live dot — the one mark in that list that means something. A task's
- * row and a document's carry a second line of their own, which gives the quiet ⋯ something to sit
- * beside instead.
+/* The one-line lists are the exception: a conversation's row and a document's are a title and
+ * nothing else, so a ⋯ sitting on every one of them at 45% is a second column of grey dots down the
+ * whole sidebar, competing with the dots that mean something — a conversation being live, a
+ * document being the company's. A task's row carries a second line of its own, which gives the
+ * quiet ⋯ something to sit beside instead.
  *
  * Reachable without a pointer even so: :focus-visible above brings it back, so tabbing through the
  * list still finds it. And where there is no hover to wait for it stays as it was on every list,
- * because on a touch drawer this is the only way to delete a conversation. */
+ * because on a touch drawer this is the only way to delete a conversation or a document. */
 @media (hover: hover) {
-  #conversation-list .row-menu { opacity: 0; }
+  #conversation-list .row-menu,
+  #knowledge-list .row-menu { opacity: 0; }
   #conversation-list .group:hover .row-menu,
   #conversation-list .row-menu:focus-visible,
-  #conversation-list .row-menu[aria-expanded="true"] { opacity: 1; }
+  #conversation-list .row-menu[aria-expanded="true"],
+  #knowledge-list .group:hover .row-menu,
+  #knowledge-list .row-menu:focus-visible,
+  #knowledge-list .row-menu[aria-expanded="true"] { opacity: 1; }
 }
 
 /* Where a list row keeps it: over the row's own padding, which every row reserves with pr-7. */
