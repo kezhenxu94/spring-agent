@@ -13,7 +13,7 @@ import { skeletonList, skeletonTranscript } from './busy.js';
 import { bus, state } from './state.js';
 import { initTheme } from './theme.js';
 import { applyBrand } from './brand.js';
-import { renderStatus } from './status.js';
+import { setStatus } from './status.js';
 import { initSidebar, initTabs, onNarrowScreen, selectTab, sidebarOpen } from './sidebar.js';
 import { chatRoute, current, go, onRoute } from './route.js';
 import { attachRun } from './stream.js';
@@ -49,7 +49,6 @@ function wire() {
   // the markup is handled by applyTranslations; these are the lists built in JavaScript.
   bus.on('language:changed', () => {
     renderConversationList();
-    renderStatus();
     // Its title names the chat platform, so it is a label like any other.
     refreshMirror();
     // And whatever the main column is showing, by asking the route what that is — which is cheaper
@@ -163,7 +162,7 @@ async function start() {
     initKnowledgeAdd(scopesAvailable());
   }
   initTabs({ knowledge: knowledgeAvailable() });
-  renderStatus('idle');
+  setStatus('idle');
   renderIdentity(state.me);
   $('logout-csrf').value = csrfToken();
 

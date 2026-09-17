@@ -1,24 +1,13 @@
-// The strip in the header that says what the run is doing.
+// What the run is doing, remembered.
+//
+// This drew a strip in the header until the conversation row's live dot made it the same fact
+// twice. What is left is the value itself, which is not dead with the strip: stream.js asks whether
+// it was already reattaching before it says "reattached", because a reconnect that nobody noticed
+// is not worth a toast. Everything else about a run is said where it happens — a question in the
+// transcript, a failure in a toast — so there is nothing here to redraw on a language change.
 
-import { t } from './i18n.js';
-import { $ } from './dom.js';
 import { state } from './state.js';
 
-export function renderStatus(kind) {
-  if (kind) state.status = kind;
-  const status = state.status || 'idle';
-  const dot = $('status-dot');
-  const text = $('status-text');
-  const tone = {
-    idle: ['bg-zinc-300 dark:bg-edge', 'status.idle'],
-    attached: ['bg-signal dot-live', 'status.attached'],
-    reattaching: ['bg-signal', 'status.reattaching'],
-    waiting: ['bg-waiting dot-live', 'status.waiting'],
-    done: ['bg-settled', 'status.done'],
-    stopped: ['bg-zinc-400 dark:bg-mist', 'status.stopped'],
-    failed: ['bg-alarm', 'status.failed'],
-  }[status] || ['bg-zinc-300 dark:bg-edge', 'status.idle'];
-  dot.className = `size-1.5 rounded-full ${tone[0]}`;
-  text.textContent = t(tone[1]);
-  text.dataset.i18n = tone[1];
+export function setStatus(kind) {
+  state.status = kind;
 }

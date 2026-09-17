@@ -50,14 +50,6 @@ const STRINGS = {
     'composer.mirror.off': 'Also send the answer to {0}',
     'composer.mirror.surface.feishu': 'Feishu',
 
-    'status.idle': 'Idle',
-    'status.attached': 'Running',
-    'status.reattaching': 'Reattaching',
-    'status.waiting': 'Waiting on you',
-    'status.done': 'Done',
-    'status.stopped': 'Stopped',
-    'status.failed': 'Failed',
-
     'run.thinking': 'Thinking',
     'run.tools': 'Tool calls',
     'run.subagent': 'Subagent',
@@ -241,14 +233,6 @@ const STRINGS = {
     'composer.mirror.on': '回答会同时发送到{0}，点击可关闭。',
     'composer.mirror.off': '把回答同时发送到{0}',
     'composer.mirror.surface.feishu': '飞书',
-
-    'status.idle': '空闲',
-    'status.attached': '执行中',
-    'status.reattaching': '重新连接',
-    'status.waiting': '等你回答',
-    'status.done': '已完成',
-    'status.stopped': '已停止',
-    'status.failed': '失败',
 
     'run.thinking': '思考过程',
     'run.tools': '工具调用',

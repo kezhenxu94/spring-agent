@@ -9,7 +9,7 @@ import { t } from './i18n.js';
 import { $ } from './dom.js';
 import { toast } from './toast.js';
 import { RunView } from './render.js';
-import { renderStatus } from './status.js';
+import { setStatus } from './status.js';
 import { onRunEvent, runHandlers } from './run-events.js';
 import { bus, state } from './state.js';
 
@@ -48,7 +48,7 @@ export function attachRun(requestId, from) {
   state.requestId = requestId;
   state.runView = state.runView ?? new RunView($('transcript'));
   setRunning(true);
-  renderStatus('attached');
+  setStatus('attached');
 
   // A backlog arrives in one burst; live events arrive one at a time. Only the latter animate — a
   // hundred rows sliding in on reattach would be a slot machine, and the point of reattaching is
@@ -73,7 +73,7 @@ export function attachRun(requestId, from) {
 
   client.onConnect = () => {
     if (state.status === 'reattaching') toast(t('run.reattached'), 'settled', 2500);
-    renderStatus(state.running ? 'attached' : state.status);
+    if (state.running) setStatus('attached');
     client.subscribe(`/app/runs/${requestId}`, (frame) => {
       let event;
       try {
@@ -90,7 +90,7 @@ export function attachRun(requestId, from) {
   client.onStompError = (frame) => {
     toast(frame.headers?.message || t('run.failed'));
     closeStream();
-    renderStatus('idle');
+    setStatus('idle');
   };
   client.onWebSocketClose = () => {
     // The client reconnects by itself and we resubscribe from the cursor. This is only to say so —
@@ -98,7 +98,7 @@ export function attachRun(requestId, from) {
     // is how a close we asked for is told apart from one we did not.
     if (client.active) {
       state.replaying = true;
-      renderStatus('reattaching');
+      setStatus('reattaching');
     }
   };
 
