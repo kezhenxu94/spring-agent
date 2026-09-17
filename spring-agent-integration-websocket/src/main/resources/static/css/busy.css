@@ -130,9 +130,11 @@
 
 /* ─────────────────────────────────────── row menus ───────────────────────────────────────
  *
- * The ⋯ on a list row and in a panel's heading. It replaces a × that appeared on hover, so unlike
- * that × it has to be reachable without a pointer: it is always there, only quiet, and it comes
- * fully into view on hover, on focus, and on the row that is open.
+ * The ⋯ on a list row and in a panel's heading. Quiet where it stands — a panel's heading — and
+ * fully in view on hover, on focus, and while its own menu is open. What it must never be is
+ * unreachable without a pointer, which is what the × it replaces was: see the sidebar's lists
+ * below, where it does wait for a hover, and the media query that gives it back where there is
+ * none.
  */
 .row-menu {
   display: grid;
@@ -151,24 +153,52 @@
 .row-menu:focus-visible { opacity: 1; outline: 2px solid var(--mist); outline-offset: 1px; }
 .group:hover .row-menu { opacity: 1; }
 
-/* The one-line lists are the exception: a conversation's row and a document's are a title and
- * nothing else, so a ⋯ sitting on every one of them at 45% is a second column of grey dots down the
- * whole sidebar, competing with the dots that mean something — a conversation being live, a
- * document being the company's. A task's row carries a second line of its own, which gives the
- * quiet ⋯ something to sit beside instead.
+/* Every sidebar list is the same in this: a row is the thing it names, and a ⋯ sitting on all of
+ * them at 45% is a second column of grey dots down the whole sidebar, competing with the dots that
+ * do mean something — a conversation being live, a task waiting, a document being the company's. So
+ * where there is a pointer the ⋯ waits to be asked for, and the width it was holding goes back to
+ * the title.
  *
  * Reachable without a pointer even so: :focus-visible above brings it back, so tabbing through the
- * list still finds it. And where there is no hover to wait for it stays as it was on every list,
- * because on a touch drawer this is the only way to delete a conversation or a document. */
+ * list still finds it. And where there is no hover to wait for it stays as it was, because on a
+ * touch drawer this is the only way to delete a conversation, a task or a document. */
 @media (hover: hover) {
   #conversation-list .row-menu,
+  #task-list .row-menu,
   #knowledge-list .row-menu { opacity: 0; }
   #conversation-list .group:hover .row-menu,
   #conversation-list .row-menu:focus-visible,
   #conversation-list .row-menu[aria-expanded="true"],
+  #task-list .group:hover .row-menu,
+  #task-list .row-menu:focus-visible,
+  #task-list .row-menu[aria-expanded="true"],
   #knowledge-list .group:hover .row-menu,
   #knowledge-list .row-menu:focus-visible,
   #knowledge-list .row-menu[aria-expanded="true"] { opacity: 1; }
+
+  /* Every row reserves the ⋯'s corner with pr-7 so that the overlaid button never sits on text,
+   * which for a control that is not on screen meant a title truncated a word early on every row.
+   * Here the padding is the ordinary one until the ⋯ is actually there, so the ellipsis appears
+   * where the sidebar ends rather than where a hidden button would have been.
+   *
+   * What moves is the truncation point of one line of text, not the row: its width and height are
+   * unchanged, so nothing under the pointer shifts. Keyed on exactly the states that make the ⋯
+   * visible above — :has rather than :focus-within, because focus lands on the row's own button
+   * whenever a row is opened, and that must not reserve a corner for a control still at zero. */
+  #conversation-list .row-open,
+  #task-list .row-open,
+  #knowledge-list .row-open { padding-right: 0.5rem; }
+  #conversation-list .group:hover .row-open,
+  #conversation-list .group:has(.row-menu:focus-visible) .row-open,
+  #conversation-list .group:has(.row-menu[aria-expanded="true"]) .row-open,
+  #task-list .group:hover .row-open,
+  #task-list .group:has(.row-menu:focus-visible) .row-open,
+  #task-list .group:has(.row-menu[aria-expanded="true"]) .row-open,
+  #knowledge-list .group:hover .row-open,
+  #knowledge-list .group:has(.row-menu:focus-visible) .row-open,
+  #knowledge-list .group:has(.row-menu[aria-expanded="true"]) .row-open {
+    padding-right: 1.75rem;
+  }
 }
 
 /* Where a list row keeps it: over the row's own padding, which every row reserves with pr-7. */

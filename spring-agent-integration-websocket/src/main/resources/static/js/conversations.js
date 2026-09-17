@@ -61,11 +61,11 @@ function row(conversation) {
   // task's next run or a document's size, when a conversation was last spoken to answers no
   // question somebody has while looking for it — the list is already in that order.
   const open = document.createElement('button');
-  open.className = 'flex w-full items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left '
+  open.className = 'row-open flex w-full items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left '
     + 'text-[13px] transition '
     + (current
       ? 'bg-zinc-200/70 font-medium dark:bg-rail'
-      : 'text-zinc-600 hover:bg-zinc-100 dark:text-mist dark:hover:bg-rail/60');
+      : 'text-zinc-600 group-hover:bg-zinc-100 dark:text-mist dark:group-hover:bg-rail/60');
 
   // Filled and pulsing while a run is going, an empty ring otherwise. The ring rather than nothing
   // at all because the two states then differ by *fill*, which is a difference the eye reads down a

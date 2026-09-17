@@ -35,11 +35,11 @@ function row(entry, options) {
 
   const open = document.createElement('button');
   open.type = 'button';
-  open.className = 'flex w-full items-center rounded-md py-1.5 pl-2 pr-7 text-left '
+  open.className = 'row-open flex w-full items-center rounded-md py-1.5 pl-2 pr-7 text-left '
     + 'text-[13px] transition '
     + (current
       ? 'bg-zinc-200/70 font-medium dark:bg-rail'
-      : 'text-zinc-600 hover:bg-zinc-100 dark:text-mist dark:hover:bg-rail/60');
+      : 'text-zinc-600 group-hover:bg-zinc-100 dark:text-mist dark:group-hover:bg-rail/60');
 
   const line = document.createElement('span');
   line.className = 'flex w-full items-center gap-2';

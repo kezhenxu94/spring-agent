@@ -1,7 +1,7 @@
 // Which language the page and the server both answer in.
 //
 // The choice is stored and announced here; what it looks like to choose is the preferences menu's
-// business — see settings.js.
+// business — see account.js.
 //
 // What has to be redrawn when the choice changes is not this module's business either: it announces
 // the change and app.js decides who hears it, which is what keeps a new panel from having to be

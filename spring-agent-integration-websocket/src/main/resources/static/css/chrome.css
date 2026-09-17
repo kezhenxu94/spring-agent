@@ -164,16 +164,64 @@
   color: var(--fg-dim);
 }
 
+/* What the set behind a submenu currently says, so the answer is readable without opening it. Dim,
+   because the row is the question and this is only its present answer. */
+.menu-value {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+
+/* There is more behind this row. After the value, and the only thing on the row that moves. */
+.menu-arrow {
+  flex: none;
+  /* At the end of the row on its own, and right after the value where there is one — the value is
+     the thing that should sit under the next row's value, not the arrow. */
+  margin-left: auto;
+  /* Smaller than the label, and smaller than the ⋯ that opened the menu: it says there is more
+     behind the row, and a glyph that competes with the words is one more thing to read. */
+  font-size: 11px;
+  line-height: 1;
+  color: var(--fg-dim);
+}
+.menu-value + .menu-arrow,
+.menu-code + .menu-arrow { margin-left: 0.2rem; }
+.menu-item:hover > .menu-arrow,
+.menu-item[aria-expanded="true"] > .menu-arrow { color: var(--fg); }
+
+/* A row that is not a command: something to read, and whatever controls belong to it. No hover
+   state and nothing focusable in it but those controls, so it does not look like a row that would
+   do something if pressed. */
+.menu-node {
+  padding: 0.15rem 0.45rem 0.3rem;
+}
+
 /* ─────────────────────────────────────── the user id ───────────────────────────────────────
  *
- * The id under the name is shortened from the middle to fit the sidebar, which makes it something
- * to recognise rather than something to use — so the way to get the whole of it is next to it. It
- * stays out of the way until the footer is hovered, the way a row's menu does, because the id is
- * there to be read far more often than it is there to be copied.
+ * The id in the account menu is shortened from the middle to fit, which makes it something to
+ * recognise rather than something to use — so the way to get the whole of it sits next to it, and
+ * is simply always there: a menu is opened on purpose rather than scanned past, so nothing in it
+ * has to earn its place by hiding.
  *
- * Where there is no pointer to hover with, it is simply always there: a control that appears on
- * hover is a control that does not exist on a phone.
+ * Mono, because it is a machine handle and not a name — the name is on the line the menu opens
+ * from — and one line, whatever length the subject is.
  */
+.menu-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.menu-identity-id {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--fg-dim);
+}
+
 .id-copy {
   display: grid;
   place-items: center;
@@ -182,25 +230,14 @@
   height: 1.05rem;
   border-radius: 0.25rem;
   color: var(--fg-dim);
-  opacity: 0;
-  transition: opacity 120ms ease, color 120ms ease, background 120ms ease;
+  transition: color 120ms ease, background 120ms ease;
 }
-.group:hover .id-copy,
-.id-copy:focus-visible { opacity: 1; }
 .id-copy:hover { color: var(--fg); background: var(--code-bg); }
-/* The `display` above is an author rule, and the only thing saying `[hidden]` means invisible is
-   the browser's own stylesheet, which every author rule beats regardless of specificity — the same
-   trap as .tool-button. Nothing to copy where the server reported no id. */
-.id-copy[hidden] { display: none; }
 .id-copy:focus-visible { outline: 2px solid var(--mist); outline-offset: 1px; }
 /* Confirmed on the control itself as well as in a toast: the toast says it worked, the tick says
    which of the two things on this row it worked on. Teal is a run's "settled" and this is not a
    run — but it is the same idea, and the alternative is a second green. */
-.id-copy[data-copied="true"] { opacity: 1; color: var(--settled-fg); }
-
-@media (hover: none) {
-  .id-copy { opacity: 1; }
-}
+.id-copy[data-copied="true"] { color: var(--settled-fg); }
 
 /* ─────────────────────────────────────── the sidebar drawer ───────────────────────────────────────
  *

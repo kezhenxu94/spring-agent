@@ -1,7 +1,7 @@
 // Light, dark, or whatever the system says.
 //
 // The choice is stored and applied here; what it looks like to choose is the preferences menu's
-// business — see settings.js. Keeping the two apart is what lets the same three values be offered
+// business — see account.js. Keeping the two apart is what lets the same three values be offered
 // from a menu now and from something else later without touching the rule that decides `dark`,
 // which the inline script in index.html also has to agree with before first paint.
 
