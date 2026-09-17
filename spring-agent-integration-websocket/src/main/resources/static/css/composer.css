@@ -38,7 +38,7 @@
   place-items: center;
   width: 2.1rem;
   height: 2.1rem;
-  /* Clear of the divider, measured from the top of the composer bar — see the note in index.html
+  /* Clear of the composer, measured from the top of the composer bar — see the note in index.html
      for why it is anchored there and not to the column inside it. */
   margin-bottom: 0.55rem;
   border: 1px solid var(--line);
@@ -68,7 +68,7 @@
 /* ─────────────────────────────────────── the composer ───────────────────────────────────────
  *
  * A toolbar of what can be added to a message, then the box the message is typed in with the one
- * action that sends it in the corner of that same box. The frame is the box's, not the textarea's,
+ * action that sends it on the same line as the text. The frame is the box's, not the textarea's,
  * so focus reads as belonging to the whole composer.
  */
 
@@ -102,12 +102,56 @@
 }
 .tool-button-danger:focus-visible { color: var(--alarm-fg); }
 
+/* The frame, and nothing else in it: the padding that the text sits on belongs to the field rather
+ * than here, because the field is the scroller and padding on a scroller's parent is padding the
+ * text slides out from under.
+ *
+ * `cursor: text` and not merely as a hint — composer.js focuses the field when this strip is
+ * clicked, because the frame is not the field: a click landing beside a one-line field's text is
+ * aimed at the composer and would otherwise do nothing at all. */
 .composer-box {
   position: relative;
+  padding: 0.2rem;
   border: 1px solid var(--line);
-  border-radius: 0.85rem;
+  border-radius: 0.7rem;
   background: var(--surface);
+  cursor: text;
   transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+/* The field itself. One line while it is empty, growing with the message — a div does that by
+ * itself, which is the whole reason there is no height arithmetic left in composer.js — and
+ * scrolling once it has grown as far as it may.
+ *
+ * `pre-wrap` is what makes Shift+Enter visible: a newline typed into a contenteditable is a
+ * character like any other, and the default `normal` would collapse it.
+ *
+ * The right padding is the action's corner, reserved so a long message wraps before the button
+ * rather than under it. On every line rather than only the last, which is the ordinary way round:
+ * the alternative is text that reflows when the button appears and disappears. */
+.composer-field {
+  max-height: 13rem;
+  overflow-y: auto;
+  padding: 0.3rem 0.5rem;
+  padding-right: 2rem;
+  white-space: pre-wrap;
+  outline: none;
+}
+
+/* Drawn rather than declared, because only an <input> has a placeholder. `float` with no height so
+ * that it takes part in no line box: laid out inline it would give an empty field a line of its
+ * own and make the box two lines tall the moment somebody typed. The attribute it reads is written
+ * by i18n.js's placeholder(), so it follows the language switcher and the running state like every
+ * other string on the page.
+ *
+ * `data-empty` comes from composer.js rather than from `:empty`, which stops being true the moment
+ * a browser leaves a <br> behind in a field somebody has emptied again. */
+.composer-field[data-empty]::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--mist);
+  pointer-events: none;
 }
 :root:not(.dark) .composer-box { background: #fff; border-color: #D8DBE1; }
 
@@ -118,38 +162,47 @@
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--mist) 16%, transparent);
 }
 
+/* No fill. The glyph is the ↵ key the reader is about to press anyway, so the button is a reminder
+ * of the keystroke rather than a second, competing way to send — a filled pill here would be the
+ * loudest thing on a page whose only state colour is the run's.
+ *
+ * Over the field's reserved corner rather than beside it in a row: a sibling in the flow is a thing
+ * a drag through the text can select, and the point of the whole composer being ordinary inline
+ * text is that a selection covers words and nothing else. Anchored to the bottom so that it stays
+ * on the last line — where the caret is — as the message grows. */
 .composer-action {
   position: absolute;
-  right: 0.5rem;
-  bottom: 0.5rem;
+  right: 0.3rem;
+  bottom: 0.3rem;
   display: grid;
   place-items: center;
-  width: 2rem;
-  height: 2rem;
-  border-radius: 0.6rem;
-  background: var(--fg);
-  color: var(--surface);
-  transition: opacity 120ms ease, background 120ms ease;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.45rem;
+  color: var(--fg-dim);
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 120ms ease, color 120ms ease, background 120ms ease;
 }
-/* Scoped away from the stop button: `:root:not(.dark) .composer-action` out-specifies
-   `.composer-action-stop`, so without the :not() the stop icon inherited the send button's white
-   and vanished into its own pale amber. */
-:root:not(.dark) .composer-action:not(.composer-action-stop) { color: #fff; }
-.composer-action:focus-visible { outline: 2px solid var(--mist); outline-offset: 2px; }
+.composer-action:hover { color: var(--fg); background: var(--code-bg); }
+.composer-action:focus-visible { outline: 2px solid var(--mist); outline-offset: 1px; }
 
 /* Dimmed and inert while there is nothing to send, so the control says whether it will do anything
-   before it is pressed. */
+   before it is pressed. No hover lift either — a control that will not act must not answer the
+   pointer as though it would. */
 .composer-action[disabled] {
   opacity: 0.3;
   cursor: default;
 }
+.composer-action[disabled]:hover { color: var(--fg-dim); background: none; }
 
-.composer-action-stop {
-  background: color-mix(in oklch, var(--signal) 16%, transparent);
+/* Amber, and only amber: with the fill gone, colour is all that is left to say that this press ends
+   something rather than starting it. */
+.composer-action-stop { color: var(--signal-fg); }
+.composer-action-stop:hover {
   color: var(--signal-fg);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--signal) 50%, transparent);
+  background: color-mix(in oklch, var(--signal) 16%, transparent);
 }
-.composer-action-stop:hover { background: color-mix(in oklch, var(--signal) 26%, transparent); }
 
 
 /* A toolbar button that is on, for the one that toggles rather than acts.

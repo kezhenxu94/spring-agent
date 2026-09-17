@@ -194,7 +194,7 @@
       <!-- No heading over any of the three: the strip above them says which one this is, and a
            label repeating it is a line of chrome that pushes the list itself further down. -->
       <div id="tab-conversations" role="tabpanel" aria-labelledby="tab-conversations-button">
-        <ul id="conversation-list" class="space-y-1.5"></ul>
+        <ul id="conversation-list" class="space-y-0.5"></ul>
       </div>
 
       <!--
@@ -466,7 +466,7 @@
     </section>
 
     <div id="composer-bar"
-         class="relative shrink-0 border-t border-zinc-200 px-4 py-3 sm:px-6 dark:border-rail">
+         class="relative shrink-0 px-4 py-2 sm:px-6">
 
       <!--
         The way back to the end of a conversation somebody has scrolled up out of.
@@ -474,8 +474,8 @@
         Here rather than pinned to the transcript, because the composer bar is what the transcript
         ends at: the button sits just above the frame the answer is arriving into, which is where
         the eye already is. Positioned against the bar itself rather than against the column inside
-        it — the bar has padding of its own, and measuring from the column put the button half over
-        the divider, straddling the line instead of clearing it.
+        it — the bar has padding of its own, and measuring from the column put the button too low,
+        overlapping the composer instead of clearing it.
 
         It appears only while the transcript is not near its end — see AT_END in dom.js, which is
         the same number that decides whether a delta may scroll the reader, so the button cannot
@@ -496,12 +496,62 @@
         <ul id="attachments" class="mb-2 hidden flex-wrap gap-1.5"></ul>
 
         <!--
-          A toolbar of things you can add to a message, above the box you type it in, and of the
+          The box owns the focus ring, through focus-within, so the field inside it can be
+          borderless and the action can sit in the same frame as the text it acts on. It is one row:
+          an empty composer is one line tall — which is what it is, most of the time — and the
+          field grows from there as the message does, with the action riding its last line.
+
+          A contenteditable rather than a <textarea>, so that the field is ordinary inline text —
+          which is what the input this was modelled on is. What that buys is the height: the field
+          grows because it is a div, so there is no scrollHeight arithmetic and no number here to
+          keep in step with the max-height in the stylesheet. `plaintext-only` is what keeps it a
+          field and not a document — no bold, no headings, no pasted markup — and composer.js reads
+          it as text and never as HTML, so nothing a browser did manage to drop in travels further
+          than the box. Two things a textarea gave for free are paid for there instead: the
+          placeholder (drawn by CSS from data-placeholder, see .composer-field) and plain-text
+          paste.
+
+          What it does *not* buy is a tighter selection, and that is worth writing down because it
+          looks as though it should: Chrome paints an inline selection over the font's ascent and
+          descent, 20px at this size, against the 21px line box a textarea painted — one pixel.
+          A selection here that reads as a block is not this, so look elsewhere.
+        -->
+        <div id="composer-box" class="composer-box">
+          <div id="composer" contenteditable="plaintext-only" role="textbox" aria-multiline="true"
+               data-empty
+               class="composer-field text-[14px] leading-[1.4]"
+               data-i18n-placeholder="composer.placeholder"></div>
+
+          <!-- ↵, because that is the key that actually sends: the button says which keystroke it
+               stands in for rather than inventing a symbol of its own. -->
+          <button id="send" class="composer-action" data-i18n-title="composer.send">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+                 stroke-linecap="round" stroke-linejoin="round" class="size-[15px]"
+                 aria-hidden="true">
+              <path d="M13 3.5v4.2a1.8 1.8 0 0 1-1.8 1.8H3.4M6.2 6.7 3.4 9.5l2.8 2.8"/>
+            </svg>
+            <span class="sr-only" data-i18n="composer.send">Send</span>
+          </button>
+
+          <button id="stop" class="composer-action composer-action-stop"
+                  data-i18n-title="composer.stop">
+            <svg viewBox="0 0 16 16" class="size-[12px]" aria-hidden="true">
+              <rect x="3" y="3" width="10" height="10" rx="2" fill="currentColor"/>
+            </svg>
+            <span class="sr-only" data-i18n="composer.stop">Stop run</span>
+          </button>
+        </div>
+        <!--
+          A toolbar of things you can add to a message, under the box you type it in, and of the
           things that change where it goes. It was always a strip rather than a lone button because
           the next one — a screenshot, a reference to a file the agent already has — belongs beside
           it and not somewhere else.
+
+          Under rather than over, so that nothing sits between what somebody is reading and the
+          line they answer it on: the box is the thing the eye goes to when the transcript ends,
+          and what can be added to a message is worth less attention than the message.
         -->
-        <div class="mb-1.5 flex items-center gap-0.5" role="toolbar" data-i18n-label="composer.tools">
+        <div class="mt-1 flex items-center gap-0.5" role="toolbar" data-i18n-label="composer.tools">
           <button id="attach" type="button" class="tool-button" data-i18n-title="composer.attach">
             <svg viewBox="0 0 20 20" fill="none" class="size-[17px]" aria-hidden="true">
               <path d="M13.5 6.5 8 12a2 2 0 1 0 2.8 2.8l5.7-5.7a4 4 0 1 0-5.7-5.7L5 9.3"
@@ -536,34 +586,6 @@
           </button>
         </div>
 
-        <!--
-          The box owns the focus ring, through focus-within, so the textarea inside it can be
-          borderless and the action can sit in the same frame as the text it acts on. The textarea's
-          bottom padding is what reserves the button's corner, so a long message wraps above it
-          rather than underneath it.
-        -->
-        <div class="composer-box">
-          <textarea id="composer" rows="1"
-                    class="block max-h-52 w-full resize-none border-0 bg-transparent px-3.5 pt-3
-                           pb-11 text-[14px] leading-[1.5] outline-none placeholder:text-mist"
-                    data-i18n-placeholder="composer.placeholder"></textarea>
-
-          <button id="send" class="composer-action" data-i18n-title="composer.send">
-            <svg viewBox="0 0 16 16" fill="none" class="size-[15px]" aria-hidden="true">
-              <path d="M8 13V3.5M3.9 7.6 8 3.5l4.1 4.1" stroke="currentColor" stroke-width="1.6"
-                    stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span class="sr-only" data-i18n="composer.send">Send</span>
-          </button>
-
-          <button id="stop" class="composer-action composer-action-stop"
-                  data-i18n-title="composer.stop">
-            <svg viewBox="0 0 16 16" class="size-[13px]" aria-hidden="true">
-              <rect x="3" y="3" width="10" height="10" rx="2" fill="currentColor"/>
-            </svg>
-            <span class="sr-only" data-i18n="composer.stop">Stop run</span>
-          </button>
-        </div>
       </div>
     </div>
   </main>

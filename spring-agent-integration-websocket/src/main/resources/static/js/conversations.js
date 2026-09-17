@@ -5,7 +5,7 @@
 // there. The same path on a first visit, a reload mid-answer, and a return an hour later.
 
 import { t } from './i18n.js';
-import { $, rowMeta, scrollToEnd, timeStamp } from './dom.js';
+import { $, scrollToEnd } from './dom.js';
 import { api } from './api.js';
 import { toast } from './toast.js';
 import { skeletonList, skeletonTranscript } from './busy.js';
@@ -55,35 +55,30 @@ function row(conversation) {
   const item = document.createElement('li');
   item.className = 'group relative';
 
+  // One line, and only a title on it. This list is the longest thing in the sidebar and the only
+  // one read by scanning rather than by reading each row: a conversation is found by what it is
+  // called, and the list is easier to find something in the more of it fits on screen. Unlike a
+  // task's next run or a document's size, when a conversation was last spoken to answers no
+  // question somebody has while looking for it — the list is already in that order.
   const open = document.createElement('button');
-  open.className = 'flex w-full flex-col gap-0.5 rounded-md py-1.5 pl-2 pr-7 text-left '
+  open.className = 'flex w-full items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left '
     + 'text-[13px] transition '
     + (current
       ? 'bg-zinc-200/70 font-medium dark:bg-rail'
       : 'text-zinc-600 hover:bg-zinc-100 dark:text-mist dark:hover:bg-rail/60');
 
-  const line = document.createElement('span');
-  line.className = 'flex w-full items-center gap-2';
+  // Filled and pulsing while a run is going, an empty ring otherwise. The ring rather than nothing
+  // at all because the two states then differ by *fill*, which is a difference the eye reads down a
+  // column without having to compare a row against the one above it — a dot that appears and
+  // disappears moves nothing, but leaves the reader deciding whether a row has one at all.
   const dot = document.createElement('span');
   dot.className = conversation.live
     ? 'size-1.5 shrink-0 rounded-full bg-signal dot-live'
-    : 'size-1.5 shrink-0 rounded-full bg-transparent';
+    : 'size-1.5 shrink-0 rounded-full border border-mist/70';
   const title = document.createElement('span');
   title.className = 'min-w-0 flex-1 truncate';
   title.textContent = conversation.title || t('nav.untitled');
-  line.append(dot, title);
-  open.append(line);
-
-  // When it was last said something to, on the second line the other two lists also keep: the three
-  // of them are read in one column, and the same fact in a different place in each is read as three
-  // different ones. A title is what a conversation is found by, and it gets the whole of its line
-  // rather than sharing it with a stamp that would clip a long one.
-  const stamp = timeStamp(conversation.updatedAt);
-  if (stamp) {
-    const meta = rowMeta();
-    meta.append(stamp);
-    open.append(meta);
-  }
+  open.append(dot, title);
   // Navigated to rather than opened here: the route is what decides what is on screen, and the
   // handler it reaches closes the drawer.
   open.addEventListener('click', () => go(chatRoute(conversation.id)));
