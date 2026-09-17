@@ -1,6 +1,6 @@
 // The box at the bottom: what it can send, and what it looks like while a run is going.
 
-import { t } from './i18n.js';
+import { placeholder, t } from './i18n.js';
 import { $, scrollToEnd, submits } from './dom.js';
 import { api } from './api.js';
 import { attempt, toast } from './toast.js';
@@ -74,11 +74,50 @@ function toggleMirror() {
   if (state.mirroring && state.running) toast(t('run.mirror.next'), 'waiting', 4000);
 }
 
+/**
+ * What is typed, as the person sees it.
+ *
+ * `innerText` rather than `textContent`, because the field is a contenteditable: a newline may be a
+ * character in a text node or a <br> a browser left behind, and only innerText renders the second
+ * as the line break it looks like. Read as text either way — nothing here ever touches innerHTML,
+ * so the box cannot carry markup out of itself.
+ */
+function typed() {
+  return $('composer').innerText;
+}
+
+/**
+ * Puts text in the field: what a failed send gives back, and what clearing it is.
+ *
+ * `textContent` rather than innerHTML for the reason above, and it is enough — the field is
+ * `white-space: pre-wrap`, so the newlines in a restored message are drawn as lines without any
+ * markup to represent them.
+ */
+function setTyped(text) {
+  const field = $('composer');
+  if (text) field.textContent = text;
+  else field.replaceChildren();
+  refreshEmptiness();
+  refreshSendState();
+}
+
+/**
+ * Whether the placeholder is drawn. See the note on .composer-field[data-empty] for why this is an
+ * attribute this sets rather than the `:empty` a stylesheet could ask about on its own.
+ *
+ * An element left behind counts as content — press Enter in an empty field and the caret is on a
+ * second line, which is not a field to offer a placeholder over.
+ */
+function refreshEmptiness() {
+  const field = $('composer');
+  field.toggleAttribute('data-empty', !field.textContent.length && !field.firstElementChild);
+}
+
 /** Send is inert until there is something to send — a message, or a file to talk about. */
 export function refreshSendState() {
   const send = $('send');
   if (!send) return;
-  send.disabled = !$('composer').value.trim() && !state.attachments.length;
+  send.disabled = !typed().trim() && !state.attachments.length;
 }
 
 export function setRunning(running) {
@@ -87,23 +126,21 @@ export function setRunning(running) {
   // Tailwind happened to emit them in.
   $('send').style.display = running ? 'none' : 'grid';
   $('stop').style.display = running ? 'grid' : 'none';
-  $('composer').placeholder = running
-    ? t('composer.placeholder.running') : t('composer.placeholder');
+  placeholder($('composer'), t(running ? 'composer.placeholder.running' : 'composer.placeholder'));
   refreshSendState();
 }
 
 export async function send() {
-  const composer = $('composer');
-  const typed = composer.value.trim();
+  const message = typed().trim();
   // A message that is only files is a legitimate one — "here, look at this".
-  if (!typed && !state.attachments.length) return;
+  if (!message && !state.attachments.length) return;
   const attached = state.attachments.slice();
   // Named in the message rather than passed beside it, so what the model reads is exactly what the
   // person sees was sent. The directory is stated because that is where the agent's file tools look.
   const text = attached.length
-    ? [typed, t('composer.attach.note', attached.map((f) => f.name).join(', '))]
+    ? [message, t('composer.attach.note', attached.map((f) => f.name).join(', '))]
       .filter(Boolean).join('\n\n')
-    : typed;
+    : message;
 
   await attempt(async () => {
     if (!state.conversationId) {
@@ -116,8 +153,7 @@ export async function send() {
     }
     // Cleared only once the request is on its way, so a failure does not also lose what they typed.
     const pending = text;
-    composer.value = '';
-    composer.style.height = 'auto';
+    setTyped('');
     state.attachments = [];
     renderAttachments();
     $('transcript').querySelector('.mx-auto.flex.h-full')?.remove();
@@ -135,7 +171,7 @@ export async function send() {
       // Give it back rather than swallow it: retyping a long message because the network blinked is
       // the worst thing this page could do to somebody. The files are already uploaded, so the
       // chips come back too rather than needing to be chosen again.
-      composer.value = typed;
+      setTyped(message);
       state.attachments = attached;
       renderAttachments();
       throw error;
@@ -167,9 +203,10 @@ export async function stop() {
 
 export function initComposer() {
   const composer = $('composer');
+  // No height to maintain — the field is a div and grows on its own, up to the max-height that
+  // turns it into a scroller. Only what the box says about itself is left.
   composer.addEventListener('input', () => {
-    composer.style.height = 'auto';
-    composer.style.height = `${Math.min(composer.scrollHeight, 208)}px`;
+    refreshEmptiness();
     refreshSendState();
   });
   composer.addEventListener('keydown', (event) => {
@@ -177,6 +214,36 @@ export function initComposer() {
       event.preventDefault();
       send();
     }
+  });
+  // A field, not a document. `plaintext-only` already says so to a browser that honours it, and
+  // this is what a browser that treats the value as plain `true` would otherwise do: paste the
+  // clipboard's *markup*, styles and all. execCommand is deprecated and still the only insertion
+  // that a browser records in its own undo stack, which a field somebody is typing a message into
+  // cannot do without.
+  //
+  // Files are somebody else's business: attachments.js turns a pasted screenshot into an upload,
+  // and it is the handler that has already claimed the event when it did.
+  composer.addEventListener('paste', (event) => {
+    if (event.defaultPrevented || event.clipboardData?.files?.length) return;
+    const text = event.clipboardData?.getData('text/plain');
+    if (text === undefined) return;
+    event.preventDefault();
+    document.execCommand('insertText', false, text);
+  });
+  // The frame around the field, which a one-line composer has plenty of. The frame is not the
+  // field, so without this a click aimed at the composer but landing beside its text does nothing
+  // at all — see .composer-box, which is where the cursor saying it is clickable lives.
+  $('composer-box').addEventListener('mousedown', (event) => {
+    if (event.target !== event.currentTarget) return;
+    event.preventDefault();
+    composer.focus();
+    // At the end of what is there, which is where a click on the frame past the text means.
+    const range = document.createRange();
+    range.selectNodeContents(composer);
+    range.collapse(false);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
   });
   $('send').addEventListener('click', send);
   $('stop').addEventListener('click', stop);

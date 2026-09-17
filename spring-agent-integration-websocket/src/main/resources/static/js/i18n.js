@@ -427,6 +427,30 @@ export function t(key, ...args) {
   });
 }
 
+/**
+ * What a field says while it is empty.
+ *
+ * Two ways of saying it, because the composer is a contenteditable rather than a <textarea>: a
+ * field with a `placeholder` property gets the property, and one without gets a `data-placeholder`
+ * attribute that CSS draws (see `.composer-field` in composer.css). One function so that a caller —
+ * the switcher below, and setRunning in composer.js — does not have to know which kind it is
+ * holding.
+ *
+ * The attribute branch names the field as well, and that is not belt-and-braces: a placeholder is
+ * an input's accessible name of last resort, so the textarea this replaced was announced by its own
+ * placeholder, and a contenteditable carrying nothing but a data attribute would be a field a
+ * screen reader cannot name. Here rather than as a data-i18n-label in the markup because the
+ * composer's placeholder changes while a run is going, and a label written once at translation time
+ * would go on announcing the idle one.
+ */
+export function placeholder(element, text) {
+  if ('placeholder' in element) element.placeholder = text;
+  else {
+    element.setAttribute('data-placeholder', text);
+    element.setAttribute('aria-label', text);
+  }
+}
+
 // Re-renders everything carrying a data-i18n key. Called on load and whenever the switcher changes
 // the language, so a switch does not need a page reload to take effect.
 export function applyTranslations(root = document) {
@@ -437,7 +461,7 @@ export function applyTranslations(root = document) {
     element.textContent = t(element.dataset.i18n);
   });
   root.querySelectorAll('[data-i18n-placeholder]').forEach((element) => {
-    element.placeholder = t(element.dataset.i18nPlaceholder);
+    placeholder(element, t(element.dataset.i18nPlaceholder));
   });
   root.querySelectorAll('[data-i18n-title]').forEach((element) => {
     element.title = t(element.dataset.i18nTitle);
