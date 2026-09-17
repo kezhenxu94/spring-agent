@@ -7,7 +7,7 @@
 import { t } from './i18n.js';
 import { scrollToEnd } from './dom.js';
 import { toast } from './toast.js';
-import { renderStatus } from './status.js';
+import { setStatus } from './status.js';
 import { renderQuestion } from './questions.js';
 import { bus, state } from './state.js';
 
@@ -45,7 +45,7 @@ export function runHandlers({ close }) {
     // Drawn from the event while the page is open, and from /state after a reload. Same shape
     // either way, because both come from the same PendingQuestion row.
     renderQuestion({ pendingQuestionId: d.pendingQuestionId, questions: d.questions });
-    renderStatus('waiting');
+    setStatus('waiting');
   });
 
   on('finished', (d) => {
@@ -53,7 +53,7 @@ export function runHandlers({ close }) {
     close();
     state.runView = null;
     const pending = document.querySelector('[data-question]');
-    renderStatus(pending ? 'waiting'
+    setStatus(pending ? 'waiting'
       : d.outcome === 'CANCELLED' ? 'stopped'
       : d.outcome === 'FAILED' ? 'failed' : 'done');
     bus.emit('conversations:changed');
@@ -76,7 +76,7 @@ export function onRunEvent(event, handlers, { close }) {
     // No journal for this run — evicted, or never ours. Either way the transcript is what is left,
     // and it is already on the page.
     close();
-    renderStatus('idle');
+    setStatus('idle');
     return;
   }
 

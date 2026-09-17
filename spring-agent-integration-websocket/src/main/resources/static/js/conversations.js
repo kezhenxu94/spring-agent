@@ -11,7 +11,7 @@ import { toast } from './toast.js';
 import { skeletonList, skeletonTranscript } from './busy.js';
 import { confirmAction } from './confirm.js';
 import { menuButton } from './menu.js';
-import { renderStatus } from './status.js';
+import { setStatus } from './status.js';
 import { onNarrowScreen, sidebarOpen } from './sidebar.js';
 import { chatRoute, go } from './route.js';
 import { renderQuestion } from './questions.js';
@@ -101,7 +101,7 @@ function row(conversation) {
             state.runView = null;
             $('transcript').replaceChildren();
             renderEmptyTranscript();
-            renderStatus('idle');
+            setStatus('idle');
           }
           await loadConversations();
           toast(t('delete.done'), 'settled', 3500);
@@ -144,9 +144,9 @@ export async function openConversation(id) {
 
   const transcript = $('transcript');
   transcript.replaceChildren();
-  renderStatus('idle');
+  setStatus('idle');
   // In the transcript alone, in the shape of a conversation: the sidebar keeps its list, the header
-  // keeps its status, and only the column that has just been emptied says it is filling again.
+  // keeps its title, and only the column that has just been emptied says it is filling again.
   const drawn = skeletonTranscript(transcript);
 
   // The transcript first: it comes from chat memory, so it is there after a restart of the server,
@@ -166,7 +166,7 @@ export async function openConversation(id) {
   const live = await api(`/api/conversations/${id}/state`);
   if (live.pendingQuestion) {
     renderQuestion(live.pendingQuestion);
-    renderStatus('waiting');
+    setStatus('waiting');
   }
   if (live.liveRequestId) {
     // A run was already going before this page existed. Attaching from 0 replays everything it has

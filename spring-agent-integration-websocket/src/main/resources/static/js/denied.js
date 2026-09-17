@@ -6,7 +6,7 @@
 import { t } from './i18n.js';
 import { $ } from './dom.js';
 import { csrfToken } from './api.js';
-import { renderStatus } from './status.js';
+import { setStatus } from './status.js';
 
 export function renderDenied(me) {
   $('sidebar').remove();
@@ -58,5 +58,5 @@ export function renderDenied(me) {
 
   box.append(label, heading, body, facts, out);
   transcript.append(box);
-  renderStatus('failed');
+  setStatus('failed');
 }

@@ -3,11 +3,10 @@
 <head>
   <meta charset="utf-8">
   <!--
-    Fixed at one scale. This page is an instrument panel with a drawer, a composer pinned to the
-    bottom and a status strip in the header, and a pinch zoom takes all three off screen at once —
-    including the Stop button, which is the one control a run in progress needs. Everything is laid
-    out to the viewport instead and wraps rather than widening (see base.css), so there is nothing
-    off to the side to zoom out to find.
+    Fixed at one scale. This page is an instrument panel with a drawer and a composer pinned to the
+    bottom, and a pinch zoom takes both off screen at once — including the Stop button, which is the
+    one control a run in progress needs. Everything is laid out to the viewport instead and wraps
+    rather than widening (see base.css), so there is nothing off to the side to zoom out to find.
 
     The cost is real: pinch-to-zoom is how somebody with low vision reads a small label, and this
     takes it away. What replaces it is the browser's own text size, which this page respects because
@@ -360,20 +359,14 @@
         </svg>
         <span class="sr-only" data-i18n="nav.menu">Menu</span>
       </button>
+      <!--
+        The title, and nothing beside it. Whether a run is going is said by the live dot on the
+        conversation's own row in the sidebar, which is where somebody looking for that answer about
+        *a* conversation already looks; a second badge saying it about this one was the same fact
+        twice, and it said "idle" for most of the time the page is open.
+      -->
       <h1 id="conversation-title" class="min-w-0 flex-1 truncate text-[13px] font-medium"
           data-i18n="app.title">Spring Agent</h1>
-
-      <!--
-        The status strip. This application's whole premise is that a run is on the server and this
-        page is only attached to it, so "am I attached, and is it still going" is the question the
-        header exists to answer.
-      -->
-      <div id="status"
-           class="flex shrink-0 items-center gap-1.5 rounded-full border border-zinc-200 px-2.5 py-1
-                  font-mono text-[10px] uppercase tracking-[0.12em] text-mist dark:border-rail">
-        <span id="status-dot" class="size-1.5 rounded-full bg-zinc-300 dark:bg-edge"></span>
-        <span id="status-text" data-i18n="status.idle">Idle</span>
-      </div>
     </header>
 
     <div id="transcript" class="flex-1 overflow-y-auto scroll-smooth px-4 py-8 sm:px-6"></div>
