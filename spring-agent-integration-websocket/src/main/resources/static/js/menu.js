@@ -10,33 +10,57 @@
 // it is clipped by that column's overflow — the item nearest the bottom of the list would open a
 // menu with its own last entries cut off. Fixed placement is also why this closes on scroll: the
 // rectangle it was measured against has moved.
+//
+// A menu can open another one from one of its rows, so what is open is a *stack* rather than a
+// single menu: the account menu at the foot of the sidebar holds the theme and the language as two
+// sets of choices, and a flat menu listing both is a run of ticked rows with nothing saying which
+// tick answers which question. Headings say it for two short sets; a submenu says it for a set
+// worth its own panel, and keeps the parent one line per decision.
 
-let open = null;
+let layers = [];
 
+/** Closes every open menu, from the outermost down. */
 export function closeMenu() {
-  if (!open) return;
-  open.menu.remove();
-  open.trigger.setAttribute('aria-expanded', 'false');
-  open = null;
+  closeFrom(0);
+}
+
+/** Closes the menu at `depth` and everything it opened, deepest first. */
+function closeFrom(depth) {
+  while (layers.length > depth) {
+    const layer = layers.pop();
+    layer.menu.remove();
+    layer.trigger.setAttribute('aria-expanded', 'false');
+  }
 }
 
 /**
  * Opens a menu against `trigger`.
  *
- * Items are `{ label, code, danger, checked, onSelect }`, and anything falsy in the list is dropped
- * so a caller can write a conditional entry inline rather than assembling the array in two steps.
+ * Items are `{ label, code, value, danger, checked, onSelect }`, and anything falsy in the list is
+ * dropped so a caller can write a conditional entry inline rather than assembling the array in two
+ * steps.
  *
  * `checked` absent and `checked: false` are different things: absent is a command, and false is one
  * of a set of choices that is not the current one. A choice gets the radio role and a tick column,
  * so its rows line up whichever of them is ticked.
  *
- * Two entries are not commands at all: `{ heading }` names the set of choices under it, and
- * `{ separator: true }` divides one set from the next. They exist because a menu holding more than
- * one set of choices — the preferences menu holds two — is otherwise a run of ticked rows with
- * nothing saying which tick answers which question.
+ * Three entries are not commands at all: `{ heading }` names the set of choices under it,
+ * `{ separator: true }` divides one set from the next, and `{ node }` puts an element of the
+ * caller's own in a row — something to read, and whatever controls belong to it, rather than
+ * something the menu will act on and close.
+ *
+ * `{ submenu }` is a row that opens a menu of its own instead of doing anything: an array, or a
+ * function returning one, so that its ticks are built from the state at the moment it is opened.
+ * `value` beside such a label is what the set under it currently says, so the answer is readable
+ * without opening it.
  */
 export function openMenu(trigger, items) {
   closeMenu();
+  openLayer(trigger, items, 0);
+}
+
+function openLayer(trigger, items, depth, focusFirst = true) {
+  closeFrom(depth);
   const entries = items.filter(Boolean);
   if (!entries.length) return;
 
@@ -58,6 +82,14 @@ export function openMenu(trigger, items) {
       head.className = 'menu-heading';
       head.textContent = entry.heading;
       menu.append(head);
+      return;
+    }
+    if (entry.node) {
+      const row = document.createElement('li');
+      row.setAttribute('role', 'presentation');
+      row.className = 'menu-node';
+      row.append(entry.node);
+      menu.append(row);
       return;
     }
     const item = document.createElement('li');
@@ -83,19 +115,59 @@ export function openMenu(trigger, items) {
       code.textContent = entry.code;
       button.append(code);
     }
-    button.addEventListener('click', () => {
-      closeMenu();
-      entry.onSelect();
+    if (entry.value) {
+      const value = document.createElement('span');
+      value.className = 'menu-value';
+      value.textContent = entry.value;
+      button.append(value);
+    }
+    if (entry.submenu) {
+      button.setAttribute('aria-haspopup', 'menu');
+      button.setAttribute('aria-expanded', 'false');
+      const arrow = document.createElement('span');
+      arrow.className = 'menu-arrow';
+      arrow.textContent = '›';
+      arrow.setAttribute('aria-hidden', 'true');
+      button.append(arrow);
+      button.addEventListener('click', () => toggleLayer(button, entry.submenu, depth + 1));
+    } else {
+      button.addEventListener('click', () => {
+        closeMenu();
+        entry.onSelect();
+      });
+    }
+    // A submenu opens on the pointer arriving, which is what a menu that holds one is expected to
+    // do — reading a row and then having to press it is a step nobody takes on purpose. Still
+    // clickable, because that is the whole of the interaction where there is no pointer at all, and
+    // the focus stays where it was on a hover: taking it would move the keyboard somewhere the
+    // reader did not ask to go.
+    //
+    // Moving onto any other row closes the submenu again, which would otherwise stand over the rows
+    // beside it long after the pointer left the one that opened it.
+    button.addEventListener('mouseenter', () => {
+      if (layers[depth + 1] && layers[depth + 1].trigger === button) return;
+      closeFrom(depth + 1);
+      if (entry.submenu) {
+        openLayer(button, resolve(entry.submenu), depth + 1, false);
+      }
     });
     item.append(button);
     menu.append(item);
   });
 
   document.body.append(menu);
-  place(menu, trigger);
+  place(menu, trigger, depth === 0 ? 'below' : 'beside');
   trigger.setAttribute('aria-expanded', 'true');
-  open = { menu, trigger };
-  menu.querySelector('button')?.focus();
+  layers[depth] = { menu, trigger };
+  if (focusFirst) menu.querySelector('button')?.focus();
+}
+
+/** Items given as a function are built at the moment of opening, so their ticks are current. */
+const resolve = (items) => (typeof items === 'function' ? items() : items);
+
+function toggleLayer(trigger, items, depth) {
+  if (layers[depth] && layers[depth].trigger === trigger) closeFrom(depth);
+  else openLayer(trigger, resolve(items), depth);
 }
 
 /**
@@ -105,8 +177,7 @@ export function openMenu(trigger, items) {
  * the menu away.
  */
 export function toggleMenu(trigger, items) {
-  if (open && open.trigger === trigger) closeMenu();
-  else openMenu(trigger, typeof items === 'function' ? items() : items);
+  toggleLayer(trigger, items, 0);
 }
 
 /** A ⋯ button that opens one. The items are built on each press, so they follow the current state. */
@@ -128,8 +199,11 @@ export function menuButton(label, items, className = 'row-menu') {
   return button;
 }
 
-/** Under the trigger, pulled back inside the window wherever that would put it outside. */
-function place(menu, trigger) {
+/**
+ * Under the trigger, or — for a submenu — to the side of the row that opened it, pulled back inside
+ * the window wherever that would put it outside.
+ */
+function place(menu, trigger, how) {
   const at = trigger.getBoundingClientRect();
   // Measured where it will not be seen, then moved. A fixed element with no offsets is laid out
   // wherever it happens to fall, which for one appended to the body is the bottom of the page.
@@ -138,31 +212,51 @@ function place(menu, trigger) {
   menu.style.top = '0';
   const size = menu.getBoundingClientRect();
   const margin = 8;
-  const left = Math.min(
-    Math.max(margin, at.right - size.width),
-    window.innerWidth - size.width - margin,
-  );
-  const below = at.bottom + 4;
-  const top = below + size.height > window.innerHeight - margin
-    ? Math.max(margin, at.top - size.height - 4)
-    : below;
+  let left;
+  let top;
+  if (how === 'beside') {
+    // Out to the right of the parent row, and back to its left where the window ends first — which
+    // on a narrow screen it does, the sidebar being a drawer nearly as wide as the viewport.
+    const right = at.right + 4;
+    left = right + size.width > window.innerWidth - margin
+      ? Math.max(margin, at.left - size.width - 4)
+      : right;
+    top = Math.min(
+      Math.max(margin, at.top - 4),
+      window.innerHeight - size.height - margin,
+    );
+  } else {
+    left = Math.min(
+      Math.max(margin, at.right - size.width),
+      window.innerWidth - size.width - margin,
+    );
+    const below = at.bottom + 4;
+    top = below + size.height > window.innerHeight - margin
+      ? Math.max(margin, at.top - size.height - 4)
+      : below;
+  }
   menu.style.left = `${left}px`;
-  menu.style.top = `${top}px`;
+  menu.style.top = `${Math.max(margin, top)}px`;
   menu.style.visibility = '';
 }
 
 // One set of listeners for every menu there will ever be, registered once. Bound in the capture
 // phase so a press anywhere closes this before whatever it landed on acts on it.
 document.addEventListener('pointerdown', (event) => {
+  if (!layers.length) return;
   // `contains` rather than an identity check on the trigger: a trigger whose label is an icon has
   // the svg as the event's target, so identity said "pressed somewhere else", the menu closed here
   // and the click that followed opened it again — a button that could never be pressed shut.
-  if (open && !open.menu.contains(event.target) && !open.trigger.contains(event.target)) closeMenu();
+  if (layers.some((layer) => layer.menu.contains(event.target))) return;
+  if (layers[0].trigger.contains(event.target)) return;
+  closeMenu();
 }, true);
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && open) {
-    const { trigger } = open;
-    closeMenu();
+  // The deepest menu only: Escape in a submenu goes back to the menu that opened it, which is
+  // where the key left off, rather than shutting the lot.
+  if (event.key === 'Escape' && layers.length) {
+    const { trigger } = layers[layers.length - 1];
+    closeFrom(layers.length - 1);
     trigger.focus();
   }
 });

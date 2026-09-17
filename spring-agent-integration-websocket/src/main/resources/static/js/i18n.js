@@ -121,7 +121,7 @@ const STRINGS = {
     'confirm.working': 'Working…',
     'confirm.ok': 'Go ahead',
 
-    'settings': 'Preferences',
+    'nav.account': 'Account',
     'identity.copy': 'Copy user id',
     'identity.copied': 'User id copied.',
     'identity.copy.failed': 'This browser will not let the page copy. The id is in the tooltip.',
@@ -305,7 +305,7 @@ const STRINGS = {
     'confirm.working': '处理中…',
     'confirm.ok': '确定',
 
-    'settings': '偏好设置',
+    'nav.account': '账户',
     'identity.copy': '复制用户 ID',
     'identity.copied': '用户 ID 已复制。',
     'identity.copy.failed': '当前浏览器不允许页面复制，ID 在悬浮提示中。',

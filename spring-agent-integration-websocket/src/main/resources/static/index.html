@@ -281,68 +281,44 @@
     </nav>
 
     <!--
-      Who is signed in, and the two things that belong to them rather than to the agent.
+      Who is signed in, and one row for everything that can be done about it.
 
-      One row, because that is all it is worth: a name, the id underneath it in the mono face so it
-      reads as the machine handle it is, and two quiet controls. Preferences are behind one button
-      rather than laid out here — the theme and the language are set once and then never again, and
-      a settings strip standing open at the bottom of every session spends the sidebar's last inch
-      on a decision nobody is making. Sign out is an icon for the opposite reason: it is one word,
-      it is next to nothing it could be confused with, and its name is on its tooltip.
+      A row like the ones above it, and pressed the same way: the whole of it opens the account menu
+      — the id, the theme, the language, the way out. It is one line because that is all it is
+      worth. The id is a machine handle, wanted when a deployment has to be told who somebody is and
+      at no other time, and the preferences are set once and then never again; a strip of them
+      standing open at the bottom of every session spends the sidebar's last inch on decisions
+      nobody is making.
 
-      Neither control uses a state colour. Amber, teal, violet and coral mean something specific
-      about a run everywhere else in this page, and spending one on chrome would make a settings row
-      look like something the agent is doing. Signing out is the exception the alarm colour exists
-      for, and only on hover.
+      No state colour here. Amber, teal, violet and coral mean something specific about a run
+      everywhere else in this page, and spending one on chrome would make this line look like
+      something the agent is doing. Signing out is the exception the alarm colour exists for, and it
+      is a row in the menu rather than a control on this line.
     -->
-    <div class="group flex items-center gap-1.5 border-t border-zinc-200 p-2.5 dark:border-rail">
-      <img id="me-avatar" alt=""
-           class="size-7 shrink-0 rounded-full bg-zinc-200 object-cover dark:bg-rail">
-      <!--
-        The name and the id, stacked. The id is elided in the middle rather than at the end, by the
-        page — an OAuth subject is a long constant prefix and a short distinguishing tail, so a
-        truncation that keeps the head shows every user the same string. See middleTruncate in
-        dom.js; the whole of it is on the title, and the button beside it puts the whole of it on
-        the clipboard, which is what an id shortened for display is otherwise no longer good for.
-      -->
-      <span class="min-w-0 flex-1 leading-tight">
-        <span id="me-name" class="block truncate text-[12.5px] font-medium"></span>
-        <span class="flex items-center gap-1">
-          <span id="me-id"
-                class="min-w-0 truncate font-mono text-[10px] tracking-wide text-mist"></span>
-          <button id="me-id-copy" type="button" class="id-copy" data-i18n-title="identity.copy">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
-                 stroke-linejoin="round" class="size-[11px]" aria-hidden="true">
-              <rect x="5.6" y="5.6" width="7.4" height="7.4" rx="1.6"/>
-              <path d="M10.4 3.6a1.6 1.6 0 0 0-1.6-1.6H4.6A1.6 1.6 0 0 0 3 3.6v4.2a1.6 1.6 0 0 0 1.6 1.6"/>
-            </svg>
-            <span class="sr-only" data-i18n="identity.copy">Copy user id</span>
-          </button>
-        </span>
-      </span>
-
-      <!-- The theme and the language, in one menu. Filled in by settings.js. -->
-      <button id="settings-button" type="button" class="tool-button tool-button-sm shrink-0"
-              aria-haspopup="menu" aria-expanded="false" data-i18n-title="settings">
+    <div class="border-t border-zinc-200 p-1.5 dark:border-rail">
+      <button id="account-button" type="button" aria-haspopup="menu" aria-expanded="false"
+              data-i18n-title="nav.account"
+              class="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition
+                     hover:bg-zinc-100 aria-expanded:bg-zinc-100 dark:hover:bg-rail/60
+                     dark:aria-expanded:bg-rail/60">
+        <img id="me-avatar" alt=""
+             class="size-5 shrink-0 rounded-full bg-zinc-200 object-cover dark:bg-rail">
+        <span id="me-name" class="min-w-0 flex-1 truncate text-[12.5px] font-medium"></span>
+        <!-- Up, because that is where the menu goes: there is nothing below this row. -->
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
-             stroke-linecap="round" class="size-[15px]" aria-hidden="true">
-          <path d="M2.4 4.6h1.6M8 4.6h5.6M2.4 11.4h6.2M12.5 11.4h1.1"/>
-          <circle cx="6" cy="4.6" r="1.9"/>
-          <circle cx="10.5" cy="11.4" r="1.9"/>
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+             class="size-[13px] shrink-0 text-mist">
+          <path d="M4.2 9.6 8 5.9l3.8 3.7"/>
         </svg>
-        <span class="sr-only" data-i18n="settings">Preferences</span>
       </button>
 
-      <form method="post" action="/logout" class="shrink-0">
+      <!--
+        Not a control: the POST that Spring's logout endpoint wants, with the CSRF token this page
+        was served with, submitted by the menu's sign-out row. A link would be a GET, which that
+        endpoint refuses on purpose — a GET is something another site can make this browser do.
+      -->
+      <form method="post" action="/logout" id="logout-form" hidden>
         <input type="hidden" id="logout-csrf" name="_csrf">
-        <button type="submit" class="tool-button tool-button-sm tool-button-danger"
-                data-i18n-title="nav.signout">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
-               stroke-linecap="round" stroke-linejoin="round" class="size-[15px]" aria-hidden="true">
-            <path d="M6.2 2.8H3.6v10.4h2.6M9.4 5.2 12.6 8l-3.2 2.8M12.2 8H6.6"/>
-          </svg>
-          <span class="sr-only" data-i18n="nav.signout">Sign out</span>
-        </button>
       </form>
     </div>
   </aside>

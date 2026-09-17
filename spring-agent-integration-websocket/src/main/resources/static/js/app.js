@@ -28,7 +28,7 @@ import { initKnowledge, knowledgeAvailable, scopesAvailable, showKnowledge } fro
 import { showPanel } from './panels.js';
 import { initKnowledgeAdd } from './knowledge-upload.js';
 import { initLanguage } from './language.js';
-import { initSettings } from './settings.js';
+import { initAccount } from './account.js';
 import { renderIdentity } from './identity.js';
 import { renderDenied } from './denied.js';
 
@@ -155,7 +155,7 @@ async function start() {
   initScrollToEnd();
   initSidebar();
   initLanguage(state.me);
-  initSettings();
+  initAccount();
   // Only where this deployment has one at all — see the knowledge block in /api/me.
   if (knowledgeAvailable()) {
     initKnowledge();

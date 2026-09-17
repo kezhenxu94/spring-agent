@@ -76,11 +76,11 @@ function row(task) {
   // The two-line row every sidebar list uses: the name on one line, what is true about it on the
   // next. This list is the one that has the most to say there — a task's name is its prompt, and
   // what tells two of them apart at a glance is when they come round and how often.
-  open.className = 'flex w-full flex-col gap-0.5 rounded-md py-1.5 pl-2 pr-7 text-left '
+  open.className = 'row-open flex w-full flex-col gap-0.5 rounded-md py-1.5 pl-2 pr-7 text-left '
     + 'text-[13px] transition '
     + (current
       ? 'bg-zinc-200/70 font-medium dark:bg-rail'
-      : 'text-zinc-600 hover:bg-zinc-100 dark:text-mist dark:hover:bg-rail/60');
+      : 'text-zinc-600 group-hover:bg-zinc-100 dark:text-mist dark:group-hover:bg-rail/60');
 
   const line = document.createElement('span');
   line.className = 'flex w-full items-center gap-2';
