@@ -165,7 +165,11 @@ class FeishuCardUpdaterTodoTest {
         null,
         messages,
         new FeishuCardElements(
-            new JsonMapper(), messages, new ClassPathResource("feishu/card-elements.json"), null),
+            new JsonMapper(),
+            messages,
+            new ClassPathResource("feishu/card-elements.json"),
+            null,
+            true),
         null);
   }
 

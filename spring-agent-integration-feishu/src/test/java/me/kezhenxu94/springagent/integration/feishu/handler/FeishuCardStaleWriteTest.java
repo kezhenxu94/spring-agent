@@ -310,7 +310,7 @@ class FeishuCardStaleWriteTest {
 
   private FeishuCardElements elements() {
     return new FeishuCardElements(
-        om, messages, new ClassPathResource("feishu/card-elements.json"), null);
+        om, messages, new ClassPathResource("feishu/card-elements.json"), null, true);
   }
 
   private Set<String> on(final String cardId) {

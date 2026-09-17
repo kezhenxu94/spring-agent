@@ -288,6 +288,22 @@ class FeishuCardUpdaterReasoningTest {
   }
 
   @Test
+  @DisplayName("a deployment that turns the thinking off gets the answer and nothing above it")
+  void theThinkingCanBeTurnedOff() throws Exception {
+    final var updater =
+        FeishuCardUpdater.forRun(
+            card, om, null, messages, cardElements(messages, null, false), null);
+
+    updater.onReasoning("Thinking about it.");
+    updater.onContent("Here you go.");
+
+    // No panel, and nothing streamed into one: the answer is the only element the run added, and
+    // the thinking was dropped where it would have been written rather than left on a hidden pane.
+    assertThat(insertedElements()).containsExactly("message");
+    assertThat(lastWrite().getElementId()).isEqualTo("message");
+  }
+
+  @Test
   @DisplayName("everything added mid-run clears the footer, which grows as the run spends")
   void theFooterKeepsItsPlaceAtTheBottom() throws Exception {
     // The footer is the spend row and, below it, the conversation hint — both there from the
@@ -385,11 +401,20 @@ class FeishuCardUpdaterReasoningTest {
 
   private static FeishuCardElements cardElements(
       final FeishuMessages messages, final ReasoningEffortInForce effortInForce) {
+    return cardElements(messages, effortInForce, true);
+  }
+
+  /** The same, for a deployment that has turned the thinking panel off. */
+  private static FeishuCardElements cardElements(
+      final FeishuMessages messages,
+      final ReasoningEffortInForce effortInForce,
+      final boolean reasoning) {
     return new FeishuCardElements(
         new JsonMapper(),
         messages,
         new ClassPathResource("feishu/card-elements.json"),
-        effortInForce);
+        effortInForce,
+        reasoning);
   }
 
   /**

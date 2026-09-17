@@ -72,7 +72,7 @@ class FeishuCardSubagentOrderTest {
             null,
             messages,
             new FeishuCardElements(
-                om, messages, new ClassPathResource("feishu/card-elements.json"), null),
+                om, messages, new ClassPathResource("feishu/card-elements.json"), null, true),
             null);
   }
 

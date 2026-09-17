@@ -63,7 +63,8 @@ class FeishuCardListenerBackgroundTest {
                 new JsonMapper(),
                 messages,
                 new ClassPathResource("feishu/card-elements.json"),
-                null),
+                null,
+                true),
             new ClassPathResource("feishu/reply-card.json"));
     listener =
         new FeishuCardListener(

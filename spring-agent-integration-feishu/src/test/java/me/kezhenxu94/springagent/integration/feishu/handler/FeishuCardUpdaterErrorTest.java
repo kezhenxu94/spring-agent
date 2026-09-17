@@ -151,6 +151,6 @@ class FeishuCardUpdaterErrorTest {
   /** The real elements: what the card gains as the run first has something to put in them. */
   private static FeishuCardElements cardElements(final FeishuMessages messages) {
     return new FeishuCardElements(
-        new JsonMapper(), messages, new ClassPathResource("feishu/card-elements.json"), null);
+        new JsonMapper(), messages, new ClassPathResource("feishu/card-elements.json"), null, true);
   }
 }

@@ -321,6 +321,6 @@ class FeishuCardContinuationTest {
   /** The real elements: what the card gains as the run first has something to put in them. */
   private FeishuCardElements elements() {
     return new FeishuCardElements(
-        new JsonMapper(), messages, new ClassPathResource("feishu/card-elements.json"), null);
+        new JsonMapper(), messages, new ClassPathResource("feishu/card-elements.json"), null, true);
   }
 }
