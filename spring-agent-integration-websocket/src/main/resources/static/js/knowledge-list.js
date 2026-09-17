@@ -3,7 +3,7 @@
 // they are read the same way.
 
 import { t } from './i18n.js';
-import { $, rowMeta, timeStamp } from './dom.js';
+import { $ } from './dom.js';
 import { menuButton } from './menu.js';
 import { documentActions } from './knowledge-actions.js';
 import { knowledgeRoute, go } from './route.js';
@@ -35,7 +35,7 @@ function row(entry, options) {
 
   const open = document.createElement('button');
   open.type = 'button';
-  open.className = 'flex w-full flex-col gap-0.5 rounded-md py-1.5 pl-2 pr-7 text-left '
+  open.className = 'flex w-full items-center rounded-md py-1.5 pl-2 pr-7 text-left '
     + 'text-[13px] transition '
     + (current
       ? 'bg-zinc-200/70 font-medium dark:bg-rail'
@@ -58,15 +58,10 @@ function row(entry, options) {
   line.append(dot, title);
   open.append(line);
 
-  // When it was stored, on the second line the other two lists keep their own moment on. A document
-  // is never rewritten in place — correcting one replaces it — so the moment it arrived is the whole
-  // of its history. A search hit carries none, and then the row simply has one line.
-  const stamp = timeStamp(entry.createdAt);
-  if (stamp) {
-    const meta = rowMeta();
-    meta.append(stamp);
-    open.append(meta);
-  }
+  // No second line for when it was stored: a document is never rewritten in place, so the moment it
+  // arrived says nothing about what is in it, and a date under every title made this list twice as
+  // tall as the thing it lists. The detail panel still carries it, which is where somebody asking
+  // when this arrived is looking. A row is one line, the same as a conversation's.
   open.addEventListener('click', () => go(knowledgeRoute(entry.docId, entry.scope)));
   item.append(open);
 

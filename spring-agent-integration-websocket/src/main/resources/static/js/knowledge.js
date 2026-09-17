@@ -208,9 +208,12 @@ function renderList() {
     selected: knowledge.docId,
     selectedScope: knowledge.docScope,
     searching: knowledge.searching,
-    // Reading somebody else's is reading only, exactly as far as KnowledgeAdminTools goes. The
-    // server refuses a write naming an owner too; this is only about not offering one.
+    // Somebody else's knowledge base cannot be written into from here — no document is filed into
+    // it and none is moved between its scopes — but it can be deleted from, which is the only way
+    // a document stored under an identity nobody logs in as ever comes out again. The server draws
+    // that line as well; see documentActions.
     readOnly: Boolean(knowledge.owner),
+    owner: knowledge.owner,
     tenant: Boolean(state.me?.knowledge?.tenant),
     refresh: () => attempt(reload),
   });

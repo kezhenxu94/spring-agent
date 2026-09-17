@@ -894,7 +894,10 @@ which still takes any id typed into it. Nothing is granted by being listed: the 
 Two rules there are worth knowing if you build against it. The scope a document is read and written
 under comes from the session and never from the request — the same `userId`/`tenantId` a run on this
 surface carries — with one exception: a member of `app.ai.admins` may name an `owner` on the read
-endpoints, which mirrors `KnowledgeAdminTools` and goes no further, so no write accepts one.
+endpoints and on `DELETE`, which mirrors what `KnowledgeAdminTools` and `PlaybookTools` allow
+between them. A source's triage playbooks live in the knowledge base of an identity nobody logs in
+as, so a delete naming an owner is the only way one ever comes out again; it reaches that identity's
+own base and no company one, and no other write accepts an owner.
 And a document id travels in the query string or the body, never in the path, because a document
 indexed from a file is identified by its absolute path: encoded, the slashes are rejected by the
 servlet container; unencoded, they are more path segments.

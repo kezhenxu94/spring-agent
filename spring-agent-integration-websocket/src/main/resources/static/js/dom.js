@@ -64,35 +64,6 @@ export function humanSize(bytes) {
 }
 
 /**
- * A moment, as short as it can be and still be unambiguous: the clock for something today, the day
- * for something this year, the date for anything older.
- *
- * Relative wording — "2h ago" — reads better for the top of a list and worse everywhere else: it
- * needs a phrase per language and per unit, and it goes stale in a tab left open, which for a list
- * whose whole point is that a run outlives the page is the wrong way round. The browser's own
- * formatting is localised already, so this only has to choose how much of it to show.
- *
- * The full moment goes in the title, because the short form is a hint and somebody looking twice
- * wants the answer.
- */
-function shortTime(value) {
-  const when = moment(value);
-  if (!when) return '';
-  const tag = locale() === 'zh' ? 'zh-CN' : 'en';
-  const now = new Date();
-  const sameDay = when.getFullYear() === now.getFullYear()
-    && when.getMonth() === now.getMonth()
-    && when.getDate() === now.getDate();
-  // `numeric` on the hour rather than `2-digit`: en renders 12-hour with a meridiem, so a leading
-  // zero is a character of width spent on nothing in a row this narrow.
-  if (sameDay) return when.toLocaleTimeString(tag, { hour: 'numeric', minute: '2-digit' });
-  if (when.getFullYear() === now.getFullYear()) {
-    return when.toLocaleDateString(tag, { month: 'short', day: 'numeric' });
-  }
-  return when.toLocaleDateString(tag, { year: 'numeric', month: 'numeric', day: 'numeric' });
-}
-
-/**
  * A moment in full, to the minute.
  *
  * Explicit fields rather than the default `toLocaleString`, which appends seconds: nothing this
@@ -151,8 +122,8 @@ export function scrollToEnd(force) {
  *
  * One builder for the lists that have one, because they are read in one column and have to agree. A
  * row's first line is a dot and a name; everything a list has to add about its own kind of thing —
- * when, how often, how many — goes here, quiet and small, in the order the lists share. The
- * conversation list has nothing to add, and so is a single line (see conversations.js).
+ * how often, how many — goes here, quiet and small, in the order the lists share. The conversation
+ * list and the knowledge list have nothing to add that is worth a line, and so are a single one.
  *
  * Indented past the dot so it hangs under the name rather than under the dot's own column, which is
  * what keeps two lines reading as one row.
@@ -163,26 +134,3 @@ export function rowMeta() {
   return meta;
 }
 
-/**
- * When something happened, as a sidebar row says it: the short form on the row, the full one on
- * hover.
- *
- * One builder rather than a copy per list, and it leads every {@link rowMeta} for the same reason —
- * a document stored and a task next due are the same kind of fact about two different things, and a
- * stamp that moved between lists would read as a different one.
- *
- * Sized and coloured by the line it goes in rather than by itself, so a row cannot end up with a
- * stamp in one type and everything beside it in another.
- *
- * Nothing at all where there is no moment to show. A row may legitimately carry none — a task whose
- * next occurrence has not been worked out — and an empty element would still take the gap after it.
- */
-export function timeStamp(value) {
-  const short = shortTime(value);
-  if (!short) return null;
-  const stamp = document.createElement('span');
-  stamp.className = 'shrink-0 font-mono tabular-nums';
-  stamp.textContent = short;
-  stamp.title = fullTime(value);
-  return stamp;
-}
