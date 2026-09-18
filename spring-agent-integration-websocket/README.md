@@ -86,11 +86,15 @@ whatever the selected section is listing. The fold in its header takes the reado
 the rail, so a folded sidebar is still navigable rather than gone, and the choice is remembered in
 `localStorage`. Every glyph in the column sits in a box of one width on one axis, which is what makes
 a fold look like a fold rather than a redraw; the geometry and the reasons are in `css/sidebar.css`,
-and changing one of the five rows that state it means changing all five.
+and changing one of the three rows that state it means changing all three.
 
-**Navigation is one-way.** `route.js` owns the hash (`#/chat/<id>`, `#/tasks/<id>`, `#/kb/<docId>`), a
-click calls `go`, and `app.js`'s `dispatch` decides what is on screen. Nothing opens a thing and then
-writes the hash. `panels.js` is the only thing that hides and shows the main column's three panels, so
+**Navigation is one-way.** `route.js` owns the hash (`#/chat/<id>`, `#/tasks/<id>`,
+`#/kb/<scope>/<docId>?q=&owner=&scope=`), a click calls `go`, and `app.js`'s `dispatch` decides what
+is on screen. Nothing opens a thing and then writes the hash. That holds for a *list* as well as for
+a panel: everything that narrows the knowledge base — the search, the scope, the identity an admin is
+reading — is in the query string and nowhere else, so each of those lists is reachable by a link, a
+reload and the back button. The controls hold no state of their own; `showKnowledge` writes them from
+the route on the way in, and re-fetches only when the narrowing actually changed. `panels.js` is the only thing that hides and shows the main column's three panels, so
 a section cannot forget to put the composer back.
 
 `styles.css` is a single linked entry that `@import`s `css/*`, and that order is load-bearing: rules

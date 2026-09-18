@@ -173,8 +173,15 @@
       that chose the section, so switching moved the whole list by a button's height; here what moves
       is one row, and the rule over it stays where it is either way.
     -->
-    <nav id="sidebar-sections" hidden class="px-2 pb-1.5" data-i18n-label="nav.sections">
-      <ul role="tablist" class="space-y-px">
+    <!--
+      Two vertical steps in this whole column and no third: rows that belong to one group sit 2px
+      apart, and one group is 4px from the next. The scrolling area had seven — 1px between the
+      section rows, 2px between list rows, 6px under this block, 8px under the knowledge base's
+      tools and under its Load more — which is what made a header look detached from the list it
+      belongs to while the list itself read as one dense thing. Every value below is one of the two.
+    -->
+    <nav id="sidebar-sections" hidden class="px-2 pb-1" data-i18n-label="nav.sections">
+      <ul role="tablist" class="space-y-0.5">
         <li>
           <button id="tab-conversations-button" type="button" role="tab" aria-selected="true"
                   aria-controls="tab-conversations" class="side-row">
@@ -250,15 +257,42 @@
 
         One line of controls, then one line of state. Three things can narrow this list — a search,
         a scope, somebody else's knowledge base — and rather than a badge for each they resolve to
-        one sentence in the note bar; see describe() in knowledge.js. Adding and narrowing are
-        icons because the list is what this column is for, and neither of them is worth a row.
+        one sentence in the note bar; see describe() in knowledge.js. All three controls are icons
+        because the list is what this column is for, and none of them is worth a row of its own.
+
+        The lens is a switch on what the list shows, exactly as the funnel beside it is: pressed, it
+        opens a field and the list becomes a search of itself; pressed again, the whole list is
+        back. That is why searching does not stand open as a box — it is the rarest of the three
+        things done here and the only one that was drawing a border in a column that has none.
       -->
       <div id="tab-knowledge" role="tabpanel" aria-labelledby="tab-knowledge-button" hidden>
-        <div class="mb-2 flex items-center gap-1">
-          <input id="knowledge-search" type="search" autocomplete="off"
-                 class="min-w-0 flex-1 rounded-md border border-zinc-300 bg-transparent px-2 py-1.5
-                        text-[12.5px] outline-none focus:border-signal dark:border-edge"
-                 data-i18n-placeholder="knowledge.search.placeholder">
+        <!--
+          Packed to the right, which is where the + and the funnel already sat when a field was
+          flexing beside them: closing the field must not move the two controls that were not asked
+          to change. The free space then lies to their left, which is exactly the space the field
+          grows into, so nothing has to be justified differently in the two states.
+        -->
+        <div class="mb-1 flex items-center justify-end gap-1">
+          <!--
+            The field opens out from behind the lens rather than the lens sliding aside to lead it,
+            so the three glyphs stay exactly where they are at every moment of the animation and
+            the lens ends up as the field's own trailing mark. It is the same rule .side-glyph in
+            sidebar.css is built on: a fold moves no glyph by a pixel, and this is that fold at the
+            scale of one control. Everything the growth needs is in .kb-search in knowledge.css.
+          -->
+          <div id="knowledge-search-box" class="kb-search" data-open="false">
+            <input id="knowledge-search" type="search" autocomplete="off" class="kb-search-field"
+                   data-i18n-placeholder="knowledge.search.placeholder">
+            <button id="knowledge-search-toggle" type="button" class="tool-button shrink-0"
+                    aria-expanded="false" aria-controls="knowledge-search">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+                   stroke-linecap="round" class="size-[15px]" aria-hidden="true">
+                <circle cx="7.1" cy="7.1" r="3.9"/>
+                <path d="M10 10 13 13"/>
+              </svg>
+              <span id="knowledge-search-label" class="sr-only"></span>
+            </button>
+          </div>
           <button id="knowledge-add-button" type="button" class="tool-button shrink-0"
                   data-i18n-title="knowledge.add">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
@@ -285,7 +319,7 @@
           open: it is the rarest thing this column does, and the menu row that reveals it has
           already named it — which is why there is no caption here.
         -->
-        <div id="knowledge-owner-row" hidden class="mb-2 flex items-center gap-1">
+        <div id="knowledge-owner-row" hidden class="mb-1 flex items-center gap-1">
           <input id="knowledge-owner" type="text" autocomplete="off" list="knowledge-owner-options"
                  class="min-w-0 flex-1 rounded-md border border-zinc-300 bg-transparent px-2 py-1
                         font-mono text-[12px] outline-none focus:border-signal dark:border-edge"
@@ -309,10 +343,10 @@
           </button>
         </div>
 
-        <p id="knowledge-note-bar" hidden class="px-1 pb-1.5 text-[11px] leading-snug text-mist"></p>
+        <p id="knowledge-note-bar" hidden class="px-1 pb-1 text-[11px] leading-snug text-mist"></p>
         <ul id="knowledge-list" class="space-y-0.5"></ul>
         <button id="knowledge-more" type="button" hidden
-                class="mt-2 w-full rounded-md px-2 py-1.5 font-mono text-[10px] uppercase
+                class="mt-1 w-full rounded-md px-2 py-1.5 font-mono text-[10px] uppercase
                        tracking-wider text-mist transition hover:bg-zinc-100 dark:hover:bg-rail/60"
                 data-i18n="knowledge.more">Load more</button>
       </div>
@@ -389,7 +423,13 @@
           data-i18n="app.title">Spring Agent</h1>
     </header>
 
-    <div id="transcript" class="flex-1 overflow-y-auto scroll-smooth px-4 py-8 sm:px-6"></div>
+    <!--
+      The same vertical padding the schedule's and the knowledge base's panels state. The three are
+      peers in this column and a person moves between them by pressing a row in the sidebar, so a
+      panel that started its content eight pixels lower than the last one read as the page shifting
+      rather than as the section changing.
+    -->
+    <div id="transcript" class="flex-1 overflow-y-auto scroll-smooth px-4 py-6 sm:px-6"></div>
 
     <!--
       The schedule, over the run for the same reason the knowledge base is: the composer belongs to
@@ -441,7 +481,10 @@
                         dark:border-rail"></article>
 
         <!-- Adding to it. Both halves write through the endpoints the chat tools write through. -->
-        <div id="knowledge-add" class="space-y-2 rounded-xl border border-zinc-200 p-3 dark:border-rail">
+        <!-- The same padding and the same inner rhythm the card above it states: the two sit one
+             under the other in this panel, and a card 4px tighter than its neighbour reads as a
+             different kind of thing when it is only the other half of the same section. -->
+        <div id="knowledge-add" class="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-rail">
           <div class="flex flex-wrap items-center gap-2">
             <button id="knowledge-upload" type="button" class="panel-action"
                     data-i18n="knowledge.upload">Add files</button>

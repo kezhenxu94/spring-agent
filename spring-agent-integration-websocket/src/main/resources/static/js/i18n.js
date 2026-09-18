@@ -156,6 +156,8 @@ const STRINGS = {
     'knowledge.score': 'Match',
     'knowledge.subtitle': 'What the agent has been told to remember. It is searched on every '
       + 'message, and everything here can also be reached with the knowledge tools in a chat.',
+    'knowledge.search': 'Search the knowledge base',
+    'knowledge.search.close': 'Show the whole list',
     'knowledge.search.placeholder': 'Search what is stored…',
     'knowledge.results': '{0} document(s) matched.',
     'knowledge.none': 'Nothing stored yet.',
@@ -341,6 +343,8 @@ const STRINGS = {
     'knowledge.score': '匹配度',
     'knowledge.subtitle': '智能体被要求记住的内容。每次对话都会检索这里，'
       + '在聊天中也可以用知识库工具管理同样的内容。',
+    'knowledge.search': '搜索知识库',
+    'knowledge.search.close': '显示全部文档',
     'knowledge.search.placeholder': '搜索已存内容…',
     'knowledge.results': '匹配到 {0} 篇文档。',
     'knowledge.none': '还没有存入任何内容。',

@@ -75,7 +75,7 @@ function dispatch(route) {
   selectTab(route.view === 'chat' ? 'conversations' : route.view);
   showPanel(route.view);
   if (route.view === 'knowledge') {
-    showKnowledge(route.id, route.scope);
+    showKnowledge(route.id, route.scope, route.narrowing);
     getOutOfTheWay(route);
     return;
   }
