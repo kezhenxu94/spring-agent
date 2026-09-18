@@ -68,6 +68,19 @@
    their own, which for a command or a stack trace is the right answer rather than this one. */
 body { overflow-wrap: anywhere; }
 
+/* Tailwind's preflight gives a <button> `cursor: default`, on the argument that a native control is
+   not a link. Nearly nothing here is a link: a conversation in the sidebar, a task, a document in
+   the knowledge base and every icon in the chrome are all buttons, so left alone the whole page
+   answers the pointer as though none of it could be pressed.
+ *
+ * One element rule rather than a `cursor: pointer` on each of the dozen classes that draw those
+ * things, because the fact is about the element and not about any one list. `:not(:disabled)` is
+ * the whole of the exception: a control that will not act must not say it will, which is also what
+ * .composer-action[disabled] and .panel-action:disabled say for themselves at higher specificity —
+ * those rules stay, since a disabled button is only one of the ways they are held inert. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) { cursor: pointer; }
+
 /* A live indicator that breathes; the only motion in the chrome. */
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }

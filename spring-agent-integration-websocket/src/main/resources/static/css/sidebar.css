@@ -150,6 +150,11 @@
   #fold-sidebar { display: none; }
 }
 
+/* Unfolded is the ordinary state, so the arrow that folds is the one drawn. Outside the media query
+ * below on purpose: the pair has to start out consistent at every width, and the button is not on
+ * screen at the widths where nothing switches them. */
+.fold-arrow-out { display: none; }
+
 /* ─────────────────────────────── folded ───────────────────────────────
  *
  * Every rule here is inside the media query, class and all. Below md this column is a drawer that
@@ -190,7 +195,9 @@
      3.25rem is 1.625rem. */
   #sidebar.is-collapsed .side-row { gap: 0; }
 
-  /* Pointing the way the panel will go: into the column to fold, out of it to unfold. One glyph
-     mirrored rather than two drawn, which also moves the bar in it to the side the panel is on. */
-  #sidebar.is-collapsed .fold-glyph { transform: scaleX(-1); }
+  /* Pointing the way the panel will go: into the column to fold, out of it to unfold. Only the
+     arrow is swapped — mirroring the whole glyph would put the filled side, which is the sidebar,
+     on the other edge of the page. */
+  #sidebar.is-collapsed .fold-arrow-in { display: none; }
+  #sidebar.is-collapsed .fold-arrow-out { display: inline; }
 }

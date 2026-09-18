@@ -113,7 +113,7 @@
       The fold is the one control here that changes the shape of the page rather than what is in it,
       which is why it sits in the header beside the name instead of down among the sections: it acts
       on the column, not on anything the column is listing. Folded, it is the top control on the rail
-      and points the other way — see .fold-glyph in sidebar.css.
+      and its arrow points the other way — see .fold-arrow-in in sidebar.css.
     -->
     <div class="side-head flex items-center gap-2.5 pt-3.5 pr-2.5 pb-2.5 pl-[1.125rem]">
       <!-- In the same 1rem box the section icons sit in, overflowing it the way the avatar does, so
@@ -135,11 +135,17 @@
       -->
       <button id="fold-sidebar" type="button" aria-controls="sidebar" aria-expanded="true"
               class="tool-button tool-button-sm shrink-0">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
-             stroke-linecap="round" stroke-linejoin="round"
-             class="fold-glyph size-[15px]" aria-hidden="true">
-          <rect x="2.3" y="3.2" width="11.4" height="9.6" rx="1.7"/>
-          <path d="M6.5 3.2v9.6M11.5 6.6 9.8 8l1.7 1.4"/>
+        <!-- The panel is drawn once and only the arrow in it is swapped: the two states are not
+             mirrors of each other — the filled side stays where the sidebar is — so flipping the
+             whole glyph would move the column to the other edge of the page. -->
+        <svg viewBox="0 0 16 16" fill="currentColor" class="size-[15px]" aria-hidden="true">
+          <path class="fold-arrow-out" d="M6.823 7.823a.25.25 0 0 1 0 .354l-2.396 2.396A.25.25 0
+                0 1 4 10.396V5.604a.25.25 0 0 1 .427-.177Z"/>
+          <path class="fold-arrow-in" d="m4.177 7.823 2.396-2.396A.25.25 0 0 1 7 5.604v4.792a.25.25
+                0 0 1-.427.177L4.177 8.177a.25.25 0 0 1 0-.354Z"/>
+          <path d="M1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75
+                1.75 0 0 1 0 14.25V1.75C0 .784.784 0 1.75 0ZM1.5 1.75v12.5c0 .138.112.25.25.25H9.5v-13H1.75a.25.25
+                0 0 0-.25.25ZM11 14.5h3.25a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25H11Z"/>
         </svg>
         <!-- Named by drawFold rather than by a data-i18n key: what this button is called
              depends on which way it is about to go. -->
