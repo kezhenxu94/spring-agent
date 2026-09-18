@@ -97,6 +97,38 @@ button:not(:disabled),
 ::-webkit-scrollbar-thumb:hover { background: var(--edge); }
 ::-webkit-scrollbar-track { background: transparent; }
 
+/* ─────────────────────────────────────── a row's trailing icon ───────────────────────────────────────
+ *
+ * One box and one glyph size for every small icon that rides at the *end* of a row rather than
+ * labelling it — the copy beside the user id, the chevron into a submenu. They are read as a column
+ * down the right edge of whatever holds them, so two of them drawn at different sizes read as two
+ * different kinds of thing rather than as one column.
+ *
+ * `margin-left: auto` belongs to the class rather than to each user, because being flush right
+ * whatever the row before it says is the whole of what makes it a column. A user that needs the
+ * icon to follow something else instead — a value beside the label — overrides it beside that rule
+ * and says so.
+ *
+ * Global, in base.css, because it is a fact about icons in rows and not about menus: it is here
+ * with .line-clamp-2 for the same reason.
+ */
+.row-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  margin-left: auto;
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 0.3rem;
+  color: var(--fg-dim);
+  transition: color 120ms ease, background 120ms ease;
+}
+/* Sized here rather than on each svg, so that adding one of these is not a decision about a number
+   and the column cannot drift a pixel at a time. */
+.row-icon > svg { width: 13px; height: 13px; }
+/* `display` above is an author rule and `[hidden]` is only the browser's — see .tool-button. */
+.row-icon[hidden] { display: none; }
+
 .line-clamp-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;

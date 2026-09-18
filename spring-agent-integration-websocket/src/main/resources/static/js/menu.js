@@ -17,6 +17,8 @@
 // tick answers which question. Headings say it for two short sets; a submenu says it for a set
 // worth its own panel, and keeps the parent one line per decision.
 
+const SVG = 'http://www.w3.org/2000/svg';
+
 let layers = [];
 
 /** Closes every open menu, from the outermost down. */
@@ -125,9 +127,10 @@ function openLayer(trigger, items, depth, focusFirst = true) {
       button.setAttribute('aria-haspopup', 'menu');
       button.setAttribute('aria-expanded', 'false');
       const arrow = document.createElement('span');
-      arrow.className = 'menu-arrow';
-      arrow.textContent = '›';
-      arrow.setAttribute('aria-hidden', 'true');
+      // .row-icon, which is also what the copy button on the id row above wears: the two are the
+      // only things at this menu's right edge and are read as one column, so they are one size.
+      arrow.className = 'menu-arrow row-icon';
+      arrow.append(chevron());
       button.append(arrow);
       button.addEventListener('click', () => toggleLayer(button, entry.submenu, depth + 1));
     } else {
@@ -160,6 +163,28 @@ function openLayer(trigger, items, depth, focusFirst = true) {
   trigger.setAttribute('aria-expanded', 'true');
   layers[depth] = { menu, trigger };
   if (focusFirst) menu.querySelector('button')?.focus();
+}
+
+/**
+ * The mark on a row that opens a menu of its own.
+ *
+ * Drawn rather than a `›`, because a character is sized by the font's metrics and an icon by the
+ * box it sits in: no font-size makes a text glyph agree with the svg on the row above it, and this
+ * menu's right edge is a column of two things that have to look like one kind of thing.
+ */
+function chevron() {
+  const svg = document.createElementNS(SVG, 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.5');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(SVG, 'path');
+  path.setAttribute('d', 'M6.4 3.8 10.6 8l-4.2 4.2');
+  svg.append(path);
+  return svg;
 }
 
 /** Items given as a function are built at the moment of opening, so their ticks are current. */

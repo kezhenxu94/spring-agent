@@ -101,6 +101,20 @@ a section cannot forget to put the composer back.
 there tie on specificity with Tailwind's utilities and with each other, so a rule that must hold
 regardless of file order buys specificity and says why (see `.drawer-only`).
 
+Two rules there are worth knowing before writing a third. **A class that sets `display` or
+`position` must also say `[hidden] { display: none }`**, because the only thing making the attribute
+mean invisible is the browser's own stylesheet, which every author rule beats — the composer's two
+actions share a corner, so the one hidden that way would print over the other rather than merely
+stay on screen. And **an icon that rides at the *end* of a row wears `.row-icon`** (base.css), which
+is one box, one glyph size and flush right: the copy button beside the user id and the chevron into
+a submenu are read as one column, so neither picks a size of its own.
+
+A markup file is a state too. `setRunning` is called when a run starts and when one ends and so says
+nothing about a page that has not yet had one, which is why `#stop` carries `hidden` in
+`index.html`; the same goes for the drawn stand-in under the avatar, which stands until an actual
+picture has loaded rather than until `/api/me` has answered — a provider that carries no avatar, and
+a src that 404s, are both ordinary.
+
 Text the page writes for itself is in `static/js/i18n.js`, read with `t(key)` and `data-i18n*`
 attributes. It carries every language, and **a list drawn in JavaScript has to redraw on
 `language:changed`** or it stays in the language the page started in.
