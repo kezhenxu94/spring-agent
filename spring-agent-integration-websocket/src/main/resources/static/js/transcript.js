@@ -52,12 +52,17 @@ export function renderEmptyTranscript() {
   // `empty-state` is not styling: it is the handle appendTurn and appendTools take this block away
   // by when the first message of a conversation arrives. Both have always looked for it and it has
   // never been here, so the opening stayed on screen above the turn that answered it.
-  empty.className = 'empty-state mx-auto flex max-w-[46rem] flex-col gap-3';
+  //
+  // The three openings are the same block at the same size — #tasks-intro and #knowledge-intro in
+  // index.html are its markup, and this is the one drawn in JavaScript. A person moving between the
+  // sections is looking at one page, so a heading two steps larger here would read as a different
+  // page rather than as the same one with nothing in it yet.
+  empty.className = 'empty-state mx-auto flex max-w-[46rem] flex-col gap-1';
   const heading = document.createElement('p');
-  heading.className = 'font-display text-[26px] font-semibold leading-tight tracking-tight';
+  heading.className = 'font-display text-[20px] font-semibold tracking-tight';
   heading.textContent = t('empty.title');
   const body = document.createElement('p');
-  body.className = 'max-w-[34rem] text-[14px] leading-relaxed text-mist';
+  body.className = 'max-w-[38rem] text-[12.5px] leading-relaxed text-mist';
   body.textContent = t('empty.body');
   empty.append(heading, body);
   transcript.append(empty);
