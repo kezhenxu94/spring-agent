@@ -177,6 +177,11 @@
 }
 .composer-action:hover { color: var(--fg); background: var(--code-bg); }
 .composer-action:focus-visible { outline: 2px solid var(--mist); outline-offset: 1px; }
+/* The `display` above is an author rule and `[hidden]` is only the browser's, which every author
+   rule beats regardless of specificity — the same trap as .tool-button and .scroll-end above. It
+   bites harder here: both actions are absolutely positioned on the same corner, so the one the page
+   means to hide would not merely stay on screen, it would print over the other. */
+.composer-action[hidden] { display: none; }
 
 /* Dimmed and inert while there is nothing to send, so the control says whether it will do anything
    before it is pressed. No hover lift either — a control that will not act must not answer the

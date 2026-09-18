@@ -384,7 +384,27 @@
               data-i18n-title="nav.account"
               class="side-row">
         <span class="side-glyph">
-          <img id="me-avatar" alt=""
+          <!--
+            Somebody, drawn, for the two states in which there is no picture to draw: before
+            /api/me has answered, and after it has answered with a provider that carries no avatar.
+            Both are ordinary — the first happens on every load — so neither may show a broken image
+            or an empty disc, which is what an <img> with no src is.
+
+            The image is hidden until it has actually loaded, and identity.js is what unhides it. So
+            a src that 404s or a network that never answers leaves this standing rather than
+            replacing it with the browser's own broken-image mark, and there is no third state to
+            draw: the person is here, and this is what is known of them so far.
+          -->
+          <svg id="me-avatar-blank" viewBox="0 0 24 24" class="avatar-blank size-5"
+               aria-hidden="true">
+            <circle cx="12" cy="12" r="12" class="avatar-blank-disc"/>
+            <circle cx="12" cy="9.3" r="3.4" fill="currentColor"/>
+            <!-- Shoulders that run into the disc's edge rather than stopping short of it, so the
+                 silhouette reads as a person in a frame and not as a figure floating in a circle. -->
+            <path d="M12 14.2a7.3 7.3 0 0 1 7.1 5.6A11.96 11.96 0 0 1 12 24a11.96 11.96 0 0 1-7.1-4.2
+                     A7.3 7.3 0 0 1 12 14.2Z" fill="currentColor"/>
+          </svg>
+          <img id="me-avatar" hidden alt=""
                class="size-5 rounded-full bg-zinc-200 object-cover dark:bg-rail">
         </span>
         <span id="me-name" class="side-label font-medium"></span>
@@ -595,7 +615,10 @@
             <span class="sr-only" data-i18n="composer.send">Send</span>
           </button>
 
-          <button id="stop" class="composer-action composer-action-stop"
+          <!-- Hidden here as well as by setRunning, which is called when a run starts and when one
+               ends and so says nothing about a page that has not yet had one. The markup is that
+               page's state, and it is a state both buttons share a corner in. -->
+          <button id="stop" hidden class="composer-action composer-action-stop"
                   data-i18n-title="composer.stop">
             <svg viewBox="0 0 16 16" class="size-[12px]" aria-hidden="true">
               <rect x="3" y="3" width="10" height="10" rx="2" fill="currentColor"/>

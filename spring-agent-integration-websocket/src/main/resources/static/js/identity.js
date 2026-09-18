@@ -22,7 +22,20 @@ export function renderIdentity(me) {
   const name = me.name || me.userId || '';
   $('me-name').textContent = name;
   $('me-name').title = name;
-  if (me.avatar) $('me-avatar').src = me.avatar;
+  // Shown only once the picture is actually there. An <img> whose src fails is a broken-image mark
+  // on a row that has room for exactly one glyph, and a provider that carries no avatar at all is
+  // the ordinary case on some of them — so the drawn stand-in in the markup is what stands until a
+  // real picture has loaded, and nothing has to decide which of the two failures happened.
+  const image = $('me-avatar');
+  if (me.avatar) {
+    image.addEventListener('load', () => {
+      image.hidden = false;
+      // `setAttribute` rather than `.hidden`, which is a property of HTMLElement: an <svg> is an
+      // SVGElement and takes the assignment without complaint as an expando that styles nothing.
+      $('me-avatar-blank').setAttribute('hidden', '');
+    }, { once: true });
+    image.src = me.avatar;
+  }
   id = me.userId || '';
 }
 
@@ -48,7 +61,7 @@ export function identityRow() {
 
   const copy = document.createElement('button');
   copy.type = 'button';
-  copy.className = 'id-copy';
+  copy.className = 'id-copy row-icon';
   copy.title = t('identity.copy');
   copy.setAttribute('aria-label', t('identity.copy'));
   copy.append(clipboard());
@@ -68,7 +81,8 @@ function clipboard() {
   svg.setAttribute('stroke-width', '1.3');
   svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('class', 'size-[11px]');
+  // No size here: .row-icon draws every icon at the end of a row at one size, so that this and the
+  // submenu chevron below it are read as one column rather than as two different kinds of control.
   const sheet = document.createElementNS(SVG, 'rect');
   sheet.setAttribute('x', '5.6');
   sheet.setAttribute('y', '5.6');

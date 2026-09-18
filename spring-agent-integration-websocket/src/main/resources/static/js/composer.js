@@ -121,11 +121,11 @@ export function refreshSendState() {
 }
 
 export function setRunning(running) {
-  // Explicit display rather than toggling a `hidden` class: both buttons carry a display of their
-  // own from .composer-action, and which of the two utilities wins would depend on the order
-  // Tailwind happened to emit them in.
-  $('send').style.display = running ? 'none' : 'grid';
-  $('stop').style.display = running ? 'grid' : 'none';
+  // The attribute rather than an inline display or a utility class, so that the markup's own
+  // initial state — no run, so no stop button — is written the same way this is. .composer-action
+  // carries a display of its own, which is why composer.css has a rule saying `[hidden]` wins.
+  $('send').hidden = running;
+  $('stop').hidden = !running;
   placeholder($('composer'), t(running ? 'composer.placeholder.running' : 'composer.placeholder'));
   refreshSendState();
 }

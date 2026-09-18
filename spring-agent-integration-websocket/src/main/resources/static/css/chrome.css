@@ -123,18 +123,13 @@
   color: var(--fg-dim);
 }
 
-/* There is more behind this row. After the value, and the only thing on the row that moves. */
-.menu-arrow {
-  flex: none;
-  /* At the end of the row on its own, and right after the value where there is one — the value is
-     the thing that should sit under the next row's value, not the arrow. */
-  margin-left: auto;
-  /* Smaller than the label, and smaller than the ⋯ that opened the menu: it says there is more
-     behind the row, and a glyph that competes with the words is one more thing to read. */
-  font-size: 11px;
-  line-height: 1;
-  color: var(--fg-dim);
-}
+/* There is more behind this row. A .row-icon, so it is the size of the copy button two rows up and
+   sits in the same column as it — see base.css. The negative right margin pulls the box's own
+   padding back out, so the *glyph* lines up with the row's text edge rather than the box doing so
+   and leaving the chevron short of it. */
+.menu-arrow { margin-right: -0.2rem; }
+/* Right after the value where there is one: the value is the thing that should sit under the next
+   row's value, and the pair still ends flush right because the value carries the auto instead. */
 .menu-value + .menu-arrow,
 .menu-code + .menu-arrow { margin-left: 0.2rem; }
 .menu-item:hover > .menu-arrow,
@@ -173,16 +168,10 @@
   color: var(--fg-dim);
 }
 
-.id-copy {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 1.05rem;
-  height: 1.05rem;
-  border-radius: 0.25rem;
-  color: var(--fg-dim);
-  transition: color 120ms ease, background 120ms ease;
-}
+/* The box, the size and the flush-right come from .row-icon, which this shares with the submenu
+   chevron: the two are the only things at the right edge of this menu, and a reader takes them for
+   one column. Same negative margin as the chevron, for the same reason. */
+.id-copy { margin-right: -0.2rem; }
 .id-copy:hover { color: var(--fg); background: var(--code-bg); }
 .id-copy:focus-visible { outline: 2px solid var(--mist); outline-offset: 1px; }
 /* Confirmed on the control itself as well as in a toast: the toast says it worked, the tick says
