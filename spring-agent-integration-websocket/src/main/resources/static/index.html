@@ -310,7 +310,7 @@
         </div>
 
         <p id="knowledge-note-bar" hidden class="px-1 pb-1.5 text-[11px] leading-snug text-mist"></p>
-        <ul id="knowledge-list" class="space-y-1.5"></ul>
+        <ul id="knowledge-list" class="space-y-0.5"></ul>
         <button id="knowledge-more" type="button" hidden
                 class="mt-2 w-full rounded-md px-2 py-1.5 font-mono text-[10px] uppercase
                        tracking-wider text-mist transition hover:bg-zinc-100 dark:hover:bg-rail/60"
@@ -340,16 +340,6 @@
       up under the + and leave the column's last inch empty.
     -->
     <div class="mt-auto border-t border-zinc-200 p-2 dark:border-rail">
-      <!--
-        What the agent is doing, when it is doing anything. Filled in by drawActivity in sidebar.js,
-        and absent rather than saying "idle" — see .side-activity in sidebar.css for why this line
-        exists at all when a conversation's row already carries a live dot.
-      -->
-      <div id="activity" hidden class="side-activity" aria-live="polite">
-        <span class="side-glyph"><span id="activity-dot"></span></span>
-        <span id="activity-text" class="side-label"></span>
-      </div>
-
       <button id="account-button" type="button" aria-haspopup="menu" aria-expanded="false"
               data-i18n-title="nav.account"
               class="side-row">

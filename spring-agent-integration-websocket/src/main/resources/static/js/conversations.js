@@ -34,10 +34,6 @@ export async function loadConversations() {
     // becomes anything.
     done();
     renderConversationList();
-    // What the rail's activity line reads off — it lives in an earlier layer than this file, so it
-    // listens for this rather than being called. Announced in the finally for the same reason the
-    // list is drawn there: a failed reload is still the moment the rail's reading may have changed.
-    bus.emit('conversations:loaded');
   }
 }
 
