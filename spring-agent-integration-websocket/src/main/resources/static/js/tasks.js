@@ -5,7 +5,7 @@
 // which is why this section offers no "new" button and says so instead.
 
 import { t } from './i18n.js';
-import { $, glyph, rowMeta } from './dom.js';
+import { $, glyph } from './dom.js';
 import { api } from './api.js';
 import { toast } from './toast.js';
 import { skeletonList } from './busy.js';
@@ -15,8 +15,6 @@ import { chatRoute, tasksRoute, go } from './route.js';
 import { headline } from './panels.js';
 import { editTask, renderTaskDetail, taskName } from './tasks-detail.js';
 import { state } from './state.js';
-
-const SVG = 'http://www.w3.org/2000/svg';
 
 export async function loadTasks() {
   // The list alone, and only while it is empty — as in the conversations, and for the same reason:
@@ -71,29 +69,25 @@ function row(task) {
   const item = document.createElement('li');
   item.className = 'group relative';
 
+  // A count and a name, on one line, as the conversations are and for the same reason: this list is
+  // read by scanning, and the more of it fits on screen the sooner a task is found. Everything else
+  // a task is — its expression, whether it runs unattended — is on the card it opens, which is
+  // where there is room to say it in words. The expression especially: it cannot be read at a
+  // glance and cannot be read at all without a timezone this page was never told, where the card
+  // says when it next fires in this browser's own clock.
   const open = document.createElement('button');
   open.type = 'button';
-  // The two-line row every sidebar list uses: the name on one line, what is true about it on the
-  // next. This list is the one that has the most to say there — a task's name is its prompt, and
-  // what tells two of them apart at a glance is when they come round and how often.
-  open.className = 'row-open flex w-full flex-col gap-0.5 rounded-md py-1.5 pl-[0.625rem] pr-7 text-left '
+  open.className = 'row-open flex w-full items-center gap-[0.4rem] rounded-md py-1 pl-[0.5rem] pr-7 text-left '
     + 'text-[13px] transition '
     + (current
       ? 'row-on font-medium'
       : 'text-zinc-600 group-hover:bg-zinc-100 dark:text-mist dark:group-hover:bg-rail/60');
 
-  const line = document.createElement('span');
-  line.className = 'flex w-full items-center gap-[0.55rem]';
-  // Where a conversation's dot says it is live, a task's says it is waiting — violet, the colour
-  // this page uses for the agent waiting on something rather than working.
-  const dot = document.createElement('span');
-  dot.className = 'size-1.5 shrink-0 rounded-full bg-waiting';
   const text = document.createElement('span');
   text.className = 'min-w-0 flex-1 truncate';
   text.textContent = taskName(task);
-  line.append(glyph(dot), text);
+  open.append(glyph(runs(task)), text);
 
-  open.append(line, meta(task));
   open.addEventListener('click', () => go(tasksRoute(task.id)));
   item.append(open);
 
@@ -125,79 +119,27 @@ function row(task) {
 }
 
 /**
- * The second line: on what schedule, how many times it has gone, and whether anybody is expected to
- * be there when it does.
+ * How many times it has gone, where the other lists keep their dot.
  *
- * The expression leads the line, where a conversation keeps the moment it was last spoken to: what
- * a person scans this list for is when each task comes round, and in both lists that is the first
- * thing on the second line.
+ * A conversation's dot says whether it is live; a task has no such state to report — it is waiting,
+ * always, which is a dot saying the same thing on every row. The count is what tells two tasks
+ * apart at a glance instead, with a ceiling where the task has one.
  *
- * Shown as it stands, untranslated and monospaced, for the same reason the panel shows it that way:
- * it is what the agent was given, and prose made of it would have to guess at a timezone this page
- * was never told. When it next fires in this browser's own clock is on the card it opens, which is
- * where there is room to say it in full rather than to the nearest hour. A one-off has no
- * expression and says so instead, which is the fact that sorts this list into its two kinds.
+ * Nought where nothing has run yet rather than nothing at all: this is what every name on the list
+ * is indented past, and a row without it would hang its name where no other row's is.
+ *
+ * Outlined rather than filled: the row that is open is already a filled rectangle, and a badge with
+ * a background of its own disappears into it on exactly the row being looked at.
  */
-function meta(task) {
-  const row = rowMeta();
-
-  const schedule = document.createElement('span');
-  schedule.className = 'min-w-0 flex-1 truncate font-mono tabular-nums';
-  schedule.textContent = task.cron || t('task.once');
-  row.append(schedule);
-
-  // Before the badge rather than after it, so the badge is the last thing on every row and the
-  // counts line up down the right edge — an icon that only some tasks have would otherwise push
-  // theirs left and turn a column somebody scans into a ragged one.
-  //
-  // An icon and no word, because "unattended" is a property most tasks do not have and the ones
-  // that do are told apart by its presence — a row of labels reading the same thing is not scanned.
-  // The label is still written, for a reader who is not looking at the row.
-  if (task.background) row.append(unattended());
-
-  // Only where there is something to count. A task that has never fired and has no ceiling would
-  // get a badge reading "0", which is a number where the useful statement is silence.
-  const runs = task.maxRuns
+function runs(task) {
+  const badge = document.createElement('span');
+  badge.className = 'side-count rounded border border-zinc-300 px-1 text-[10px] leading-[1.1] '
+    + 'text-mist font-mono tabular-nums dark:border-edge';
+  badge.textContent = task.maxRuns
     ? `${task.runCount ?? 0}/${task.maxRuns}`
-    : (task.runCount ? String(task.runCount) : '');
-  if (runs) {
-    const badge = document.createElement('span');
-    // Outlined rather than filled: the row that is open is already a filled rectangle, and a badge
-    // with a background of its own disappears into it on exactly the row being looked at.
-    badge.className = 'shrink-0 rounded border border-zinc-300 px-1 font-mono tabular-nums '
-      + 'dark:border-edge';
-    badge.textContent = runs;
-    badge.title = t('task.runs.label');
-    row.append(badge);
-  }
-  return row;
-}
-
-function unattended() {
-  const mark = document.createElement('span');
-  mark.className = 'inline-flex shrink-0 items-center';
-  mark.title = t('task.background.yes');
-
-  // Built rather than written as innerHTML, which this page keeps for sanitised markdown and for
-  // nothing else — an exception for "our own" markup is how the next one gets made.
-  const svg = document.createElementNS(SVG, 'svg');
-  svg.setAttribute('viewBox', '0 0 16 16');
-  svg.setAttribute('fill', 'none');
-  svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '1.3');
-  svg.setAttribute('stroke-linejoin', 'round');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('class', 'size-3');
-  const path = document.createElementNS(SVG, 'path');
-  // A crescent: it runs while nobody is here.
-  path.setAttribute('d', 'M13.2 9.6A5.2 5.2 0 0 1 6.4 2.8a5.6 5.6 0 1 0 6.8 6.8Z');
-  svg.append(path);
-
-  const said = document.createElement('span');
-  said.className = 'sr-only';
-  said.textContent = t('task.background.label');
-  mark.append(svg, said);
-  return mark;
+    : String(task.runCount ?? 0);
+  badge.title = t('task.runs.label');
+  return badge;
 }
 
 /**
