@@ -414,7 +414,10 @@ public record SpringAgentProperties(
      *     nothing. Individual runs opt out separately through {@code
      *     AgentScenario.knowledgeRetrieval()}.
      * @param topK how many chunks retrieval may put in front of the model. Every one of them is
-     *     context the model pays for on the turn, so this trades recall against the prompt budget
+     *     context the model pays for on the turn, so this trades recall against the prompt budget.
+     *     It is also the ceiling on what the search tools return when the model names no limit of
+     *     its own, which is the other half of why the default is what it is — see {@link
+     *     #DEFAULT_TOP_K}
      * @param similarityThreshold how close a chunk must be to be worth including, between 0 and 1.
      *     Too low and every turn drags in unrelated text that the model then has to reason around;
      *     too high and a knowledge base that is worded differently from the question never
@@ -426,7 +429,23 @@ public record SpringAgentProperties(
     public record Rag(
         boolean enabled, int topK, double similarityThreshold, int chunkSize, int listPageSize) {
 
-      public static final int DEFAULT_TOP_K = 4;
+      /**
+       * The same number as {@link #DEFAULT_LIST_PAGE_SIZE}, so that the two ways of getting at a
+       * knowledge base — searching it and listing it — hand back a page of the same size, and a
+       * model that asks for neither a limit nor a page gets a consistent amount either way.
+       *
+       * <p>Written out rather than referring to that constant, because they answer different
+       * questions and only happen to agree: a listing page is paid for once when something asks for
+       * it, and these chunks are paid for on <em>every</em> turn retrieval fires. Tying them would
+       * make widening a listing a change to every prompt.
+       *
+       * <p>That cost is the thing to weigh before raising this further. {@link
+       * #DEFAULT_SIMILARITY_THRESHOLD} is what keeps it from being paid in full — this is a ceiling
+       * on what clears the bar, not a quota that gets filled — so a knowledge base with little to
+       * say about a question still contributes little. A base whose chunks are all near-misses is
+       * the case that costs, and there the threshold is the knob, not this one.
+       */
+      public static final int DEFAULT_TOP_K = 20;
 
       /**
        * A raw cosine similarity, compared against the score the vector store returns.
