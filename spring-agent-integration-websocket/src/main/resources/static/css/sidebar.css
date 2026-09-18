@@ -6,13 +6,13 @@
  * header takes the readout away and leaves the rail, so a folded sidebar is still navigable rather
  * than gone, and the run gets the width back.
  *
- * Every glyph in this column — a section's icon, the +, the activity dot, the avatar — sits in a
- * 1rem box 1.125rem in from the column's edge, so its centre is 1.625rem: exactly half the folded
- * rail. Folding therefore moves no glyph by a pixel. The labels slide out from under themselves and
- * the instrument stays where it was, which is the difference between a fold and a redraw. That is
- * why the section rows, the action row, the activity line and the account row all state the same
- * padding rather than each taking whatever looked right on its own — change one and you have to
- * change all five, and the comment is here so that it is obvious which five.
+ * Every glyph in this column — a section's icon, the +, the avatar — sits in a 1rem box 1.125rem in
+ * from the column's edge, so its centre is 1.625rem: exactly half the folded rail. Folding therefore
+ * moves no glyph by a pixel. The labels slide out from under themselves and the instrument stays
+ * where it was, which is the difference between a fold and a redraw. That is why the section rows,
+ * the action row and the account row all state the same padding rather than each taking whatever
+ * looked right on its own — change one and you have to change all three, and the comment is here so
+ * that it is obvious which three.
  */
 
 /* The width is animated, which is the one transition in this column. The run beside it is laid out
@@ -138,34 +138,6 @@
   text-overflow: ellipsis;
 }
 
-/* ─────────────────────────────── what the agent is doing ───────────────────────────────
- *
- * The one thing this column says that nothing else on the page does: whether anything is happening
- * at all. A conversation's own row carries a live dot, but only while that row is in view and only
- * about itself — so somebody who has scrolled the list, or who is reading a document, has no way to
- * know a run is going on somewhere behind them. This line is that way.
- *
- * It is not a status strip: there is no "idle", and when there is nothing to report the line is not
- * there. The dot carries the colour — signal for a run going, waiting for a question nobody has
- * answered — and the words stay dim, exactly as a conversation row's dot is coloured and its title
- * is not. Small mono caps, because it is a reading off an instrument rather than a sentence.
- */
-.side-activity {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  height: 1.75rem;
-  padding-inline: 0.625rem;
-  font-family: var(--font-mono, monospace);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--fg-dim);
-}
-/* An author `display` again, so the attribute needs saying out loud — the same lesson as
-   .tool-button and .drawer-only. */
-.side-activity[hidden] { display: none; }
-
 /* Not while this column is a drawer. At that width it is already off screen unless somebody opened
  * it, the control for that is the header's own toggle, and the fold rules below are guarded by the
  * same media query — so a fold button there is a control that does nothing at all when pressed.
@@ -216,8 +188,7 @@
   /* The glyph on the rail's axis, and the row no wider than the rail. The padding is untouched:
      0.5rem of nav padding plus 0.625rem here puts the 1rem box's centre at 1.625rem, and half of
      3.25rem is 1.625rem. */
-  #sidebar.is-collapsed .side-row,
-  #sidebar.is-collapsed .side-activity { gap: 0; }
+  #sidebar.is-collapsed .side-row { gap: 0; }
 
   /* Pointing the way the panel will go: into the column to fold, out of it to unfold. One glyph
      mirrored rather than two drawn, which also moves the bar in it to the side the panel is on. */

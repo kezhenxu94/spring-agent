@@ -35,14 +35,15 @@ function row(entry, options) {
 
   const open = document.createElement('button');
   open.type = 'button';
-  open.className = 'row-open flex w-full items-center rounded-md py-1.5 pl-[0.625rem] pr-7 text-left '
+  // The same padding and the same gap a conversation's row states, rather than a second set of
+  // numbers that happen to look right on their own: the two lists are read down the same column and
+  // a row a couple of pixels taller than the one above it in another section reads as a mistake.
+  open.className = 'row-open flex w-full items-center gap-[0.55rem] rounded-md py-1 pl-[0.625rem] pr-7 text-left '
     + 'text-[13px] transition '
     + (current
       ? 'row-on font-medium'
       : 'text-zinc-600 group-hover:bg-zinc-100 dark:text-mist dark:group-hover:bg-rail/60');
 
-  const line = document.createElement('span');
-  line.className = 'flex w-full items-center gap-[0.55rem]';
   // Where a conversation's dot says it is live, a document's says who else can read it — the one
   // thing about a stored document worth seeing without opening it. Hollow for your own, filled for
   // something the whole company can read.
@@ -55,8 +56,7 @@ function row(entry, options) {
   const title = document.createElement('span');
   title.className = 'min-w-0 flex-1 truncate';
   title.textContent = entry.title || entry.docId;
-  line.append(glyph(dot), title);
-  open.append(line);
+  open.append(glyph(dot), title);
 
   // No second line for when it was stored: a document is never rewritten in place, so the moment it
   // arrived says nothing about what is in it, and a date under every title made this list twice as

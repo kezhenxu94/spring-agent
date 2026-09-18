@@ -29,8 +29,6 @@ const STRINGS = {
     'nav.close': 'Close',
     'nav.fold': 'Fold the sidebar',
     'nav.unfold': 'Unfold the sidebar',
-    'nav.activity.running': '{0} running',
-    'nav.activity.waiting': 'Waiting on you',
 
     'empty.title': 'Ask the agent to do something.',
     'empty.body': 'It works on the server, so you can close this tab and come back. '
@@ -222,8 +220,6 @@ const STRINGS = {
     'nav.close': '关闭',
     'nav.fold': '收起侧栏',
     'nav.unfold': '展开侧栏',
-    'nav.activity.running': '{0} 个进行中',
-    'nav.activity.waiting': '等你回答',
 
     'empty.title': '交给智能体一件事。',
     'empty.body': '它在服务端执行，可以随时关掉这个页面。回来时正在做的事仍然在。',
