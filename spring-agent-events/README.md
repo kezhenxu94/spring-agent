@@ -20,7 +20,7 @@ dropped at the door.
 | `WebhookController` | `POST /events/webhooks/<name>` for every `WebhookSource` bean, authenticating each delivery against that source's secret |
 | `WebhookSource` + `WebhookDelivery` | The SPI a source module implements — see below |
 | `SituationTools` | `ListOpenSituations`, `GetSituationEvents`, `RecordSituationAssessment`, `ResolveSituation` |
-| `PlaybookTools` | `ListPlaybooks`, `WritePlaybook` — admin-only, and the reason `ListOwnerKnowledgeBase` exists in core |
+| `PlaybookTools` | `ListPlaybooks`, `WritePlaybook` — admin-only, and the reason core has `ListOwnerKnowledgeBase` and `DeleteOwnerKnowledge` |
 | `SituationTriageScenario` | The `AgentScenario` a triage run carries |
 | `EventsDefaults` | An `EnvironmentPostProcessor` supplying the per-source defaults, so a deployment configures only what it wants different |
 

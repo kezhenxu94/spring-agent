@@ -159,8 +159,8 @@ RAG_ENABLED=true COMPOSE_PROFILES=rag docker compose up
   An admin's agent reads and posts in chats they are not a member of; they can answer a question the
   agent put to somebody else and speak into a run already going for somebody else; and they get the
   admin-only tools — today the ones that write triage playbooks (`ListPlaybooks`, `WritePlaybook`) and
-  the ones that read back a knowledge base nobody logs in as (`ListOwnerKnowledgeBase`,
-  `SearchOwnerKnowledge`). A run keeps the identity it started with, so an admin causes things to
+  the ones that reach a knowledge base nobody logs in as (`ListOwnerKnowledgeBase`,
+  `SearchOwnerKnowledge`, `DeleteOwnerKnowledge`). A run keeps the identity it started with, so an admin causes things to
   happen *as* the person being helped. Grant it only to people you would trust with those files and
   credentials directly. **Never list an events source's `owner.user-id` among them** — the application
   refuses to start on that pairing.
