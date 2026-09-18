@@ -987,9 +987,15 @@ app:
       # opt out separately, in AgentScenario.knowledgeRetrieval().
       enabled: ${RAG_ENABLED:false}
       #
-      # How many passages an automatic search may put in front of the model. Each one is context the
+      # How many passages an automatic search may put in front of the model, and the ceiling on what
+      # the search tools return when the model names no limit of its own. Each one is context the
       # model pays for on every turn, so this trades recall against the prompt budget.
-      top-k: ${RAG_TOP_K:4}
+      #
+      # The same number as list-page-size below, so that searching a knowledge base and listing one
+      # hand back a page of the same size. It is a ceiling rather than a quota — similarity-threshold
+      # is what decides how much of it is actually spent — so raise that, not this, when a base whose
+      # passages are all near-misses is costing more than it is worth.
+      top-k: ${RAG_TOP_K:20}
       # How close a passage must be to count: a raw cosine similarity between 0 and 1, compared
       # against the score the vector store returns.
       #
