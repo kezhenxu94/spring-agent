@@ -132,20 +132,3 @@ export function glyph(mark) {
   return box;
 }
 
-/**
- * The second line of a sidebar row: what is true about the thing named on the line above.
- *
- * One builder for the lists that have one, because they are read in one column and have to agree. A
- * row's first line is a dot and a name; everything a list has to add about its own kind of thing —
- * how often, how many — goes here, quiet and small, in the order the lists share. The conversation
- * list and the knowledge list have nothing to add that is worth a line, and so are a single one.
- *
- * Indented by a glyph box and the gap after it, so it hangs under the name rather than under the
- * dot's own column, which is what keeps two lines reading as one row.
- */
-export function rowMeta() {
-  const meta = document.createElement('span');
-  meta.className = 'flex w-full items-center gap-1.5 pl-[1.55rem] text-[10px] text-mist';
-  return meta;
-}
-

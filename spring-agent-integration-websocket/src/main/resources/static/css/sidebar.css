@@ -106,6 +106,25 @@
   max-width: none;
 }
 
+/* A count is the one glyph that is *text*, and text is the one thing that must not overflow its box:
+   a run count with a ceiling ("12/20") centred on a 1rem box reaches a good deal further than the
+   gap after it and prints over the name beside it. So it is laid out in flow and the box is only as
+   wide as the count in it.
+ *
+ * Which means the names in this one list do not start at the same x — a task that has run twelve
+ * times indents its name further than one that has run once. That is the trade taken deliberately:
+ * a column wide enough for the longest count pads every shorter row with a hole before the badge
+ * and another after it, and this sidebar is read at a glance, where space costs more than a ruler
+ * edge. The other lists' glyphs are all one width and keep the box. */
+.side-glyph:has(> .side-count) {
+  width: auto;
+  min-width: 0;
+}
+.side-glyph > .side-count {
+  position: static;
+  translate: none;
+}
+
 /* The `display` above is an author rule, and the only thing saying `[hidden]` means invisible is the
    browser's own stylesheet, which every author rule beats regardless of specificity — the same trap
    as .tool-button and .drawer-only. The one action is hidden this way off its own section. */
