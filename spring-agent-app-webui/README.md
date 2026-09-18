@@ -83,8 +83,10 @@ moving and deleting always name which knowledge base the document is in: the sam
 privately and company-wide is two documents wearing one id.
 
 Somebody in `ADMINS` gets `Read another person` in that menu — listing, searching and reading somebody
-else's knowledge base, and nothing else, mirroring `ListOwnerKnowledgeBase` and `SearchOwnerKnowledge`.
-Deleting or re-scoping somebody else's document is not offered anywhere.
+else's knowledge base, mirroring `ListOwnerKnowledgeBase` and `SearchOwnerKnowledge`, plus deleting from
+it, which mirrors `DeleteOwnerKnowledge` and is what the delete endpoint's `owner` is for: a document
+under an identity nobody logs in as has no other way out. Re-scoping somebody else's document is not
+offered anywhere.
 
 **A run outlives the page it was started from.** The page subscribes to a run over a websocket, and
 that subscription is a reader of a run happening on the server, never the run itself — so refreshing,

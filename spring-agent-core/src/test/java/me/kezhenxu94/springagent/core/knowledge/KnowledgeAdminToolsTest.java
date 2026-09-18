@@ -31,6 +31,19 @@ class KnowledgeAdminToolsTest {
 
   private final AtomicReference<KnowledgeScope> listed = new AtomicReference<>();
   private final AtomicReference<KnowledgeScope> searched = new AtomicReference<>();
+  private final AtomicReference<KnowledgeScope> deleted = new AtomicReference<>();
+  private final Map<String, KnowledgeDocument> stored =
+      Map.of(
+          "github-triage",
+          new KnowledgeDocument(
+              new KnowledgeEntry(
+                  "github-triage",
+                  "How to triage GitHub issues",
+                  "om_42",
+                  3,
+                  Instant.parse("2026-08-01T00:00:00Z"),
+                  ScopeTarget.OWN),
+              "Page the owner before restarting anything."));
   private KnowledgeAdminTools tools;
 
   private final KnowledgeBase knowledgeBase =
@@ -58,12 +71,16 @@ class KnowledgeAdminToolsTest {
         @Override
         public Optional<KnowledgeDocument> read(
             final KnowledgeScope scope, final ScopeTarget owning, final String docId) {
-          return Optional.empty();
+          return owning == ScopeTarget.OWN
+              ? Optional.ofNullable(stored.get(docId))
+              : Optional.empty();
         }
 
         @Override
         public void delete(
-            final KnowledgeScope scope, final ScopeTarget owning, final String docId) {}
+            final KnowledgeScope scope, final ScopeTarget owning, final String docId) {
+          deleted.set(scope);
+        }
 
         @Override
         public Optional<KnowledgeEntry> move(
@@ -142,6 +159,28 @@ class KnowledgeAdminToolsTest {
   }
 
   @Test
+  @DisplayName("a delete reaches the owner's own knowledge base and names what it took out")
+  void deletesFromTheOwnersOwnBase() {
+    final var result = tools.deleteOwnerKnowledge("ou_agent", "github-triage");
+
+    assertThat(deleted.get()).isEqualTo(new KnowledgeScope("ou_agent", "", ""));
+    assertThat(result).contains("How to triage GitHub issues").contains("ou_agent");
+  }
+
+  /**
+   * The store deletes silently where the id is not there, so reporting success on a mistyped id
+   * would say a playbook is gone while it is still steering every triage run.
+   */
+  @Test
+  @DisplayName("a delete of an id that is not there says so rather than reporting a deletion")
+  void deleteOfAnUnknownIdIsReportedAsNotFound() {
+    final var result = tools.deleteOwnerKnowledge("ou_agent", "no-such-doc");
+
+    assertThat(deleted.get()).isNull();
+    assertThat(result).contains("no document no-such-doc");
+  }
+
+  @Test
   @DisplayName("no owner is refused rather than read as the caller's own knowledge base")
   void ownerIsRequired() {
     // Defaulting to the run's own scope would answer a question about somebody else's knowledge
@@ -149,7 +188,9 @@ class KnowledgeAdminToolsTest {
     assertThat(tools.listOwnerKnowledgeBase(" ", null, null)).contains("A user id is required");
     assertThat(tools.searchOwnerKnowledge(null, "anything", null))
         .contains("A user id is required");
+    assertThat(tools.deleteOwnerKnowledge("", "github-triage")).contains("A user id is required");
     assertThat(listed.get()).isNull();
     assertThat(searched.get()).isNull();
+    assertThat(deleted.get()).isNull();
   }
 }

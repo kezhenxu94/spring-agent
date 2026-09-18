@@ -139,7 +139,8 @@ those bases hold is a candidate.
 
 Writing them is what the admin-only `ListPlaybooks` and `WritePlaybook` tools are for, alongside
 `ListOwnerKnowledgeBase` and `SearchOwnerKnowledge`, which read back a knowledge base nobody logs in
-as.
+as, and `DeleteOwnerKnowledge`, which is the only way a playbook there is retired rather than only
+overwritten — a source that is gone leaves a document nobody who can log in owns.
 
 ## What this does and does not buy you
 

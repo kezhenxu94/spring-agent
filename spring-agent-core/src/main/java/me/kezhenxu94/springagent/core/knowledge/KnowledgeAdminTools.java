@@ -1,13 +1,16 @@
 package me.kezhenxu94.springagent.core.knowledge;
 
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
 /**
- * Reading somebody else's knowledge base, for the administrator who has to know what is in it.
+ * Somebody else's knowledge base, for the administrator who has to know what is in it — and who is
+ * the only one who can take something out of it.
  *
  * <p>{@link KnowledgeBaseTools} is scoped to the run — {@link KnowledgeScope#forRequest} — which is
  * right for everybody and leaves one thing unreachable: the knowledge base of an identity nobody
@@ -17,17 +20,23 @@ import org.springframework.ai.tool.annotation.ToolParam;
  * not by that identity, which is not a person. Verifying what a triage will actually be shown is
  * then impossible, which is the same as not knowing.
  *
- * <p>Read-only, and one scope wide: the {@code owner}'s own knowledge base, no group and no tenant.
- * That is precisely what {@code SituationSweeper} retrieves a playbook from — see {@code
+ * <p>One scope wide: the {@code owner}'s own knowledge base, no group and no tenant. That is
+ * precisely what {@code SituationSweeper} retrieves a playbook from — see {@code
  * SituationSweeper#playbookFor}, which builds the same scope — so what an administrator sees here
  * is what an unattended run sees, rather than a superset of it that hides a document being out of
  * reach.
  *
  * <p><b>Declared {@code @AgentTool(admin = true)}, and that is the whole of the safety story</b>,
- * as it is for {@code PlaybookTools}. These read a knowledge base the run has no claim on, so who
+ * as it is for {@code PlaybookTools}. These reach a knowledge base the run has no claim on, so who
  * may call them is the entire question and nothing is checked here a second time. Only somebody
  * named in {@code app.ai.admins} is offered them at all, and an unattended run — which has no user
  * id — never is.
+ *
+ * <p>Deleting is here for the same reason reading is, and is the only way a document under such an
+ * identity is ever removed rather than only overwritten: a playbook whose source has been retired,
+ * or a second copy filed under a query that now matches the wrong one, belongs to nobody who can
+ * log in and ask for it to go. {@code KnowledgeController}'s delete accepts an {@code owner} from
+ * an administrator for exactly this, and the two are the same operation on the same documents.
  */
 @RequiredArgsConstructor
 public class KnowledgeAdminTools {
@@ -131,6 +140,61 @@ reads. For your own, use SearchKnowledge.
     }
     return messages.get(
         "knowledge-owner-search-found", found.size(), owner, KnowledgeFormat.passages(found));
+  }
+
+  @Tool(
+      name = "DeleteOwnerKnowledge",
+      description =
+"""
+Remove a document, and all of its chunks, from another identity's own knowledge base.
+Administrators only.
+
+Use this to retire what is stored under an identity nobody logs in as — a playbook for an event
+source that no longer exists, or a stale copy a newer one was filed beside rather than over.
+Nobody else can remove it: its owner is not a person, and the administrator who wrote it is not
+that identity.
+
+Usage:
+- owner is the user id, as ListPlaybooks names it; docId comes from ListOwnerKnowledgeBase.
+- Only that identity's own knowledge base is touched, and an id that is not in it is reported as
+  not found rather than deleted from somewhere else.
+- This is irreversible, and the documents here are what steers unattended triage runs. Ask before
+  deleting unless you have just been asked to.
+""")
+  public String deleteOwnerKnowledge(
+      @ToolParam(description = "The user id whose knowledge base to delete from") String owner,
+      @ToolParam(description = "The document id, as shown by ListOwnerKnowledgeBase")
+          String docId) {
+
+    if (owner == null || owner.isBlank()) {
+      return messages.get("knowledge-owner-required");
+    }
+    if (docId == null || docId.isBlank()) {
+      return messages.get("knowledge-doc-id-required");
+    }
+    final var scope = ownScopeOf(owner);
+
+    // Read before deleting, which the run-scoped DeleteKnowledge has no need to do: a delete is a
+    // silent no-op where the id is not there, and the caller here is working from a listing of
+    // somebody else's documents rather than their own. Reporting "deleted" on a mistyped id would
+    // say a playbook is gone while it is still steering every triage run. The title comes back
+    // with it, so the answer names what went rather than only the id that was typed.
+    final Optional<KnowledgeDocument> existing;
+    try {
+      existing = knowledgeBase.read(scope, ScopeTarget.OWN, docId);
+    } catch (RuntimeException e) {
+      return messages.get("knowledge-delete-failed", e.getMessage());
+    }
+    if (existing.isEmpty()) {
+      return messages.get("knowledge-owner-delete-not-found", docId, owner);
+    }
+
+    try {
+      knowledgeBase.delete(scope, ScopeTarget.OWN, docId);
+    } catch (RuntimeException e) {
+      return messages.get("knowledge-delete-failed", e.getMessage());
+    }
+    return messages.get("knowledge-owner-deleted", existing.get().entry().title(), docId, owner);
   }
 
   /**

@@ -507,8 +507,9 @@ Roughly: filesystem (`Read`, `Write`, `Edit`), `TodoWrite`, memories (`MemoryVie
 `RescheduleThisScheduledTask` offered only to a firing, for the task it is a firing of), subagents (`StartSubagent`,
 `WaitForSubagent`, `CancelSubagent`), publishing (`PublishFile`, `UpdatePublishedFile`,
 `RenewPublishedFile`, `UnpublishFile`), knowledge (`SearchKnowledge`, `IndexKnowledge`,
-`ListKnowledgeBase`, `UpdateKnowledgeScope`, `DeleteKnowledge`, plus `ListOwnerKnowledgeBase` and
-`SearchOwnerKnowledge` over another identity's own knowledge base, for an administrator), media
+`ListKnowledgeBase`, `UpdateKnowledgeScope`, `DeleteKnowledge`, plus `ListOwnerKnowledgeBase`,
+`SearchOwnerKnowledge` and `DeleteOwnerKnowledge` over another identity's own knowledge base, for an
+administrator), media
 (`GenerateImage`, `RecognizeImage`, `TranscribeAudio`), `CurrentDateTime`, `AskUserQuestion`, and
 — with a shell module and `app.ai.tools.shell.type` set — `Bash`, `BashOutput`, `KillShell`,
 `RestartShellContainer`.
