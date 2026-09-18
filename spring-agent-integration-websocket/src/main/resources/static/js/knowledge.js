@@ -29,7 +29,11 @@ export function initKnowledge() {
   state.knowledge = {
     // `scope` is what the list is filtered to; `docScope` is which knowledge base the open
     // document is in, which is half of what names it — see KnowledgeBase#delete in core.
-    offset: 0, docId: null, docScope: null, owner: '', scope: '',
+    // The three that narrow the list are a copy of what the route says, never the other way
+    // round: they are written only by showKnowledge, off a hash that has already changed. `query`
+    // is the committed search — the box's own value is a draft until Enter puts it in the address
+    // bar.
+    offset: 0, docId: null, docScope: null, owner: '', scope: '', query: '',
     entries: [], hasMore: false, searching: false,
   };
 
@@ -43,23 +47,16 @@ export function initKnowledge() {
   });
   $('knowledge-more').addEventListener('click', () => attempt(loadMore));
 
-  const search = $('knowledge-search');
-  search.addEventListener('keydown', (event) => {
-    if (submits(event)) {
-      event.preventDefault();
-      attempt(() => runSearch(search.value));
-    }
-  });
-  // A cleared box is the whole list again, which is what the little × in a search field is for.
-  search.addEventListener('search', () => {
-    if (!search.value.trim()) attempt(reload);
-  });
-
+  initSearch();
   if (state.me?.knowledge?.admin) initAdmin();
   initView();
   bus.on('language:changed', () => {
     renderList();
     renderDetail();
+    // What the lens says it will do next is written here rather than from a key in the markup,
+    // because which of the two strings is right depends on whether the field is open — the same
+    // reason drawFold writes the sidebar's fold button.
+    drawSearch();
     // The suggestions carry a sentence of the page's own beside each id, so they are drawn again
     // too — a list built in JavaScript otherwise stays in the language the page started in.
     if (state.me?.knowledge?.admin) renderOwnerOptions();
@@ -67,7 +64,120 @@ export function initKnowledge() {
     // language that was just chosen.
     describe();
   });
-  bus.on('knowledge:changed', () => attempt(reload));
+  bus.on('knowledge:changed', () => attempt(refetch));
+}
+
+/**
+ * The search, which is a switch rather than a box standing open.
+ *
+ * Closed it is one of the three icons over the list; open it is a field, and the list is a search
+ * of itself. Closing therefore means *stop searching* and puts the whole list back — a field that
+ * closed over a query somebody had typed would leave the list narrowed with nothing on screen
+ * saying by what.
+ *
+ * Losing focus deliberately does not close it. The results *are* the list, so clicking one is the
+ * ordinary next thing to do with a search, and a blur that closed would throw the search away at
+ * exactly the moment it worked. Escape closes, which is what Escape means everywhere else here.
+ */
+function initSearch() {
+  const search = $('knowledge-search');
+  $('knowledge-search-toggle').addEventListener('click', () => {
+    if (searchOpen()) closeSearch();
+    else openSearch();
+  });
+  search.addEventListener('keydown', (event) => {
+    if (submits(event)) {
+      event.preventDefault();
+      // The address bar, not the server: a search is a place this page can be, so it is navigated
+      // to and the fetch happens on the way back through dispatch. That is what puts a search in
+      // the history, in a reload and in a link somebody pastes to a colleague.
+      narrow({ q: search.value.trim() });
+    }
+    if (event.key === 'Escape') closeSearch();
+  });
+  // A cleared box is the whole list again, which is what the little × in a search field is for.
+  // The box stays open: clearing is not closing, and somebody who pressed it is still typing.
+  search.addEventListener('search', () => {
+    if (!search.value.trim()) narrow({ q: '' });
+  });
+  drawSearch();
+}
+
+// Named for the search rather than just `open`, because initAdmin below has an `open` of its own
+// for the owner box and two things called the same in one file is one rename away from a bug.
+function searchOpen() {
+  return $('knowledge-search-box').dataset.open === 'true';
+}
+
+function openSearch() {
+  $('knowledge-search-box').dataset.open = 'true';
+  drawSearch();
+  $('knowledge-search').focus();
+}
+
+function closeSearch() {
+  const committed = state.knowledge.query;
+  $('knowledge-search-box').dataset.open = 'false';
+  $('knowledge-search').value = '';
+  drawSearch();
+  // Only where a search is actually on screen. Closing an untouched box is a change of nothing, and
+  // a route written for it would be a history entry that goes back to where it already is.
+  if (committed) narrow({ q: '' });
+}
+
+/** What the lens says it will do next, in the tooltip and to a screen reader. */
+function drawSearch() {
+  const toggle = $('knowledge-search-toggle');
+  const label = t(searchOpen() ? 'knowledge.search.close' : 'knowledge.search');
+  toggle.setAttribute('aria-expanded', String(searchOpen()));
+  toggle.title = label;
+  $('knowledge-search-label').textContent = label;
+}
+
+/**
+ * Narrows the list, by going somewhere.
+ *
+ * Every control that changes what this list holds ends up here, and none of them touches
+ * `state.knowledge` or fetches anything: they name what should be different, the hash changes, and
+ * dispatch comes back through {@link showKnowledge} with the whole narrowing to apply. That is the
+ * page's one-way rule kept for a list as well as for a panel — the alternative is the list and the
+ * address bar each holding a version of what is on screen, and the back button reading the one
+ * that is wrong.
+ *
+ * No document, deliberately: a list that has just been narrowed may not contain the document that
+ * was open, and leaving it named would put a title over a panel the new list cannot select.
+ */
+function narrow(change) {
+  const knowledge = state.knowledge;
+  go(knowledgeRoute(null, null, {
+    q: knowledge.query, owner: knowledge.owner, scope: knowledge.scope, ...change,
+  }));
+}
+
+/**
+ * Makes the controls say what the route says.
+ *
+ * Called on the way in, so a pasted link arrives with its search in the box, its funnel marked and
+ * — for an admin — the owner row open on the identity being read. Without this a link would fetch
+ * the right list and draw a header claiming it was the whole of one.
+ */
+function applyNarrowing() {
+  const knowledge = state.knowledge;
+  $('knowledge-search').value = knowledge.query;
+  // Opened for a search that is on, never closed for one that is not: the box is also opened by
+  // pressing the lens, and that press has no route of its own to be undone by the next one.
+  if (knowledge.query) $('knowledge-search-box').dataset.open = 'true';
+  drawSearch();
+
+  if (state.me?.knowledge?.admin) {
+    $('knowledge-owner').value = knowledge.owner;
+    $('knowledge-owner-row').hidden = !knowledge.owner;
+    $('knowledge-owner-clear').hidden = !knowledge.owner;
+  }
+  // Not the pane that writes: renderKnowledgeDetail owns that, and already hides it both for a
+  // document being open and for somebody else's knowledge base being read. A second line saying
+  // half of it here would un-hide it over an open document for as long as the fetch takes.
+  mark();
 }
 
 /** Whether the section should be offered at all, and the scopes a person may file into. */
@@ -85,13 +195,27 @@ export function scopesAvailable() {
  * Reached only from the route handler. The list is fetched the first time and then kept, so moving
  * between documents is not a page of requests — {@link reload} is what a write asks for.
  */
-export function showKnowledge(docId, scope) {
-  state.knowledge.docId = docId || null;
-  state.knowledge.docScope = docId ? scope || null : null;
+export function showKnowledge(docId, scope, narrowing = {}) {
+  const knowledge = state.knowledge;
+  knowledge.docId = docId || null;
+  knowledge.docScope = docId ? scope || null : null;
+
+  // Only when the route asks for a different list. Moving between documents is the common case and
+  // carries the same narrowing every time, and re-fetching for it would redraw the list under the
+  // cursor of somebody reading their way down it.
+  const wanted = { q: narrowing.q || '', owner: narrowing.owner || '', scope: narrowing.scope || '' };
+  if (wanted.q !== knowledge.query || wanted.owner !== knowledge.owner
+      || wanted.scope !== knowledge.scope) {
+    Object.assign(knowledge, { query: wanted.q, owner: wanted.owner, scope: wanted.scope });
+    applyNarrowing();
+    attempt(refetch);
+    return;
+  }
+
   renderList();
   renderDetail();
   title();
-  if (!state.knowledge.entries.length && !state.knowledge.searching) attempt(reload);
+  if (!knowledge.entries.length && !knowledge.searching) attempt(refetch);
 }
 
 function title() {
@@ -99,11 +223,22 @@ function title() {
   headline(entry ? entry.title || entry.docId : t('knowledge.title'));
 }
 
+/**
+ * Fetches the list again, as whatever it currently is.
+ *
+ * Everything that changes a document — a delete, a move, a write from a run — asks for this rather
+ * than for a listing, because a narrowed list is still the list: reloading a search as a plain
+ * listing leaves the box and the address bar saying a search is on over results that are the whole
+ * knowledge base, and the only way back is to type the query again.
+ */
+function refetch() {
+  return state.knowledge.query ? runSearch() : reload();
+}
+
 async function reload() {
   const knowledge = state.knowledge;
   knowledge.offset = 0;
   knowledge.searching = false;
-  $('knowledge-search').value = '';
   // Only the list in the sidebar, and only while it is empty: the panel beside it keeps the document
   // that is open, which after a write is usually the one that was just changed, and a reload is
   // mostly a write's own refresh rather than somebody waiting to see the list at all.
@@ -151,11 +286,17 @@ function list(offset) {
   return api(`/api/knowledge?${params}`);
 }
 
-/** Search replaces what the list shows, so there is one list to read rather than two. */
-async function runSearch(text) {
-  const query = (text || '').trim();
-  if (!query) return reload();
+/**
+ * Search replaces what the list shows, so there is one list to read rather than two.
+ *
+ * Reads the committed query off the state rather than the box, because by here the query is the
+ * one the route named — which on a pasted link or a back button is a search nobody has typed into
+ * this box at all.
+ */
+async function runSearch() {
   const knowledge = state.knowledge;
+  const query = knowledge.query;
+  if (!query) return reload();
   const params = new URLSearchParams({ q: query });
   if (knowledge.owner) params.set('owner', knowledge.owner);
   // Narrowed the same way the listing is, or a filter would silently stop applying the moment
@@ -171,8 +312,18 @@ async function runSearch(text) {
   knowledge.searching = true;
   knowledge.entries = result.hits;
   knowledge.hasMore = false;
+  // The same reason a reload does it: a search is also how the list comes back after a write, and
+  // a write can change a document's text without changing its id — which is the only thing the
+  // panel would otherwise notice.
+  forgetDocumentText();
   describe();
   renderList();
+  // The panel as well as the list, the same as a reload draws. A search is arrived at by narrowing,
+  // which names no document, so leaving the panel alone would keep the last one open under a list
+  // that can no longer select it — and on a pasted link that names both, this is what opens the
+  // document the link asked for.
+  renderDetail();
+  title();
   return undefined;
 }
 
@@ -215,7 +366,7 @@ function renderList() {
     readOnly: Boolean(knowledge.owner),
     owner: knowledge.owner,
     tenant: Boolean(state.me?.knowledge?.tenant),
-    refresh: () => attempt(reload),
+    refresh: () => attempt(refetch),
   });
   $('knowledge-more').hidden = !knowledge.hasMore;
 }
@@ -229,7 +380,7 @@ function renderDetail() {
     // Whose knowledge base is being read, for the one request that fetches a document's text. Read
     // endpoints only, and the server checks it again.
     owner: knowledge.owner,
-    refresh: () => attempt(reload),
+    refresh: () => attempt(refetch),
   });
 }
 
@@ -253,9 +404,7 @@ function initView() {
 
   const choose = (scope) => {
     if (scope === state.knowledge.scope) return;
-    state.knowledge.scope = scope;
-    mark();
-    attempt(reload);
+    narrow({ scope });
   };
 
   const items = () => {
@@ -305,14 +454,10 @@ function initAdmin() {
   const open = () => {
     const owner = input.value.trim();
     if (!owner) return;
-    state.knowledge.owner = owner;
-    // Nothing about somebody else's knowledge base is writable, so the pane that writes goes. The
-    // server refuses a write naming an owner as well; this is only about not offering one.
-    $('knowledge-add').hidden = true;
-    $('knowledge-owner-clear').hidden = false;
-    mark();
-    go(knowledgeRoute());
-    attempt(reload);
+    // The scope goes with it. This surface narrows to a tenant and somebody else's knowledge base
+    // carries none, so the two together name a list that cannot exist — which is the same reason
+    // the menu stops offering the choice while an owner is being read.
+    narrow({ owner, scope: '' });
   };
 
   $('knowledge-owner-open').addEventListener('click', open);
@@ -351,12 +496,5 @@ function renderOwnerOptions() {
 
 /** Back to your own, from either the × on the row or the menu entry. */
 function leaveOwner() {
-  state.knowledge.owner = '';
-  $('knowledge-owner').value = '';
-  $('knowledge-owner-row').hidden = true;
-  $('knowledge-owner-clear').hidden = true;
-  $('knowledge-add').hidden = false;
-  mark();
-  go(knowledgeRoute());
-  attempt(reload);
+  narrow({ owner: '' });
 }

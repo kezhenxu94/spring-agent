@@ -165,7 +165,9 @@ export class RunView {
   toolsPanel() {
     return this.slot('tools', () => {
       const panel = this.fold('tools', t('run.tools'), 'settled');
-      panel.list = el('ol', 'space-y-2.5');
+      // 8px, the step this page uses between items inside a card. It was 10, the only spacing in
+      // the web UI that was not a multiple of four.
+      panel.list = el('ol', 'space-y-2');
       panel.body.append(panel.list);
       return panel;
     });

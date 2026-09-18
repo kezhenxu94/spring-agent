@@ -45,7 +45,14 @@ export function initScrollToEnd() {
 export function renderEmptyTranscript() {
   const transcript = $('transcript');
   const empty = document.createElement('div');
-  empty.className = 'mx-auto flex h-full max-w-[46rem] flex-col justify-center gap-3 pb-16';
+  // At the top, where the schedule's and the knowledge base's own openings are. It was centred in
+  // the height of the panel, which put the one screen a person sees most in a different place from
+  // the two beside it — and moved it every time the window was resized, while neither of the others
+  // budged. A first turn is drawn from the top, so this is also where the answer to it will appear.
+  // `empty-state` is not styling: it is the handle appendTurn and appendTools take this block away
+  // by when the first message of a conversation arrives. Both have always looked for it and it has
+  // never been here, so the opening stayed on screen above the turn that answered it.
+  empty.className = 'empty-state mx-auto flex max-w-[46rem] flex-col gap-3';
   const heading = document.createElement('p');
   heading.className = 'font-display text-[26px] font-semibold leading-tight tracking-tight';
   heading.textContent = t('empty.title');
