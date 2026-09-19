@@ -303,15 +303,33 @@
  * so that the fade out is allowed to finish before the element stops being there.
  */
 @media (max-width: 767.98px) {
-  /* The transition is not set here — it is on #sidebar in sidebar.css, which is imported later and
-     would override whatever this said. That file names both properties for that reason. */
+  /*
+   * The whole width, not the 270px the column is beside the run.
+   *
+   * At this width it is not a column beside anything — it is a screen you are on, and the sliver
+   * of the run left showing past a 270px panel is not enough to read and not something you can
+   * press, so all it did was make the drawer look like it had failed to finish opening. A
+   * conversation title has the room it needs here for the same reason.
+   *
+   * The id beats the `w-[270px]` utility on specificity, which is why this can be one line rather
+   * than a change to the markup that would have to be undone at md.
+   *
+   * The transition is not set here — it is on #sidebar in sidebar.css, which is imported later and
+   * would override whatever this said. That file names both properties for that reason.
+   */
   #sidebar {
+    width: 100%;
     transform: translateX(-100%);
   }
   #sidebar.sidebar-open {
     transform: translateX(0);
     box-shadow: 0 0 40px -8px rgb(0 0 0 / 0.5);
   }
+  /* Behind a full-width drawer there is nothing of it to see and nowhere outside it to press, so
+     this is now doing one job rather than two: it is what the run is covered by while the drawer
+     is coming and going, and the fade is what stops the run appearing to blink back. Kept rather
+     than dropped because it is also what `body.drawer-open` is drawn over, and because a narrower
+     drawer at some other width would want it back. */
   #sidebar-backdrop {
     opacity: 0;
     visibility: hidden;
