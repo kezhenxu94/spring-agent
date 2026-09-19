@@ -55,7 +55,6 @@ const STRINGS = {
     'composer.mirror.surface.feishu': 'Feishu',
 
     'run.thinking': 'Thinking',
-    'run.thinking.loading': 'Reading what it thought…',
     'run.thinking.gone': 'What this round thought is no longer kept.',
     'run.tools': 'Tool calls',
     'run.subagent': 'Subagent',
@@ -448,7 +447,6 @@ const STRINGS = {
     'composer.mirror.surface.feishu': '飞书',
 
     'run.thinking': '思考过程',
-    'run.thinking.loading': '正在读取思考过程……',
     'run.thinking.gone': '这一轮的思考过程已不再保留。',
     'run.tools': '工具调用',
     'run.subagent': '子智能体',
