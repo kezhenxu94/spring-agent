@@ -15,9 +15,21 @@
  * that it is obvious which three.
  */
 
-/* The width is animated, which is the one transition in this column. The run beside it is laid out
-   by the same flex row, so it widens as this narrows with nothing to keep in step. */
-#sidebar { transition: width 160ms cubic-bezier(0.2, 0.7, 0.3, 1); }
+/*
+ * Both of the ways this column moves, declared together and on one timing.
+ *
+ * At md and up it folds, which animates its width — the run beside it is laid out by the same flex
+ * row, so it widens as this narrows with nothing to keep in step. Below md it is a drawer, which
+ * slides on a transform (see chrome.css). Only one of the two ever changes at a given width, so
+ * naming both here costs nothing.
+ *
+ * Both in *this* declaration, and that is the point rather than tidiness. They were two rules —
+ * `width` here and `transform` in chrome.css's drawer block — at the same specificity, and
+ * styles.css imports this file after that one, so this one won and `transition-property` was
+ * `width` at every width. The drawer had no animation at all, and the rule that was supposed to
+ * give it one looked right where it was written. This is exactly the tie styles.css warns about.
+ */
+#sidebar { transition: width var(--sidebar-motion), transform var(--sidebar-motion); }
 
 /* ─────────────────────────────── the rail's rows ───────────────────────────────
  *

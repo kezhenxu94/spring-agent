@@ -353,10 +353,21 @@
 
 /* ─────────────────────────────────────── the file ─────────────────────────────────────── */
 
+/*
+ * Both minimums, and the second is not decoration.
+ *
+ * `min-width: 0` is what lets this shrink inside the row the panes are at md and up. `min-height:
+ * 0` is what lets it shrink inside the *column* they become below md — a flex item defaults to
+ * `min-height: auto`, so without it this grows to the height of the whole file, the scroller
+ * inside it never gets a bounded height to scroll within, and the pane's own `overflow: hidden`
+ * clips a long file at the fold with no way to reach the rest. Every step of the chain needs one;
+ * detail.css says the same thing about the panel above it.
+ */
 .skill-file {
   display: flex;
   flex: 1;
   min-width: 0;
+  min-height: 0;
   flex-direction: column;
 }
 
