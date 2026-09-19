@@ -1511,3 +1511,46 @@ app:
         output-per-million: 6.0
         currency: USD
 
+---
+# Working on the page itself.
+#
+# The browser UI is not in this module — it is `static/` inside spring-agent-integration-websocket,
+# which reaches the running application as a jar or as that module's build/resources/main. Either
+# way an edit to a stylesheet or an ES module is invisible until Gradle has copied it, which for a
+# one-character CSS change is a build to look at a colour.
+#
+# So under this profile the page is served straight out of the source tree and a reload is all it
+# takes. The path is relative to the working directory, which for `bootRun` is this module's own
+# directory. A `file:` location that is not there is simply not found and skipped at request time
+# rather than failing startup, so no `optional:` prefix — which is a config-import prefix and would
+# be taken literally here. The classpath location stays in the list and second, so anything not in
+# the source tree still resolves the way it does in production.
+#
+# Devtools is on the classpath in development (see build.gradle) and its LiveReload server does the
+# refreshing, if the browser extension is installed. Without it this still works — the edit is live
+# on the next manual reload, which is the part that matters.
+#
+# Not on by default, and it must not become so: `file:` locations outside the artifact are exactly
+# what a deployment should not be serving from.
+spring:
+  config:
+    activate:
+      on-profile: dev
+  web:
+    resources:
+      static-locations:
+        - file:../spring-agent-integration-websocket/src/main/resources/static/
+        - classpath:/static/
+      # No cache window while the file under it is changing minute to minute; the default is
+      # already none, and saying so here is what stops a later `period` landing in the main
+      # document and being inherited.
+      cache:
+        period: 0
+  devtools:
+    livereload:
+      enabled: true
+    restart:
+      # The page is not Java. A stylesheet landing in build/resources/main should reach the browser,
+      # not take the context down and build it again — which for this application means reconnecting
+      # to Feishu and re-opening every websocket.
+      enabled: false

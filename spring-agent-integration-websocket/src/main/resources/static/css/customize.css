@@ -128,6 +128,16 @@
   .page-search { flex: 1 1 8rem; }
 }
 
+/*
+ * The search, once it is open.
+ *
+ * It borrows .kb-search wholesale, and changes one thing: where the sidebar's grows to fill a
+ * 270px rail, this row is the width of the page. A field stretched across it is a box the width of
+ * a paragraph for a query that is a word or two, and it pushes the store pills to the far end of a
+ * line they were reading as a pair with. So it grows to what a skill name needs and stops.
+ */
+#skills-search-box[data-open="true"] { max-width: 15rem; }
+
 /* ─────────────────────────────────────── one skill in the list ─────────────────────────────────────── */
 
 /*
@@ -138,23 +148,30 @@
  * of the width was carrying nothing. Cards put the three side by side instead, which is also what
  * a person is doing with them: comparing, not reading down a timeline.
  *
- * `auto-fit` with a floor rather than a fixed column count, so the same rule answers a phone, a
- * laptop and a folded sidebar without a breakpoint per case. The floor is what stops a card getting
- * narrower than its own two-line description.
+ * A floor rather than a fixed column count, so the same rule answers a phone, a laptop and a
+ * folded sidebar without a breakpoint per case. The floor is what stops a card getting narrower
+ * than its own two-line description.
  *
- * `auto-fit` and not `auto-fill`, which is the difference between the row being filled and only
- * looking as though it is: both work out how many tracks fit, but auto-fill keeps the ones nothing
- * landed in and auto-fit collapses them. With three skills the two are identical; with two, the
- * cards sat in the first two of three tracks and left a third of the row blank, which reads as a
- * card that failed to grow rather than as a grid with room to spare.
+ * `auto-fill` and not `auto-fit`, and the difference is the whole of the decision here. Both work
+ * out how many tracks fit; auto-fill keeps the ones nothing landed in, auto-fit collapses them so
+ * the cards present stretch to take the row. That is a genuine trade and you cannot have both: a
+ * card is either always the same size or the row is always full.
+ *
+ * Same size wins. A library of cards where one skill is 1024px wide and three are 335px each is a
+ * grid that resizes its contents according to how many there are, which is a thing no other list
+ * on this page does and which makes a single card look like a banner. The cost is that one or two
+ * skills leave empty tracks to their right, which reads as a grid with room in it — correct, and
+ * quieter than the alternative.
  */
 .skill-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
   gap: 0.6rem;
 }
 
 .skill-card {
+  /* The positioning context the open button stretches into. */
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -163,9 +180,6 @@
   height: 100%;
   gap: 0.35rem;
   padding: 0.7rem 0.85rem;
-  /* The corner the ⋯ sits in, reserved whether or not it is drawn, so a long name is truncated at
-     the same place on every card rather than only on the one being hovered. */
-  padding-right: 2.2rem;
   border: 1px solid var(--line);
   border-radius: 0.7rem;
   text-align: left;
@@ -173,7 +187,38 @@
   transition: border-color 120ms ease, background 120ms ease;
 }
 .skill-card:hover { border-color: var(--fg-dim); background: var(--surface); }
-.skill-card:focus-visible { outline: 2px solid var(--mist); outline-offset: 2px; }
+/* The ring belongs to the card, not to the button inside it: what is focused is the card, and a
+   ring drawn around only the name and description would stop short of the foot. */
+.skill-card:focus-within { outline: 2px solid var(--mist); outline-offset: 2px; }
+
+/*
+ * What opens the skill.
+ *
+ * A real button holding the name and the description, with an ::after stretched over the whole
+ * card — so the whole card is the target while only this is in the tab order and only this is
+ * announced. The alternative, a click handler on the card itself, gives a keyboard nothing to land
+ * on and a screen reader nothing to say.
+ */
+.skill-open {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+.skill-open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+/* The card wears the ring for it — see :focus-within above. */
+.skill-open:focus-visible { outline: none; }
 
 .skill-name {
   font-family: var(--font-display, sans-serif);
@@ -196,9 +241,10 @@
   align-items: center;
   gap: 0.45rem;
   /* Pushed to the foot of the card, so the facts line up across a row however long the
-     descriptions above them are. */
+     descriptions above them are, and full width so the ⋯ at the end of it has somewhere to go. */
   margin-top: auto;
   padding-top: 0.35rem;
+  width: 100%;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 10px;
   text-transform: uppercase;
@@ -229,22 +275,20 @@
 }
 
 /*
- * The card's own ⋯.
+ * The card's own ⋯, at the end of its foot.
  *
- * Over the card rather than in it, because the card is itself a button and a button inside a
- * button is markup no two browsers agree about. So it is absolutely positioned in the corner the
- * card reserves for it with padding-right, which is what stops a long name running underneath a
- * control that is not always drawn.
+ * In the flow of the facts row rather than floating in the card's corner: the facts and the
+ * actions are both things *about* the card as against things in it, so they read as one line. It
+ * also means no card has to keep a corner clear for a control most of them are not showing.
  *
- * Reuses .row-menu's look — see busy.css — and its rule about being reachable without a pointer.
- * It does not join the sidebar lists' hover-to-reveal exception there: those hide it because a
- * column of grey dots down a narrow rail competes with the dots that mean a run is going, and a
- * grid of cards has neither the column nor the dots.
+ * `margin-left: auto` puts it at the far end of that line, and `position: relative` with a
+ * z-index lifts it above the open button's stretched ::after — without which the whole card
+ * would swallow the press and the menu would never open.
  */
 .skill-card-menu {
-  position: absolute;
-  top: 0.55rem;
-  right: 0.55rem;
+  position: relative;
+  z-index: 1;
+  margin-left: auto;
 }
 
 /* ─────────────────────────────────────── waiting for it ───────────────────────────────────────

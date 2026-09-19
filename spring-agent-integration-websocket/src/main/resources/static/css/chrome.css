@@ -74,6 +74,19 @@
   text-align: left;
   transition: background 120ms ease;
 }
+/* The glyph an action entry can carry. One box and one size, so two entries' labels start in the
+   same column whatever their icons are — the same rule .row-icon states for the other end of the
+   row, and .side-glyph for the rail. */
+.menu-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--fg-dim);
+}
+.menu-item:hover .menu-icon { color: var(--fg); }
+
 .menu-item:hover { background: var(--code-bg); }
 .menu-item:focus-visible {
   outline: 2px solid var(--mist);

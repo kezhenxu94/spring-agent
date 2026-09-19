@@ -22,13 +22,15 @@ export function renderSkillList(host, skills, open, actionsFor) {
   host.textContent = '';
   host.removeAttribute('aria-busy');
   skills.forEach((skill) => {
-    // `relative` so the ⋯ can sit in the card's corner, `group` so it comes into view when the
-    // pointer is anywhere on the card rather than only on the dots themselves.
+    // The card is the grid item, and it is a container rather than a button — it has to hold the
+    // ⋯, and a button inside a button is markup no two browsers agree about. What makes the whole
+    // of it pressable is the open button's stretched ::after; see .skill-open in customize.css.
     const item = document.createElement('li');
-    item.className = 'group relative';
+    item.className = 'skill-card group';
+
     const row = document.createElement('button');
     row.type = 'button';
-    row.className = 'skill-card';
+    row.className = 'skill-open';
 
     const name = document.createElement('div');
     name.className = 'skill-name min-w-0 max-w-full truncate';
@@ -41,7 +43,12 @@ export function renderSkillList(host, skills, open, actionsFor) {
       why.textContent = skill.description;
       row.append(why);
     }
+    row.addEventListener('click', () => open(skill.name));
 
+    // The foot of the card: what it costs to look at, and — pushed to the far end of the same
+    // line — everything that can be done to it. One row rather than a mark floating in the
+    // corner: the facts and the actions are both things *about* the card as against things in it,
+    // and a card whose corner is occupied has to keep that corner clear on every other card too.
     const facts = document.createElement('div');
     facts.className = 'skill-facts';
     facts.append(fact(t(skill.fileCount === 1 ? 'skills.file.one' : 'skills.files',
@@ -60,16 +67,13 @@ export function renderSkillList(host, skills, open, actionsFor) {
     // their team shared has to be able to find it and see why it is not the one being used.
     if (skill.shadowed) mark(t('skills.shadowed'), t('skills.shadowed.why'), facts);
 
-    row.append(facts);
-    row.addEventListener('click', () => open(skill.name));
-    item.append(row);
-    // Outside the card and not in it: a button inside a button is markup no browser agrees about,
-    // and the card is a button because the whole of it opens the skill.
     if (actionsFor) {
       const actions = menuButton(t('skills.actions'), () => actionsFor(skill));
       actions.classList.add('skill-card-menu');
-      item.append(actions);
+      facts.append(actions);
     }
+
+    item.append(row, facts);
     host.append(item);
   });
 }

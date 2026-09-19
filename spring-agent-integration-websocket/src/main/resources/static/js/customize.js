@@ -16,17 +16,22 @@
 // folded, and skills-tree.js says why.
 
 import { t } from './i18n.js';
-import { $ } from './dom.js';
+import { $, svgIcon } from './dom.js';
 import { bus, state } from './state.js';
 import { attempt } from './toast.js';
 import { busyButton } from './busy.js';
 import { customizeRoute, go, goReplacing } from './route.js';
 import { openDetail } from './detail.js';
+import { toggleMenu } from './menu.js';
 import { renderSkillList, renderSkillSkeleton } from './skills-list.js';
 import { renderSkillDetail, renderSkillPending } from './skills-detail.js';
 import {
   createSkill, deleteSkill, fetchFile, fetchSkills, fetchTree, importSkill,
 } from './skills-actions.js';
+
+/** An arrow into a tray, and the same plus the sidebar's one action wears. */
+const UPLOAD = 'M8 10.2V3.1m0 0L5.6 5.5M8 3.1l2.4 2.4M3.2 10.4v1.7c0 .6.4 1 1 1h7.6c.6 0 1-.4 1-1v-1.7';
+const PLUS = 'M8 3.6v8.8M3.6 8h8.8';
 
 /** What makes a folder a skill, and so the file a reader means when they open one. */
 const MANIFEST = 'SKILL.md';
@@ -61,6 +66,10 @@ export function initCustomize() {
   drawScopes();
 
   const search = $('skills-search');
+  $('skills-search-toggle').addEventListener('click', () => {
+    if (searchOpen()) closeSearch();
+    else openSearch();
+  });
   // On Enter and on clearing, never on every keystroke: the search is in the address bar, and a
   // history entry per letter typed is a back button that has to be pressed nine times to undo one
   // search. The same rule the knowledge base's search follows.
@@ -69,12 +78,27 @@ export function initCustomize() {
       event.preventDefault();
       narrow({ q: search.value.trim() });
     }
+    if (event.key === 'Escape') closeSearch();
   });
   search.addEventListener('search', () => {
     if (!search.value.trim()) narrow({ q: '' });
   });
+  drawSearch();
 
-  $('skills-new').addEventListener('click', openNewForm);
+  // Asked rather than assumed: writing a skill from nothing and bringing one that already exists
+  // are different jobs, and neither is enough of a default to hide the other behind it.
+  $('skills-new').addEventListener('click', () => toggleMenu($('skills-new'), () => [
+    {
+      label: t('skills.new.upload'),
+      icon: () => svgIcon(UPLOAD),
+      onSelect: () => openNewForm({ withArchive: true }),
+    },
+    {
+      label: t('skills.new.blank'),
+      icon: () => svgIcon(PLUS),
+      onSelect: () => openNewForm({ withArchive: false }),
+    },
+  ]));
 
   // A write anywhere — this page, or a run that wrote a skill while the page was open — means the
   // list is stale. Over the bus rather than by calling back, because the thing that wrote it sits
@@ -96,6 +120,10 @@ export function showCustomize(route) {
 
   customize.query = query;
   $('skills-search').value = query;
+  // A link that carries a search arrives with the box already open, or the list is narrowed by
+  // something with nothing on screen to say so.
+  if (query) $('skills-search-box').dataset.open = 'true';
+  drawSearch();
 
   const moved = customize.scope !== scope
     || customize.skill !== skill
@@ -203,6 +231,54 @@ function draw() {
     return;
   }
   drawList();
+}
+
+// ─────────────────────────────────────── the lens ───────────────────────────────────────
+//
+// The same switch the knowledge base's list carries, and the same reasoning: a field standing open
+// is a box in a row that is mostly not being searched, so it folds behind its own lens and the
+// list is what the row is for. Pressed again it closes, and closing a search that was committed
+// puts the whole list back.
+
+function searchOpen() {
+  return $('skills-search-box').dataset.open === 'true';
+}
+
+function openSearch() {
+  $('skills-search-box').dataset.open = 'true';
+  drawSearch();
+  // Two frames later, and not one, and certainly not now.
+  //
+  // The field is `visibility: hidden` until the attribute above takes effect, and an element that
+  // is not visible cannot take focus — calling it in this task silently does nothing, leaving an
+  // open box the caret never reaches and, on a phone, no keyboard. Forcing a style read does not
+  // help either: `visibility` is transitioned, so until the transition has actually begun the
+  // computed value is still the one it started from.
+  //
+  // One frame is enough only when the attribute was set in an earlier frame; set from a click
+  // handler, the next callback still runs before that frame's style is recalculated. Two is
+  // enough in both cases, which is the only reason to count them. See .kb-search-field in
+  // knowledge.css for why `visibility` is what closes the field in the first place.
+  requestAnimationFrame(() => requestAnimationFrame(() => $('skills-search').focus()));
+}
+
+function closeSearch() {
+  const committed = state.customize.query;
+  $('skills-search-box').dataset.open = 'false';
+  $('skills-search').value = '';
+  drawSearch();
+  // Only where a search is actually on screen. Closing an untouched box changes nothing, and a
+  // route written for it would be a history entry that goes back to where it already is.
+  if (committed) narrow({ q: '' });
+}
+
+/** What the lens says it will do next, in the tooltip and to a screen reader. */
+function drawSearch() {
+  const toggle = $('skills-search-toggle');
+  const label = t(searchOpen() ? 'skills.search.close' : 'skills.search.open');
+  toggle.setAttribute('aria-expanded', String(searchOpen()));
+  toggle.title = label;
+  $('skills-search-label').textContent = label;
 }
 
 function drawScopes() {
@@ -365,7 +441,7 @@ function scopeOf(scope) {
  * name, which is the folder, and what it does — which goes into the SKILL.md the server writes,
  * because a skill with no description is one the agent cannot tell when to use.
  */
-function openNewForm() {
+function openNewForm({ withArchive }) {
   if ($('skills-new-form')) return;
   const customize = state.customize;
 
@@ -375,7 +451,7 @@ function openNewForm() {
 
   const title = document.createElement('p');
   title.className = 'detail-label';
-  title.textContent = t('skills.new.title');
+  title.textContent = t(withArchive ? 'skills.new.upload' : 'skills.new.title');
 
   const hint = document.createElement('p');
   hint.className = 'detail-hint';
@@ -434,6 +510,10 @@ function openNewForm() {
   cancel.addEventListener('click', () => form.remove());
   buttons.append(create, cancel);
 
+  // Only the half that was asked for. Bringing a skill that already exists has no description to
+  // type — it is in the archive's own SKILL.md — and writing one from nothing has no archive.
+  description.hidden = withArchive;
+  picker.hidden = !withArchive;
   form.append(title, hint, name, description, picker, buttons);
   form.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -455,5 +535,8 @@ function openNewForm() {
   });
 
   $('skills-list').before(form);
-  name.focus();
+  // Straight to the file chooser when that is what was asked for: the name can be guessed from
+  // the archive, so choosing it first means one field fewer to fill in by hand.
+  if (withArchive) zip.click();
+  else name.focus();
 }
