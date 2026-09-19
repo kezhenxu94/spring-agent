@@ -15,7 +15,12 @@ slack-sdk = "1.45.3"
 # compiles, starts, and then fails to open the connection at runtime. 2.2.0 is what
 # slack-jakarta-socket-mode-client pins its own `provided` entry to; keep the two in step.
 tyrus = "2.2.0"
-spring-ai-agent-utils = "0.10.0"
+# 0.12.0 or newer, and that is load-bearing rather than housekeeping: `Glob`, `Grep` and
+# `ListDirectory` take a path from the model and only gained the confinement check
+# `FileSystemTools` has always had — `AllowedDirectories`, shared by all four — in 0.12.0. On 0.11.0
+# and below those three read every path the application's operating system user can reach, so
+# offering them at all means being on this version. See `AgentToolsProvider.build`.
+spring-ai-agent-utils = "0.12.0"
 # A released version, never a -SNAPSHOT: Maven Central rejects a deployment whose POM manages or
 # depends on one, and this BOM is imported into the POM of every published module (see
 # springagent.java-library-conventions). The whole release fails validation on that one line.

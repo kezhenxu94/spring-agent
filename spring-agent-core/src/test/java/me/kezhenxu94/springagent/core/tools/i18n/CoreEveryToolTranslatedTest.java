@@ -38,8 +38,7 @@ class CoreEveryToolTranslatedTest extends AbstractEveryToolTranslatedTest {
    * core.memory.MemoryTools} and {@code core.tools.TodoWriteTool} are core's own classes, so the
    * package scan finds them without being told. The hints' list: that list also carries {@code
    * ShellTools}, whose three tools belong to the local shell backend and are translated in its own
-   * bundle, and {@code GlobTool}, {@code GrepTool} and {@code ListDirectoryTool}, which no bean
-   * here publishes.
+   * bundle.
    *
    * <p>Brave's {@code WebSearch} is here because {@code WebSearchToolsConfiguration} publishes it,
    * and it is checked like any other even though it is off unless a deployment has a key: a tool
@@ -50,6 +49,9 @@ class CoreEveryToolTranslatedTest extends AbstractEveryToolTranslatedTest {
       List.of(
           org.springaicommunity.agent.tools.AskUserQuestionTool.class,
           org.springaicommunity.agent.tools.FileSystemTools.class,
+          org.springaicommunity.agent.tools.GlobTool.class,
+          org.springaicommunity.agent.tools.GrepTool.class,
+          org.springaicommunity.agent.tools.ListDirectoryTool.class,
           org.springaicommunity.agent.tools.BraveWebSearchTool.class);
 
   @Override

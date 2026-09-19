@@ -39,6 +39,9 @@ import me.kezhenxu94.springagent.core.tools.mcp.ServerNameToolPrefixGenerator;
 import org.springaicommunity.agent.tools.AskUserQuestionTool;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springaicommunity.agent.tools.FileSystemTools;
+import org.springaicommunity.agent.tools.GlobTool;
+import org.springaicommunity.agent.tools.GrepTool;
+import org.springaicommunity.agent.tools.ListDirectoryTool;
 import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.model.ToolContext;
@@ -113,12 +116,19 @@ public class AgentToolsProvider {
   private final ObjectProvider<KnowledgeBase> knowledgeBase;
 
   /**
+   * @param searchTools the three tools that find a file rather than read one — {@code Glob}, {@code
+   *     Grep} and {@code ListDirectory} — built for this request beside {@code fileSystemTools} and
+   *     confined to the same homes. A list because nothing here tells them apart: they are composed
+   *     together, always all three, and no caller asks for one of them.
    * @param skillTools one tool per skill the request's scopes hold, empty where they hold none. A
    *     list rather than a single tool because {@link SkillsTool} registers each skill as a tool of
    *     its own — read that class for why.
    */
   public record AgentTools(
-      FileSystemTools fileSystemTools, List<ToolCallback> skillTools, McpTools mcpTools) {}
+      FileSystemTools fileSystemTools,
+      List<Object> searchTools,
+      List<ToolCallback> skillTools,
+      McpTools mcpTools) {}
 
   /**
    * Live MCP clients built for one request and the tool callbacks derived from them. Must be {@link
@@ -213,6 +223,7 @@ public class AgentToolsProvider {
     final var tools = new ArrayList<Object>();
     tools.addAll(resolveScenarioTools(request.scenario(), request.userId()));
     tools.add(agentTools.fileSystemTools());
+    tools.addAll(agentTools.searchTools());
     tools.add(TodoWriteTool.builder().todoEventHandler(todoEventHandler).build());
     // Two independent gates, and both have to open. No handler means the run has no way to reach
     // the user, so offering the tool would only invite the agent to ask into the void; the property
@@ -645,8 +656,30 @@ public class AgentToolsProvider {
             ToolContexts.get(context, ToolContexts.GROUP_ID),
             ToolContexts.get(context, ToolContexts.TENANT_ID));
 
-    final var fileSystemTools =
-        FileSystemTools.builder().allowedDirectories(home.roots().toArray(Path[]::new)).build();
+    final var allowed = home.roots().toArray(Path[]::new);
+    final var fileSystemTools = FileSystemTools.builder().allowedDirectories(allowed).build();
+
+    // Finding a file is not reading one, and until now only reading had tools: a model that did not
+    // already know a path had to guess at one or shell out, which the sandboxed backends answer for
+    // a container that cannot see these homes at all. These three take a path from the model like
+    // FileSystemTools does and are confined exactly as it is, to every home this request reaches
+    // and nothing else — the confinement is the same AllowedDirectories check in all four, which is
+    // why the library version carrying it is pinned as load-bearing in gradle/libs.versions.toml.
+    //
+    // The working directory is the requester's own home rather than the process's, which is what a
+    // call omitting `path` falls back to. Left unset the fallback is wherever the JVM was started —
+    // this application's own checkout on a laptop — and every such call would come back refused
+    // rather than answering about anything the run can actually reach. It is the primary home and
+    // not the composite, since a composite has no single directory and the group's and the tenant's
+    // are named in the prompt for the model to ask about by path.
+    final var searchTools =
+        List.<Object>of(
+            GlobTool.builder().workingDirectory(home.root()).allowedDirectories(allowed).build(),
+            GrepTool.builder().workingDirectory(home.root()).allowedDirectories(allowed).build(),
+            ListDirectoryTool.builder()
+                .workingDirectory(home.root())
+                .allowedDirectories(allowed)
+                .build());
 
     // Only the directories that are actually there: an empty skills directory holds no SKILL.md
     // and so contributes nothing to the index, and the one a new skill is written to is created
@@ -675,7 +708,7 @@ public class AgentToolsProvider {
 
     final var mcpTools = buildMcpTools(userId, chatId, toolContext);
 
-    return new AgentTools(fileSystemTools, skillTools, mcpTools);
+    return new AgentTools(fileSystemTools, searchTools, skillTools, mcpTools);
   }
 
   /**

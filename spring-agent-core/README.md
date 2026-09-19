@@ -93,6 +93,32 @@ released, delete this class, point every import back at `org.springaicommunity.a
 scan finds it while it is core's own, and stops when it is not. It stays in
 `aot/AgentToolsRuntimeHints`' list either way: nothing declares it a bean, so AOT never sees it.
 
+## Finding a file, and what confines it
+
+Four of the library's tools take a path the model wrote: `Read`, `Write` and `Edit` from
+`FileSystemTools`, and `Glob`, `Grep` and `ListDirectory` beside them. `AgentToolsProvider.build`
+constructs all of them per request and hands each the same allow-list — every home the request
+reaches, and nothing else — so what one of them may touch is what the others may.
+
+Two things about the three search tools are worth knowing:
+
+- **The confinement is the library's, and it is new.** `AllowedDirectories`, the check all four
+  share, arrived in `spring-ai-agent-utils` 0.12.0; before it these three answered about any path
+  this application's operating system user could reach, which on the servers here is the database,
+  the configuration and every other user's home. That is why the version carries a comment in
+  `gradle/libs.versions.toml` calling it load-bearing, and why `AgentToolsProviderSearchToolsTest`
+  asserts a refusal rather than trusting the builder call to mean something.
+- **Each is given the requester's own home as its working directory**, which is where a call that
+  omits `path` lands. Left unset the library falls back to wherever the JVM was started — this
+  repository's own checkout on a laptop — and every such call would come back refused by the check
+  above, which reads to the model as the tool being broken rather than as the path being wrong. The
+  group's and the tenant's homes are named in the prompt, so a run that wants one asks for it by
+  path.
+
+Their English descriptions are overridden in `core/prompts/tools/`, for the reason web search's is:
+upstream's point the model at an `Agent` tool and a `Task` tool that do not exist here, and describe
+`path` as defaulting to the current working directory, which is exactly what this module changed.
+
 ## Web search, and why it is off
 
 `config/WebSearchToolsConfiguration` publishes the library's `BraveWebSearchTool` as `WebSearch`,
