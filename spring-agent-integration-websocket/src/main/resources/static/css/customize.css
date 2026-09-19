@@ -1,0 +1,531 @@
+/* ─────────────────────────────────────── Customize ───────────────────────────────────────
+ *
+ * The one section whose list is the page rather than the rail, and the one that shows a folder of
+ * files instead of a record. Both of those are new shapes here, so this file is deliberately about
+ * three things and no more:
+ *
+ *   - the page's own chrome: a tab strip, a store switch and a search, over a list;
+ *   - the two panes a skill opens into, a tree beside a file;
+ *   - the divider between them.
+ *
+ * Nothing below names a colour. It reads base.css's tokens like every other file, and it reads no
+ * state colour at all: amber, teal, violet and coral say something specific about a run, and a
+ * stored skill is not something happening now — the same rule detail.css states at its top.
+ *
+ * Selection is carried the one way this page already carries it: `aria-selected="true"` gives a row
+ * --line as its ground (sidebar.css). Everything selectable here does that and nothing more —
+ * a card in the grid, a file in the tree — rather than inventing a second grey for a new page.
+ *
+ * The extra 2px bar the *sidebar* adds is kept for the tab strip alone, laid along the bottom edge
+ * instead of the leading one. It earns its place there for the same reason it does in the rail: a
+ * tab strip sits above the thing it selects into and the surface alone reads as a hover. In a list
+ * where every row is the same kind and only one can be chosen, the surface has already said it, and
+ * a mark repeating it is width spent on nothing.
+ */
+
+/* ─────────────────────────────────────── the page's chrome ─────────────────────────────────────── */
+
+.page-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.page-tab {
+  position: relative;
+  padding: 0.4rem 0.7rem;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-dim);
+  background: transparent;
+  border: 0;
+  border-radius: 0.45rem 0.45rem 0 0;
+  transition: color 120ms ease, background 120ms ease;
+}
+.page-tab:hover { color: var(--fg); background: var(--code-bg); }
+.page-tab:focus-visible { outline: 2px solid var(--mist); outline-offset: -2px; }
+.page-tab[aria-selected="true"] { color: var(--fg); }
+/* The sidebar's mark, rotated. -1px so it sits *on* the rule the strip draws rather than under it;
+   a bar a pixel below reads as a second line rather than as the tab meeting the edge. */
+.page-tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 0.35rem;
+  right: 0.35rem;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--fg);
+}
+
+/*
+ * Which of the two stores is being read.
+ *
+ * Built from the record card's pill vocabulary, where a filled pill already means "shared with
+ * more people than you" — so Company is the filled one and Yours the hollow one, and the page
+ * inherits that meaning instead of asserting a new one. A pair rather than a menu because the
+ * choice is not a filter: these are two directories, and you are in exactly one of them.
+ */
+/*
+ * `margin-right: auto` here rather than `ml-auto` on the field to its right, and the difference is
+ * not stylistic: an auto margin in a flex row takes the free space *before* flex-grow gets any, so
+ * a field asked to fill a wrapped line would sit at its natural width with a gap beside it. Pushing
+ * from this side leaves the field free to grow when the row wraps, and looks identical when it
+ * does not.
+ */
+.scope-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-right: auto;
+}
+
+.scope-pill {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  color: var(--fg-dim);
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+.scope-pill:hover { color: var(--fg); border-color: var(--fg-dim); }
+.scope-pill:focus-visible { outline: 2px solid var(--mist); outline-offset: 1px; }
+.scope-pill[aria-selected="true"] { color: var(--fg); background: var(--code-bg); }
+.scope-pill[aria-selected="true"]:hover { background: var(--code-bg); }
+
+/* The search over the list. Always open, unlike the sidebar's, which folds behind a lens only
+   because a 270px rail has nowhere to put a field. This page has the room, and a control that has
+   to be found before it can be used is worth avoiding wherever it does not have to exist. */
+.page-search {
+  min-width: 0;
+  flex: 0 1 14rem;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 12.5px;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.page-search:focus {
+  border-color: var(--mist);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--mist) 16%, transparent);
+}
+.page-search::-webkit-search-cancel-button { filter: grayscale(1); opacity: 0.5; }
+
+/* Where the row of controls has wrapped, the field takes what is left of the line it landed on.
+   Fixed at its natural width it sits flush right under the scope pills with a gap beside it, which
+   reads as something missing rather than as a field that happens to be that wide. Not on a wide
+   screen, where growing would have a search box the width of the page. */
+@media (max-width: 639.98px) {
+  .page-search { flex: 1 1 8rem; }
+}
+
+/* ─────────────────────────────────────── one skill in the list ─────────────────────────────────────── */
+
+/*
+ * The list, as a grid of cards rather than a stack of full-width rows.
+ *
+ * A skill says a name and a sentence, and a sentence stretched across a thousand pixels is a line
+ * the eye has to travel back along to read the next one — with only three of them on screen, most
+ * of the width was carrying nothing. Cards put the three side by side instead, which is also what
+ * a person is doing with them: comparing, not reading down a timeline.
+ *
+ * `auto-fill` with a floor rather than a fixed column count, so the same rule answers a phone, a
+ * laptop and a folded sidebar without a breakpoint per case. The floor is what stops a card getting
+ * narrower than its own two-line description.
+ */
+.skill-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 0.6rem;
+}
+
+.skill-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  /* Full height of its grid row, so two cards side by side square off at the bottom whether or not
+     one of them has a description. Ragged card bottoms are what makes a grid look like a mistake. */
+  height: 100%;
+  gap: 0.35rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  text-align: left;
+  background: transparent;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.skill-card:hover { border-color: var(--fg-dim); background: var(--surface); }
+.skill-card:focus-visible { outline: 2px solid var(--mist); outline-offset: 2px; }
+
+.skill-name {
+  font-family: var(--font-display, sans-serif);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+.skill-why {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--fg-dim);
+}
+/* What a skill costs to look at, as facts rather than as chrome: how many files, and when it last
+   changed. Mono, because it is the page talking about the skill — the same eyebrow idiom every
+   label in the record card uses. */
+.skill-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  /* Pushed to the foot of the card, so the facts line up across a row however long the
+     descriptions above them are. */
+  margin-top: auto;
+  padding-top: 0.35rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+}
+
+/*
+ * A company skill the reader also has privately, which the agent will therefore never load.
+ *
+ * Marked rather than hidden, and marked in words rather than in a colour. Hidden, somebody would
+ * go looking for a skill their team shared and not find it; in amber, it would read as a run that
+ * had gone wrong. It is neither — it is a fact about two folders with one name.
+ */
+/* A middot between the facts, and only between them: the two marks that follow carry a border of
+   their own and a dot in front of one would read as a third fact rather than as a caveat. */
+.skill-fact + .skill-fact::before {
+  content: "\00b7";
+  margin-right: 0.45rem;
+  color: var(--line);
+}
+
+.skill-shadowed {
+  padding: 0.05rem 0.4rem;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  color: var(--fg-dim);
+}
+
+/* ─────────────────────────────────────── the skill, opened ───────────────────────────────────────
+ *
+ * detail.css already makes an opened panel take the whole column and scroll inside itself, but its
+ * rule names a .detail-card that is a *direct* child of .detail-body. Here the card sits one level
+ * further in, inside the tab's own panel, because that is where it honestly belongs: it is part of
+ * the Skills tab and not of Customize in general. So the chain is extended by one link rather than
+ * the markup being bent to fit the selector.
+ */
+#customize-panel.detail-open > .detail-body > #customize-skills {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+#customize-panel.detail-open > .detail-body > #customize-skills > .detail-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+/* The way back to the list. A link in words rather than a chevron alone, because this is the only
+   way out of the panel and the back button is not a control everybody reaches for. */
+.skill-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  align-self: flex-start;
+  padding: 0.2rem 0.5rem 0.2rem 0.35rem;
+  margin-left: -0.35rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  font-size: 12.5px;
+  color: var(--fg-dim);
+  transition: color 120ms ease, background 120ms ease;
+}
+.skill-back:hover { color: var(--fg); background: var(--code-bg); }
+.skill-back:focus-visible { outline: 2px solid var(--mist); outline-offset: -2px; }
+
+/* ─────────────────────────────────────── the two panes ───────────────────────────────────────
+ *
+ * The signature of this page, and the only place on it anything is spent. One frame, one hairline
+ * down the middle, and everything inside it quiet: a tree that looks like the sidebar's rows and a
+ * file that looks like the textarea it becomes when you press Edit.
+ *
+ * The frame's own vocabulary is .detail-edit's — the same border, the same ground — because that
+ * is what the right-hand pane turns into, and a box that changed shape on the way into editing
+ * would make an edit feel like a different screen rather than the same one, writable.
+ */
+.skill-panes {
+  display: flex;
+  flex: 1;
+  min-height: 18rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--surface);
+}
+.skill-panes[hidden] { display: none; }
+
+.skill-tree {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  /* Set from JS, remembered per reader; see skills-detail.js. */
+  width: var(--tree-width, 15rem);
+  min-width: 9rem;
+  max-width: 60%;
+  overflow: auto;
+  padding: 0.4rem;
+  border-right: 1px solid var(--line);
+}
+
+/*
+ * A row in the tree.
+ *
+ * .side-row's geometry, on purpose and to the pixel: 1.9rem tall, 13px, a 0.45rem radius. A tree
+ * is a list of things you select one of, which is what the rail is, and drawing it half a size
+ * different would make one page look like two.
+ *
+ * The indent is set inline per row as --depth, because it is data and not a set of classes — a
+ * skill can nest as deep as it likes and a stylesheet cannot have a rule per level.
+ */
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  height: 1.9rem;
+  padding-right: 0.5rem;
+  padding-left: calc(0.5rem + var(--depth, 0) * 0.75rem);
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  font-size: 13px;
+  color: var(--fg-dim);
+  text-align: left;
+  transition: color 120ms ease, background 120ms ease;
+}
+.tree-row:hover { color: var(--fg); background: var(--code-bg); }
+.tree-row:focus-visible { outline: 2px solid var(--mist); outline-offset: -2px; }
+/* The surface alone, without the sidebar's leading bar. The bar earns its place in the rail, where
+   a section row and a list row sit in one column and the mark is what tells you which kind you are
+   looking at; in here every row is the same kind, the pane holds one selection, and a second mark
+   saying so is a mark that only adds width. */
+.tree-row[aria-selected="true"] { color: var(--fg); background: var(--line); font-weight: 500; }
+
+.tree-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The disclosure mark, and the empty box that keeps a file's name level with a folder's. A tree
+   whose files start half a character left of its folders reads as two lists. */
+.tree-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 0.85rem;
+  height: 0.85rem;
+  color: var(--fg-dim);
+  transition: rotate 120ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.tree-row[aria-expanded="false"] .tree-mark { rotate: -90deg; }
+.tree-mark > svg { width: 11px; height: 11px; }
+
+/* ─────────────────────────────────────── the file ─────────────────────────────────────── */
+
+.skill-file {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+
+/* The path, and what can be done to the file. Mono and small: it is an address, not a title — the
+   skill's name is already above, and this says which of its files you are in. */
+.skill-file-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+.skill-file-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--fg-dim);
+}
+.skill-file-actions { display: flex; align-items: center; gap: 0.35rem; margin-left: auto; }
+
+/* The way back to the tree, which exists only where the tree is off screen. Below md and nowhere
+   else — beside a tree that is right there, it would be a button that does nothing visible. */
+.pane-only { display: none; }
+@media (max-width: 767.98px) {
+  .skill-panes[data-on="file"] .pane-only { display: inline-flex; }
+}
+
+.skill-file-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/*
+ * The file itself.
+ *
+ * Mono at 12.5px on a 1.7 line — exactly .detail-edit's type, and that is the whole point. Press
+ * Edit and the pane becomes a textarea set the same way, so the text does not move by a pixel: the
+ * file is being corrected where it was being read, rather than opened in a form about it.
+ *
+ * No syntax colouring. Colour on this page means a run, and a file is read for its words.
+ */
+.file-lines {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+/*
+ * The line number, drawn from an attribute rather than written as text.
+ *
+ * `user-select: none` is not enough and it is worth knowing why: it stops the browser *painting* a
+ * selection over the number, but dragging across the pane still puts it in the range, so copying a
+ * few lines of a file hands back a column of digits interleaved with the code. Generated content
+ * cannot be selected at all — there is no text node to put in a range — so the number is simply not
+ * part of the document a selection can reach, and copy gives back the file.
+ */
+.file-no {
+  padding: 0 0.6rem 0 0.75rem;
+  border-right: 1px solid var(--line);
+  color: var(--fg-dim);
+  font-size: 11px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.file-no::before { content: attr(data-line); }
+.file-line {
+  padding: 0 0.75rem;
+  /* A blank line still needs a box the height of a line, or the numbers beside it lose step. In
+     CSS rather than by putting a space in the text: a character here is a character in what gets
+     copied, and pasting a file back with a non-breaking space on every blank line is worse than
+     the jog it was fixing. */
+  min-height: 1.7em;
+  white-space: pre-wrap;
+  /* A minified script or a long URL must wrap rather than widen the pane: the numbers beside it
+     are a grid column, and a row that scrolled sideways would scroll away from its own number. */
+  overflow-wrap: anywhere;
+}
+
+/* Editing, in the same box. `resize: none` because the pane is already the size of the panel, and
+   a handle that could make it smaller than its frame would be a handle that does nothing useful. */
+.file-edit {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 12rem;
+  resize: none;
+  padding: 0 0.75rem;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  line-height: 1.7;
+  outline: none;
+}
+.file-edit:focus-visible { outline: 2px solid var(--mist); outline-offset: -2px; }
+
+/* What a pane says when there is nothing to draw in it: no file chosen, a binary, one too large. */
+.file-note {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  min-height: 8rem;
+  padding: 2rem 1rem;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--fg-dim);
+}
+
+/* ─────────────────────────────────────── the divider ───────────────────────────────────────
+ *
+ * A real handle, three pixels of paint inside a twelve-pixel target — the pill only appears under
+ * the pointer, so at rest the two panes are separated by the hairline and nothing else.
+ */
+.pane-resize {
+  flex: none;
+  width: 0.35rem;
+  margin: 0 -0.2rem;
+  cursor: col-resize;
+  background: transparent;
+  border: 0;
+  position: relative;
+  z-index: 1;
+}
+.pane-resize::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: 3px;
+  height: 2.5rem;
+  border-radius: 999px;
+  background: var(--fg-dim);
+  opacity: 0;
+  transition: opacity 160ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.pane-resize:hover::after,
+.pane-resize:focus-visible::after { opacity: 1; }
+.pane-resize:focus-visible { outline: 2px solid var(--mist); outline-offset: -2px; }
+
+/* ─────────────────────────────────────── narrow screens ───────────────────────────────────────
+ *
+ * The two panes stack rather than shrink: side by side at phone width neither has enough room, and
+ * a tree squeezed to four characters is a tree nobody can read a path out of.
+ *
+ * One at a time, and which one is already in the address bar — a route naming a file shows the
+ * file, a route naming none shows the tree. So this costs a media query and no state: it is the
+ * same two routes the page already distinguishes, drawn differently. The `data-on` attribute is
+ * written by skills-detail.js from exactly that.
+ */
+@media (max-width: 767.98px) {
+  .skill-tree {
+    width: auto;
+    max-width: none;
+    max-height: 14rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .skill-panes { flex-direction: column; }
+  .pane-resize { display: none; }
+  .skill-panes[data-on="file"] > .skill-tree { display: none; }
+  .skill-panes[data-on="tree"] > .skill-file { display: none; }
+}

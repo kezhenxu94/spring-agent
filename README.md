@@ -125,8 +125,12 @@ another's files. The same line runs through everything else:
   recipient never sees the URL or headers. Servers the deployment configures for everybody under
   `spring.ai.mcp.client.*` are listed alongside them and belong to nobody.
 - **Skills** are folders with a `SKILL.md` in the user's own skills directory. The agent writes and
-  deletes them on request; paths outside that directory are refused. After a turn that has cost a
-  great many tool calls it also offers one unprompted — it finishes the answer, then asks whether to
+  deletes them on request; paths outside that directory are refused. On the browser surface they are
+  also a page of their own — **Customize → Skills** lists what you and your company have, opens one
+  into a file tree beside the file being read, and lets you write a skill by hand, drop a `.zip` of
+  one in, download one back out again, or correct a line of an existing one without asking the model
+  to do it for you. After a
+  turn that has cost a great many tool calls the agent also offers one unprompted — it finishes the answer, then asks whether to
   keep the method it worked out, and writes the skill only if you say yes. Turn the offer off with
   `SKILLS_OFFER_AFTER_EXPENSIVE_RUNS=false`, or move the bar with `SKILLS_TOOL_CALL_THRESHOLD`.
 - **Memories** are files the agent writes and reads back itself, in each of the homes a request

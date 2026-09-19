@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import me.kezhenxu94.springagent.core.skills.SkillFiles;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
 import me.kezhenxu94.springagent.core.support.TestI18n;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,7 +32,7 @@ class SkillManagementToolsTest {
     userWorkspaceFactory =
         new UserWorkspaceFactory(
             FileSystemStorageProperties.builder().location(location.toString()).build());
-    tools = new SkillManagementTools(userWorkspaceFactory, TestI18n.english());
+    tools = new SkillManagementTools(userWorkspaceFactory, new SkillFiles(), TestI18n.english());
   }
 
   @Test

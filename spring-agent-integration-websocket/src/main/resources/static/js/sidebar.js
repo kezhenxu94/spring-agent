@@ -9,7 +9,7 @@
 
 import { t } from './i18n.js';
 import { $ } from './dom.js';
-import { chatRoute, go, knowledgeRoute, tasksRoute } from './route.js';
+import { chatRoute, customizeRoute, go, knowledgeRoute, tasksRoute } from './route.js';
 import { bus, state } from './state.js';
 
 export function sidebarOpen(open) {
@@ -96,33 +96,49 @@ function initFold() {
 }
 
 /**
- * The three lists the sidebar can show.
+ * The sections the sidebar can lead to.
  *
  * A row does not switch the sidebar by itself — it navigates, and showing the right list is what
  * the route handler does on the way past. So arriving at a document by a pasted link selects the
  * right row too, which a row that flipped its own panels would not.
  *
- * Conversations and the schedule always both exist. The knowledge base is the one that comes and
- * goes: a row leading to a section this deployment does not have would say the feature is broken
- * when the truth is that it was never configured.
+ * Conversations, the schedule and Customize always exist. The knowledge base is the one that comes
+ * and goes: a row leading to a section this deployment does not have would say the feature is
+ * broken when the truth is that it was never configured. Customize needs no such gate — a skill is
+ * a folder on the filesystem core always has.
  */
 export function initTabs({ knowledge }) {
   $('sidebar-sections').hidden = false;
   $('tab-conversations-button').addEventListener('click', () => go(chatRoute(state.conversationId)));
   $('tab-tasks-button').addEventListener('click', () => go(tasksRoute()));
+  $('tab-customize-button').addEventListener('click', () => go(customizeRoute()));
   if (!knowledge) return;
   $('tab-knowledge-row').hidden = false;
   $('tab-knowledge-button').addEventListener('click', () => go(knowledgeRoute()));
 }
 
+/**
+ * Every section that can be the one you are in.
+ *
+ * Not the same list as the one below it, and that is the point of there being two: Customize is a
+ * section of this column without being a list *in* it. What it holds — the scopes, the search, the
+ * skills — needs the width of the page and would be unreadable in a 270px rail, so the rail's job
+ * for that section ends at saying you are in it.
+ */
+const SECTIONS = ['conversations', 'tasks', 'knowledge', 'customize'];
+
+/** The sections that do hold a list, which is what the scrolling area below the rows shows. */
+const LISTS = ['conversations', 'tasks', 'knowledge'];
+
 /** Puts the rows and the panels under them in step with wherever the page now is. */
 export function selectTab(view) {
-  ['conversations', 'tasks', 'knowledge'].forEach((name) => {
-    const on = name === view;
+  SECTIONS.forEach((name) => {
     // The tick and the weight come from the attribute itself — see .side-row in sidebar.css — so
     // there is one fact here rather than a class that has to be kept in step with it.
-    $(`tab-${name}-button`).setAttribute('aria-selected', String(on));
-    $(`tab-${name}`).hidden = !on;
+    $(`tab-${name}-button`).setAttribute('aria-selected', String(name === view));
+  });
+  LISTS.forEach((name) => {
+    $(`tab-${name}`).hidden = name !== view;
   });
   // The one action belongs to the conversations and only to them. It sits in the block that says
   // which section you are in, so leaving it there for the other two reads as an action of theirs —

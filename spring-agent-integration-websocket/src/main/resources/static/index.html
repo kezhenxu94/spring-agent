@@ -224,6 +224,25 @@
             <span class="side-label" data-i18n="nav.knowledge">Knowledge base</span>
           </button>
         </li>
+        <!--
+          Not gated on anything, unlike the knowledge base above it: a skill is a folder under
+          app.storage.location, which core always has. And not carrying a list either — what
+          Customize holds needs the width of the page, so this row is a destination and the
+          scrolling area below stays empty while you are in it. See SECTIONS in sidebar.js.
+        -->
+        <li>
+          <button id="tab-customize-button" type="button" role="tab" aria-selected="false"
+                  aria-controls="customize-panel" class="side-row">
+            <span class="side-glyph">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+                   stroke-linecap="round" stroke-linejoin="round" class="size-4" aria-hidden="true">
+                <path d="M2.6 5.1h2.2M8.4 5.1h5M2.6 10.9h5.8M12 10.9h1.4"/>
+                <circle cx="6.6" cy="5.1" r="1.6"/><circle cx="10.2" cy="10.9" r="1.6"/>
+              </svg>
+            </span>
+            <span class="side-label" data-i18n="nav.customize">Customize</span>
+          </button>
+        </li>
       </ul>
 
       <div class="my-1 h-px bg-zinc-200 dark:bg-rail"></div>
@@ -430,7 +449,14 @@
   <!-- ───────────────────────────────────── the run ───────────────────────────────────── -->
   <main class="flex min-w-0 flex-1 flex-col">
 
-    <header class="flex h-12 shrink-0 items-center gap-3 border-b border-zinc-200 px-4 dark:border-rail">
+    <!--
+      The conversation's title, and on every other section nothing but the way back to the drawer.
+      A section that already names itself in its own panel does not need the same word again in a
+      bar above it, and the rule under that bar was drawing a line across a column that has no
+      second thing in it — see #app-header in chrome.css, which is also where the bar disappears
+      entirely once the drawer toggle it carries has.
+    -->
+    <header id="app-header" class="flex h-12 shrink-0 items-center gap-3 px-4">
       <button id="toggle-sidebar" class="tool-button drawer-only -ml-1"
               aria-expanded="false" aria-controls="sidebar" data-i18n-title="nav.menu">
         <svg viewBox="0 0 16 16" fill="none" class="size-[15px]" aria-hidden="true">
@@ -444,9 +470,24 @@
         conversation's own row in the sidebar, which is where somebody looking for that answer about
         *a* conversation already looks; a second badge saying it about this one was the same fact
         twice, and it said "idle" for most of the time the page is open.
+
+        It is also where a conversation is renamed, which is why the heading holds a button rather
+        than text: a conversation is called the first thing that was said in it, and for the few
+        worth coming back to that is rarely what it turned out to be about. Pressing it swaps in
+        the field beside it, sized to match exactly — see .chat-title in chrome.css.
       -->
-      <h1 id="conversation-title" class="min-w-0 flex-1 truncate text-[13px] font-medium"
-          data-i18n="app.title">Spring Agent</h1>
+      <h1 class="flex min-w-0 flex-1 items-center">
+        <button id="conversation-title" type="button" class="chat-title"
+                data-i18n-title="chat.rename">Spring Agent</button>
+        <input id="conversation-title-input" type="text" hidden class="chat-title-input"
+               autocomplete="off" spellcheck="false" data-i18n-label="chat.rename">
+        <!--
+          What the field is measured against. An <input> cannot size itself to its own value, so
+          the text is drawn once into this — same face, same size, same weight — and the field is
+          set to what it came to. Hidden from the page and from a screen reader; it is a ruler.
+        -->
+        <span id="conversation-title-mirror" class="chat-title-mirror" aria-hidden="true"></span>
+      </h1>
     </header>
 
     <!--
@@ -464,7 +505,7 @@
     -->
     <section id="tasks-panel" hidden
              class="detail-panel flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-      <div id="tasks-body" class="detail-body mx-auto max-w-[46rem] space-y-5">
+      <div id="tasks-body" class="detail-body page-column space-y-5">
 
         <div id="tasks-intro" class="space-y-1">
           <h2 class="font-display text-[20px] font-semibold tracking-tight"
@@ -491,7 +532,7 @@
     -->
     <section id="knowledge-panel" hidden
              class="detail-panel flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-      <div id="knowledge-body" class="detail-body mx-auto max-w-[46rem] space-y-5">
+      <div id="knowledge-body" class="detail-body page-column space-y-5">
 
         <div id="knowledge-intro" class="space-y-1">
           <h2 class="font-display text-[20px] font-semibold tracking-tight"
@@ -547,6 +588,76 @@
       </div>
     </section>
 
+    <!--
+      Customize: what this agent has been taught, as against what it has been told. A skill is a
+      folder of instructions the agent loads by name, and reading one means reading its files —
+      which is why this is the one panel that is not a record card with a body under it, and the
+      one that is wider than the 46rem the other two are read at. A file tree beside a file needs
+      the room, and neither half is prose.
+
+      The list lives here rather than in the sidebar, unlike the knowledge base's. Three things
+      narrow it — the tab, the store and a search — and the rail has space for none of them; more
+      to the point, a skill is not something you flick between while a conversation is open, which
+      is what the rail's lists are for.
+    -->
+    <section id="customize-panel" hidden
+             class="detail-panel flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+      <div id="customize-body" class="detail-body page-column space-y-5">
+
+        <div id="customize-intro" class="space-y-1">
+          <h2 class="font-display text-[20px] font-semibold tracking-tight"
+              data-i18n="customize.title">Customize</h2>
+          <p class="max-w-[38rem] text-[12.5px] leading-relaxed text-mist"
+             data-i18n="customize.subtitle"></p>
+        </div>
+
+        <!--
+          What Customize is divided into. One tab today, and the strip is drawn anyway: a section
+          that grows a second tab later should not be a section that changes shape when it does.
+          The selected tab is marked the way every other selected thing on this page is — off
+          aria-selected, with the sidebar's 2px bar turned onto its side. See .page-tab.
+        -->
+        <nav id="customize-tabs" class="page-tabs" data-i18n-label="customize.sections">
+          <button id="customize-tab-skills" type="button" role="tab" aria-selected="true"
+                  aria-controls="customize-skills" class="page-tab"
+                  data-i18n="customize.skills">Skills</button>
+        </nav>
+
+        <div id="customize-skills" role="tabpanel" aria-labelledby="customize-tab-skills"
+             class="space-y-5">
+
+          <!--
+            One line of controls over the list. The store is a pair rather than a menu because it
+            is not a filter — it is which of two directories you are reading, and the two are
+            genuinely different places. Filled means shared, the same thing a filled pill means
+            about a knowledge document.
+          -->
+          <div id="skills-browse" class="space-y-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <div id="skills-scopes" role="tablist" class="scope-switch"
+                   data-i18n-label="skills.scopes"></div>
+              <input id="skills-search" type="search" autocomplete="off" class="page-search"
+                     data-i18n-placeholder="skills.search">
+              <button id="skills-new" type="button" class="panel-action panel-action-primary"
+                      data-i18n="skills.new">New skill</button>
+            </div>
+
+            <ul id="skills-list" class="skill-grid"></ul>
+            <p id="skills-note" class="text-[11.5px] leading-relaxed text-mist"></p>
+          </div>
+
+          <!--
+            One skill, opened. Filled in by the page; it is the panel's .detail-card, so with it
+            open the panel becomes the skill and the two panes scroll inside it rather than the
+            page scrolling past them. See detail.css.
+          -->
+          <article id="skill-detail" hidden
+                   class="detail-card space-y-3 rounded-xl border border-zinc-200 p-4
+                          dark:border-rail"></article>
+        </div>
+      </div>
+    </section>
+
     <div id="composer-bar"
          class="relative shrink-0 px-4 py-2 sm:px-6">
 
@@ -572,7 +683,7 @@
         <span class="sr-only" data-i18n="composer.scroll.end">Jump to the latest</span>
       </button>
 
-      <div class="mx-auto max-w-[46rem]">
+      <div class="page-column">
 
         <!-- What has been uploaded but not yet sent. Empty and hidden until there is something. -->
         <ul id="attachments" class="mb-2 hidden flex-wrap gap-1.5"></ul>

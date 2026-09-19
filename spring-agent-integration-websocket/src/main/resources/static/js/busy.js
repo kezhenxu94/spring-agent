@@ -48,7 +48,7 @@ export function skeletonList(host, rows = 4) {
 export function skeletonTranscript(host) {
   if (!host) return () => {};
   const block = document.createElement('div');
-  block.className = 'mx-auto max-w-[46rem] space-y-6';
+  block.className = 'page-column space-y-6';
   block.setAttribute('aria-hidden', 'true');
   [['right', [40]], ['left', [92, 84, 60]]].forEach(([side, widths]) => {
     const turn = document.createElement('div');

@@ -18,7 +18,7 @@ export function renderQuestion(pending) {
   removeQuestion();
   const form = document.createElement('form');
   form.dataset.question = pending.pendingQuestionId;
-  form.className = 'question mx-auto mt-5 max-w-[46rem] space-y-3';
+  form.className = 'question page-column mt-5 space-y-3';
 
   const head = document.createElement('div');
   head.className = 'flex items-center gap-2';

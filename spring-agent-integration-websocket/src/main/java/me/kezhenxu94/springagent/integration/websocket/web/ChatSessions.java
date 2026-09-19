@@ -188,13 +188,44 @@ public class ChatSessions {
     return made < answers.size() ? answers.get(made).responseData() : null;
   }
 
+  /** The longest name somebody may give a conversation, which is what the sidebar row can show. */
+  public static final int MAX_TITLE = 120;
+
   /**
-   * The first thing the user said, which is what a conversation is called in the sidebar.
+   * What this conversation is called: the name somebody gave it, or the first thing they said.
    *
-   * <p>Derived on read rather than stored: a stored title is a second copy of something the
-   * conversation already contains, and it goes stale the moment the conversation is cleared.
+   * <p>The derived half is derived on read rather than stored, for the reason it always was — a
+   * stored copy of the first message is a second copy of something the conversation already
+   * contains, and it goes stale the moment the conversation is cleared. A name somebody
+   * <em>typed</em> is the opposite case: it is not a copy of anything, so it is stored, and it
+   * wins.
    */
   public String titleOf(final ChatSession session) {
+    final var named = session.title();
+    if (named != null && !named.isBlank()) {
+      return named;
+    }
+    return derivedTitleOf(session);
+  }
+
+  /**
+   * Renames a conversation, or — given nothing — puts it back to naming itself.
+   *
+   * <p>Clearing is the same call rather than one of its own, because "call it nothing" and "call it
+   * this" are one decision a person makes in one field: emptying the box and pressing enter should
+   * give back the name the conversation had before anybody touched it, not leave a blank row that
+   * has to be renamed to be readable again.
+   */
+  public ChatSession rename(final ChatSession session, final String title) {
+    final var wanted = title == null ? "" : title.strip();
+    final var capped =
+        wanted.length() <= MAX_TITLE ? wanted : wanted.substring(0, MAX_TITLE).strip();
+    // Not touched: renaming is not something happening in the conversation, and moving it to the
+    // top of a list sorted by when it was last used would be the rename pretending to be a turn.
+    return sessions.save(session.toBuilder().title(capped).build());
+  }
+
+  private String derivedTitleOf(final ChatSession session) {
     return chatMemory.get(session.id()).stream()
         .filter(it -> it.getMessageType() == MessageType.USER)
         .map(it -> it.getText() == null ? "" : it.getText().strip())

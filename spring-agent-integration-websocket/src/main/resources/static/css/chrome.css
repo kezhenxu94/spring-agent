@@ -179,6 +179,112 @@
    run — but it is the same idea, and the alternative is a second green. */
 .id-copy[data-copied="true"] { color: var(--settled-fg); }
 
+/* ─────────────────────────────────────── the bar above the column ───────────────────────────────────────
+ *
+ * It carries two things and only the conversation needs both: the title, and — below md, where the
+ * sidebar is a drawer — the button that opens it. The schedule, the knowledge base and Customize
+ * each name themselves in a heading inside their own panel, so a bar repeating that word above a
+ * rule was two lines of chrome saying nothing, and it pushed every one of those panels down by
+ * three centimetres of nothing.
+ *
+ * So on those sections the bar goes bare, and at md and up — where the drawer toggle it was holding
+ * is itself gone — it goes away completely. Below md it stays, because it is the only way back into
+ * the drawer and a section you cannot navigate out of is worse than a bar you did not want.
+ *
+ * `display: none` rather than `hidden`, because the state is a fact about the width as well as
+ * about the section, and only a media query knows the width.
+ */
+@media (min-width: 768px) {
+  #app-header[data-bare="true"] { display: none; }
+}
+
+/* ─────────────────────────────────────── renaming the conversation ───────────────────────────────────────
+ *
+ * The heading is a button, and pressing it swaps in a field. The two are set to the same size,
+ * weight and position so that the swap moves no pixel — the same rule the skill file's editor
+ * follows, and for the same reason: this is the title being corrected where it is read, not a
+ * form about the title.
+ *
+ * The button looks like text until the pointer is over it. A heading that advertised itself as a
+ * control with a border would be a border across the top of every conversation, for an action
+ * most people take once.
+ */
+.chat-title,
+.chat-title-input {
+  min-width: 0;
+  height: 1.7rem;
+  padding-inline: 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.7rem;
+  color: var(--fg);
+  text-align: left;
+}
+
+/* As wide as the title and no wider. Stretched across the bar the way a flex child wants to be,
+   the hover surface would be a grey band the width of the window for a word at the left end of
+   it — which reads as the whole bar being pressable rather than the name. */
+.chat-title {
+  flex: 0 1 auto;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 120ms ease;
+}
+.chat-title:hover { background: var(--code-bg); }
+.chat-title:focus-visible { outline: 2px solid var(--mist); outline-offset: -2px; }
+/* Nothing to rename before a conversation is open, and the empty state's heading is the
+   application's own name rather than anything belonging to a thread. */
+.chat-title:disabled { cursor: default; background: transparent; }
+
+/* The field is the width of what is in it, and grows as that grows — see fitTitle in
+   conversations.js, which sets the width from the mirror below. `max-width` is the whole of the
+   limit: it may take the bar it sits in and no more, so a long name fills the space there is and a
+   short one is a short box rather than a field stretched across a window for one word.
+   `flex: 0 0 auto` so the flex layout leaves the measured width alone. */
+.chat-title-input {
+  flex: 0 0 auto;
+  min-width: 6rem;
+  max-width: 100%;
+  border-color: var(--line);
+  background: var(--surface);
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.chat-title-input:focus {
+  border-color: var(--mist);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--mist) 16%, transparent);
+}
+/*
+ * The ruler the field is measured with.
+ *
+ * Every font property it shares with the two above comes from the same block, so a change to the
+ * title's type cannot forget it — and a mirror set in a different face measures the wrong string
+ * and the field comes out the wrong width.
+ *
+ * `visibility: hidden` and not `display: none`: a box with no display has no width to read.
+ * Absolute, so a ruler as wide as the text cannot push the bar around while it is being read.
+ */
+.chat-title-mirror {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: pre;
+  padding-inline: 0.4rem;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* `display` is set above, so the attribute needs saying again — see .tool-button. */
+.chat-title[hidden],
+.chat-title-input[hidden] { display: none; }
+
 /* ─────────────────────────────────────── the sidebar drawer ───────────────────────────────────────
  *
  * Below md the sidebar is a drawer over the run; at md and up it is a column beside it. The drawer
