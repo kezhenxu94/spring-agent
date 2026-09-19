@@ -12,6 +12,26 @@
 ./gradlew :spring-agent-app-web-feishu:bootRun
 ```
 
+### Working on the page
+
+```sh
+./gradlew :spring-agent-app-web-feishu:bootRun --args='--spring.profiles.active=dev'
+```
+
+The browser UI is not in this module — it is `static/` inside
+[`spring-agent-integration-websocket`](../spring-agent-integration-websocket/README.md), which
+normally reaches a running application only once Gradle has copied it. Under `dev` it is served
+straight out of the source tree instead, so an edit to a stylesheet or an ES module is live on the
+next reload with nothing to rebuild. Devtools is on the classpath in development and its LiveReload
+server does the refreshing where the browser extension is installed; without it the edit is still
+there on a manual reload, which is the part that matters.
+
+Restart is deliberately off under that profile. The page is not Java, and a stylesheet should not
+take the context down and build it again — which here means reconnecting to Feishu and re-opening every websocket.
+
+**Not a profile to deploy with.** It serves from `file:` paths outside the artifact, which is
+exactly what a deployment should not be doing.
+
 Everything [the web UI](../spring-agent-app-webui/README.md) takes, plus everything
 [the Feishu server](../spring-agent-app-feishu/README.md) takes — with **one Feishu app serving both**,
 which is what `FEISHU_APP_ID` and `FEISHU_APP_SECRET` already give you.

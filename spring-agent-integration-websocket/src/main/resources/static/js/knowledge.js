@@ -111,7 +111,19 @@ function searchOpen() {
 function openSearch() {
   $('knowledge-search-box').dataset.open = 'true';
   drawSearch();
-  $('knowledge-search').focus();
+  // Two frames later, and not one, and certainly not now.
+  //
+  // The field is `visibility: hidden` until the attribute above takes effect, and an element that
+  // is not visible cannot take focus — calling it in this task silently does nothing, leaving an
+  // open box the caret never reaches and, on a phone, no keyboard. Forcing a style read does not
+  // help either: `visibility` is transitioned, so until the transition has actually begun the
+  // computed value is still the one it started from.
+  //
+  // One frame is enough only when the attribute was set in an earlier frame; set from a click
+  // handler, the next callback still runs before that frame's style is recalculated. Two is
+  // enough in both cases, which is the only reason to count them. See .kb-search-field in
+  // knowledge.css for why `visibility` is what closes the field in the first place.
+  requestAnimationFrame(() => requestAnimationFrame(() => $('knowledge-search').focus()));
 }
 
 function closeSearch() {

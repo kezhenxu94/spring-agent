@@ -38,7 +38,7 @@ function closeFrom(depth) {
 /**
  * Opens a menu against `trigger`.
  *
- * Items are `{ label, code, value, danger, checked, onSelect }`, and anything falsy in the list is
+ * Items are `{ label, icon, code, value, danger, checked, onSelect }`, and anything falsy in the list is
  * dropped so a caller can write a conditional entry inline rather than assembling the array in two
  * steps.
  *
@@ -107,6 +107,15 @@ function openLayer(trigger, items, depth, focusFirst = true) {
       tick.className = 'menu-tick';
       tick.textContent = entry.checked ? '✓' : '';
       button.append(tick);
+    }
+    // A glyph before the label, for a menu whose entries are actions rather than a set of choices
+    // — it is what lets two of them be told apart at a glance rather than read. Given as a
+    // function so the node is built per press, like everything else in here.
+    if (entry.icon) {
+      const mark = document.createElement('span');
+      mark.className = 'menu-icon';
+      mark.append(entry.icon());
+      button.append(mark);
     }
     button.append(document.createTextNode(entry.label));
     // A short constant beside the label — a language tag, so far. It sits at the end of the row so

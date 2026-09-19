@@ -125,6 +125,31 @@ export function scrollToEnd(force) {
  * none of them. The box itself is .side-glyph in sidebar.css, which is where the geometry and the
  * reason for it are written down; this is how a list puts its dot in one.
  */
+/**
+ * A 16x16 icon in the one shape this page's chrome uses: no fill, a 1.3 stroke, round joins.
+ *
+ * Here rather than in the module that first wanted one, because there are now three callers and
+ * the alternative is three copies of the same six attributes — and an icon drawn with a different
+ * stroke weight beside one drawn with this is the kind of difference nobody can name but everybody
+ * sees.
+ */
+export function svgIcon(d, size = 15) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('width', String(size));
+  svg.setAttribute('height', String(size));
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', d);
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-width', '1.3');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+  svg.append(path);
+  return svg;
+}
+
 export function glyph(mark) {
   const box = document.createElement('span');
   box.className = 'side-glyph';

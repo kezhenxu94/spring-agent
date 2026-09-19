@@ -16,6 +16,7 @@
 // DOM would be silently thrown away by an act that looks like it changes nothing.
 
 import { t } from './i18n.js';
+import { svgIcon } from './dom.js';
 import { detailHead } from './detail.js';
 import { markdown } from './render.js';
 import { busyButton, spinner } from './busy.js';
@@ -174,21 +175,17 @@ function filePane(view, file) {
   const editable = !file.binary && !file.tooLarge;
 
   if (draft) {
-    const save = document.createElement('button');
-    save.type = 'button';
-    save.className = 'panel-action panel-action-primary';
-    save.textContent = t('skills.save');
-    save.addEventListener('click', () => {
-      const done = busyButton(save, t('skills.save'));
+    // Icons here too, so the strip does not change shape between reading and writing — four
+    // widths of button swapping for two words would move the path beside them every time somebody
+    // pressed Edit. The spinner takes the tick's place while the save is in flight, with no label
+    // beside it for the same reason.
+    const save = iconAction(TICK, t('skills.save'), () => {
+      const done = busyButton(save);
       attempt(() => saveFile(scope, detail.name, filePath, draft.text)
         .then(() => { view.clearDraft(); return refresh(); })
         .finally(done));
     });
-    const cancel = document.createElement('button');
-    cancel.type = 'button';
-    cancel.className = 'panel-action';
-    cancel.textContent = t('skills.cancel');
-    cancel.addEventListener('click', () => { view.clearDraft(); redraw(); });
+    const cancel = iconAction(CROSS, t('skills.cancel'), () => { view.clearDraft(); redraw(); });
     actions.append(save, cancel);
   } else {
     if (editable) {
@@ -400,30 +397,10 @@ function pickFiles(view) {
   input.click();
 }
 
-/**
- * A 16x16 icon in the one shape this page's chrome uses: no fill, 1.3 stroke, round joins.
- *
- * Here rather than in dom.js because it is three lines and two callers, and dom.glyph is about
- * the box an icon sits in on the rail rather than about drawing one.
- */
-function icon(d) {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 16 16');
-  svg.setAttribute('fill', 'none');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('class', 'size-[15px]');
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('d', d);
-  path.setAttribute('stroke', 'currentColor');
-  path.setAttribute('stroke-width', '1.3');
-  path.setAttribute('stroke-linecap', 'round');
-  path.setAttribute('stroke-linejoin', 'round');
-  svg.append(path);
-  return svg;
-}
-
 const PENCIL = 'M10.4 2.9a1.3 1.3 0 0 1 1.9 0l.8.8a1.3 1.3 0 0 1 0 1.9l-6.3 6.3-3 .8.8-3Z';
 const TRASH = 'M2.9 4.4h10.2M6.2 4.4V3.1h3.6v1.3M4.2 4.4l.6 8.2h6.4l.6-8.2M6.6 6.8v3.6M9.4 6.8v3.6';
+const TICK = 'm3.6 8.4 3 3 5.8-6.8';
+const CROSS = 'm4.6 4.6 6.8 6.8m0-6.8-6.8 6.8';
 
 /**
  * One of the file's actions, as an icon with its name in a tooltip.
@@ -439,7 +416,7 @@ function iconAction(d, label, onClick) {
   button.className = 'tool-button tool-button-sm';
   button.title = label;
   button.setAttribute('aria-label', label);
-  button.append(icon(d));
+  button.append(svgIcon(d));
   button.addEventListener('click', onClick);
   return button;
 }

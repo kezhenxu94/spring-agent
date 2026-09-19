@@ -141,6 +141,15 @@ dependencies {
   implementation libs.spring.ai.agent.utils
   implementation libs.guava
 
+  // Live reload while the page is being worked on. `developmentOnly`, so it is on the classpath
+  // for bootRun and in neither the jar nor the image — devtools disables itself in a packaged
+  // application anyway, but keeping it out of the artifact means not having to rely on that.
+  //
+  // What it buys here is the LiveReload server, not the restart: the thing being edited is a
+  // stylesheet or an ES module, and neither needs the context rebuilt. See the `dev` profile in
+  // application.yaml, which is what makes an edit visible without one.
+  developmentOnly 'org.springframework.boot:spring-boot-devtools'
+
   testImplementation 'org.springframework.boot:spring-boot-starter-test'
   // MockMvc moved out of spring-boot-test-autoconfigure in Boot 4; it now lives in the per-stack
   // test module, which the starter does not pull in.

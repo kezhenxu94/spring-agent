@@ -192,12 +192,24 @@
 }
 .composer-action[disabled]:hover { color: var(--fg-dim); background: none; }
 
-/* Amber, and only amber: with the fill gone, colour is all that is left to say that this press ends
-   something rather than starting it. */
-.composer-action-stop { color: var(--signal-fg); }
-.composer-action-stop:hover {
+/*
+ * Amber, and wearing it: this is the one control on the page that ends something rather than
+ * starting it, and it is only ever on screen while a run is going.
+ *
+ * The tint is carried at rest rather than waited for on hover. Everything else in this corner is a
+ * quiet glyph that lifts when the pointer finds it, and that is right for a control that is always
+ * there — but this one appears for the length of a run and disappears again, so the moment it
+ * matters is the moment it arrives, before anybody has gone looking for it. A hover state still
+ * answers, a shade stronger, because a control that does not respond to the pointer reads as
+ * disabled.
+ */
+.composer-action-stop {
   color: var(--signal-fg);
   background: color-mix(in oklch, var(--signal) 16%, transparent);
+}
+.composer-action-stop:hover {
+  color: var(--signal-fg);
+  background: color-mix(in oklch, var(--signal) 28%, transparent);
 }
 
 
