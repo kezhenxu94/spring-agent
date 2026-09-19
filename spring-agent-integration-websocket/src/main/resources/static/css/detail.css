@@ -207,6 +207,40 @@
 .detail-panel.detail-open .detail-text-box { flex: 1; min-height: 0; }
 .detail-panel.detail-open .detail-text { flex: 1; min-height: 0; max-height: none; }
 
+/* ─────────────────────────────────────── while it is being rewritten ───────────────────────────────────────
+ *
+ * Pinning the head is right for a record being *read*: the menu of everything that can be done to
+ * it stays reachable however long the body is. It is wrong for one being written, and for the same
+ * reason it was wrong for Customize — the editor gets whatever is left under the spec sheet, which
+ * on a phone is a task's prompt read four lines at a time, and the two actions the writer needs
+ * are under the box rather than in that menu.
+ *
+ * So a panel holding an editor scrolls as one thing, the way Customize's does, and the editor
+ * keeps the floor --editor-lines gives it: every link of the chain stops zeroing its `min-height`,
+ * so none of them can shrink under the box, and the panel overflows to it instead.
+ *
+ * `:has` rather than a class the section would have to remember to set and to clear: the editor
+ * being on screen *is* the state, and a second way of saying so is a second thing to get wrong.
+ *
+ * A column, too, where the panel reading a record is a row of one item stretched to its height.
+ * That stretch is half of what pins the head, and it is the half that has to go: an item sized to
+ * the panel cannot grow past it, so the editor overflows an ancestor that never reports it and the
+ * panel — the one thing with a scrollbar — is none the wiser.
+ */
+.detail-panel.detail-open:has(.field-area-fill) {
+  flex-direction: column;
+  overflow: hidden auto;
+}
+.detail-panel.detail-open:has(.field-area-fill) > .detail-body,
+.detail-panel.detail-open:has(.field-area-fill) .detail-card,
+.detail-panel.detail-open:has(.field-area-fill) .detail-text-box {
+  /* Still grows into what is left, and now refuses to shrink under what it holds — the same pair
+     customize.css states. The zeroed `min-height` above is what lets a link take the squeeze while
+     a record is being read, and it is undone here for the same reason the stretch is. */
+  flex: 1 0 auto;
+  min-height: auto;
+}
+
 /* ─────────────────────────────────────── editing the record ───────────────────────────────────────
  *
  * Only the schedule has this so far: a task is a standing instruction somebody wrote, and correcting

@@ -32,6 +32,14 @@
   border-bottom: 1px solid var(--line);
 }
 
+/* The column spaces its children apart (`space-y-5` in the markup), and Tailwind does that by
+   hanging the gap under every child but the last. Three tabpanels sit in that column and two of
+   them are always `hidden`, so whichever one is on screen is never the last: it carries a gap
+   under it with nothing beneath it to be apart from, and the section reads as sitting high in a
+   panel with twice the inset at the bottom that it has at the top. The strip's own gap is what
+   holds the panel off it, and that one stays. */
+#customize-body > [role="tabpanel"] { margin-bottom: 0; }
+
 .page-tab {
   position: relative;
   padding: 0.4rem 0.7rem;
@@ -355,17 +363,34 @@
  * pinned is the title bar above the column, which says which of them is open and offers the way
  * out. One behaviour at both widths, which is also what makes the two ways back one control.
  *
- * Only the display chain is undone. The card still loses its frame and its inset — that is the
- * panel *being* the thing rather than showing it, and it is as true of a card that scrolls.
+ * Only the pinning is undone. The card still loses its frame and its inset — that is the panel
+ * *being* the thing rather than showing it, and it is as true of a card that scrolls.
+ *
+ * A flex column that scrolls, rather than a block that does. The two scroll identically, and the
+ * difference is the thing at the bottom of the chain: the file, the memory, the server's body is
+ * the reason the panel was opened, so it takes whatever height is left under the facts about it
+ * instead of opening at its own minimum with the rest of the window blank under it. Where what is
+ * left is less than the floor --editor-lines sets, the column overflows and the panel scrolls —
+ * which is the same rule at a phone's height, and why nothing here has to ask how tall the screen
+ * is.
  */
-#customize-panel.detail-open:not([hidden]) { display: block; overflow-y: auto; }
+#customize-panel.detail-open:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
 #customize-panel.detail-open > .detail-body,
 #customize-panel.detail-open > .detail-body > [role="tabpanel"],
 #customize-panel.detail-open .detail-card,
 #customize-panel.detail-open .detail-text-box {
-  display: block;
-  flex: none;
-  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* Grows into what is left, and never shrinks under what it holds. The second half is what
+     carries the floor up the chain: a link that could shrink would take the squeeze itself and
+     leave the editor overflowing it, and the panel — which is the thing with the scrollbar —
+     would never learn that there was more than fitted. `auto` as the basis for the same reason,
+     so what it refuses to shrink below is its own content. */
+  flex: 1 0 auto;
 }
 /* The card keeps the rest of what detail.css gives it — see the comment above. Stated again
    because the block above has just overridden the `display` that rule set alongside them. */
@@ -373,11 +398,6 @@
   padding: 0;
   border: 0;
   border-radius: 0;
-}
-/* The box around a body is a flex column for the caption above it, which nothing here changes. */
-#customize-panel.detail-open .detail-text-box {
-  display: flex;
-  flex-direction: column;
 }
 /* And a body runs as long as it is, because the page is what scrolls now. The 26rem cap exists for
    a card inside a scrolling panel — which is exactly what this is again — but a memory is the one
@@ -405,20 +425,30 @@
  * would make an edit feel like a different screen rather than the same one, writable.
  */
 /*
- * A height of its own, rather than whatever is left of the column.
+ * What is left of the column, and never less than a screenful of the file.
  *
- * The panel scrolls as a whole now (see above), so there is no "rest of the column" to fill — and
- * a frame as tall as its contents would be a file of two thousand lines drawn in full, with the
- * tree beside it as a strip at the top. So the frame is a fixed share of the screen and the two
- * panes scroll inside it, which is what they did before and what a tree beside a file has to do.
+ * The frame has a height of its own rather than growing with what is in it: a file of two thousand
+ * lines drawn in full would put the tree beside it as a strip at the top, so the two panes scroll
+ * inside a frame instead — which is what a tree beside a file has to do. What that height *is* is
+ * the whole of the rule: it takes the rest of the panel (the panel is a flex column that scrolls,
+ * see above), and where the rest of the panel is less than --editor-lines of the file's own lines
+ * it stops there and the panel scrolls to it.
  *
- * `dvh` rather than `vh`: on a phone the two differ by the browser's own bars, and a frame sized
- * to the larger one puts its own bottom edge under them.
+ * `--file-line` is hoisted here from .file-code, which is where it is explained, because the floor
+ * and the lines it counts have to be the same measurement — a frame sized in rems would be twenty
+ * lines on one day and eighteen the day the code's type changed.
  */
 .skill-panes {
+  --file-line: 21.25px;
+
   display: flex;
-  height: 75dvh;
-  min-height: 18rem;
+  /* A basis of zero, unlike every link of the chain above it: those take their own content's
+     height and this one must not, or a file of two thousand lines would size the frame drawn
+     around it. What it is, is the room left over — floored, and scrolled inside. */
+  flex: 1 1 0;
+  /* The lines, plus .skill-file-head: the head is 43px of the frame that is not the file, and a
+     floor that forgot it would be a floor of seventeen lines and a path. */
+  min-height: calc(var(--editor-lines) * var(--file-line) + 43px);
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 0.75rem;
@@ -575,18 +605,19 @@
  * <pre> rather than a row per line: highlighting a file line by line would cut every construct
  * that spans two of them. One block, one gutter beside it, the same line-height on both.
  */
+/*
+ * The height of one line, as a length rather than a ratio, is --file-line on .skill-panes.
+ *
+ * It is 12.5px x 1.7 — .file-edit's type, so the editor still lands on the same lines. It has to
+ * be a length because the gutter sets its digits smaller than the code: a ratio is resolved
+ * against each element's own font-size, so 1.7 in an 11px column is 18.7px against the code's
+ * 21.25px, and the two drift a quarter of a line further apart on every row. Eight lines in, the
+ * number beside a line belonged to the line above it.
+ *
+ * And it is set on the frame rather than here because the frame's own floor is counted in these
+ * lines — see .skill-panes.
+ */
 .file-code {
-  /*
-   * The height of one line, as a length rather than a ratio, and shared by both columns.
-   *
-   * This is 12.5px x 1.7 — .file-edit's type, so the editor still lands on the same lines. It
-   * has to be a length because the gutter sets its digits smaller than the code: a ratio is
-   * resolved against each element's own font-size, so 1.7 in an 11px column is 18.7px against the
-   * code's 21.25px, and the two drift a quarter of a line further apart on every row. Eight lines
-   * in, the number beside a line belonged to the line above it.
-   */
-  --file-line: 21.25px;
-
   display: grid;
   grid-template-columns: max-content minmax(0, max-content);
   align-items: start;

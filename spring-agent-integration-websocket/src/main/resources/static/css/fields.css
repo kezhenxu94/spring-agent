@@ -35,6 +35,19 @@
   /* One radius, so that a field is the same shape wherever it is. The composer was 0.7rem, the
      rail's rename 0.375rem and the record cards 0.4rem — three roundnesses for one idea. */
   --field-radius: 0.5rem;
+
+  /* How short a box that holds a document is allowed to get, in lines of its own text.
+
+     Everything on this page that is read or written at length — a memory, a task's prompt, a
+     skill's file — takes whatever height is left under the facts about it, and that is the right
+     answer on a desktop window. On a phone, or under a long spec sheet, what is left can be four
+     lines, and a document read through a slot is worse than a page that scrolls. So the box is
+     given this as a floor and the panel around it scrolls when the floor does not fit.
+
+     Twenty because that is about what a screenful of prose is, and because it is enough of a file
+     to see where you are in it. In lines rather than rems so that each box is twenty lines of the
+     type *it* is set in — .file-edit's 12.5px on a 1.7 line is not .field's 13px on a 1.5. */
+  --editor-lines: 20;
 }
 
 /* ─────────────────────────── the frame, wherever it is drawn ─────────────────────────── */
@@ -103,7 +116,9 @@
   flex: 1;
   width: 100%;
   height: 100%;
-  min-height: 12rem;
+  /* The floor --editor-lines states, plus the field's own vertical padding: `min-height` is a
+     border-box measure here, so twenty lines alone would be twenty lines minus the inset. */
+  min-height: calc(var(--editor-lines) * 1lh + 1rem);
   resize: none;
 }
 
