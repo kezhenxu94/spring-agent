@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import me.kezhenxu94.springagent.core.dao.models.ChatReasoning;
 import me.kezhenxu94.springagent.core.dao.models.ChatSession;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.core.dao.models.ObservedEvent;
@@ -14,6 +15,7 @@ import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.models.SeenUpdate;
 import me.kezhenxu94.springagent.core.dao.models.Situation;
+import me.kezhenxu94.springagent.core.dao.repo.ChatReasoningRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ChatSessionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ObservedEventRepo;
@@ -53,6 +55,7 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
   @Autowired SituationRepo situationRepo;
   @Autowired ObservedEventRepo observedEventRepo;
   @Autowired ChatSessionRepo chatSessionRepo;
+  @Autowired ChatReasoningRepo chatReasoningRepo;
   @Autowired SeenUpdateRepo seenUpdateRepo;
 
   /**
@@ -658,6 +661,57 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
         .satisfies(it -> assertThat(it.title()).isNullOrEmpty());
 
     chatSessionRepo.deleteById(owner() + "-named");
+  }
+
+  @Test
+  @DisplayName("what a run thought is found by its conversation, and goes when the conversation does")
+  void chatReasoningIsFoundByConversationAndDeletedWithIt() {
+    final var now = Instant.now();
+    // Long enough that a backend storing it in a fixed-width column would truncate it, which is
+    // the failure this is really looking for: what is stored is not capped, and a round whose
+    // thinking comes back cut in half is worse than one with none.
+    final var thinking = "I should check the logs first.\n\n".repeat(4000);
+    chatReasoningRepo.save(
+        ChatReasoning.builder()
+            .id(owner() + "-run-1")
+            .conversationId(owner() + "-reasoned")
+            .userId(owner())
+            .answerDigest(ChatReasoning.digestOf("Because the disk was full."))
+            .text(thinking)
+            .createdAt(now)
+            .build());
+    chatReasoningRepo.save(
+        ChatReasoning.builder()
+            .id(owner() + "-run-2")
+            .conversationId(owner() + "-another")
+            .userId(owner())
+            .answerDigest(ChatReasoning.digestOf("Something else."))
+            .text("Different round, different conversation.")
+            .createdAt(now)
+            .build());
+
+    // The only query there is, and the one a page uses to pair rows to the turns it is drawing:
+    // a backend ignoring the conversationId would still pass a round trip by id.
+    assertThat(chatReasoningRepo.findByConversationId(owner() + "-reasoned"))
+        .extracting(ChatReasoning::id)
+        .containsExactly(owner() + "-run-1");
+
+    assertThat(chatReasoningRepo.findById(owner() + "-run-1"))
+        .get()
+        .satisfies(
+            it -> {
+              assertThat(it.text()).isEqualTo(thinking);
+              assertThat(it.answerDigest())
+                  .isEqualTo(ChatReasoning.digestOf("Because the disk was full."));
+            });
+
+    // Deleting the conversation takes its thinking with it, or a conversation somebody removed
+    // would leave what it thought on disk — and hand it back if the id were ever reused.
+    chatReasoningRepo.deleteByConversationId(owner() + "-reasoned");
+    assertThat(chatReasoningRepo.findById(owner() + "-run-1")).isEmpty();
+    assertThat(chatReasoningRepo.findById(owner() + "-run-2")).isPresent();
+
+    chatReasoningRepo.deleteByConversationId(owner() + "-another");
   }
 
   @Test
