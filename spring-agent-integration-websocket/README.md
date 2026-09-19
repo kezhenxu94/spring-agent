@@ -191,7 +191,14 @@ element fires `blur`**, so a blur handler that committed straight away would sav
 merely re-rendered underneath. It commits on the next tick and only if the field is still connected;
 `renamingRow` is what brings the half-typed name back into the redrawn row.
 
-**The bar above that column belongs to the conversation alone.** It carries two things — the
+**The bar above that column belongs to the conversation alone, and says nothing while it is not
+the conversation's.** At md and up it is not drawn for the other sections, so that never showed;
+below md it stays, and what it was still holding was the title of whatever conversation was last
+open, sitting above a section that is not one. `showPanel` clears it and `renderConversationTitle`
+refuses to write while it is bare — the conversation list is redrawn by things that happen
+anywhere, and each of those would otherwise put the name back.
+
+It carries two things — the
 conversation's title, and below md the button that opens the drawer — and the other three sections
 need neither: each names itself in a heading inside its own panel, so a bar repeating that word over
 a rule was two lines of chrome saying nothing. `showPanel` marks it `data-bare` for those sections

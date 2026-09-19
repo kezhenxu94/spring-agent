@@ -196,6 +196,10 @@ export async function newConversation() {
 
 /** What the header says about the conversation on screen; also what leaving the knowledge base restores. */
 export function renderConversationTitle() {
+  // Not while the bar belongs to another section. The conversation list is redrawn by things that
+  // happen anywhere — a run finishing, a rename — and each of those would otherwise put a
+  // conversation's name back into a bar that is sitting above the knowledge base.
+  if ($('app-header').dataset.bare === 'true') return;
   const conversation = state.conversations.find((it) => it.id === state.conversationId);
   const button = $('conversation-title');
   button.textContent = conversation

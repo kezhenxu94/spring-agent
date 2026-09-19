@@ -19,12 +19,17 @@ import { t } from './i18n.js';
 import { $ } from './dom.js';
 import { bus, state } from './state.js';
 import { attempt } from './toast.js';
-import { busyButton, skeletonList } from './busy.js';
-import { customizeRoute, go } from './route.js';
+import { busyButton } from './busy.js';
+import { customizeRoute, go, goReplacing } from './route.js';
 import { openDetail } from './detail.js';
-import { renderSkillList } from './skills-list.js';
-import { renderSkillDetail } from './skills-detail.js';
-import { createSkill, fetchFile, fetchSkills, fetchTree, importSkill } from './skills-actions.js';
+import { renderSkillList, renderSkillSkeleton } from './skills-list.js';
+import { renderSkillDetail, renderSkillPending } from './skills-detail.js';
+import {
+  createSkill, deleteSkill, fetchFile, fetchSkills, fetchTree, importSkill,
+} from './skills-actions.js';
+
+/** What makes a folder a skill, and so the file a reader means when they open one. */
+const MANIFEST = 'SKILL.md';
 
 /** The stores this surface has. There is no group one: a web session carries no group. */
 const SCOPES = ['own', 'tenant'];
@@ -95,12 +100,16 @@ export function showCustomize(route) {
   const moved = customize.scope !== scope
     || customize.skill !== skill
     || customize.file !== file;
+  // Whether this is a skill being *opened*, as against one already open whose file changed. Only
+  // an opening gets a file chosen for it — see load(). Taken before the assignment below, which
+  // is the last moment the previous skill is still known.
+  const opening = Boolean(skill) && customize.skill !== skill;
   customize.scope = scope;
   customize.skill = skill;
   customize.file = file;
 
   if (moved || !customize.loaded) {
-    attempt(() => load(scope, skill, file, false));
+    attempt(() => load(scope, skill, file, false, opening));
     return;
   }
   draw();
@@ -112,13 +121,18 @@ export function showCustomize(route) {
  * `again` is a reload of the same place, which is what a write asks for: it must not throw away
  * the list while it is being read, so the skeleton is only drawn when arriving somewhere new.
  */
-async function load(scope, skill, file, again) {
+async function load(scope, skill, file, again, opening) {
   const customize = state.customize;
   const mine = (wanted += 1);
   customize.loading = true;
+  customize.loadingFile = Boolean(file);
   if (!again) {
-    if (!skill) skeletonList($('skills-list'));
-    if (!customize.skill || customize.skill !== skill) customize.detail = null;
+    // Arriving somewhere new, the old skill's tree is not this one's. Cleared so the panes draw
+    // their own silhouette rather than the last skill's files under this skill's name.
+    if (customize.skill !== skill) {
+      customize.detail = null;
+      customize.body = null;
+    }
   }
   draw();
 
@@ -132,6 +146,25 @@ async function load(scope, skill, file, again) {
     // says so beside a list of what is actually there.
     customize.detail = await fetchTree(scope, skill).catch(() => null);
     if (mine !== wanted) return;
+
+    // A skill opened with no file named starts on its SKILL.md, which is the file somebody came to
+    // read — it is what the skill *is*, and the others are what it refers to. Only on an opening:
+    // stepping back to the tree on a phone also leaves no file named, and re-choosing one there
+    // would make that button do nothing.
+    //
+    // The address bar is corrected rather than left saying something else, because the file being
+    // read is part of what this page's links mean. Replacing rather than pushing, or Back would
+    // return to the route that redirects and never get past it.
+    if (opening && !file && hasManifest(customize.detail)) {
+      file = MANIFEST;
+      customize.file = file;
+      goReplacing(customizeRoute('skills', scope, skill, { q: customize.query, file }));
+    }
+    // Drawn before the file is asked for, so the tree is there to choose from while the file it
+    // was opened with is still coming — and so the pane it is coming into says as much.
+    customize.loading = false;
+    draw();
+
     customize.body = customize.detail && file
       ? await fetchFile(scope, skill, file).catch(() => null)
       : null;
@@ -142,6 +175,7 @@ async function load(scope, skill, file, again) {
   }
 
   customize.loading = false;
+  customize.loadingFile = false;
   customize.loaded = true;
   draw();
 }
@@ -150,7 +184,10 @@ async function load(scope, skill, file, again) {
 
 function draw() {
   const customize = state.customize;
-  const open = Boolean(customize.skill && customize.detail);
+  // Open as soon as a skill is named, not once its tree has arrived: the panel is the skill from
+  // the moment it is asked for, and waiting for the tree would show the list for as long as the
+  // request takes and then replace it.
+  const open = Boolean(customize.skill);
 
   // The panel becomes the skill, so the intro, the tab strip and the list all go. openDetail does
   // the first of those and the panel's own shape; the other two are this section's to hide,
@@ -196,8 +233,25 @@ function drawScopes() {
 
 function drawList() {
   const customize = state.customize;
+  // Nothing has arrived yet, so the list is drawn as the shape of what is coming rather than as an
+  // empty grid that will jump when it fills. Not on a reload of a list already on screen — see
+  // `again` in load(): replacing what somebody is reading with a silhouette of it is worse than a
+  // moment of staleness.
+  if (customize.loading && !customize.loaded) {
+    renderSkillSkeleton($('skills-list'));
+    $('skills-note').textContent = '';
+    return;
+  }
+
   const shown = matching(customize.skills, customize.query);
-  renderSkillList($('skills-list'), shown, (name) => open(name));
+  renderSkillList($('skills-list'), shown, (name) => open(name), (skill) => [
+    {
+      label: t('skills.delete'),
+      danger: true,
+      // Built per press, so a skill deleted from under the menu is not still offered by it.
+      onSelect: () => deleteSkill(customize.scope, skill.name),
+    },
+  ]);
 
   const note = $('skills-note');
   if (shown.length) {
@@ -214,6 +268,17 @@ function drawList() {
 
 function drawDetail() {
   const customize = state.customize;
+  // The tree is not here yet. Its own silhouette rather than the record card's, because what is
+  // coming is a name, a description and two panes — see renderSkillPending.
+  if (!customize.detail) {
+    renderSkillPending($('skill-detail'), {
+      scopeWord: t(`skills.scope.${customize.scope}`),
+      name: customize.skill,
+      failed: !customize.loading,
+      onBack: () => narrow({ skill: null }),
+    });
+    return;
+  }
   renderSkillDetail($('skill-detail'), {
     scope: customize.scope,
     scopeWord: t(`skills.scope.${customize.scope}`),
@@ -222,6 +287,7 @@ function drawDetail() {
     filePath: customize.file,
     collapsed: customize.collapsed,
     draft: customize.draft,
+    loadingFile: customize.loadingFile,
     onFile: (path) => openFile(path),
     onBack: () => narrow({ skill: null }),
     onFileGone: () => openFile(''),
@@ -275,6 +341,10 @@ function openFile(path) {
   // one file into the next one somebody opened.
   state.customize.draft = null;
   narrow({ file: path });
+}
+
+function hasManifest(detail) {
+  return Boolean(detail) && (detail.entries || []).some((it) => !it.dir && it.path === MANIFEST);
 }
 
 function scopeOf(scope) {

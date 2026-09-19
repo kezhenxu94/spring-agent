@@ -194,6 +194,19 @@ export function go(hash) {
   window.location.hash = hash;
 }
 
+/**
+ * Goes somewhere without leaving a step behind.
+ *
+ * For a move the reader did not ask for — the page settling on a sensible place to start, rather
+ * than answering a press. `go` would put that on the history stack, and then Back would return to
+ * the state that redirects, which redirects again: a Back button that cannot get past the page it
+ * is on. `replace` fires the same hashchange, so everything downstream is unchanged.
+ */
+export function goReplacing(hash) {
+  if (window.location.hash === hash) return;
+  window.location.replace(new URL(hash, window.location.href).href);
+}
+
 let onSame = () => {};
 
 /** Registers the one handler that acts on a route, whether it was navigated to or re-selected. */

@@ -26,6 +26,23 @@
 
 server:
   shutdown: graceful
+  # Text over the wire, compressed. Off by default in Boot, and every one of these four serves a
+  # good deal of it: the page's own scripts (the Tailwind build alone is 282KB and highlight.js
+  # 125KB), a skill's files, a knowledge document's text, a transcript. Those are three to five
+  # times smaller gzipped, and the cost is a little CPU on a response that was already being
+  # rendered.
+  #
+  # The mime types are named rather than left to the default so that the list says what is meant:
+  # text and JSON. Notably absent is application/octet-stream, which is what a skill downloads as
+  # — a zip is already compressed, and running it through gzip again spends CPU to make it very
+  # slightly larger.
+  #
+  # `min-response-size` because a compressed 200-byte answer is bigger than the original once the
+  # gzip header is on it, and most of this API's answers are small.
+  compression:
+    enabled: true
+    mime-types: text/html,text/css,text/plain,text/javascript,application/javascript,application/json,image/svg+xml
+    min-response-size: 1KB
 spring:
   application:
     name: spring-agent-web-feishu

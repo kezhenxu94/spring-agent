@@ -82,6 +82,13 @@
   <link rel="stylesheet" href="/styles.css">
   <script src="/vendor/marked.min.js"></script>
   <script src="/vendor/purify.min.js"></script>
+  <!--
+    Syntax highlighting for a skill's files. The "common" build — 36 languages, which covers
+    everything a skill is written in — rather than the full one, which is seven times the size for
+    languages nobody keeps in a skill folder. Vendored like the other three: this page loads no
+    script it does not ship, so it works on a deployment with no way out to a CDN.
+  -->
+  <script src="/vendor/highlight.min.js"></script>
   <!-- The STOMP client a run is watched over. Vendored like the two above rather than loaded from a
        CDN: this page is served by the same process the agent runs in, often on a network that can
        reach nothing else, and a surface that goes blank because a third party is down is not one
