@@ -469,11 +469,15 @@
   <main class="flex min-w-0 flex-1 flex-col">
 
     <!--
-      The conversation's title, and on every other section nothing but the way back to the drawer.
-      A section that already names itself in its own panel does not need the same word again in a
-      bar above it, and the rule under that bar was drawing a line across a column that has no
-      second thing in it — see #app-header in chrome.css, which is also where the bar disappears
-      entirely once the drawer toggle it carries has.
+      The one title bar, and every section's rather than the conversation's.
+
+      It says where you are and offers the one way out of it: the drawer toggle while the sidebar
+      is a drawer, or — with something open that the sidebar is not holding the list of — the way
+      back to that list. At md and up it is the conversation's alone and every other section goes
+      without it, because there the panels name themselves and the toggle it carries is gone; below
+      md it is the only chrome any of them have, and a section with no name and no way out of it is
+      worse than a bar somebody did not ask for. See #app-header in chrome.css for the widths and
+      panels.js's sectionBar for what writes it.
     -->
     <header id="app-header" class="flex h-12 shrink-0 items-center gap-3 px-4">
       <!--
@@ -496,6 +500,25 @@
                 0 0 0-.25.25ZM11 14.5h3.25a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25H11Z"/>
         </svg>
         <span class="sr-only" data-i18n="nav.menu">Menu</span>
+      </button>
+      <!--
+        And the way out of whatever is open, standing exactly where the toggle stands: below md a
+        skill, a memory or an MCP server takes the whole column, so the list it came from is not on
+        screen to go back to and the panel's own control scrolls away with the card it sits on.
+        One of the two is drawn at a time — inside something, the drawer is one press further away
+        than the way out of it.
+
+        The same control the panel draws, down to the class: .detail-back is what a record card's
+        way back looks like here, and a second shape for the same gesture would make the bar's
+        version read as a different kind of thing. Its label is whatever the open section calls its
+        list, written by sectionBar.
+      -->
+      <button id="header-back" type="button" class="detail-back drawer-only" hidden>
+        <svg viewBox="0 0 16 16" fill="none" width="13" height="13" aria-hidden="true">
+          <path d="M9.5 3.5 5 8l4.5 4.5" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span id="header-back-label"></span>
       </button>
       <!--
         The title, and nothing beside it. Whether a run is going is said by the live dot on the
@@ -543,7 +566,7 @@
       <div id="tasks-body" class="detail-body page-column space-y-5">
 
         <div id="tasks-intro" class="space-y-1">
-          <h2 class="font-display text-[20px] font-semibold tracking-tight"
+          <h2 class="section-name font-display text-[20px] font-semibold tracking-tight"
               data-i18n="tasks.title">Scheduled</h2>
           <p class="max-w-[38rem] text-[12.5px] leading-relaxed text-mist"
              data-i18n="tasks.subtitle"></p>
@@ -570,7 +593,7 @@
       <div id="knowledge-body" class="detail-body page-column space-y-5">
 
         <div id="knowledge-intro" class="space-y-1">
-          <h2 class="font-display text-[20px] font-semibold tracking-tight"
+          <h2 class="section-name font-display text-[20px] font-semibold tracking-tight"
               data-i18n="knowledge.title">Knowledge base</h2>
           <p class="max-w-[38rem] text-[12.5px] leading-relaxed text-mist"
              data-i18n="knowledge.subtitle"></p>
@@ -633,7 +656,7 @@
       <div id="customize-body" class="detail-body page-column space-y-5">
 
         <div id="customize-intro" class="space-y-1">
-          <h2 class="font-display text-[20px] font-semibold tracking-tight"
+          <h2 class="section-name font-display text-[20px] font-semibold tracking-tight"
               data-i18n="customize.title">Customize</h2>
           <p class="max-w-[38rem] text-[12.5px] leading-relaxed text-mist"
              data-i18n="customize.subtitle"></p>

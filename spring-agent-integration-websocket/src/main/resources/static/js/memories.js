@@ -173,7 +173,15 @@ function draw() {
   // and then replace it.
   const open = Boolean(memories.path);
 
-  openCustomizeDetail(open);
+  // The bar is where the open memory is named below md, and the only way back to the list from it.
+  // Its own title where the list has arrived and knows one, and the path until then — which is what
+  // the card itself falls back to, so nothing changes name when the list lands.
+  const entry = memories.memories.find((each) => each.path === memories.path);
+  openCustomizeDetail(open, open && {
+    title: (entry && entry.name) || memories.path,
+    label: t('memories.back'),
+    onBack: () => narrow({ path: null }),
+  });
   $('memories-browse').hidden = open;
   $('memory-detail').hidden = !open;
 

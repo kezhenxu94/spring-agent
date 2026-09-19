@@ -22,7 +22,7 @@
 
 import { t } from './i18n.js';
 import { fullTime } from './dom.js';
-import { detailBody, detailFacts, detailHead } from './detail.js';
+import { backButton, detailBody, detailFacts, detailHead } from './detail.js';
 import { markdown } from './render.js';
 import { spinner } from './busy.js';
 import { attempt } from './toast.js';
@@ -196,30 +196,4 @@ export function renderMemoryPending(host, { scopeWord, path, failed, onBack }) {
       ? note(t('memories.gone', path))
       : text(null),
   ));
-}
-
-function backButton(label, onBack) {
-  const back = document.createElement('button');
-  back.type = 'button';
-  back.className = 'skill-back';
-  back.append(arrow(), document.createTextNode(label));
-  back.addEventListener('click', onBack);
-  return back;
-}
-
-function arrow() {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 16 16');
-  svg.setAttribute('fill', 'none');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('width', '13');
-  svg.setAttribute('height', '13');
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('d', 'M9.5 3.5 5 8l4.5 4.5');
-  path.setAttribute('stroke', 'currentColor');
-  path.setAttribute('stroke-width', '1.5');
-  path.setAttribute('stroke-linecap', 'round');
-  path.setAttribute('stroke-linejoin', 'round');
-  svg.append(path);
-  return svg;
 }

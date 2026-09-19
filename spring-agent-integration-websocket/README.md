@@ -324,21 +324,45 @@ element fires `blur`**, so a blur handler that committed straight away would sav
 merely re-rendered underneath. It commits on the next tick and only if the field is still connected;
 `renamingRow` is what brings the half-typed name back into the redrawn row.
 
-**The bar above that column belongs to the conversation alone, and says nothing while it is not
-the conversation's.** At md and up it is not drawn for the other sections, so that never showed;
-below md it stays, and what it was still holding was the title of whatever conversation was last
-open, sitting above a section that is not one. `showPanel` clears it and `renderConversationTitle`
-refuses to write while it is bare — the conversation list is redrawn by things that happen
-anywhere, and each of those would otherwise put the name back.
+**The bar above that column is one title bar, and every section's.** It holds the same three things
+in the same order — the way out of what is on screen, the name of what is on screen, and on a
+conversation the rename behind that name — and it has exactly one writer at a time: `sectionBar` in
+`panels.js` for the three sections that are not a conversation, `renderConversationTitle` for the
+one that is, which refuses to write while the bar is marked `data-bare` because the conversation
+list is redrawn by things that happen anywhere and each would otherwise put a conversation's name
+above the knowledge base. A section's name goes in `panels.js`'s `SECTION` table rather than in the
+section's own code, for the same reason.
 
-It carries two things — the
-conversation's title, and below md the button that opens the drawer — and the other three sections
-need neither: each names itself in a heading inside its own panel, so a bar repeating that word over
-a rule was two lines of chrome saying nothing. `showPanel` marks it `data-bare` for those sections
-and `chrome.css` removes it at md and up, where the drawer toggle it was holding is gone too. Below
-md it stays even when bare, because it is the only way back into the drawer — wearing the same
-panel glyph the fold button does, since what is behind it is not a menu but the column that fold
-hides and shows at a wider window.
+Which of the three it draws is a fact about the **width**, so it is `chrome.css`'s and not the
+markup's. At md and up the bar is the conversation's alone — `showPanel` marks the others
+`data-bare` and the rule takes it away, because there each panel names itself in its own heading and
+the drawer toggle is gone with the drawer. Below md it is drawn on all four and the panel's heading
+is the one that goes (`.section-name`), since it would be the bar's own word again at twice the
+size; the drawer toggle wears the same panel glyph the fold button does, because what is behind it
+is not a menu but the column the fold hides and shows at a wider window; and it gives up its slot
+to the way back whenever one is set, so inside a thing the bar offers the way out of it and the
+drawer is one press further away.
+
+**That way back is one control in two places.** `.detail-back` in `css/detail.css` is its shape,
+`backButton` in `detail.js` builds the copy a record card carries, and `#header-back` is the bar's.
+A section whose list is in the rail — the knowledge base, the schedule — passes no `back` at all,
+because the list is one press away in the drawer; the three Customize tabs each pass one through
+`openCustomizeDetail`, since opening a skill, a memory or a server takes the whole column and their
+lists are *in* it. Below md only the bar's copy is drawn, and that is the point of it: the card's
+scrolls away with the card.
+
+**An opened record scrolls as one thing in Customize, and pins its head in the other two.**
+`css/detail.css` gives a panel that has become the thing it shows a head that stays put and a body
+that scrolls under it, which is right for a knowledge document and a scheduled task: one card,
+read top to bottom, whose menu of actions has to stay reachable. All three Customize tabs undo that
+chain — see `#customize-panel.detail-open` in `css/customize.css`. A skill is a name, a description,
+a shadowing warning and *then* the two panes; a memory and an MCP server each carry a spec sheet
+above their body. Pinning all of that gave the thing itself whatever was left of a phone screen, so
+the panel scrolls the way every list on this page scrolls and what stays put is the title bar, which
+is why that bar carries the open thing's name. `.skill-panes` therefore takes a height of its own
+(`75dvh`) rather than filling what is left of a column, and below md `.detail-facts` and
+`.detail-form` stack key over value — a 6.5rem key column of a 20rem screen leaves a path wrapping
+to four lines beside a two-word label.
 
 **Below md every navigation closes the drawer**, not only one that names an item. It used to stay
 open when a section was pressed, on the argument that the list it switches to is what you opened

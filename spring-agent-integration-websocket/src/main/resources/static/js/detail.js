@@ -44,6 +44,43 @@ export function detailHead({ kind, pill, pillFilled, name, actions }) {
 }
 
 /**
+ * The way back to the list this record came from.
+ *
+ * A link in words rather than a chevron alone: it is the only way out of a panel that has become
+ * the thing it is showing, and a bare arrow is not a control everybody reaches for.
+ *
+ * One builder rather than one per section, because the bar above the column draws the same control
+ * with the same class — see #header-back in index.html — and three copies of a shape that has to
+ * match a fourth is three chances for it not to.
+ */
+export function backButton(label, onBack) {
+  const back = document.createElement('button');
+  back.type = 'button';
+  back.className = 'detail-back';
+  back.append(backArrow(), document.createTextNode(label));
+  back.addEventListener('click', onBack);
+  return back;
+}
+
+/** The chevron in it, drawn rather than imported: it is the one glyph this file needs. */
+function backArrow() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('width', '13');
+  svg.setAttribute('height', '13');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', 'M9.5 3.5 5 8l4.5 4.5');
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-width', '1.5');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+  svg.append(path);
+  return svg;
+}
+
+/**
  * The spec sheet. Rows are `[key, value, mono]`, and anything falsy is dropped so a caller can
  * write a conditional row inline.
  */

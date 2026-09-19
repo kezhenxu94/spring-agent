@@ -192,23 +192,48 @@
    run — but it is the same idea, and the alternative is a second green. */
 .id-copy[data-copied="true"] { color: var(--settled-fg); }
 
-/* ─────────────────────────────────────── the bar above the column ───────────────────────────────────────
+/* ─────────────────────────────────────── the title bar ───────────────────────────────────────
  *
- * It carries two things and only the conversation needs both: the title, and — below md, where the
- * sidebar is a drawer — the button that opens it. The schedule, the knowledge base and Customize
- * each name themselves in a heading inside their own panel, so a bar repeating that word above a
- * rule was two lines of chrome saying nothing, and it pushed every one of those panels down by
- * three centimetres of nothing.
+ * One bar for every section, and what it holds is the same three things in the same order: the way
+ * out of what is on screen, the name of what is on screen, and — on a conversation — the rename
+ * behind that name. panels.js's sectionBar is what writes it.
  *
- * So on those sections the bar goes bare, and at md and up — where the drawer toggle it was holding
- * is itself gone — it goes away completely. Below md it stays, because it is the only way back into
- * the drawer and a section you cannot navigate out of is worse than a bar you did not want.
+ * Which of them are drawn depends on the width, and that is the whole of the rule:
+ *
+ *   md and up   the conversation's, and nobody else's. The schedule, the knowledge base and
+ *               Customize each name themselves in a heading inside their own panel, and the drawer
+ *               toggle is gone because the sidebar is a column again — so a bar over them would be
+ *               that word a second time above a rule with nothing under it, and three centimetres
+ *               taken off the top of every one of those panels for it. `data-bare` says so.
+ *
+ *   below md    every section's, because below md it is the only chrome any of them have. The
+ *               sidebar is a drawer, so the bar is the way back into it; a skill, a memory or an
+ *               MCP server takes the whole column with its list off screen, so the bar is the way
+ *               back to that list; and with the card's own head scrolling away under it, the bar is
+ *               the only thing left saying which one of them is open.
  *
  * `display: none` rather than `hidden`, because the state is a fact about the width as well as
  * about the section, and only a media query knows the width.
  */
 @media (min-width: 768px) {
   #app-header[data-bare="true"] { display: none; }
+}
+
+/* And below md it is a bar rather than a control floating over the panel, so it is ruled off from
+   what it names. Only there: at md and up the one section that still has it is the conversation,
+   whose transcript starts with whitespace and wants no line drawn across it. */
+@media (max-width: 767.98px) {
+  #app-header { border-bottom: 1px solid var(--line); }
+}
+
+/* And what the bar names, the panel does not name again. Below md the heading at the top of the
+   knowledge base, the schedule and Customize is the same word the bar is already showing one row
+   above it, twice the size — so it goes, and the sentence under it stays, now reading as the
+   subtitle of the bar's title. At md and up it is the other way round: the panel is the only one
+   saying it, which is why the bar is not drawn there at all. A class rather than the three ids,
+   so a fourth section cannot be added without meeting this rule. */
+@media (max-width: 767.98px) {
+  .section-name { display: none; }
 }
 
 /* ─────────────────────────────────────── renaming the conversation ───────────────────────────────────────
@@ -369,6 +394,10 @@
  * something this file decides rather than something the page's load order does.
  */
 .drawer-only { display: grid; }
+/* `display` above is an author rule and `[hidden]` is only the browser's — see .tool-button. The
+   bar's two controls share one slot and take turns being hidden, so without this the drawer toggle
+   stays on screen beside the way back out of what it would open. */
+.drawer-only[hidden] { display: none; }
 @media (min-width: 768px) {
   /* The class is doubled to buy specificity, which is not a trick so much as the lesson: this rule
      has to beat .tool-button, and beating it on order alone means the two buttons reappear at every
