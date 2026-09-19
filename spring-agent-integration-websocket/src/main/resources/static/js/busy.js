@@ -70,6 +70,36 @@ export function skeletonTranscript(host) {
   };
 }
 
+/**
+ * Placeholder lines of prose, for a block of text on its way — a round's thinking, say.
+ *
+ * The same shape `skeletonTranscript` gives the agent's side of a conversation, because it is the
+ * same thing arriving: paragraphs. A spinner would say only that something is happening, where this
+ * says what is about to be there, which is the rule at the top of this file.
+ *
+ * Deliberately short of what usually lands. A fold holds however much the model thought, and a
+ * silhouette the height of the real thing would push the rest of the conversation down and then
+ * pull it back up again as the text replaced it.
+ */
+export function skeletonProse(host) {
+  if (!host) return () => {};
+  const block = document.createElement('div');
+  block.className = 'space-y-2';
+  block.setAttribute('aria-hidden', 'true');
+  [94, 88, 62].forEach((width) => {
+    const bar = document.createElement('span');
+    bar.className = 'skeleton block h-3.5';
+    bar.style.width = `${width}%`;
+    block.append(bar);
+  });
+  host.replaceChildren(block);
+  host.setAttribute('aria-busy', 'true');
+  return () => {
+    block.remove();
+    host.removeAttribute('aria-busy');
+  };
+}
+
 /** A spinner and a word, for a panel whose contents have no shape worth promising. */
 export function loading(labelKey = 'busy.loading') {
   const block = document.createElement('div');

@@ -10,6 +10,7 @@ import { t } from './i18n.js';
 import { $, scrollToEnd, transcriptAtEnd } from './dom.js';
 import { RunView, markdown } from './render.js';
 import { api } from './api.js';
+import { skeletonProse } from './busy.js';
 import { bus, state } from './state.js';
 
 /**
@@ -150,13 +151,18 @@ function appendReasoning(requestId) {
   panel.details.addEventListener('toggle', async () => {
     if (!panel.details.open || asked) return;
     asked = true;
-    panel.body.textContent = t('run.thinking.loading');
+    // In the fold rather than over the page: the reader opened this one block and nothing else is
+    // waiting, and the lines are the shape of what is coming. Taken away on both paths below,
+    // which is why the helper hands back the way to undo it.
+    const settle = skeletonProse(panel.body);
     try {
       const got = await api(`/api/conversations/${conversationId}/reasoning/${requestId}`);
+      settle();
       // The same sanitiser every other replayed turn goes through. This text was written by a
       // model, which is reason enough on its own.
       panel.body.innerHTML = markdown(got.text ?? '');
     } catch (e) {
+      settle();
       // Gone — evicted with the conversation, or a request that never arrived. Said in the fold
       // rather than as a toast, because that is where the reader is looking; and `asked` goes back
       // so that closing and opening it again retries, which is the whole recovery a dropped
