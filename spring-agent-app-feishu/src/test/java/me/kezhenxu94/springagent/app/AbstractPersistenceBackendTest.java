@@ -664,7 +664,8 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("what a run thought is found by its conversation, and goes when the conversation does")
+  @DisplayName(
+      "what a run thought is found by its conversation, and goes when the conversation does")
   void chatReasoningIsFoundByConversationAndDeletedWithIt() {
     final var now = Instant.now();
     // Long enough that a backend storing it in a fixed-width column would truncate it, which is

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 
 import java.util.List;
 import me.kezhenxu94.springagent.core.dao.models.ChatSession;
+import me.kezhenxu94.springagent.core.dao.repo.ChatReasoningRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ChatSessionRepo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,7 +30,8 @@ class ChatSessionRenameTest {
 
   private final ChatMemory chatMemory = mock(ChatMemory.class);
   private final ChatSessionRepo repo = mock(ChatSessionRepo.class);
-  private final ChatSessions sessions = new ChatSessions(repo, chatMemory);
+  private final ChatSessions sessions =
+      new ChatSessions(repo, mock(ChatReasoningRepo.class), chatMemory);
 
   private ChatSession session(final String title) {
     return ChatSession.builder().id(ID).userId("me").title(title).build();

@@ -1064,6 +1064,15 @@ but knows nothing about who owns them, so a "your conversations" listing built o
 every user everyone else's. What was *said* in one stays in chat memory, read back by the same id —
 so there is one copy of a transcript rather than a second one for the UI to let drift.
 
+`ChatReasoningRepo` holds what a run thought, one row per round, written by core's
+`ReasoningRecordingListener` for every foreground run that belongs to a conversation — so a surface
+that does not stream reasoning, or that streams it into something that is later evicted, can still
+show it. The row is keyed by the run's `requestId` and also carries a digest of the answer, because
+a replayed conversation comes out of chat memory and **no backend stores message metadata**: a turn
+read back carries no run id, so the digest is the only thing that can pair a row to it. Consumers
+holding the `requestId` — which is every surface while the run is live — read it back directly.
+`app.ai.reasoning.store` turns the writing off.
+
 `SeenUpdateRepo` is the other one, for a surface that greets people. It holds one number per person:
 the version of the last release note they were shown, so a surface can work out what is new *for
 them* rather than announcing everything to everybody. Read and written by the person's id on that

@@ -4,8 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import me.kezhenxu94.springagent.core.dao.models.ChatReasoning;
 import me.kezhenxu94.springagent.core.dao.models.ChatSession;
+import me.kezhenxu94.springagent.core.dao.repo.ChatReasoningRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ChatSessionRepo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,7 +31,52 @@ class ChatSessionsTranscriptTest {
   private static final String ID = "c1";
 
   private final ChatMemory chatMemory = mock(ChatMemory.class);
-  private final ChatSessions sessions = new ChatSessions(mock(ChatSessionRepo.class), chatMemory);
+
+  /** The rows a run left behind, over a list: what is under test is the pairing, not a backend. */
+  private final List<ChatReasoning> recorded = new ArrayList<>();
+
+  private final ChatReasoningRepo reasonings =
+      new ChatReasoningRepo() {
+        @Override
+        public ChatReasoning save(final ChatReasoning reasoning) {
+          recorded.add(reasoning);
+          return reasoning;
+        }
+
+        @Override
+        public Optional<ChatReasoning> findById(final String id) {
+          return recorded.stream().filter(it -> it.id().equals(id)).findFirst();
+        }
+
+        @Override
+        public List<ChatReasoning> findByConversationId(final String conversationId) {
+          return recorded.stream()
+              .filter(it -> conversationId.equals(it.conversationId()))
+              .toList();
+        }
+
+        @Override
+        public void deleteByConversationId(final String conversationId) {
+          recorded.removeIf(it -> conversationId.equals(it.conversationId()));
+        }
+      };
+
+  private final ChatSessions sessions =
+      new ChatSessions(mock(ChatSessionRepo.class), reasonings, chatMemory);
+
+  /**
+   * A run that thought its way to {@code answer}, as the recording listener would have stored it.
+   */
+  private void thought(final String requestId, final String answer) {
+    reasonings.save(
+        ChatReasoning.builder()
+            .id(requestId)
+            .conversationId(ID)
+            .userId("me")
+            .answerDigest(ChatReasoning.digestOf(answer))
+            .text("thinking of " + requestId)
+            .build());
+  }
 
   private final ChatSession session = ChatSession.builder().id(ID).userId("me").build();
 
@@ -212,6 +261,80 @@ class ChatSessionsTranscriptTest {
         .containsExactly(
             org.assertj.core.groups.Tuple.tuple("ls", "a b"),
             org.assertj.core.groups.Tuple.tuple("pwd", "/root"));
+  }
+
+  @Test
+  @DisplayName("a round's thinking hangs on the message that started it")
+  void reasoningIsPairedToTheRoundThatProducedIt() {
+    thought("r-1", "Hello.");
+    given(new UserMessage("hi"), new AssistantMessage("Hello."));
+
+    final var turns = sessions.transcript(session);
+
+    // On the user row rather than the assistant one it was resolved from: that is where a live run
+    // draws its fold, and where a reader looks for it.
+    assertThat(turns)
+        .extracting(ChatSessions.Turn::role, ChatSessions.Turn::reasoningId)
+        .containsExactly(
+            org.assertj.core.groups.Tuple.tuple("user", "r-1"),
+            org.assertj.core.groups.Tuple.tuple("assistant", null));
+  }
+
+  @Test
+  @DisplayName("each round gets its own, and a round that thought nothing gets none")
+  void eachRoundKeepsItsOwn() {
+    thought("r-2", "Two.");
+    given(
+        new UserMessage("one"),
+        new AssistantMessage("One."),
+        new UserMessage("two"),
+        new AssistantMessage("Two."));
+
+    assertThat(sessions.transcript(session))
+        .extracting(ChatSessions.Turn::reasoningId)
+        .containsExactly(null, null, "r-2", null);
+  }
+
+  @Test
+  @DisplayName("two rounds that answered identically show neither's thinking")
+  void anAmbiguousAnswerPairsWithNothing() {
+    // The failure mode a digest has and a run id would not: an agent that twice answered "Done."
+    // leaves two rows a replayed turn cannot be told apart by. Showing one of them would be
+    // showing the wrong round's reasoning, convincingly, so nothing is shown.
+    thought("r-1", "Done.");
+    thought("r-2", "Done.");
+    given(
+        new UserMessage("one"),
+        new AssistantMessage("Done."),
+        new UserMessage("two"),
+        new AssistantMessage("Done."));
+
+    assertThat(sessions.transcript(session))
+        .extracting(ChatSessions.Turn::reasoningId)
+        .containsOnlyNulls();
+  }
+
+  @Test
+  @DisplayName("a run that ended without saying anything pairs with nothing")
+  void aRunThatSaidNothingPairsWithNothing() {
+    // Cancelled before it answered. The row is worth keeping for a surface that still holds the
+    // run's id, but its blank digest must not pair with a turn whose text is somehow empty too.
+    thought("r-1", "");
+    given(new UserMessage("hi"), new AssistantMessage("Hello."));
+
+    assertThat(sessions.transcript(session))
+        .extracting(ChatSessions.Turn::reasoningId)
+        .containsOnlyNulls();
+  }
+
+  @Test
+  @DisplayName("deleting a conversation takes what it thought with it")
+  void deletingTakesTheThinkingToo() {
+    thought("r-1", "Hello.");
+
+    sessions.delete(session);
+
+    assertThat(recorded).isEmpty();
   }
 
   private static AssistantMessage asking(final AssistantMessage.ToolCall call) {

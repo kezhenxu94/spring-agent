@@ -22,6 +22,8 @@ public interface ChatReasoningRepo {
    */
   List<ChatReasoning> findByConversationId(String conversationId);
 
-  /** Called when the conversation goes, or its thinking would outlive what it was thinking about. */
+  /**
+   * Called when the conversation goes, or its thinking would outlive what it was thinking about.
+   */
   void deleteByConversationId(String conversationId);
 }

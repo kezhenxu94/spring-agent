@@ -193,6 +193,37 @@
   padding: 0.65rem 0.7rem;
 }
 
+/* A fold grows and shrinks rather than snapping, so that the rows below it are seen to move and are
+ * not simply somewhere else the next frame — which on a long round's thinking is most of the
+ * column. The chevron above already turns over 140ms; this is the rest of the same gesture.
+ *
+ * Done on `::details-content` because that is the only handle on what a <details> hides: the body
+ * is not a box the closed element still lays out, so animating `.fold-body` would animate nothing.
+ * `interpolate-size` is what lets `block-size` end at `auto` — a fold holds whatever the model
+ * wrote, so there is no height to name — and it is set on `.fold` rather than on `:root` because it
+ * inherits: every `auto` height transition on the page would otherwise start animating too.
+ * `allow-discrete` covers `content-visibility`, which is what would otherwise blank the body on the
+ * first frame of closing and leave the height animating over nothing.
+ *
+ * A browser that does not know `::details-content` drops the rule and opens the fold at once, which
+ * is what it did before. So is what a reader who asked for less motion gets — see the
+ * prefers-reduced-motion block in base.css, which zeroes every transition here. */
+.fold {
+  interpolate-size: allow-keywords;
+}
+
+.fold::details-content {
+  block-size: 0;
+  overflow: hidden;
+  transition:
+    block-size 180ms ease,
+    content-visibility 180ms allow-discrete;
+}
+
+.fold[open]::details-content {
+  block-size: auto;
+}
+
 /* ─────────────────────────────────────── tools ─────────────────────────────────────── */
 
 .tool-state { font-family: var(--font-mono, monospace); font-size: 11px; }

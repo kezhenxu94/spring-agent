@@ -44,6 +44,23 @@ number in the gutter, and the outcome set at once so the rail does not animate.
 Only a backend that stores tool calls has any to draw: `redis` and `mongodb` do, `jpa` does not, so
 a conversation with no tools row is the ordinary case there rather than a fault.
 
+**What a round thought is drawn the same way, and fetched only if somebody asks for it.** Core keeps
+one row per round (see `ChatReasoning`), and `transcript` pairs a row to a round by the digest of the
+answer it ended on — chat memory holds no run id and no backend can be made to hold one. The id of
+the matching run travels on the **user** row that opened the round, because that is where a live run
+draws its fold; a round that matches nothing carries null and no fold is drawn, which is the right
+answer both to "this round produced none" and to "memory no longer holds the answer it was digested
+from". Two rounds that answered identically match nothing, deliberately: showing one of them the
+other's reasoning would be wrong and convincing.
+
+The text itself never rides along with the transcript — a round's thinking is routinely longer than
+the whole of the rest of the conversation, and most rounds are read without anybody wanting it.
+`appendReasoning` in `transcript.js` builds the fold empty and asks
+`GET /api/conversations/{id}/reasoning/{requestId}` the first time it is opened. That endpoint checks
+two things and the second is not redundant: the conversation is the caller's, *and* the row belongs
+to that conversation — without it, one's own conversation id plus somebody else's run id reads their
+thinking.
+
 ## Reaching a store without a run in between
 
 This is the one surface that does, and it does it four times — for the knowledge base, for skills,

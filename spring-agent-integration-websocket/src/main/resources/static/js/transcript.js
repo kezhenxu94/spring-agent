@@ -9,7 +9,8 @@
 import { t } from './i18n.js';
 import { $, scrollToEnd, transcriptAtEnd } from './dom.js';
 import { RunView, markdown } from './render.js';
-import { bus } from './state.js';
+import { api } from './api.js';
+import { bus, state } from './state.js';
 
 /**
  * The way back to the end of a conversation somebody has scrolled up out of.
@@ -69,6 +70,21 @@ export function renderEmptyTranscript() {
 }
 
 /**
+ * The rail of the round being drawn, so that everything one round did shares one spine.
+ *
+ * A live run is a single `RunView`: its thinking, its tool calls and its answer are stations on one
+ * rail. A replay builds the same round from separate rows, and a `RunView` each would draw two
+ * rails — which `.run + .run` in run.css then separates by 2rem, because two `.run` blocks mean two
+ * *runs* there. So the fold under a user message and the tool calls of the same round go into one
+ * view, and a new user message is what starts the next.
+ *
+ * Reset per user turn rather than per conversation, plus the `isConnected` check where it is read:
+ * opening another conversation empties the transcript, and appending to a view whose root is no
+ * longer in the document would draw nothing at all.
+ */
+let roundView = null;
+
+/**
  * The tool calls one assistant message made, as a replayed conversation shows them.
  *
  * Drawn through `RunView` rather than rebuilt here, which is the whole point: a person looking at a
@@ -85,7 +101,8 @@ export function renderEmptyTranscript() {
 export function appendTools(tools) {
   const transcript = $('transcript');
   transcript.querySelector('.empty-state')?.remove();
-  const view = new RunView(transcript);
+  const view = roundView?.root.isConnected ? roundView : new RunView(transcript);
+  roundView = view;
   // Before the rows rather than after, so the rail is never live even for a frame. COMPLETED is
   // not a claim about how the run ended — chat memory does not keep that — it is only what says
   // the run is over; the two outcomes that are drawn differently are set by a live run alone.
@@ -102,11 +119,62 @@ export function appendTools(tools) {
   return view.root;
 }
 
-export function appendTurn(role, text) {
+/**
+ * What one round thought, as a fold under the message that started it — and empty until somebody
+ * opens it.
+ *
+ * Drawn through `RunView` for the reason `appendTools` gives: a person looking at a conversation
+ * they reloaded is looking at the run they watched, so this is the same fold, dot and rail a live
+ * run streams its thinking into rather than a second set of markup that would drift from it.
+ *
+ * The text is not here and is not in the transcript either: a round's thinking is routinely longer
+ * than the whole of the rest of the conversation, and most rounds are read without anybody wanting
+ * it. So the transcript carries only the id of the run that produced it, and this asks for the text
+ * the first time the fold is opened.
+ *
+ * The conversation is captured here rather than read when the fetch happens: by then the reader may
+ * have opened another one, and `state.conversationId` would name that one instead.
+ */
+function appendReasoning(requestId) {
+  const conversationId = state.conversationId;
+  const transcript = $('transcript');
+  const view = new RunView(transcript);
+  // The round's rail from here on: its tool calls join this one rather than starting a second.
+  roundView = view;
+  // Before the row rather than after, so the rail is never live even for a frame — the travelling
+  // highlight means "this is still moving", and nothing replayed is. Same as `appendTools`.
+  view.onFinished({ outcome: 'COMPLETED' });
+  const panel = view.fold('reasoning', t('run.thinking'), 'mist');
+
+  let asked = false;
+  panel.details.addEventListener('toggle', async () => {
+    if (!panel.details.open || asked) return;
+    asked = true;
+    panel.body.textContent = t('run.thinking.loading');
+    try {
+      const got = await api(`/api/conversations/${conversationId}/reasoning/${requestId}`);
+      // The same sanitiser every other replayed turn goes through. This text was written by a
+      // model, which is reason enough on its own.
+      panel.body.innerHTML = markdown(got.text ?? '');
+    } catch (e) {
+      // Gone — evicted with the conversation, or a request that never arrived. Said in the fold
+      // rather than as a toast, because that is where the reader is looking; and `asked` goes back
+      // so that closing and opening it again retries, which is the whole recovery a dropped
+      // connection needs.
+      asked = false;
+      panel.body.textContent = t('run.thinking.gone');
+    }
+  });
+  return view.root;
+}
+
+export function appendTurn(role, text, reasoningId) {
   const transcript = $('transcript');
   transcript.querySelector('.empty-state')?.remove();
   const wrapper = document.createElement('div');
   if (role === 'user') {
+    // A new round, so whatever rail the last one was drawn on is finished with.
+    roundView = null;
     wrapper.className = 'page-column mt-7 flex justify-end first:mt-0';
     const bubble = document.createElement('div');
     // Markdown, as the answer is — see .turn-user in run.css for why, and note that `breaks: true`
@@ -122,5 +190,8 @@ export function appendTurn(role, text) {
     wrapper.append(body);
   }
   transcript.append(wrapper);
+  // Under the message that caused it, which is where a live run puts its own thinking. Only a user
+  // turn ever carries one — see `ChatSessions.Turn`.
+  if (reasoningId) appendReasoning(reasoningId);
   return wrapper;
 }
