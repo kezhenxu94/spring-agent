@@ -31,6 +31,25 @@
  */
 #sidebar { transition: width var(--sidebar-motion), transform var(--sidebar-motion); }
 
+/* ─────────────────────────────── the head, while this is a drawer ───────────────────────────────
+ *
+ * Below md the first thing in this column is the button that closes it, and that button stands
+ * exactly where the one that opened it stands — the header's toggle is directly behind the drawer,
+ * so landing on the same spot makes the two read as one control that opens and closes rather than
+ * as two that each live somewhere else.
+ *
+ * Which is what these two numbers are: the header is `h-12` with `px-4`, and its toggle carries
+ * `-ml-1`, so the toggle sits 0.75rem from the left and (3rem - 1.9rem) / 2 = 0.55rem from the top.
+ * The head takes the same, and the brand beside it comes along — at this width there is no fold, so
+ * nothing depends on the rail's centre line here.
+ */
+@media (max-width: 767.98px) {
+  .side-head {
+    padding-top: 0.55rem;
+    padding-left: 0.75rem;
+  }
+}
+
 /* ─────────────────────────────── the rail's rows ───────────────────────────────
  *
  * One shape for every row on the rail, whatever it does: a glyph, a label, and the room for one
