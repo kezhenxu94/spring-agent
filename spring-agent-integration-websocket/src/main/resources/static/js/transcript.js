@@ -71,11 +71,11 @@ export function renderEmptyTranscript() {
 }
 
 /**
- * The rail of the round being drawn, so that everything one round did shares one spine.
+ * The view of the round being drawn, so that everything one round did reads as one round.
  *
- * A live run is a single `RunView`: its thinking, its tool calls and its answer are stations on one
- * rail. A replay builds the same round from separate rows, and a `RunView` each would draw two
- * rails — which `.run + .run` in run.css then separates by 2rem, because two `.run` blocks mean two
+ * A live run is a single `RunView`: its thinking, its tool calls and its answer are blocks in one
+ * of them. A replay builds the same round from separate rows, and a `RunView` each would draw two
+ * — which `.run + .run` in run.css then separates by 2rem, because two `.run` blocks mean two
  * *runs* there. So the fold under a user message and the tool calls of the same round go into one
  * view, and a new user message is what starts the next.
  *
@@ -91,22 +91,21 @@ let roundView = null;
  * Drawn through `RunView` rather than rebuilt here, which is the whole point: a person looking at a
  * conversation they reloaded is looking at the same run they watched, and a second set of markup
  * that merely resembled the first would drift away from it the next time render.js changed. So the
- * fold, the rail, the dot, the tick and the `.tool-io` blocks are not copied — they are the same
- * code, fed the same event shapes the stream feeds it.
+ * fold, the dot and the `.tool-io` blocks are not copied — they are the same code, fed the same
+ * event shapes the stream feeds it.
  *
- * Two things differ, and both are the absence of a journal rather than a choice of style. The
- * gutter carries no sequence number, because chat memory has no cursor — see `row` in render.js.
- * And the outcome is set straight away, so the rail does not run its travelling highlight: that
- * animation means "this is still moving", and nothing replayed is.
+ * One thing differs, and it is the absence of a journal rather than a choice of style: the outcome
+ * is set straight away, because a replayed round is over before it is drawn. Chat memory does not
+ * keep how a run ended, so it is only ever COMPLETED here.
  */
 export function appendTools(tools) {
   const transcript = $('transcript');
   transcript.querySelector('.empty-state')?.remove();
   const view = roundView?.root.isConnected ? roundView : new RunView(transcript);
   roundView = view;
-  // Before the rows rather than after, so the rail is never live even for a frame. COMPLETED is
-  // not a claim about how the run ended — chat memory does not keep that — it is only what says
-  // the run is over; the two outcomes that are drawn differently are set by a live run alone.
+  // COMPLETED is not a claim about how the run ended — chat memory does not keep that — it is only
+  // what says the run is over; the two outcomes that are drawn differently are set by a live run
+  // alone.
   view.onFinished({ outcome: 'COMPLETED' });
   tools.forEach((tool) => {
     view.onTool({ id: tool.id, name: tool.name, input: tool.input });
@@ -125,8 +124,8 @@ export function appendTools(tools) {
  * opens it.
  *
  * Drawn through `RunView` for the reason `appendTools` gives: a person looking at a conversation
- * they reloaded is looking at the run they watched, so this is the same fold, dot and rail a live
- * run streams its thinking into rather than a second set of markup that would drift from it.
+ * they reloaded is looking at the run they watched, so this is the same fold and dot a live run
+ * streams its thinking into rather than a second set of markup that would drift from it.
  *
  * The text is not here and is not in the transcript either: a round's thinking is routinely longer
  * than the whole of the rest of the conversation, and most rounds are read without anybody wanting
@@ -140,10 +139,9 @@ function appendReasoning(requestId) {
   const conversationId = state.conversationId;
   const transcript = $('transcript');
   const view = new RunView(transcript);
-  // The round's rail from here on: its tool calls join this one rather than starting a second.
+  // The round's view from here on: its tool calls join this one rather than starting a second.
   roundView = view;
-  // Before the row rather than after, so the rail is never live even for a frame — the travelling
-  // highlight means "this is still moving", and nothing replayed is. Same as `appendTools`.
+  // Over before it is drawn, the same as `appendTools`.
   view.onFinished({ outcome: 'COMPLETED' });
   const panel = view.fold('reasoning', t('run.thinking'), 'mist');
 
@@ -179,7 +177,7 @@ export function appendTurn(role, text, reasoningId) {
   transcript.querySelector('.empty-state')?.remove();
   const wrapper = document.createElement('div');
   if (role === 'user') {
-    // A new round, so whatever rail the last one was drawn on is finished with.
+    // A new round, so whatever view the last one was drawn in is finished with.
     roundView = null;
     wrapper.className = 'page-column mt-7 flex justify-end first:mt-0';
     const bubble = document.createElement('div');

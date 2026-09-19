@@ -87,7 +87,6 @@ export function onRunEvent(event, handlers, { close }) {
   state.replaying = state.lastSeq <= state.replayThrough;
 
   const before = state.runView.body.childElementCount;
-  state.runView.at(state.lastSeq);
   try {
     handler(event.data ?? {});
   } catch (e) {

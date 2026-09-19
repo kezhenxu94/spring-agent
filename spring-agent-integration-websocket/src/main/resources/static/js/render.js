@@ -1,11 +1,9 @@
 // Turning run events into DOM.
 //
-// The shape is a spine: a hairline rail in the gutter to the left of the column, with the journal's
-// own sequence number beside each thing that happened. The numbers are not decoration — that
-// sequence is the cursor the browser sends back as Last-Event-ID, so what the rail draws is
-// literally how far this page has got through the run. On a reattach you watch it rebuild to where
-// you were. The answer itself is not on that spine but flush in the column, level with the person's
-// own message; see run.css.
+// The shape is a stack of blocks in one column: what the run thought, what it called and what it
+// cost, each flush on the same left edge as the answer they led to and as the person's own message
+// is bounded by. Everything a run emits is the agent's half of the conversation, so it reads down
+// one edge rather than being set apart in a gutter of its own; see run.css.
 //
 // One RunView per run. Panels are created on first use, so a plain answer stays a plain answer.
 // Every event carries a subagentId, null for the run itself, which routes a delta to the right card.
@@ -147,35 +145,23 @@ export class RunView {
     this.nodes = {};
     this.subagents = new Map();
     this.toolCalls = new Map();
-    this.seq = 0;
     this.finished = false;
   }
 
-  /** The number in the gutter. Set from the SSE event id, so it is the journal's, not a count. */
-  at(seq) {
-    if (seq) this.seq = seq;
-    return this;
-  }
-
   /**
-   * One station on the spine: a sequence number in the gutter, and content beside it.
+   * One thing the run did, on the same left edge as the answer it led to.
    *
    * Rows are appended in the order things actually happened rather than sorted into fixed slots.
-   * A run is a sequence, and rearranging it would make the rail lie about the order.
+   * A run is a sequence, and rearranging it would misreport the order.
    */
   row(kind, node) {
     const row = el('div', `run-row run-row-${kind}`);
-    // Empty rather than 000 where there is no number to show. A conversation replayed out of chat
-    // memory is drawn through this same view — see appendTools in transcript.js — and chat memory
-    // holds no journal, so there is no cursor to be honest about. The span stays either way,
-    // because it is what reserves the gutter the rail is drawn in.
-    const seq = this.seq ? String(this.seq).padStart(3, '0') : '';
-    row.append(el('span', 'run-seq', seq), node);
+    row.append(node);
     this.body.append(row);
     return row;
   }
 
-  /** A collapsible block, with a coloured dot on the rail saying what kind of thing it is. */
+  /** A collapsible block, with a coloured dot saying what kind of thing it is. */
   fold(kind, label, tone, open = false) {
     const details = el('details', `fold fold-${tone}`);
     details.open = open;
