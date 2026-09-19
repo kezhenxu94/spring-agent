@@ -14,7 +14,14 @@ export function showPanel(view) {
   // repeating a word the panel's own heading already says, over a rule with nothing under it. So
   // it goes bare for the other sections, and chrome.css takes it away completely at the width
   // where the drawer toggle is gone too.
-  $('app-header').dataset.bare = String(view !== 'chat');
+  const bare = view !== 'chat';
+  $('app-header').dataset.bare = String(bare);
+  // And it says nothing while it is bare. At md and up the bar is not drawn at all so this never
+  // showed, but below md it stays — it is the only way back into the drawer — and what it was
+  // still holding was the title of whatever conversation was last open, sitting above a section
+  // that is not a conversation. Cleared here rather than left to whoever draws the section,
+  // because it is the same fact for all three of them: this bar is the conversation's.
+  if (bare) $('conversation-title').textContent = '';
   $('transcript').hidden = view !== 'chat';
   $('composer-bar').hidden = view !== 'chat';
   $('knowledge-panel').hidden = view !== 'knowledge';

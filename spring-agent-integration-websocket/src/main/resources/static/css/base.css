@@ -39,6 +39,20 @@
   --signal-fg: #B26A00;
   --settled-fg: #0F766E;
   --alarm-fg: #C03434;
+
+  /* Syntax, and why it is allowed to be colourful when nothing else here is.
+     The rule everywhere else on this page is that amber, teal, violet and coral mean something
+     specific about a run, so nothing else may wear them. That rule is about *chrome* — a badge, a
+     dot, a row — telling you what the agent is doing. This is content: it is the file itself, read
+     the way every editor the reader already uses draws it, and reading it as a run state is not a
+     mistake anybody makes. So it gets its own palette, sharing none of those four hues, and it is
+     here with the rest of them rather than in the file that uses it. */
+  --code-keyword: #8250DF;
+  --code-string: #0A7D33;
+  --code-number: #0550AE;
+  --code-title: #0550AE;
+  --code-tag: #116329;
+  --code-attr: #953800;
 }
 
 .dark {
@@ -52,6 +66,13 @@
   --signal-fg: #FFB020;
   --settled-fg: #4FD1C5;
   --alarm-fg: #FF6B6B;
+
+  --code-keyword: #D2A8FF;
+  --code-string: #7EE787;
+  --code-number: #79C0FF;
+  --code-title: #D2A8FF;
+  --code-tag: #7EE787;
+  --code-attr: #FFA657;
 }
 
 /* ─────────────────────────────────────── the column everything is read in ───────────────────────────────────────

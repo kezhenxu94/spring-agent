@@ -10,6 +10,7 @@
 
 import { t } from './i18n.js';
 import { fullTime } from './dom.js';
+import { menuButton } from './menu.js';
 
 /**
  * Draws the list into `host`.
@@ -17,10 +18,14 @@ import { fullTime } from './dom.js';
  * @param skills  what the server answered, already in the store's own order
  * @param open    called with a skill's name when its row is pressed — it navigates
  */
-export function renderSkillList(host, skills, open) {
+export function renderSkillList(host, skills, open, actionsFor) {
   host.textContent = '';
+  host.removeAttribute('aria-busy');
   skills.forEach((skill) => {
+    // `relative` so the ⋯ can sit in the card's corner, `group` so it comes into view when the
+    // pointer is anywhere on the card rather than only on the dots themselves.
     const item = document.createElement('li');
+    item.className = 'group relative';
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'skill-card';
@@ -58,6 +63,13 @@ export function renderSkillList(host, skills, open) {
     row.append(facts);
     row.addEventListener('click', () => open(skill.name));
     item.append(row);
+    // Outside the card and not in it: a button inside a button is markup no browser agrees about,
+    // and the card is a button because the whole of it opens the skill.
+    if (actionsFor) {
+      const actions = menuButton(t('skills.actions'), () => actionsFor(skill));
+      actions.classList.add('skill-card-menu');
+      item.append(actions);
+    }
     host.append(item);
   });
 }
@@ -76,4 +88,30 @@ function mark(text, why, host) {
   span.title = why;
   if (host) host.append(span);
   return span;
+}
+
+/**
+ * The grid, as the shape of what is coming.
+ *
+ * Three cards, which is what a laptop's row holds — enough to say "a grid of cards is arriving"
+ * without claiming a count nobody knows yet. Each is the real card's three parts at their real
+ * heights, so the list grows into its own outline instead of jumping when it fills.
+ */
+export function renderSkillSkeleton(host, cards = 3) {
+  const made = [];
+  for (let index = 0; index < cards; index += 1) {
+    const item = document.createElement('li');
+    item.setAttribute('aria-hidden', 'true');
+    const card = document.createElement('div');
+    card.className = 'skill-card-skeleton';
+    for (let bar = 0; bar < 3; bar += 1) {
+      const line = document.createElement('span');
+      line.className = 'skeleton';
+      card.append(line);
+    }
+    item.append(card);
+    made.push(item);
+  }
+  host.replaceChildren(...made);
+  host.setAttribute('aria-busy', 'true');
 }

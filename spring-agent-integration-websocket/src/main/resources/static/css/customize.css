@@ -138,13 +138,19 @@
  * of the width was carrying nothing. Cards put the three side by side instead, which is also what
  * a person is doing with them: comparing, not reading down a timeline.
  *
- * `auto-fill` with a floor rather than a fixed column count, so the same rule answers a phone, a
+ * `auto-fit` with a floor rather than a fixed column count, so the same rule answers a phone, a
  * laptop and a folded sidebar without a breakpoint per case. The floor is what stops a card getting
  * narrower than its own two-line description.
+ *
+ * `auto-fit` and not `auto-fill`, which is the difference between the row being filled and only
+ * looking as though it is: both work out how many tracks fit, but auto-fill keeps the ones nothing
+ * landed in and auto-fit collapses them. With three skills the two are identical; with two, the
+ * cards sat in the first two of three tracks and left a third of the row blank, which reads as a
+ * card that failed to grow rather than as a grid with room to spare.
  */
 .skill-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
   gap: 0.6rem;
 }
 
@@ -157,6 +163,9 @@
   height: 100%;
   gap: 0.35rem;
   padding: 0.7rem 0.85rem;
+  /* The corner the ⋯ sits in, reserved whether or not it is drawn, so a long name is truncated at
+     the same place on every card rather than only on the one being hovered. */
+  padding-right: 2.2rem;
   border: 1px solid var(--line);
   border-radius: 0.7rem;
   text-align: left;
@@ -216,6 +225,66 @@
   padding: 0.05rem 0.4rem;
   border: 1px dashed var(--line);
   border-radius: 999px;
+  color: var(--fg-dim);
+}
+
+/*
+ * The card's own ⋯.
+ *
+ * Over the card rather than in it, because the card is itself a button and a button inside a
+ * button is markup no two browsers agree about. So it is absolutely positioned in the corner the
+ * card reserves for it with padding-right, which is what stops a long name running underneath a
+ * control that is not always drawn.
+ *
+ * Reuses .row-menu's look — see busy.css — and its rule about being reachable without a pointer.
+ * It does not join the sidebar lists' hover-to-reveal exception there: those hide it because a
+ * column of grey dots down a narrow rail competes with the dots that mean a run is going, and a
+ * grid of cards has neither the column nor the dots.
+ */
+.skill-card-menu {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+}
+
+/* ─────────────────────────────────────── waiting for it ───────────────────────────────────────
+ *
+ * The same bar busy.css draws everywhere else, in the shape of the thing that is coming: a card
+ * where cards are coming, a row where the tree is. A silhouette rather than a spinner because the
+ * shape *is* known here, and a list that appears under a spinner jumps where one that grows into
+ * its own outline does not.
+ */
+.skill-card-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+}
+/* A name, a line of description, and the facts under it — the card's three parts, at their
+   heights, so nothing moves when the real one replaces it. */
+.skill-card-skeleton > .skeleton:nth-child(1) { width: 45%; height: 0.85rem; }
+.skill-card-skeleton > .skeleton:nth-child(2) { width: 90%; }
+.skill-card-skeleton > .skeleton:nth-child(3) { width: 60%; height: 0.6rem; }
+
+.tree-skeleton {
+  display: flex;
+  align-items: center;
+  height: 1.9rem;
+  padding-inline: 0.5rem;
+}
+
+/* The file, while it is on its way. Centred in the pane the file will fill, so the pane does not
+   change size when it arrives. */
+.file-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 100%;
+  min-height: 8rem;
+  font-size: 12.5px;
   color: var(--fg-dim);
 }
 
@@ -408,30 +477,57 @@
  * The file itself.
  *
  * Mono at 12.5px on a 1.7 line — exactly .detail-edit's type, and that is the whole point. Press
- * Edit and the pane becomes a textarea set the same way, so the text does not move by a pixel: the
- * file is being corrected where it was being read, rather than opened in a form about it.
+ * Edit and the pane becomes a textarea set the same way, so the text does not move: the file is
+ * being corrected where it was being read, rather than opened in a form about it.
  *
- * No syntax colouring. Colour on this page means a run, and a file is read for its words.
+ * Lines are *not* wrapped. A wrapped line of code is a line whose indentation lies about its
+ * depth, and one that has quietly become two rows beside a gutter that still counts it as one. So
+ * the code runs as long as it is and the pane scrolls sideways — which is what every editor the
+ * reader already uses does, and what makes the number beside a line mean the line.
+ *
+ * Two columns rather than a number glued to the front of each line, and the code side is one
+ * <pre> rather than a row per line: highlighting a file line by line would cut every construct
+ * that spans two of them. One block, one gutter beside it, the same line-height on both.
  */
-.file-lines {
+.file-code {
+  /*
+   * The height of one line, as a length rather than a ratio, and shared by both columns.
+   *
+   * This is 12.5px x 1.7 — .detail-edit's type, so the editor still lands on the same lines. It
+   * has to be a length because the gutter sets its digits smaller than the code: a ratio is
+   * resolved against each element's own font-size, so 1.7 in an 11px column is 18.7px against the
+   * code's 21.25px, and the two drift a quarter of a line further apart on every row. Eight lines
+   * in, the number beside a line belonged to the line above it.
+   */
+  --file-line: 21.25px;
+
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-columns: max-content minmax(0, max-content);
+  align-items: start;
+  /* As wide as the longest line, but never narrower than the pane — or a short file would leave
+     the gutter floating in the middle of an empty box. */
+  width: max-content;
+  min-width: 100%;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12.5px;
-  line-height: 1.7;
+  line-height: var(--file-line);
 }
+
 /*
- * The line number, drawn from an attribute rather than written as text.
+ * The numbers, pinned to the left edge while the code scrolls under them.
  *
- * `user-select: none` is not enough and it is worth knowing why: it stops the browser *painting* a
- * selection over the number, but dragging across the pane still puts it in the range, so copying a
- * few lines of a file hands back a column of digits interleaved with the code. Generated content
- * cannot be selected at all — there is no text node to put in a range — so the number is simply not
- * part of the document a selection can reach, and copy gives back the file.
+ * Sticky rather than fixed or absolute: it is a grid column that has to keep its place in the
+ * layout and its height, and only sticky does both. It needs an opaque ground of its own —
+ * --surface is the pane's — or the code slides visibly beneath the digits, and a z-index above
+ * the code for the same reason.
  */
-.file-no {
+.file-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 1;
   padding: 0 0.6rem 0 0.75rem;
   border-right: 1px solid var(--line);
+  background: var(--surface);
   color: var(--fg-dim);
   font-size: 11px;
   text-align: right;
@@ -439,18 +535,84 @@
   -webkit-user-select: none;
   user-select: none;
 }
+/*
+ * One number per line, drawn from an attribute rather than written as text.
+ *
+ * `user-select: none` is not enough and it is worth knowing why: it stops the browser *painting* a
+ * selection over the number, but dragging across the pane still puts it in the range, so copying a
+ * few lines of a file hands back a column of digits interleaved with the code. Generated content
+ * cannot be selected at all — there is no text node to put in a range — so the number is simply
+ * not part of the document a selection can reach, and copy gives back the file.
+ *
+ * The line-height is the code's, so the two columns stay in step however long the file is.
+ */
+.file-no {
+  display: block;
+  line-height: var(--file-line);
+  font-size: 11px;
+}
 .file-no::before { content: attr(data-line); }
-.file-line {
+
+.file-text {
+  margin: 0;
   padding: 0 0.75rem;
-  /* A blank line still needs a box the height of a line, or the numbers beside it lose step. In
-     CSS rather than by putting a space in the text: a character here is a character in what gets
-     copied, and pasting a file back with a non-breaking space on every blank line is worse than
-     the jog it was fixing. */
-  min-height: 1.7em;
-  white-space: pre-wrap;
-  /* A minified script or a long URL must wrap rather than widen the pane: the numbers beside it
-     are a grid column, and a row that scrolled sideways would scroll away from its own number. */
-  overflow-wrap: anywhere;
+  white-space: pre;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: var(--fg);
+}
+
+/*
+ * What highlight.js marks up, in the palette base.css defines for it.
+ *
+ * Written against the tokens rather than shipping one of the library's own themes, because those
+ * come as a light file and a dark file that would have to be swapped at runtime — and this page
+ * changes theme with a class, not a stylesheet. One set of rules, two sets of values, the same way
+ * everything else here handles the two themes.
+ */
+.hljs-comment,
+.hljs-quote { color: var(--fg-dim); font-style: italic; }
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-type { color: var(--code-keyword); }
+.hljs-string,
+.hljs-regexp,
+.hljs-addition { color: var(--code-string); }
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet { color: var(--code-number); }
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.function_,
+.hljs-section,
+.hljs-built_in { color: var(--code-title); }
+.hljs-name,
+.hljs-tag { color: var(--code-tag); }
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-meta { color: var(--code-attr); }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 600; }
+
+/*
+ * A markdown file, read as markdown.
+ *
+ * No gutter and no horizontal scroll: prose has no line numbers, and a paragraph that runs off the
+ * side is a paragraph nobody can read. `.prose` is the transcript's own set of rules, so a
+ * SKILL.md looks here the way the agent's answers look there — which is the right comparison,
+ * since it is the same kind of writing.
+ *
+ * Pressing Edit shows the source. That is the one place on this page where the swap moves the
+ * text, and it is the right trade: rendered markdown is what the file *is*, and editing it is
+ * working on what it is made of.
+ */
+.file-prose {
+  padding: 0.75rem 1rem 1.5rem;
+  font-size: 13.5px;
 }
 
 /* Editing, in the same box. `resize: none` because the pane is already the size of the panel, and

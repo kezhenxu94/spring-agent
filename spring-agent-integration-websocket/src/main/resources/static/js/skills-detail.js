@@ -17,7 +17,8 @@
 
 import { t } from './i18n.js';
 import { detailHead } from './detail.js';
-import { busyButton } from './busy.js';
+import { markdown } from './render.js';
+import { busyButton, spinner } from './busy.js';
 import { renderTree } from './skills-tree.js';
 import { deleteFile, deleteSkill, downloadSkill, saveFile, uploadInto } from './skills-actions.js';
 import { attempt } from './toast.js';
@@ -144,6 +145,20 @@ function filePane(view, file) {
   // With nothing open there is no head at all — not an empty one. The head carries a path and the
   // things that can be done to a file, so with no file it has nothing in it but its own bottom
   // rule, and a rule across an empty pane reads as a heading whose text failed to load.
+  // Asked for and not here yet. Its own state rather than the "choose a file" note, because those
+  // two say opposite things — one is an invitation to press something, the other is the answer to
+  // having pressed it, and showing the invitation while the answer is on its way reads as the
+  // press having missed.
+  if (filePath && !file && view.loadingFile) {
+    const waiting = document.createElement('p');
+    waiting.className = 'file-loading';
+    waiting.append(spinner(), document.createTextNode(t('skills.file.loading')));
+    head.append(actionsPlaceholder());
+    pane.append(head, body);
+    body.append(waiting);
+    return pane;
+  }
+
   if (!filePath || !file) {
     body.append(note(t('skills.file.none')));
     pane.append(body);
@@ -177,22 +192,15 @@ function filePane(view, file) {
     actions.append(save, cancel);
   } else {
     if (editable) {
-      const edit = document.createElement('button');
-      edit.type = 'button';
-      edit.className = 'panel-action';
-      edit.textContent = t('skills.edit');
-      edit.addEventListener('click', () => { view.startDraft(file.text || ''); redraw(); });
-      actions.append(edit);
+      actions.append(iconAction(PENCIL, t('skills.edit'), () => {
+        view.startDraft(file.text || '');
+        redraw();
+      }));
     }
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'panel-action';
-    remove.textContent = t('skills.file.delete');
-    remove.addEventListener('click', () => {
+    actions.append(iconAction(TRASH, t('skills.file.delete'), () => {
       attempt(() => deleteFile(scope, detail.name, filePath)
         .then((gone) => (gone ? view.onFileGone() : null)));
-    });
-    actions.append(remove);
+    }));
   }
   head.append(actions);
 
@@ -213,39 +221,119 @@ function filePane(view, file) {
   } else if (!file.text) {
     body.append(note(t('skills.file.empty')));
   } else {
-    body.append(lines(file.text));
+    body.append(fileContent(file.text, filePath));
   }
 
   pane.append(head, body);
   return pane;
 }
 
-/**
- * The file, numbered.
- *
- * A grid of two columns rather than a number glued to the front of each line: the numbers have to
- * line up in their own column whatever the lines do, and a long line wraps inside its own cell
- * instead of pushing the pane sideways — a row that scrolled horizontally would scroll away from
- * the number that names it.
- */
-function lines(text) {
+/** An empty stand-in for the file's actions, so the head does not change height as they arrive. */
+function actionsPlaceholder() {
   const host = document.createElement('div');
-  host.className = 'file-lines';
-  // A trailing newline is the end of the last line, not the start of an empty one after it.
-  const all = text.replace(/\n$/, '').split('\n');
-  all.forEach((line, index) => {
+  host.className = 'skill-file-actions';
+  const ghost = document.createElement('span');
+  ghost.className = 'panel-action invisible';
+  ghost.textContent = '\u00a0';
+  host.append(ghost);
+  return host;
+}
+
+/**
+ * What a file's name says it is.
+ *
+ * By extension, because that is all there is to go on — the server says whether the bytes are text
+ * and nothing about what kind. Anything not named here is drawn as plain text with a gutter, which
+ * is the right answer for a file nobody can identify: still readable, still numbered, just not
+ * coloured in.
+ */
+const LANGUAGES = {
+  py: 'python', sh: 'bash', bash: 'bash', zsh: 'bash', java: 'java', json: 'json',
+  js: 'javascript', mjs: 'javascript', cjs: 'javascript', ts: 'typescript',
+  yml: 'yaml', yaml: 'yaml', xml: 'xml', html: 'xml', css: 'css', scss: 'scss',
+  sql: 'sql', go: 'go', rs: 'rust', rb: 'ruby', php: 'php', kt: 'kotlin', swift: 'swift',
+  c: 'c', h: 'c', cpp: 'cpp', hpp: 'cpp', cs: 'csharp', lua: 'lua', pl: 'perl', r: 'r',
+  toml: 'ini', ini: 'ini', cfg: 'ini', conf: 'ini', diff: 'diff', patch: 'diff',
+  make: 'makefile', mk: 'makefile', graphql: 'graphql', gql: 'graphql',
+};
+
+function extensionOf(path) {
+  const name = path.split('/').pop();
+  const dot = name.lastIndexOf('.');
+  return dot <= 0 ? '' : name.slice(dot + 1).toLowerCase();
+}
+
+/** The file, drawn as what it is. */
+function fileContent(text, path) {
+  const extension = extensionOf(path);
+  if (extension === 'md' || extension === 'markdown') {
+    const prose = document.createElement('div');
+    prose.className = 'prose file-prose';
+    // The same renderer and the same sanitiser the transcript uses. A skill's files are written by
+    // the person reading them or by the agent on their behalf, but they also arrive in a zip
+    // somebody was sent, so this is not a place to trust the markup in a file.
+    prose.innerHTML = markdown(text);
+    return prose;
+  }
+  return codeBlock(text, LANGUAGES[extension]);
+}
+
+/**
+ * A file with a gutter beside it.
+ *
+ * One <pre> for the whole file rather than a row per line, because highlighting works on the file:
+ * a string or a comment that spans two lines is one construct, and marking up each line on its own
+ * would cut it in half and colour the remainder wrong. The gutter is the other grid column, with
+ * the same line-height, so the numbers line up without knowing anything about the code.
+ */
+function codeBlock(text, language) {
+  const host = document.createElement('div');
+  host.className = 'file-code';
+
+  // A trailing newline ends the last line; it does not start an empty one after it.
+  const body = text.replace(/\n$/, '');
+  const count = body.split('\n').length;
+
+  const gutter = document.createElement('div');
+  gutter.className = 'file-gutter';
+  gutter.setAttribute('aria-hidden', 'true');
+  for (let line = 1; line <= count; line += 1) {
     const no = document.createElement('span');
     no.className = 'file-no';
-    // An attribute and not a text node: see .file-no in customize.css. A number that is text ends
-    // up inside a selection dragged across the file, and copying three lines gives back three
-    // lines with their numbers glued to the front.
-    no.dataset.line = String(index + 1);
-    const code = document.createElement('code');
-    code.className = 'file-line';
-    code.textContent = line;
-    host.append(no, code);
-  });
+    no.dataset.line = String(line);
+    gutter.append(no);
+  }
+
+  const pre = document.createElement('pre');
+  pre.className = 'file-text';
+  const code = document.createElement('code');
+  const highlighted = highlight(body, language);
+  if (highlighted === null) code.textContent = body;
+  else {
+    code.className = 'hljs';
+    code.innerHTML = highlighted;
+  }
+  pre.append(code);
+
+  host.append(gutter, pre);
   return host;
+}
+
+/**
+ * The file marked up, or null to draw it as it is.
+ *
+ * Null for an unknown extension and null when anything goes wrong: highlight.js throws on a
+ * language it does not have registered, and a file that cannot be coloured in is still a file
+ * somebody wants to read. The alternative — letting it throw — takes the whole pane down over a
+ * cosmetic step.
+ */
+function highlight(text, language) {
+  if (!language || !window.hljs || !window.hljs.getLanguage(language)) return null;
+  try {
+    return window.hljs.highlight(text, { language, ignoreIllegals: true }).value;
+  } catch (e) {
+    return null;
+  }
 }
 
 function note(text) {
@@ -312,6 +400,50 @@ function pickFiles(view) {
   input.click();
 }
 
+/**
+ * A 16x16 icon in the one shape this page's chrome uses: no fill, 1.3 stroke, round joins.
+ *
+ * Here rather than in dom.js because it is three lines and two callers, and dom.glyph is about
+ * the box an icon sits in on the rail rather than about drawing one.
+ */
+function icon(d) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', 'size-[15px]');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', d);
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-width', '1.3');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+  svg.append(path);
+  return svg;
+}
+
+const PENCIL = 'M10.4 2.9a1.3 1.3 0 0 1 1.9 0l.8.8a1.3 1.3 0 0 1 0 1.9l-6.3 6.3-3 .8.8-3Z';
+const TRASH = 'M2.9 4.4h10.2M6.2 4.4V3.1h3.6v1.3M4.2 4.4l.6 8.2h6.4l.6-8.2M6.6 6.8v3.6M9.4 6.8v3.6';
+
+/**
+ * One of the file's actions, as an icon with its name in a tooltip.
+ *
+ * Icons rather than words because there are two of them in a strip that also has to hold a path,
+ * and on a narrow pane the path is the thing that matters — it says which file you are about to
+ * act on. The name is still there for a pointer that rests and for a screen reader; what is lost
+ * is only the reader who wants to scan them, and there are two.
+ */
+function iconAction(d, label, onClick) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'tool-button tool-button-sm';
+  button.title = label;
+  button.setAttribute('aria-label', label);
+  button.append(icon(d));
+  button.addEventListener('click', onClick);
+  return button;
+}
+
 function arrow() {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 16 16');
@@ -327,4 +459,62 @@ function arrow() {
   path.setAttribute('stroke-linejoin', 'round');
   svg.append(path);
   return svg;
+}
+
+/**
+ * A skill that has been named but whose tree is still coming — or did not come at all.
+ *
+ * The panel is the skill from the moment it is asked for, so this holds the shape the real one
+ * will take: the way back, the eyebrow, the name it was opened by, and the two panes as outlines.
+ * The name is the one real thing in it, because the route already knows it and drawing a bar where
+ * a name is known would be pretending to know less than we do.
+ */
+export function renderSkillPending(host, { scopeWord, name, failed, onBack }) {
+  host.textContent = '';
+
+  const back = document.createElement('button');
+  back.type = 'button';
+  back.className = 'skill-back';
+  back.append(arrow(), document.createTextNode(t('skills.back')));
+  back.addEventListener('click', onBack);
+  host.append(back);
+
+  host.append(detailHead({ kind: t('skills.kind'), pill: scopeWord, name }));
+
+  if (failed) {
+    // The tree was asked for and did not come. Said plainly rather than left as an outline that
+    // never fills, which is the one thing worse than an error: a page that looks like it is still
+    // working when nothing is.
+    const gone = document.createElement('p');
+    gone.className = 'file-note';
+    gone.textContent = t('skills.gone', name);
+    host.append(gone);
+    return;
+  }
+
+  const panes = document.createElement('div');
+  panes.className = 'skill-panes';
+  panes.setAttribute('aria-busy', 'true');
+
+  const tree = document.createElement('div');
+  tree.className = 'skill-tree';
+  for (let row = 0; row < 5; row += 1) {
+    const line = document.createElement('div');
+    line.className = 'tree-skeleton';
+    const bar = document.createElement('span');
+    bar.className = 'skeleton';
+    bar.style.width = `${[70, 52, 84, 60, 45][row]}%`;
+    line.append(bar);
+    tree.append(line);
+  }
+
+  const file = document.createElement('div');
+  file.className = 'skill-file';
+  const waiting = document.createElement('p');
+  waiting.className = 'file-loading';
+  waiting.append(spinner(), document.createTextNode(t('skills.loading')));
+  file.append(waiting);
+
+  panes.append(tree, file);
+  host.append(panes);
 }
