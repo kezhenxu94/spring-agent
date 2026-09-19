@@ -262,10 +262,25 @@
   text-align: left;
 }
 
-/* As wide as the title and no wider. Stretched across the bar the way a flex child wants to be,
-   the hover surface would be a grey band the width of the window for a word at the left end of
+/* The shape, stated for the button alone, because .field is what states it for the input and the
+   button is not one: it is a heading that can be pressed. Everything here is a value .field
+   already gives the field, and it is here so that the two go on being the same box — the swap
+   moves no pixel only while the border, the radius and the type match on both.
+
+   The border is transparent rather than absent for the same reason. A button with no border is a
+   pixel narrower and a pixel higher up than a field with one, and the hover ground would be square
+   where every other pressable surface on this page is round.
+
+   And as wide as the title and no wider. Stretched across the bar the way a flex child wants to
+   be, the hover surface would be a grey band the width of the window for a word at the left end of
    it — which reads as the whole bar being pressable rather than the name. */
 .chat-title {
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: var(--field-radius);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 13px;
   flex: 0 1 auto;
   max-width: 100%;
   overflow: hidden;
