@@ -55,6 +55,45 @@
   letter-spacing: -0.01em;
 }
 
+/* ─────────────────────────────────────── the way back ───────────────────────────────────────
+ *
+ * A link in words rather than a chevron alone, because this is the only way out of a panel that has
+ * become the thing it is showing, and a bare arrow is not a control everybody reaches for.
+ *
+ * Two elements wear it and that is the point: the card draws one, and the title bar above the
+ * column draws the other (#header-back). They are the same gesture, so they are the same shape —
+ * see backButton in detail.js, which builds the card's.
+ */
+.detail-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.5rem 0.2rem 0.35rem;
+  margin-left: -0.35rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  font-size: 12.5px;
+  color: var(--fg-dim);
+  transition: color 120ms ease, background 120ms ease;
+}
+.detail-back:hover { color: var(--fg); background: var(--code-bg); }
+.detail-back:focus-visible { outline: 2px solid var(--mist); outline-offset: -2px; }
+/* `display` above is an author rule and `[hidden]` is only the browser's — see .tool-button. The
+   bar's copy is drawn once and hidden between times, so this is load-bearing there. */
+.detail-back[hidden] { display: none; }
+
+/* In a card it is the first row of a flex column, where a control that stretched would be a band
+   the width of the page for one word. In the bar it is one item in a row and needs nothing. */
+.detail-panel .detail-back { align-self: flex-start; }
+
+/* And below md the card's copy goes: the title bar is holding the same control, one row above it,
+   and two ways back stacked on each other is one too many on the screen with the least room for
+   either. The bar is also the one that stays put while the card scrolls. */
+@media (max-width: 767.98px) {
+  .detail-panel .detail-back { display: none; }
+}
+
 /* ─────────────────────────────────────── the spec sheet ───────────────────────────────────────
  *
  * A key column of fixed width, so the values line up in one column whatever the keys are, and a
@@ -191,6 +230,34 @@
 /* Level with the text inside the field beside it rather than with the top of its box, so a field
    that carries a hint under it does not leave its label floating between the two. */
 .detail-form > .detail-label { padding-top: 0.45rem; }
+
+/* ─────────────────────────────────────── below md, both grids stack ───────────────────────────────────────
+ *
+ * The spec sheet and the form are the same shape — a key column and a value column — and at phone
+ * width that shape stops working for the same reason in both: the key column is 6.5rem of a screen
+ * that is barely 20rem of readable width, and what is left is where the values live. An absolute
+ * path, a URL or a cron expression then wraps to four lines beside a two-word label, and a field
+ * is a box too narrow to read what has been typed into it.
+ *
+ * So each key sits on its own line over what it names. The label is doing the same job either way —
+ * it is still the mono eyebrow saying what the thing under it is — and nothing else about either
+ * grid changes.
+ */
+@media (max-width: 767.98px) {
+  .detail-facts,
+  .detail-form {
+    grid-template-columns: minmax(0, 1fr);
+    /* The gap went between the two columns and between the rows; stacked, a single row gap would
+       space a key from its own value exactly as it spaces one pair from the next, and the sheet
+       would read as one list rather than as pairs. So the pairs are held together here and told
+       apart by the margin below. */
+    gap: 0.15rem;
+  }
+  .detail-facts dt:not(:first-of-type),
+  .detail-form > .detail-label:not(:first-child) { margin-top: 0.6rem; }
+  /* Nothing to sit level with any more: the field is under this, not beside it. */
+  .detail-form > .detail-label { padding-top: 0; }
+}
 
 .detail-field {
   display: flex;

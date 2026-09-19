@@ -20,7 +20,7 @@
 
 import { t } from './i18n.js';
 import { svgIcon } from './dom.js';
-import { detailHead } from './detail.js';
+import { backButton, detailHead } from './detail.js';
 import { markdown } from './render.js';
 import { busyButton, spinner } from './busy.js';
 import { renderTree } from './skills-tree.js';
@@ -61,12 +61,7 @@ export function renderSkillDetail(host, view) {
   } = view;
   host.textContent = '';
 
-  const back = document.createElement('button');
-  back.type = 'button';
-  back.className = 'skill-back';
-  back.append(arrow(), document.createTextNode(t('skills.back')));
-  back.addEventListener('click', onBack);
-  host.append(back);
+  host.append(backButton(t('skills.back'), onBack));
 
   host.append(detailHead({
     kind: t('skills.kind'),
@@ -435,22 +430,6 @@ function iconAction(d, label, onClick) {
   return button;
 }
 
-function arrow() {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 16 16');
-  svg.setAttribute('fill', 'none');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('width', '13');
-  svg.setAttribute('height', '13');
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('d', 'M9.5 3.5 5 8l4.5 4.5');
-  path.setAttribute('stroke', 'currentColor');
-  path.setAttribute('stroke-width', '1.5');
-  path.setAttribute('stroke-linecap', 'round');
-  path.setAttribute('stroke-linejoin', 'round');
-  svg.append(path);
-  return svg;
-}
 
 /**
  * A skill that has been named but whose tree is still coming — or did not come at all.
@@ -463,12 +442,7 @@ function arrow() {
 export function renderSkillPending(host, { scopeWord, name, failed, onBack }) {
   host.textContent = '';
 
-  const back = document.createElement('button');
-  back.type = 'button';
-  back.className = 'skill-back';
-  back.append(arrow(), document.createTextNode(t('skills.back')));
-  back.addEventListener('click', onBack);
-  host.append(back);
+  host.append(backButton(t('skills.back'), onBack));
 
   host.append(detailHead({ kind: t('skills.kind'), pill: scopeWord, name }));
 

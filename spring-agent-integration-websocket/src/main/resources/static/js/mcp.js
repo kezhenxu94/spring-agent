@@ -115,7 +115,13 @@ function draw() {
   const mcp = state.mcp;
   const open = Boolean(mcp.name);
 
-  openCustomizeDetail(open);
+  // The bar names the server below md and holds the way back to the list. The empty form is named
+  // what the card names it: `new` is a route, not something anybody registered.
+  openCustomizeDetail(open, open && {
+    title: mcp.name === NEW ? t('mcp.new.title') : mcp.name,
+    label: t('mcp.back'),
+    onBack: back,
+  });
   $('mcp-browse').hidden = open;
   $('mcp-detail').hidden = !open;
 

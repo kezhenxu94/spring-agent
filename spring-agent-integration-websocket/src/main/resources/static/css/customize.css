@@ -337,48 +337,59 @@
   color: var(--fg-dim);
 }
 
-/* ─────────────────────────────────────── the skill, opened ───────────────────────────────────────
+/* ─────────────────────────────────────── one of the three, opened ───────────────────────────────────────
  *
- * detail.css already makes an opened panel take the whole column and scroll inside itself, but its
- * rule names a .detail-card that is a *direct* child of .detail-body. Here the card sits one level
- * further in, inside the tab's own panel, because that is where it honestly belongs: it is part of
- * the Skills tab and not of Customize in general. So the chain is extended by one link rather than
- * the markup being bent to fit the selector.
+ * detail.css makes an opened panel take the whole column and scroll *inside* itself: the head stays
+ * put and only the body moves under it. That is right for a knowledge document and for a scheduled
+ * task, which are one card each, read top to bottom, whose menu of actions has to stay reachable.
+ *
+ * It is wrong for all three tabs here, and it is undone below. A skill is a name, a description, a
+ * warning where the company has one of the same name, and *then* two panes; a memory and an MCP
+ * server each carry a spec sheet above their body. Pinning all of that meant a phone gave the thing
+ * itself whatever was left of the screen — often a couple of lines of a file — while the facts
+ * about it held the top of it, and on a desktop window it read as a page that would not scroll.
+ * So the panel scrolls the way every other list and document on this page scrolls, and what is
+ * pinned is the title bar above the column, which says which of them is open and offers the way
+ * out. One behaviour at both widths, which is also what makes the two ways back one control.
+ *
+ * Only the display chain is undone. The card still loses its frame and its inset — that is the
+ * panel *being* the thing rather than showing it, and it is as true of a card that scrolls.
  */
-#customize-panel.detail-open > .detail-body > #customize-skills {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
+#customize-panel.detail-open:not([hidden]) { display: block; overflow-y: auto; }
+#customize-panel.detail-open > .detail-body,
+#customize-panel.detail-open > .detail-body > [role="tabpanel"],
+#customize-panel.detail-open .detail-card,
+#customize-panel.detail-open .detail-text-box {
+  display: block;
+  flex: none;
   min-height: 0;
 }
-#customize-panel.detail-open > .detail-body > #customize-skills > .detail-card {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
+/* The card keeps the rest of what detail.css gives it — see the comment above. Stated again
+   because the block above has just overridden the `display` that rule set alongside them. */
+#customize-panel.detail-open .detail-card {
   padding: 0;
   border: 0;
   border-radius: 0;
 }
-
-/* The way back to the list. A link in words rather than a chevron alone, because this is the only
-   way out of the panel and the back button is not a control everybody reaches for. */
-.skill-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  align-self: flex-start;
-  padding: 0.2rem 0.5rem 0.2rem 0.35rem;
-  margin-left: -0.35rem;
-  border: 0;
-  border-radius: 0.45rem;
-  background: transparent;
-  font-size: 12.5px;
-  color: var(--fg-dim);
-  transition: color 120ms ease, background 120ms ease;
+/* The box around a body is a flex column for the caption above it, which nothing here changes. */
+#customize-panel.detail-open .detail-text-box {
+  display: flex;
+  flex-direction: column;
 }
-.skill-back:hover { color: var(--fg); background: var(--code-bg); }
-.skill-back:focus-visible { outline: 2px solid var(--mist); outline-offset: -2px; }
+/* And a body runs as long as it is, because the page is what scrolls now. The 26rem cap exists for
+   a card inside a scrolling panel — which is exactly what this is again — but a memory is the one
+   thing on this page, and a scroller inside a scroller is two gestures for one movement. */
+#customize-panel.detail-open .detail-text { max-height: none; overflow: visible; }
+
+/* And below md the card does not repeat its own name: the title bar one row above it is saying it,
+   and it goes on saying it after the head has scrolled away. The eyebrow stays — what kind of thing
+   this is and which store it is in is not what the bar says. */
+@media (max-width: 767.98px) {
+  #customize-panel.detail-open .detail-name { display: none; }
+}
+
+/* The way back to the list is .detail-back in detail.css: all three tabs draw it, and so does the
+   title bar above the column. It was this tab's own until the bar started drawing it too. */
 
 /* ─────────────────────────────────────── the two panes ───────────────────────────────────────
  *
@@ -390,9 +401,20 @@
  * is what the right-hand pane turns into, and a box that changed shape on the way into editing
  * would make an edit feel like a different screen rather than the same one, writable.
  */
+/*
+ * A height of its own, rather than whatever is left of the column.
+ *
+ * The panel scrolls as a whole now (see above), so there is no "rest of the column" to fill — and
+ * a frame as tall as its contents would be a file of two thousand lines drawn in full, with the
+ * tree beside it as a strip at the top. So the frame is a fixed share of the screen and the two
+ * panes scroll inside it, which is what they did before and what a tree beside a file has to do.
+ *
+ * `dvh` rather than `vh`: on a phone the two differ by the browser's own bars, and a frame sized
+ * to the larger one puts its own bottom edge under them.
+ */
 .skill-panes {
   display: flex;
-  flex: 1;
+  height: 75dvh;
   min-height: 18rem;
   overflow: hidden;
   border: 1px solid var(--line);

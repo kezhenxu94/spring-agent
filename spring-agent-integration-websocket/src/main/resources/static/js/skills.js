@@ -232,7 +232,15 @@ function draw() {
 
   // The panel becomes the skill, so the intro, the tab strip and the list all go. The first two
   // belong to Customize as a whole and are openCustomizeDetail's; the list is this tab's own.
-  openCustomizeDetail(open);
+  //
+  // The bar goes with them: below md it is where this skill is named and where the way back to the
+  // list lives, because neither is on screen otherwise. Same handler the panel's own back carries,
+  // written here rather than in the renderer because the route is this file's business.
+  openCustomizeDetail(open, open && {
+    title: skills.skill,
+    label: t('skills.back'),
+    onBack: () => narrow({ skill: null }),
+  });
   $('skills-browse').hidden = open;
   $('skill-detail').hidden = !open;
 
