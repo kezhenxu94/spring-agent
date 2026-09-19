@@ -77,6 +77,59 @@ function truncatedString(text) {
 const PROSE = 'prose max-w-none text-[14.5px] leading-[1.7]';
 const LABEL = 'font-mono text-[10px] font-medium uppercase tracking-[0.14em]';
 
+/**
+ * Makes a fold grow and shrink rather than snap, so the rows below it are seen to move and are not
+ * simply somewhere else the next frame — which on a long round's thinking is most of the column.
+ *
+ * Driven from here rather than in CSS, and that is the whole reason this function exists: animating
+ * a <details> in CSS needs `::details-content` together with `interpolate-size: allow-keywords`, to
+ * interpolate a height nobody can name in advance, and that pair is Chromium's alone. The Web
+ * Animations API is everywhere, so this is the mechanism that actually reaches a reader rather than
+ * the tidier one that reaches some of them.
+ *
+ * Closing is why the click is taken over rather than watched: `toggle` fires after the browser has
+ * already hidden the content, leaving nothing to animate. So the default is prevented, the element
+ * is opened first (or kept open) for long enough to be measured, and `open` is only turned off once
+ * the animation has finished.
+ *
+ * A reader who asked for less motion gets the state change and none of the movement — the same
+ * answer the prefers-reduced-motion block in base.css gives every transition on the page, which
+ * cannot reach an animation started from script.
+ */
+function animateFold(details, clip) {
+  const DURATION = 180;
+  const summary = details.querySelector('summary');
+  let running = null;
+
+  summary.addEventListener('click', (event) => {
+    // Let a modified click (open in a new tab, a text selection drag) alone.
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey) return;
+    event.preventDefault();
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) {
+      details.open = !details.open;
+      return;
+    }
+
+    running?.cancel();
+    const opening = !details.open;
+    // Open before measuring: a closed <details> lays its contents out nowhere, so there is no
+    // height to read until it is.
+    details.open = true;
+    const full = clip.scrollHeight;
+    running = clip.animate(
+      [{ height: `${opening ? 0 : full}px` }, { height: `${opening ? full : 0}px` }],
+      { duration: DURATION, easing: 'ease' },
+    );
+    running.onfinish = () => {
+      running = null;
+      // Closed only now, so the content is on screen for the whole of the animation.
+      if (!opening) details.open = false;
+    };
+  });
+}
+
 export class RunView {
   constructor(container) {
     this.root = el('div', 'run page-column');
@@ -131,7 +184,14 @@ export class RunView {
     const count = el('span', 'fold-count font-mono text-[10px] text-mist');
     summary.append(count);
     const inner = el('div', 'fold-body');
-    details.append(summary, inner);
+    // The body sits inside a clip whose height is what opening and closing animates. It is the
+    // wrapper rather than the body itself because a box with padding cannot be animated to zero —
+    // `height: 0` on a border-box element still leaves its padding standing, so the fold would
+    // jump the last 1.3rem every time.
+    const clip = el('div', 'fold-clip');
+    clip.append(inner);
+    details.append(summary, clip);
+    animateFold(details, clip);
     const row = this.row(kind, details);
     return { row, details, summary, body: inner, count };
   }
