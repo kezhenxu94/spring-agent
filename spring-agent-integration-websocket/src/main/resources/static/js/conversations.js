@@ -353,7 +353,7 @@ export async function openConversation(id) {
   }
   turns.forEach((turn) => (turn.role === 'tools'
     ? appendTools(turn.tools ?? [])
-    : appendTurn(turn.role, turn.text)));
+    : appendTurn(turn.role, turn.text, turn.reasoningId)));
   if (!turns.length) renderEmptyTranscript();
 
   // Then what the transcript cannot say: is something happening, and is the agent waiting on me.

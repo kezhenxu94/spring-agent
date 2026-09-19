@@ -22,9 +22,9 @@ import org.springframework.data.redis.core.index.Indexed;
  * was produced. This is where it is kept instead, so a reader can go back to a round and ask why
  * the answer says what it says.
  *
- * <p>The id is the run's {@code requestId} rather than a generated one: the row <em>is</em> the run,
- * so there is nothing to join and no key to invent — the same reasoning {@link ChatSession}'s id
- * gives. That also makes it exact for a surface that still has the id in hand, which is every
+ * <p>The id is the run's {@code requestId} rather than a generated one: the row <em>is</em> the
+ * run, so there is nothing to join and no key to invent — the same reasoning {@link ChatSession}'s
+ * id gives. That also makes it exact for a surface that still has the id in hand, which is every
  * surface while the run is live.
  *
  * <p>{@link #answerDigest} is for the other case, and the reason it exists is worth knowing before
@@ -51,7 +51,9 @@ import org.springframework.data.redis.core.index.Indexed;
 public class ChatReasoning {
   public static final String COLLECTION_NAME = "bot_chat_reasoning";
 
-  /** The run's {@code requestId}, which is what makes this row the run rather than a row about it. */
+  /**
+   * The run's {@code requestId}, which is what makes this row the run rather than a row about it.
+   */
   @Id @jakarta.persistence.Id private String id;
 
   /** findByConversationId, and what a delete of the conversation takes with it. */

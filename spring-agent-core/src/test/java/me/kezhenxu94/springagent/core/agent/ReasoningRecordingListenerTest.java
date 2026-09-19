@@ -37,7 +37,8 @@ class ReasoningRecordingListenerTest {
 
         @Override
         public List<ChatReasoning> findByConversationId(final String conversationId) {
-          return rows.values().stream().filter(it -> conversationId.equals(it.conversationId()))
+          return rows.values().stream()
+              .filter(it -> conversationId.equals(it.conversationId()))
               .toList();
         }
 
@@ -49,7 +50,9 @@ class ReasoningRecordingListenerTest {
 
   private final ReasoningRecordingListener listener = new ReasoningRecordingListener(repo);
 
-  /** Runs a turn through the listener the way {@code SpringAgent} would, and returns what it kept. */
+  /**
+   * Runs a turn through the listener the way {@code SpringAgent} would, and returns what it kept.
+   */
   private List<AgentResponseListener> start(final AgentRequest request) {
     final var registry = new AgentRunRegistry(request);
     listener.onStart(registry);
@@ -101,7 +104,9 @@ class ReasoningRecordingListenerTest {
   }
 
   @Test
-  @DisplayName("an endpoint that reports no thinking leaves no row, so a row means there is something to read")
+  @DisplayName(
+      "an endpoint that reports no thinking leaves no row, so a row means there is something to"
+          + " read")
   void recordsNothingWhereThereWasNoReasoning() {
     final var recorder = start(request().build()).getFirst();
     recorder.onContent("The disk was full.");

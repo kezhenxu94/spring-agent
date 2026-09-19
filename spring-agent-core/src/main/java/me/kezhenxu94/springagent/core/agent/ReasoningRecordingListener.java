@@ -34,10 +34,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(
-    name = "app.ai.reasoning.store",
-    havingValue = "true",
-    matchIfMissing = true)
+@ConditionalOnProperty(name = "app.ai.reasoning.store", havingValue = "true", matchIfMissing = true)
 public class ReasoningRecordingListener implements AgentResponseListener {
 
   private final ChatReasoningRepo reasonings;

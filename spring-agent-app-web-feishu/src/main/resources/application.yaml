@@ -1084,6 +1084,24 @@ app:
       # What is kept is not the same on every backend: JdbcChatMemoryRepository refuses tool
       # messages, so on jpa this many messages is rather more exchanges than on mongodb or redis.
       window: ${MEMORY_WINDOW:200}
+    reasoning:
+      # Whether what a run thought is written down, so that it outlives the run.
+      #
+      # Reasoning used to exist only while a run did: a Feishu card streams it into a panel, the
+      # browser into a fold, and both are gone once the run's journal is evicted or the page is
+      # reloaded — so a deployment that sets app.feishu.card-reasoning to false threw it away the
+      # moment it was produced. With this on, every foreground run that belongs to a conversation
+      # leaves one row, and the browser draws a fold under the message that started the round,
+      # fetching the text only if somebody opens it.
+      #
+      # On, because the cost is a row a round and the alternative is that the question "why did it
+      # say that?" has no answer an hour later. Turn it off where the store is the expensive part:
+      # what is written is not truncated — a long tool-calling turn thinks tens of thousands of
+      # characters — and a run that says nothing about it is a run nobody can second-guess.
+      #
+      # Unattended runs write nothing either way: a subagent's thinking belongs to the tool call
+      # that started it, and nothing shows it beside the round. See ReasoningRecordingListener.
+      store: ${REASONING_STORE:true}
     embedding:
       # How the tool-search index is built, which is a few hundred tool descriptions embedded at
       # once whenever a user's tool set changes — the first request after a restart, and any

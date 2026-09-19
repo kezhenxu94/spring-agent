@@ -162,6 +162,21 @@ upstream's business and still follows `app.persistence.type`: the repository aut
 off from a `ChatMemoryRepository` and not from a `ChatMemory`, so this bean takes whichever one the
 backend put in the context.
 
+**What a run thought outlives it.** `agent/ReasoningRecordingListener` is a bean listener, so it
+covers every surface's runs the way `ChatSessionTrackingListener` does: a foreground run belonging to
+a conversation leaves one `dao/models/ChatReasoning` row when it finishes, keyed by its `requestId`
+and holding the whole of what the endpoint reported it thinking. Unattended runs write nothing — a
+subagent's thinking belongs to the tool call that started it — and so does a run on an endpoint that
+reports no reasoning, which is most of them, so a row existing means there is something to read.
+`app.ai.reasoning.store` turns it off; nothing is truncated when it is on.
+
+The row also carries a digest of the answer, and the reason is worth knowing before anybody proposes
+putting the `requestId` on the turn instead: **no chat-memory backend stores message metadata**.
+Spring AI's JDBC repository, which serves `jpa` and `redis`, has five fixed columns, and
+`MongoChatMemoryRepo` dropped metadata deliberately after a provider's own object in it made whole
+conversations unreadable. So a replayed turn carries no run id and cannot without forking all three
+repositories. See `ChatReasoning`.
+
 **One domain model serves every backend.** The records in `dao/models/` carry JPA, MongoDB *and* Redis
 mapping annotations at once. That works because an annotation whose type is absent at runtime is
 discarded on reflection, which is why core declares those persistence APIs `compileOnly`.

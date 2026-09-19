@@ -14,6 +14,7 @@ import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.TenantWrites;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
+import me.kezhenxu94.springagent.core.dao.repo.ChatReasoningRepo;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.identity.SystemIdentityProvider;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
@@ -63,6 +64,7 @@ public class ChatController {
   private final ChatSessions sessions;
   private final RunJournals journals;
   private final PendingQuestionRepo pendingQuestionRepo;
+  private final ChatReasoningRepo reasonings;
   private final ChatMirrors mirrors;
   private final WebMessages messages;
   private final WebProperties properties;
@@ -401,6 +403,36 @@ public class ChatController {
             conversationId, PendingQuestion.Status.PENDING)) {
       pendingQuestionRepo.updateStatus(pending.id(), PendingQuestion.Status.SUPERSEDED);
     }
+  }
+
+  /**
+   * What one round thought, fetched only when somebody opens the fold over it.
+   *
+   * <p>Deferred rather than sent with the transcript because it is routinely longer than the whole
+   * of the rest of the conversation put together, and most rounds are read without anybody wanting
+   * it. Which rounds have any is already in the transcript — see {@code ChatSessions.Turn} — so the
+   * page draws the fold without asking, and asks only once.
+   *
+   * <p>Two checks, and the second is not redundant: the conversation has to be the caller's, and
+   * the row has to belong to <em>that</em> conversation. Without the second, one's own conversation
+   * id plus somebody else's run id reads their thinking. The id is a UUID this application minted,
+   * so it can be a path variable — the same argument the rename endpoint makes, and the opposite of
+   * a knowledge document's.
+   */
+  @GetMapping("/conversations/{id}/reasoning/{requestId}")
+  public Map<String, Object> reasoning(
+      @AuthenticationPrincipal final OAuth2User principal,
+      @PathVariable final String id,
+      @PathVariable final String requestId) {
+    final var session = mine(id, principal);
+    final var reasoning =
+        reasonings
+            .findById(requestId)
+            .filter(it -> session.id().equals(it.conversationId()))
+            // The same answer to "no such row" and "not from this conversation", for the reason
+            // mine() gives about somebody else's conversation.
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+    return Map.of("requestId", reasoning.id(), "text", Strings.nullToEmpty(reasoning.text()));
   }
 
   @PostMapping("/runs/{requestId}/cancel")

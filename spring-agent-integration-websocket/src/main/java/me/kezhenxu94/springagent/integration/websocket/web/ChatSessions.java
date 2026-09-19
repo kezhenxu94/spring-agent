@@ -3,11 +3,15 @@ package me.kezhenxu94.springagent.integration.websocket.web;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import me.kezhenxu94.springagent.core.dao.models.ChatReasoning;
 import me.kezhenxu94.springagent.core.dao.models.ChatSession;
+import me.kezhenxu94.springagent.core.dao.repo.ChatReasoningRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ChatSessionRepo;
 import me.kezhenxu94.springagent.integration.websocket.security.WebUser;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -33,6 +37,7 @@ public class ChatSessions {
   private static final int TITLE_CHARACTERS = 60;
 
   private final ChatSessionRepo sessions;
+  private final ChatReasoningRepo reasonings;
   private final ChatMemory chatMemory;
 
   public ChatSession create(final WebUser user) {
@@ -66,7 +71,10 @@ public class ChatSessions {
   public void delete(final ChatSession session) {
     // The index row and the transcript both, or the conversation would be invisible while its
     // contents stayed on disk — and would come back the moment anything re-created the index row.
+    // What it thought goes with them, for the same reason and one more: those rows are the only
+    // thing left holding the text of a conversation somebody asked to be rid of.
     chatMemory.clear(session.id());
+    reasonings.deleteByConversationId(session.id());
     sessions.deleteById(session.id());
   }
 
@@ -100,10 +108,21 @@ public class ChatSessions {
    * is why the pairing is done per message rather than over the whole turn. Where an id <em>is</em>
    * given it is preferred, since a provider that bothers to assign one is the authority on which
    * answer belongs to which call.
+   *
+   * <p><b>A round's thinking is paired by the digest of its answer</b>, and hung on the user turn
+   * that opened the round rather than on the assistant row it was resolved from — that is where a
+   * live run draws its fold, and where a reader looks for it. Only the id travels: what was thought
+   * is fetched when somebody opens the fold, because it is routinely longer than the whole of the
+   * rest of the conversation. See {@link ChatReasoning} for why a digest and not the run's id.
    */
   public List<Turn> transcript(final ChatSession session) {
     final var messages = chatMemory.get(session.id());
+    final var thinking = reasoningByAnswer(session.id());
     final var turns = new ArrayList<Turn>();
+    // Which turn the round under way was opened by, so an answer found later can hang its thinking
+    // there, and -1 where the conversation held back no such turn — memory trimmed to a window
+    // beginning mid-round, say.
+    var userRow = -1;
     // Where this turn's tools row sits, so a later message's calls are added to it rather than
     // starting a second one, and -1 before the turn has made a call.
     var toolsRow = -1;
@@ -114,7 +133,8 @@ public class ChatSessions {
       if (message.getMessageType() == MessageType.USER) {
         // A user message is the turn boundary, and the only one chat memory has: a run begins when
         // somebody says something and ends when the agent stops answering.
-        turns.add(new Turn("user", message.getText(), List.of()));
+        userRow = turns.size();
+        turns.add(new Turn("user", message.getText(), List.of(), null));
         toolsRow = -1;
         calls = new ArrayList<>();
         continue;
@@ -127,7 +147,14 @@ public class ChatSessions {
       // message that only asks for a tool has null text and an empty bubble is worse than no row.
       final var text = assistant.getText();
       if (text != null && !text.isBlank()) {
-        turns.add(new Turn("assistant", text, List.of()));
+        turns.add(new Turn("assistant", text, List.of(), null));
+        // The first answer of the round that matches wins, and a round whose answer matches
+        // nothing keeps a null — no thinking shown at all, which is the right answer to "this
+        // round produced none" and to "memory no longer holds the answer it was digested from".
+        final var requestId = thinking.get(ChatReasoning.digestOf(text));
+        if (requestId != null && userRow >= 0 && turns.get(userRow).reasoningId() == null) {
+          turns.set(userRow, turns.get(userRow).withReasoning(requestId));
+        }
       }
       if (assistant.getToolCalls().isEmpty()) {
         continue;
@@ -147,7 +174,7 @@ public class ChatSessions {
                 answerTo(call, made, answers)));
       }
 
-      final var row = new Turn("tools", null, List.copyOf(calls));
+      final var row = new Turn("tools", null, List.copyOf(calls), null);
       if (toolsRow < 0) {
         toolsRow = turns.size();
         turns.add(row);
@@ -156,6 +183,33 @@ public class ChatSessions {
       }
     }
     return turns;
+  }
+
+  /**
+   * This conversation's stored thinking, by the digest of the answer each round ended on.
+   *
+   * <p>A digest two rounds share is dropped rather than kept, which is not a nicety: a conversation
+   * whose agent twice answered "Done." would otherwise show one of those rounds the other's
+   * reasoning, and be perfectly convincing about it. Ambiguous means nothing is drawn, which is the
+   * same answer this gives every other case it cannot be sure of.
+   *
+   * <p>A row with a blank digest is a run that ended without saying anything — cancelled, or
+   * failed. Nothing in a replayed transcript can pair with one, so it is left out here.
+   */
+  private Map<String, String> reasoningByAnswer(final String conversationId) {
+    final var byDigest = new HashMap<String, String>();
+    final var ambiguous = new ArrayList<String>();
+    for (final var reasoning : reasonings.findByConversationId(conversationId)) {
+      final var digest = reasoning.answerDigest();
+      if (digest == null || digest.isBlank()) {
+        continue;
+      }
+      if (byDigest.put(digest, reasoning.id()) != null) {
+        ambiguous.add(digest);
+      }
+    }
+    ambiguous.forEach(byDigest::remove);
+    return byDigest;
   }
 
   /**
@@ -245,8 +299,17 @@ public class ChatSessions {
    * @param role {@code user}, {@code assistant} or {@code tools}
    * @param text what was said, null on a {@code tools} row
    * @param tools the calls one assistant message made, empty on every other role
+   * @param reasoningId the run whose thinking belongs to this round, on the {@code user} row that
+   *     opened it and null everywhere else — including on a round that produced none, or whose
+   *     answer this conversation no longer holds. What to ask for, not what was thought: the text
+   *     is fetched only if somebody opens the fold
    */
-  public record Turn(String role, String text, List<ToolUse> tools) {}
+  public record Turn(String role, String text, List<ToolUse> tools, String reasoningId) {
+
+    Turn withReasoning(final String requestId) {
+      return new Turn(role, text, tools, requestId);
+    }
+  }
 
   /**
    * One tool call and what it answered.
