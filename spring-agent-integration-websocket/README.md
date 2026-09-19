@@ -376,10 +376,19 @@ chain — see `#customize-panel.detail-open` in `css/customize.css`. A skill is 
 a shadowing warning and *then* the two panes; a memory and an MCP server each carry a spec sheet
 above their body. Pinning all of that gave the thing itself whatever was left of a phone screen, so
 the panel scrolls the way every list on this page scrolls and what stays put is the title bar, which
-is why that bar carries the open thing's name. `.skill-panes` therefore takes a height of its own
-(`75dvh`) rather than filling what is left of a column, and below md `.detail-facts` and
-`.detail-form` stack key over value — a 6.5rem key column of a 20rem screen leaves a path wrapping
-to four lines beside a two-word label.
+is why that bar carries the open thing's name. A panel with an editor open in it scrolls that way
+too, wherever it is: `detail.css` unpins the head of a panel it finds a `.field-area-fill` in,
+because the two actions a writer needs are under the box rather than in the menu the pinning kept
+reachable.
+
+What is read or written at length then takes the height left under the facts about it, and is
+floored at `--editor-lines` — twenty lines of its own type, since `.file-edit`'s 12.5px on a 1.7
+line is not `.field`'s 13px on a 1.5. Below that floor the panel scrolls rather than squeezing the
+box, which is what a phone gets and what a desktop window never sees. `.skill-panes` is the same
+rule with `.skill-file-head` added to its floor, and it is the one link of the chain with a
+flex-basis of zero: the others take their content's height, and a frame sized to a two-thousand-line
+file is not a frame. Below md `.detail-facts` and `.detail-form` stack key over value — a 6.5rem
+key column of a 20rem screen leaves a path wrapping to four lines beside a two-word label.
 
 **Below md every navigation closes the drawer**, not only one that names an item. It used to stay
 open when a section was pressed, on the argument that the list it switches to is what you opened
