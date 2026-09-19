@@ -1,0 +1,142 @@
+/*
+ * Every field on this page, in one place.
+ *
+ * Before this there were six vocabularies: .detail-input and .detail-edit on the record cards,
+ * the knowledge note form spelt in utilities in the markup, .kb-search-field in the lens,
+ * .file-edit in the skills pane, .row-rename in the rail, .chat-title-input in the header and
+ * .composer-box around the composer. Four of them already carried the same four declarations —
+ * a --line border, a --surface ground, --mist on focus and the same 120ms — each restated in
+ * full, so a change to what a field looks like was a change in four files that would be made in
+ * two of them.
+ *
+ * Two shapes, because there are genuinely two:
+ *
+ *   .field        the element draws its own frame — an input, a select, a textarea
+ *   .field-box    a wrapper draws the frame and a bare child scrolls inside it
+ *
+ * The search lens is deliberately neither. It frames itself with an `outline` rather than a border
+ * so that opening it adds no box to the layout — a border would make the closed box 2px wider than
+ * the buttons beside it and shift the glyph — and its frame is amber while it is being typed into,
+ * because there it means "this is what the list is showing". Folding it in puts a second rectangle
+ * around it and moves the lens. Leave it alone; see .kb-search in knowledge.css.
+ *
+ * The second is not a variant of the first, it is what you need when the frame has to hold
+ * something besides the text: the composer's send button sits in its corner, the search lens's
+ * button sits beside the field, and the skills pane's editor shares its frame with a path. In all
+ * three the child is .field-bare, which has no frame of its own to fight the parent's.
+ *
+ * Sans by default and mono where the content is data rather than prose — a URL, a cron expression,
+ * a tool prefix. That is the one axis a field is allowed to vary on, and .field-mono is how it says
+ * so; a note title and a skill description are sentences and were being set in mono for no reason
+ * other than the class they happened to reuse.
+ */
+
+:root {
+  /* One radius, so that a field is the same shape wherever it is. The composer was 0.7rem, the
+     rail's rename 0.375rem and the record cards 0.4rem — three roundnesses for one idea. */
+  --field-radius: 0.5rem;
+}
+
+/* ─────────────────────────── the frame, wherever it is drawn ─────────────────────────── */
+
+.field,
+.field-box {
+  border: 1px solid var(--line);
+  border-radius: var(--field-radius);
+  background: var(--surface);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+/*
+ * Focus, in --mist: amber is the run's colour, and a focused field is not a run.
+ *
+ * A box-shadow ring *and* a recoloured border, because the ring alone is not reliable here —
+ * Tailwind declares box-shadow on every element for its own ring utilities, and where that
+ * declaration wins the ring never reaches the screen. The border is what can always be counted on,
+ * and the ring is what makes focus obvious where it does land.
+ */
+.field:focus,
+.field-box:focus-within {
+  border-color: var(--mist);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--mist) 16%, transparent);
+}
+
+.field:disabled,
+.field[aria-disabled="true"] { opacity: 0.45; }
+
+/* ─────────────────────────── the field itself ─────────────────────────── */
+
+.field {
+  min-width: 0;
+  padding: 0.3rem 0.5rem;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  outline: none;
+}
+
+/*
+ * A field holding more than a line.
+ *
+ * Its height comes from its own `rows`, not from the space around it: a five-line memory in a box
+ * as tall as the panel is five lines of text and four hundred pixels of nothing. Where a field
+ * really should fill what it is in — the skills editor, which *is* the pane — .field-area-fill
+ * says so.
+ */
+.field-area {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  /* A textarea with no `rows` is two lines tall, which is shorter than anything anybody writes
+     here. Eight rems is what the record card's editor has always opened at. */
+  min-height: 8rem;
+  resize: vertical;
+  line-height: 1.7;
+}
+
+/* Fills what it is in, on both axes — a textarea left to itself is about twenty characters wide,
+   whatever the box around it. Usable without .field-area, which is why the width is here and not
+   borrowed from it. */
+.field-area-fill {
+  display: block;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 12rem;
+  resize: none;
+}
+
+/* ─────────────────────────── inside somebody else's frame ─────────────────────────── */
+
+/*
+ * The child of a .field-box: no frame, no ground, no focus mark of its own.
+ *
+ * All three of those belong to the wrapper, which is the whole reason the wrapper exists — a child
+ * that drew its own would put a second rectangle just inside the first, and a second focus mark
+ * beside it.
+ */
+.field-bare {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  outline: none;
+}
+
+/* ─────────────────────────── the one modifier ───────────────────────────
+ *
+ * Data rather than prose: a URL, a cron expression, a tool prefix, a header, an id somebody pasted
+ * and will compare against another. Tabular figures so two of them line up in a column.
+ *
+ * Last in the file, and it has to be: it ties on specificity with .field and .field-bare, and
+ * .field-bare sets `font-family: inherit` for the elements that take their type from the frame
+ * around them. Declared earlier, that `inherit` wins and a field asking for mono quietly gets the
+ * page's sans — which is what happened to the skills editor.
+ */
+.field-mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}

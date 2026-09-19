@@ -31,12 +31,28 @@ const NARROWING = ['q', 'owner', 'scope'];
  * What Customize is divided into, in the order the strip draws them.
  *
  * A closed set of slash-free words, so it is a path segment rather than a query key — the same
- * test the knowledge base's scope passes. Adding a second tab is adding a word here.
+ * test the knowledge base's scope passes. Adding a tab is adding a word here.
  */
-const TABS = ['skills'];
+const TABS = ['skills', 'memories', 'mcp'];
 
-/** The two stores a skill can be in. There is no group one: this surface carries no group. */
-const SKILL_SCOPES = ['own', 'tenant'];
+/**
+ * Which stores each tab has, which is not the same set for all three.
+ *
+ * Skills and memories are files under a home, so the store is which home — `own` or `tenant`, with
+ * no group one because this surface carries no group. MCP's three are not homes but three
+ * relationships to one list: servers you own, servers somebody shared with you, and the ones this
+ * deployment configures for everybody. They behave the same way for the reader, though — a row of
+ * pills over a grid, deciding whose rows are in it — so they are spelt the same way, and each group
+ * is reachable by a link and by the back button like every other list in this section.
+ *
+ * Per tab rather than one list for the section, because the words differ and a single list would
+ * name stores a tab does not have.
+ */
+const TAB_SCOPES = {
+  skills: ['own', 'tenant'],
+  memories: ['own', 'tenant'],
+  mcp: ['mine', 'shared', 'configured'],
+};
 
 /**
  * What can narrow the skills page.
@@ -78,7 +94,8 @@ export function knowledgeRoute(docId, scope, narrowing) {
 }
 
 /**
- * The hash that opens Customize: a tab, a store, and — with one chosen — a skill and a file in it.
+ * The hash that opens Customize: a tab, the store where that tab has one, and — with one chosen —
+ * the thing being read and, for a skill, a file in it.
  *
  * The store is part of the route for the reason the knowledge base's scope is: a skill name is
  * unique inside one store and not across them, and `pdf-filler` filed privately and company-wide
@@ -91,8 +108,10 @@ export function knowledgeRoute(docId, scope, narrowing) {
  */
 export function customizeRoute(tab, scope, skill, narrowing) {
   const section = TABS.includes(tab) ? tab : TABS[0];
-  const store = SKILL_SCOPES.includes(scope) ? scope : SKILL_SCOPES[0];
-  const path = `${CUSTOMIZE}/${section}/${store}`
+  const stores = TAB_SCOPES[section];
+  const store = stores.includes(scope) ? scope : stores[0];
+  const path = `${CUSTOMIZE}/${section}`
+    + (store ? `/${store}` : '')
     + (skill ? `/${encodeURIComponent(skill)}` : '');
   return path + query(
     CUSTOMIZE_NARROWING, narrowing === undefined ? current().narrowing : narrowing,
@@ -152,8 +171,9 @@ export function parse(hash) {
     // control can undo — the same forgiveness readNarrowing shows an unknown scope.
     const tab = TABS.includes(parts[0]) ? parts[0] : TABS[0];
     const afterTab = TABS.includes(parts[0]) ? parts.slice(1) : parts;
-    const scope = SKILL_SCOPES.includes(afterTab[0]) ? afterTab[0] : SKILL_SCOPES[0];
-    const named = SKILL_SCOPES.includes(afterTab[0]) ? afterTab.slice(1) : afterTab;
+    const stores = TAB_SCOPES[tab];
+    const named = stores.includes(afterTab[0]) ? afterTab.slice(1) : afterTab;
+    const scope = stores.includes(afterTab[0]) ? afterTab[0] : (stores[0] || '');
     return {
       view: 'customize',
       tab,

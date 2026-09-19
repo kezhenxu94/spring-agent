@@ -551,6 +551,68 @@ of their own. Reading the company scope is never affected.
 `UserWorkspaceFactory.forRequest(userId, groupId, tenantId)` is the entry point if your own code
 needs the same paths; `HomeDir` names the subdirectories.
 
+### Reading and writing memories yourself
+
+Memories are files under each scope's `memories/`, with `MEMORY.md` as the index and YAML front
+matter on each. If your surface wants to list or correct them without going through the model, use
+`core.memory.MemoryStore` rather than walking the directory — it is what `MemoryTools` and the
+browser's `MemoryController` both go through, and it holds the path guard that stops a symlink
+planted in a shared `memories/` turning a read of a group's memories into a read of one member's
+home.
+
+```java
+final var root = workspaces.forOwner(userId).folderPath(Folder.MEMORIES);  // one scope's root
+final List<MemoryEntry> all  = memoryStore.list(root);      // index first, then by path
+final Optional<MemoryFile> one = memoryStore.read(root, "web-ui.md");
+memoryStore.write(root, "web-ui.md", text);                 // creates or replaces
+memoryStore.delete(root, "web-ui.md");                      // files only
+```
+
+It takes a root rather than a `HomeDir`, unlike `SkillFiles`: a memory is never looked up across
+scopes, because `MemoryScopes` has already decided which roots a request reaches and which of them
+it may write, and a second place that decision could be made differently is a second place it could
+be made wrongly. `folderPath` and not `folder`, so that listing a company nobody has written to does
+not bring a directory into existence in shared storage on behalf of somebody who only read.
+
+`MemoryEntry` carries the path (the identity), size, modification time, and the `name`, `description`
+and `type` its front matter *claims* — each blank where it claims nothing, because a memory the agent
+wrote badly still has to be visible to whoever would fix it. It holds no `Path`, which is what lets a
+controller serialize it as it stands. `MemoryFile` says whether the bytes are text at all and whether
+they were too large to carry. A path that would leave the root throws `SecurityException`; catch it
+separately from "not there", or a traversal attempt reads like a typo.
+
+**Whether a caller may write the root it passed is not asked here.** `MemoryTools` asks
+`MemoryScopes.writable`, which requires a group chat as the witness to a shared write; a surface with
+no group concept — a browser session — should ask `TenantWrites` instead, as `MemoryController` does,
+or its company scope is read-only whatever the deployment configured.
+
+### Registering MCP servers yourself
+
+`core.tools.mcp.McpServerRegistry` is what `McpServerManagementTools` and the browser's
+`McpController` both call. Registration validates the URL, checks the tool prefix against every
+server that caller can reach, connects to the endpoint and lists its tools, and only then stores a
+row — nothing is saved unless the server answered, because a row that was never reached is one whose
+tools a later run fails to assemble.
+
+```java
+final var registered = registry.register(userId, chatId, new McpServerSpec(
+    name, url, headers, title, version, description, websiteUrl, toolPrefix), toolContext);
+registered.toolNames();                       // what the probe found; not stored
+registry.owned(userId);
+registry.sharedWith(userId, chatId);          // others', name and owner only
+registry.applicationConfigured();             // spring.ai.mcp.client.*, owned by nobody
+registry.setEnabled(userId, name, false);     // mute without forgetting the URL and credential
+```
+
+A refusal is `McpRegistryException` carrying a `Reason` and its arguments, never a finished sentence:
+the tools turn one into prose a model reads and acts on, and a controller into an HTTP status. Keep
+that split — `INVALID` and `UNREACHABLE` look alike and are not, and reporting a server that did not
+answer as a bad request has somebody editing a URL that was right all along.
+
+If you put this behind an endpoint, **never put a server's headers on the wire.** They are where the
+token lives; report their names, and treat an absent `headers` on the way back in as "keep what is
+stored" rather than as "clear them".
+
 ### Reading and writing skills yourself
 
 A skill is a folder under `skills/` holding a `SKILL.md` with YAML front matter, plus whatever files

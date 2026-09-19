@@ -103,11 +103,7 @@
 .composer-box {
   position: relative;
   padding: 0.2rem;
-  border: 1px solid var(--line);
-  border-radius: 0.7rem;
-  background: var(--surface);
   cursor: text;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
 /* The field itself. One line while it is empty, growing with the message — a div does that by
@@ -126,7 +122,6 @@
   padding: 0.3rem 0.5rem;
   padding-right: 2rem;
   white-space: pre-wrap;
-  outline: none;
 }
 
 /* Drawn rather than declared, because only an <input> has a placeholder. `float` with no height so
@@ -144,14 +139,10 @@
   color: var(--mist);
   pointer-events: none;
 }
-:root:not(.dark) .composer-box { background: #fff; border-color: #D8DBE1; }
-
-/* Amber is the run's colour, and a focused composer is not a run — so focus is carried by contrast
-   and a neutral ring rather than by borrowing a state colour. */
-.composer-box:focus-within {
-  border-color: var(--mist);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--mist) 16%, transparent);
-}
+/* The frame and the focus ring are .field-box's — see fields.css. This used to restate both here,
+   and to name #fff and #D8DBE1 outright for the light theme, which base.css says is the one thing
+   no other file may do: a field that was a shade off every other field, in a value nothing else
+   could reach. */
 
 /* No fill. The glyph is the ↵ key the reader is about to press anyway, so the button is a reminder
  * of the keystroke rather than a second, competing way to send — a filled pill here would be the

@@ -266,11 +266,12 @@ or tenant asked the agent to remember, lives behind the `KnowledgeBase` SPI, and
 collection and connection. A deployment can run the index in the heap and the knowledge base in
 Milvus.
 
-## The two stores a surface reaches without a run in between
+## The stores a surface reaches without a run in between
 
 Everywhere else a store is touched by a tool inside a run. The browser is the exception, and it is
-the exception twice: it reads and writes the **knowledge base** over `/api/knowledge` and a user's
-**skills** over `/api/skills`, both on the identity of whoever is logged in. Both are things a user
+the exception four times over: it reads and writes the **knowledge base** over `/api/knowledge`, a
+user's **skills** over `/api/skills`, their **memories** over `/api/memories` and their **MCP
+servers** over `/api/mcp`, all on the identity of whoever is logged in. All four are things a user
 owns, and asking a model to list or correct one is a poor way to do it — the model has to pick the
 tool, guess the id and report back.
 
@@ -278,26 +279,36 @@ tool, guess the id and report back.
 flowchart LR
     page[the page] -->|"/api/knowledge"| ctrl[KnowledgeController]
     page -->|"/api/skills"| sctrl[SkillController]
+    page -->|"/api/memories"| mctrl[MemoryController]
+    page -->|"/api/mcp"| xctrl[McpController]
     page -->|"POST a message"| chat[ChatController]
     chat --> run[a run]
     run -->|"knowledge tools"| kbs[KnowledgeBase SPI]
     run -->|"skill tools"| sf[SkillFiles]
+    run -->|"memory tools"| ms[MemoryStore]
+    run -->|"MCP tools"| reg[McpServerRegistry]
     ctrl --> kbs
     sctrl --> sf
+    mctrl --> ms
+    xctrl --> reg
     kbs --> store[(its own Milvus collection)]
     sf --> home[("the scope's skills/ folder")]
+    ms --> mhome[("the scope's memories/ folder")]
+    reg --> rows[("mcp_servers, per owner")]
 ```
 
 The scope is derived from the session in both paths and never from the request, so the page can
 reach exactly what a run started from it could — with one exception, an `app.ai.admins` member
 naming an owner on a knowledge read or delete, which mirrors what `KnowledgeAdminTools` and
 `PlaybookTools` already allow and goes no further: nothing is ever filed into somebody else's
-knowledge base from here. **Skills have no such exception at all** — a knowledge document is prose
-and an admin reading one is a moderation question, while a skill is instructions the agent will load
-and act on.
+knowledge base from here. **The other three have no such exception at all** — a knowledge document is
+prose and an admin reading one is a moderation question, while a skill is instructions the agent will
+load and act on, a memory is what the agent concluded about somebody, and an MCP server row holds
+that person's credential.
 
-`SkillFiles` lives in core because both callers reach it: the model-facing `SkillManagementTools`
-and the browser's controller. That is the shape to copy for anything else a surface will one day
+`SkillFiles`, `MemoryStore` and `McpServerRegistry` all live in core because two callers reach each:
+the model-facing tools and the browser's controller. That is the shape to copy for anything else a
+surface will one day
 touch directly — one component holding the store's rules and its path guard, and two thin callers
 translating its refusals into their own dialect.
 

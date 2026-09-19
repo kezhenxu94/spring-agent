@@ -43,7 +43,9 @@ class McpServerManagementToolsPrefixTest {
   void setUp() {
     final ObjectProvider<McpStreamableHttpClientProperties> provider = mock(ObjectProvider.class);
     when(provider.getIfAvailable()).thenReturn(null);
-    tools = new McpServerManagementTools(repo, clientFactory, provider, TestI18n.english());
+    tools =
+        new McpServerManagementTools(
+            new McpServerRegistry(repo, clientFactory, provider), TestI18n.english());
     when(repo.findByOwnerIdAndName(any(), any())).thenReturn(Optional.empty());
     when(repo.findAccessibleTo(any(), any())).thenReturn(List.of());
   }

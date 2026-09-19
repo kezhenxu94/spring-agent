@@ -167,6 +167,22 @@ public class ChatController {
             !Strings.isNullOrEmpty(user.tenantId()),
             "tenantWritable",
             tenantWrites.allowed(user.id())));
+    // Memories, whose two scopes are the skills page's two scopes and are reported separately
+    // rather than shared with it. They answer the same today and are not the same question: one is
+    // about instructions the agent loads, the other about conclusions it drew, and a deployment
+    // that came to treat them differently would find one key already spoken for.
+    //
+    // tenantWritable is app.ai.non-admin-tenant-writes, asked exactly as the skills page asks it —
+    // and deliberately not MemoryScopes.writable, which additionally wants a group chat as the
+    // witness to a shared write. A browser session has no group, so that answer would draw a
+    // company scope no setting could ever make writable. See MemoryController.
+    out.put(
+        "memories",
+        Map.of(
+            "tenant",
+            !Strings.isNullOrEmpty(user.tenantId()),
+            "tenantWritable",
+            tenantWrites.allowed(user.id())));
     // Whether an answer written here can also be put on a chat, and on which platform. The page
     // draws that platform's own icon on the button, so a name it does not recognise is a button it
     // does not draw — availability rather than a promise, exactly as with the knowledge base

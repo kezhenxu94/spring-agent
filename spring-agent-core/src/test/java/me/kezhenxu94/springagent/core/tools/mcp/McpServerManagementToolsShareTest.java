@@ -51,7 +51,8 @@ class McpServerManagementToolsShareTest {
   private McpServerManagementTools toolsWith(final McpStreamableHttpClientProperties configured) {
     final ObjectProvider<McpStreamableHttpClientProperties> provider = mock(ObjectProvider.class);
     when(provider.getIfAvailable()).thenReturn(configured);
-    return new McpServerManagementTools(repo, clientFactory, provider, TestI18n.english());
+    return new McpServerManagementTools(
+        new McpServerRegistry(repo, clientFactory, provider), TestI18n.english());
   }
 
   private static McpStreamableHttpClientProperties configuredGithub() {

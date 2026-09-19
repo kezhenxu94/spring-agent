@@ -7,7 +7,7 @@
 // Two things in it are worth knowing before changing it.
 //
 // The file is set in exactly the type the editor is: mono 12.5px on a 1.7 line, which is what
-// .detail-edit has always used. Pressing Edit swaps the rendered lines for a textarea and nothing
+// .file-edit is set to. Pressing Edit swaps the rendered lines for a textarea and nothing
 // moves, so correcting a file happens where it was being read rather than in a form about it. If
 // either side of that pair is restyled, both are.
 //
@@ -205,7 +205,7 @@ function filePane(view, file) {
 
   if (draft) {
     const area = document.createElement('textarea');
-    area.className = 'file-edit';
+    area.className = 'field-bare field-area-fill field-mono file-edit';
     area.spellcheck = false;
     area.value = draft.text;
     // Straight into state on every keystroke, not read back off the element at save time — this

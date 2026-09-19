@@ -143,7 +143,11 @@
 /* And it stops being a card. A border and an inset of its own made sense around one item in a
    panel; around the whole panel they are a second frame just inside the first, and they spend the
    width the thing is read at on nothing. The panel's own padding is its margin. */
-.detail-panel.detail-open > .detail-body > .detail-card {
+/* A descendant and not a child: Customize puts a tabpanel between its body and the open card, so
+   the child combinator this used to have quietly stopped matching there — the skills tab drew the
+   frame this rule exists to remove, and every tab added beside it inherited that. Nothing else on
+   this page nests a .detail-card inside another, so matching at any depth costs nothing. */
+.detail-panel.detail-open .detail-card {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -151,6 +155,15 @@
   padding: 0;
   border: 0;
   border-radius: 0;
+}
+/* And the panel in between has to pass the height through, or the card can no longer fill the
+   panel it just stopped being a card inside of — which is what lets the skills tab scroll its two
+   panes rather than the page scrolling past them. */
+.detail-panel.detail-open > .detail-body > [role="tabpanel"] {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 .detail-panel.detail-open .detail-text-box { flex: 1; min-height: 0; }
 .detail-panel.detail-open .detail-text { flex: 1; min-height: 0; max-height: none; }
@@ -195,24 +208,11 @@
   gap: 0.5rem;
 }
 
-.detail-input {
-  min-width: 0;
-  flex: 1 1 9rem;
-  padding: 0.3rem 0.45rem;
-  border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  background: var(--surface);
-  color: var(--fg);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  outline: none;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
-}
-.detail-input:disabled { opacity: 0.45; }
 /* Narrow on purpose: a firing count is one or two digits, and a field the width of the column
-   invites a paragraph. */
-.detail-input-narrow { flex: 0 0 4.5rem; }
+   invites a paragraph. Layout only — what it looks like is .field's. */
+.field-narrow { flex: 0 0 4.5rem; }
+/* And the ordinary case in a .detail-field-row: take the room that is going. */
+.field-grow { flex: 1 1 9rem; }
 
 .detail-check {
   display: inline-flex;
@@ -228,29 +228,6 @@
   font-size: 10.5px;
   line-height: 1.45;
   color: var(--fg-dim);
-}
-.detail-edit {
-  flex: 1;
-  min-height: 8rem;
-  width: 100%;
-  resize: none;
-  padding: 0.6rem 0.7rem;
-  border: 1px solid var(--line);
-  border-radius: 0.6rem;
-  background: var(--surface);
-  color: var(--fg);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12.5px;
-  line-height: 1.7;
-  outline: none;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
-}
-/* The composer's focus ring, for the same reason it is not amber there: a focused field is not a
-   run. */
-.detail-input:focus,
-.detail-edit:focus {
-  border-color: var(--mist);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--mist) 16%, transparent);
 }
 
 .detail-edit-buttons {

@@ -169,6 +169,7 @@
   gap: 0.6rem;
 }
 
+
 .skill-card {
   /* The positioning context the open button stretches into. */
   position: relative;
@@ -381,7 +382,7 @@
  * down the middle, and everything inside it quiet: a tree that looks like the sidebar's rows and a
  * file that looks like the textarea it becomes when you press Edit.
  *
- * The frame's own vocabulary is .detail-edit's — the same border, the same ground — because that
+ * The frame's own vocabulary is .field's — the same border, the same ground — because that
  * is what the right-hand pane turns into, and a box that changed shape on the way into editing
  * would make an edit feel like a different screen rather than the same one, writable.
  */
@@ -532,7 +533,7 @@
 /*
  * The file itself.
  *
- * Mono at 12.5px on a 1.7 line — exactly .detail-edit's type, and that is the whole point. Press
+ * Mono at 12.5px on a 1.7 line — exactly what .file-edit is set to, and that is the whole point. Press
  * Edit and the pane becomes a textarea set the same way, so the text does not move: the file is
  * being corrected where it was being read, rather than opened in a form about it.
  *
@@ -549,7 +550,7 @@
   /*
    * The height of one line, as a length rather than a ratio, and shared by both columns.
    *
-   * This is 12.5px x 1.7 — .detail-edit's type, so the editor still lands on the same lines. It
+   * This is 12.5px x 1.7 — .file-edit's type, so the editor still lands on the same lines. It
    * has to be a length because the gutter sets its digits smaller than the code: a ratio is
    * resolved against each element's own font-size, so 1.7 in an 11px column is 18.7px against the
    * code's 21.25px, and the two drift a quarter of a line further apart on every row. Eight lines
@@ -673,22 +674,20 @@
 
 /* Editing, in the same box. `resize: none` because the pane is already the size of the panel, and
    a handle that could make it smaller than its frame would be a handle that does nothing useful. */
+/* The skills editor is a .field-area-fill .field-mono .field-bare: it *is* the pane, whose frame
+   and focus mark are the pane's, so all it adds is the inset that keeps the text off that frame —
+   and its type.
+ *
+ * The type is not a preference. It is exactly the type the *reading* view is set in, 12.5px on a
+ * 1.7 line, so that pressing Edit swaps the rendered lines for a textarea and nothing moves. That
+ * is what .file-prose and .code-line are set in too, and if either side of the pair is restyled,
+ * both are. .field-mono's own 12px is right for a field in a form and wrong here, where the field
+ * has to land on lines somebody was already reading. */
 .file-edit {
-  display: block;
-  width: 100%;
-  height: 100%;
-  min-height: 12rem;
-  resize: none;
   padding: 0 0.75rem;
-  border: 0;
-  background: transparent;
-  color: var(--fg);
-  font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12.5px;
   line-height: 1.7;
-  outline: none;
 }
-.file-edit:focus-visible { outline: 2px solid var(--mist); outline-offset: -2px; }
 
 /* What a pane says when there is nothing to draw in it: no file chosen, a binary, one too large. */
 .file-note {
@@ -757,4 +756,79 @@
   .pane-resize { display: none; }
   .skill-panes[data-on="file"] > .skill-tree { display: none; }
   .skill-panes[data-on="tree"] > .skill-file { display: none; }
+}
+
+/* ─────────────────────────────── memories ───────────────────────────────
+ *
+ * The list is the skills grid: same cards, same facts line, same silhouette while it loads. That is
+ * not economy, it is the point — a person moving between the two tabs is doing the same thing to
+ * two different stores, and a second row shape would make them learn it twice.
+ *
+ * Two marks are this tab's own, and each says something the skills grid has no equivalent of.
+ */
+
+/* MEMORY.md, which is the list of memories rather than one of them. Marked by its left edge and
+   nothing else: a fill or a border would make the index look like the *important* memory, when what
+   it actually is is the table of contents. --mist is the colour every other "this one is not like
+   its neighbours" mark on this page uses, and it is defined in both themes. */
+.memory-index {
+  border-left: 2px solid var(--mist);
+}
+
+/* Where a memory lives, when that is not already its title. Mono because it is an address, exactly
+   as .skill-file-path is, and dimmed because it is the last thing on the line worth reading. */
+.memory-path {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+}
+
+/* One memory, opened, has nothing of its own here: it is the shared record card — the same head,
+   facts grid and body box a knowledge document opens in. See memories-detail.js. */
+
+/* ─────────────────────────────── MCP servers ───────────────────────────────
+ *
+ * Three groups of the same card, and a form. Nothing here is a new surface: the card is the skills
+ * card, the fields are .field (see fields.css), and the share list sits in a .detail-text-box.
+ */
+
+/* A server that is registered but turned off. Dimmed rather than struck through or greyed to
+   unreadable: it is still a row somebody will open to turn back on, and the one thing it needs to
+   say is that its tools are not reaching the model right now. The facts line says so in words too —
+   colour alone is not a thing this page ever asks anybody to read. */
+.mcp-muted {
+  opacity: 0.6;
+}
+
+/* The form is .detail-form — the label-and-value grid a scheduled task is edited in — so there is
+   nothing to write here. Said rather than left out: the absence is the decision. */
+
+/* Who the server is shared with. A row per target, the id set in mono because it is an id somebody
+   pasted and will compare against one somewhere else, and the revoke pushed to the far end so the
+   ids line up and can be read down. */
+.mcp-shares {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.4rem 0;
+}
+.mcp-shares > li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.mcp-shares > li > :first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Shared with everyone, which is not an id and must not be dressed as one. Set in the page's own
+   type rather than mono, so that a row reading "everyone" cannot be mistaken for a row naming an
+   account that happens to be called that. */
+.mcp-share-everyone {
+  font-size: 12px;
+  font-weight: 600;
 }
