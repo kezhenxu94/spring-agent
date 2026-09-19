@@ -4,12 +4,15 @@
 // rows and the file's type are all borrowed from somewhere else in the product — see customize.css
 // for which and why — so what is new here is the arrangement rather than a new set of surfaces.
 //
-// Two things in it are worth knowing before changing it.
+// Three things in it are worth knowing before changing it.
 //
 // The file is set in exactly the type the editor is: mono 12.5px on a 1.7 line, which is what
 // .file-edit is set to. Pressing Edit swaps the rendered lines for a textarea and nothing
 // moves, so correcting a file happens where it was being read rather than in a form about it. If
 // either side of that pair is restyled, both are.
+//
+// SKILL.md is *shown* without the `name` and `description` the head above it is already saying,
+// and edited as it is stored — see skills-frontmatter.js.
 //
 // And the unsaved buffer lives in state, not in the textarea. Anything that re-dispatches the
 // route redraws this panel — switching language does, see app.js — and a draft held only in the
@@ -21,6 +24,7 @@ import { detailHead } from './detail.js';
 import { markdown } from './render.js';
 import { busyButton, spinner } from './busy.js';
 import { renderTree } from './skills-tree.js';
+import { SKILL_DOC, withoutDeclared } from './skills-frontmatter.js';
 import { deleteFile, deleteSkill, downloadSkill, saveFile, uploadInto } from './skills-actions.js';
 import { attempt } from './toast.js';
 
@@ -176,6 +180,12 @@ function filePane(view, file) {
   // empty box over a file somebody still has.
   const editable = !file.binary && !file.tooLarge;
 
+  // SKILL.md is *read* without the two front-matter lines the head above is already saying —
+  // see skills-frontmatter.js. Editing gets the file as it is stored: what is saved is what was
+  // in the box, so the box has to be the file.
+  const doc = filePath === SKILL_DOC;
+  const shown = doc ? withoutDeclared(file.text || '') : (file.text || '');
+
   if (draft) {
     // Icons here too, so the strip does not change shape between reading and writing — four
     // widths of button swapping for two words would move the path beside them every time somebody
@@ -217,10 +227,12 @@ function filePane(view, file) {
     body.append(note(t('skills.file.binary')));
   } else if (file.tooLarge) {
     body.append(note(t('skills.file.large', `${Math.round(file.size / 1024)}KB`)));
-  } else if (!file.text) {
-    body.append(note(t('skills.file.empty')));
+  } else if (!shown.trim()) {
+    // A SKILL.md that is only its name and description is not empty, and saying so would send
+    // somebody looking for the text that went missing. What it holds is in the head above it.
+    body.append(note(t(doc && file.text ? 'skills.file.declared' : 'skills.file.empty')));
   } else {
-    body.append(fileContent(file.text, filePath));
+    body.append(fileContent(shown, filePath));
   }
 
   pane.append(head, body);

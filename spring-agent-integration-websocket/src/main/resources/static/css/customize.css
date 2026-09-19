@@ -134,9 +134,13 @@
  * It borrows .kb-search wholesale, and changes one thing: where the sidebar's grows to fill a
  * 270px rail, this row is the width of the page. A field stretched across it is a box the width of
  * a paragraph for a query that is a word or two, and it pushes the store pills to the far end of a
- * line they were reading as a pair with. So it grows to what a skill name needs and stops.
+ * line they were reading as a pair with. So it grows to what a name needs and stops.
+ *
+ * Every tab's lens, not the skills one alone: the tabs draw the same row and a person moving
+ * between them reads a field that changes width as the page jumping.
  */
-#skills-search-box[data-open="true"] { max-width: 15rem; }
+#skills-search-box[data-open="true"],
+#memories-search-box[data-open="true"] { max-width: 15rem; }
 
 /* ─────────────────────────────────────── one skill in the list ─────────────────────────────────────── */
 
