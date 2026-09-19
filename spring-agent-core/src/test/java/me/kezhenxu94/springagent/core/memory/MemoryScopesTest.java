@@ -23,9 +23,16 @@ class MemoryScopesTest {
         FileSystemStorageProperties.builder().location(location.toString()).build());
   }
 
+  /** The shipped default: the company scope is writable by admins and by nobody else. */
   private MemoryScopes scopes(
       final boolean admin, final String userId, final String groupId, final String tenantId) {
-    return MemoryScopes.forRequest(factory(), admin, userId, groupId, tenantId);
+    return MemoryScopes.forRequest(factory(), admin, false, userId, groupId, tenantId);
+  }
+
+  /** {@code app.ai.non-admin-tenant-writes: true} — the company scope open to every member. */
+  private MemoryScopes open(
+      final boolean admin, final String userId, final String groupId, final String tenantId) {
+    return MemoryScopes.forRequest(factory(), admin, true, userId, groupId, tenantId);
   }
 
   @Nested
@@ -83,12 +90,32 @@ class MemoryScopesTest {
     }
 
     @Test
-    @DisplayName("a group chat writes all three")
+    @DisplayName("a group chat writes its own and the group's, and by default not the tenant's")
     void group() {
       final var s = scopes(false, "ou_1", "oc_9", "t_3");
       assertThat(s.writable(ScopeTarget.OWN)).isTrue();
       assertThat(s.writable(ScopeTarget.GROUP)).isTrue();
+      // The default this deployment ships: what the whole company remembers is an administrator's
+      // to change. A group chat is witnesses, and witnesses are not the same as review.
+      assertThat(s.writable(ScopeTarget.TENANT)).isFalse();
+    }
+
+    @Test
+    @DisplayName("with non-admin tenant writes on, a group chat writes all three")
+    void groupWhenOpen() {
+      final var s = open(false, "ou_1", "oc_9", "t_3");
+      assertThat(s.writable(ScopeTarget.OWN)).isTrue();
+      assertThat(s.writable(ScopeTarget.GROUP)).isTrue();
       assertThat(s.writable(ScopeTarget.TENANT)).isTrue();
+    }
+
+    @Test
+    @DisplayName("even with it on, a one-to-one chat still does not write the tenant")
+    void p2pWhenOpen() {
+      // The toggle says who may write the company scope; the group rule says where from. Turning
+      // the first on does not turn the second off, or a p2p chat would become the one place a
+      // company-wide memory could be written with nobody else in the room.
+      assertThat(open(false, "ou_1", null, "t_3").writable(ScopeTarget.TENANT)).isFalse();
     }
 
     @Test
@@ -121,6 +148,15 @@ class MemoryScopesTest {
           .contains(location.resolve("ou_1").resolve("memories").toString())
           .contains("you may write here")
           .contains("tenant")
+          .contains("only an administrator can change");
+    }
+
+    @Test
+    @DisplayName("with non-admin tenant writes on, the tenant reads as a one-to-one restriction")
+    void readOnlyReasonFollowsTheToggle() {
+      // Which of the two read-only sentences the model is given is the difference between "ask
+      // again in a group chat" and "do not offer this at all".
+      assertThat(open(false, "ou_1", null, "t_3").describe(TestI18n.english()))
           .contains("read only in this one-to-one chat");
     }
 

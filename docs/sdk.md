@@ -541,6 +541,13 @@ what the company remembers without being able to add to it, because nobody else 
 there. `MemoryScopes` is that decision in one place, and every write outside `own` is logged with the
 user, the chat and the path.
 
+The `tenant` scope has one gate above that, and it is the same gate for memories, for skills and for
+the knowledge base: `app.ai.non-admin-tenant-writes`, `false` by default, so what the whole company
+shares is an `app.ai.admins` member's to change and everybody else's to read. `core.config.TenantWrites`
+answers it — inject it if your own code writes into that scope — and the three callers in core
+(`MemoryTools`, `SkillManagementTools`, `KnowledgeBaseTools`) ask it rather than each keeping a rule
+of their own. Reading the company scope is never affected.
+
 `UserWorkspaceFactory.forRequest(userId, groupId, tenantId)` is the entry point if your own code
 needs the same paths; `HomeDir` names the subdirectories.
 

@@ -74,7 +74,7 @@ class FeishuBotToolsTest {
                 new Admins(
                     new SpringAgentProperties(
                         new SpringAgentProperties.Ai(
-                            Set.of(), Map.of(), null, null, null, null, null, null),
+                            Set.of(), null, Map.of(), null, null, null, null, null, null),
                         Locale.ENGLISH,
                         null,
                         null)),

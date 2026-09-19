@@ -25,6 +25,7 @@ import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.LocalizedPrompt;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.config.TenantWrites;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
@@ -93,6 +94,12 @@ public class AgentToolsProvider {
    * {@code MemoryScopes.writable}.
    */
   private final Admins admins;
+
+  /**
+   * Whether anybody but an admin may write the tenant's memories at all, which is the other half of
+   * that decision and the half a deployment configures. See {@code TenantWrites}.
+   */
+  private final TenantWrites tenantWrites;
 
   /** What the memory block the model reads is written in. */
   private final CoreMessages messages;
@@ -279,6 +286,7 @@ public class AgentToolsProvider {
         MemoryScopes.forRequest(
             userWorkspaceFactory,
             admins.isAdmin(request.userId()),
+            tenantWrites.openToEveryone(),
             request.userId(),
             request.groupId(),
             request.tenantId());

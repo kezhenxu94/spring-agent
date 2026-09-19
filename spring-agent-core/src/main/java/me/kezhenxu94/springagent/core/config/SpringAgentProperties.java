@@ -94,6 +94,13 @@ public record SpringAgentProperties(
    *     empty set is the feature being off. See {@link Admins} for what membership grants and why
    *     it is not a UI role: an admin causes things to happen as somebody else, in runs that keep
    *     the identity they started with.
+   * @param nonAdminTenantWrites whether somebody who is not an admin may add to, change or remove
+   *     what the whole company shares — its memories, its skills and its knowledge base. False by
+   *     default, so the company-wide scope is read-only to everybody but {@link Admins}: what is
+   *     written there is loaded into every colleague's conversations as instructions and as fact,
+   *     and nobody reviews it on the way in. A deployment small enough for that to be somebody
+   *     else's problem turns it on and gets the older rule back, where any member could write the
+   *     company scope from a group chat or from the page.
    * @param scheduledTaskPrompt what a firing scheduled task says to the model, as a template over
    *     {@code {taskText}} — the prompt the task was created with. Defaults to {@code
    *     core/prompts/scheduled-task-prompt.md} in the host's language, since a deployment that
@@ -104,6 +111,7 @@ public record SpringAgentProperties(
    */
   public record Ai(
       Set<String> admins,
+      Boolean nonAdminTenantWrites,
       Map<String, ModelPricing> modelPricing,
       VectorStore vectorstore,
       Rag rag,
@@ -151,6 +159,12 @@ public record SpringAgentProperties(
       }
       if (admins == null) {
         admins = Set.of();
+      }
+      // Boxed and defaulted here rather than a primitive, so that "nobody said" is the closed
+      // answer rather than whatever a false primitive happens to mean. Closed is the safe default:
+      // see the component's javadoc above.
+      if (nonAdminTenantWrites == null) {
+        nonAdminTenantWrites = false;
       }
       if (modelPricing == null) {
         modelPricing = Map.of();

@@ -52,7 +52,7 @@ function rememberWidth(px) {
  */
 export function renderSkillDetail(host, view) {
   const {
-    scope, detail, file, filePath, collapsed, draft, scopeWord,
+    scope, detail, file, filePath, collapsed, draft, scopeWord, writable,
     onFile, onBack, redraw, refresh,
   } = view;
   host.textContent = '';
@@ -73,15 +73,17 @@ export function renderSkillDetail(host, view) {
     name: detail.name,
     actions: {
       label: t('skills.actions'),
+      // Download is offered whatever the scope: taking a copy of a company skill is reading it,
+      // and it is what somebody does with one they may not change. The other two are writes.
       items: () => [
-        { label: t('skills.upload'), onSelect: () => pickFiles(view) },
+        writable && { label: t('skills.upload'), onSelect: () => pickFiles(view) },
         { label: t('skills.download'), onSelect: () => downloadSkill(scope, detail.name) },
-        {
+        writable && {
           label: t('skills.delete'),
           danger: true,
           onSelect: () => deleteSkill(scope, detail.name).then((gone) => { if (gone) onBack(); }),
         },
-      ],
+      ].filter(Boolean),
     },
   }));
 
@@ -187,7 +189,7 @@ function filePane(view, file) {
     });
     const cancel = iconAction(CROSS, t('skills.cancel'), () => { view.clearDraft(); redraw(); });
     actions.append(save, cancel);
-  } else {
+  } else if (view.writable) {
     if (editable) {
       actions.append(iconAction(PENCIL, t('skills.edit'), () => {
         view.startDraft(file.text || '');

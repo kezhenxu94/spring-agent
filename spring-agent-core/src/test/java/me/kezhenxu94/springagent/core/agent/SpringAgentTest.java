@@ -1154,6 +1154,7 @@ class SpringAgentTest {
     return new SpringAgentProperties(
         new SpringAgentProperties.Ai(
             Set.of(),
+            null,
             Map.of(),
             null,
             null,

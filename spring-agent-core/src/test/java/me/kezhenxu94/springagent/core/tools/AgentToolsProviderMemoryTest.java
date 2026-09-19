@@ -13,6 +13,7 @@ import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai;
+import me.kezhenxu94.springagent.core.config.TenantWrites;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.memory.MemoryTools;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
@@ -42,17 +43,21 @@ class AgentToolsProviderMemoryTest {
     assertThat(block)
         .contains(location.resolve("ou_1").resolve("memories").toString())
         .contains(location.resolve("tenant/t_3").resolve("memories").toString())
-        .contains("read only in this one-to-one chat");
+        // The company scope is an administrator's by default, and that is the reason the block
+        // gives — not the one-to-one one, which would have the model offer to save it in a group.
+        .contains("only an administrator can change");
     assertThat(block).doesNotContain("groups");
   }
 
   @Test
-  @DisplayName("a group chat is told about all three, every one of them writable")
+  @DisplayName("a group chat is told about all three, its own two of them writable")
   void groupDescribesThreeScopes() throws Exception {
     final var block = memoryBlock("oc_9", "t_3");
     assertThat(block.lines()).hasSize(3);
     assertThat(block).contains(location.resolve("groups/oc_9").resolve("memories").toString());
-    assertThat(block).doesNotContain("read only");
+    // Two writable and the company read-only, which is what app.ai.non-admin-tenant-writes
+    // decides; this provider is built with the shipped default.
+    assertThat(block).contains("only an administrator can change");
   }
 
   @Test
@@ -114,7 +119,12 @@ class AgentToolsProviderMemoryTest {
     try (var context = new AnnotationConfigApplicationContext()) {
       context.registerBean(
           MemoryTools.class,
-          () -> new MemoryTools(workspaces, new Admins(properties()), TestI18n.english()));
+          () ->
+              new MemoryTools(
+                  workspaces,
+                  new Admins(properties()),
+                  new TenantWrites(properties(), new Admins(properties())),
+                  TestI18n.english()));
       context.refresh();
       final var provider =
           new AgentToolsProvider(
@@ -124,6 +134,7 @@ class AgentToolsProviderMemoryTest {
               context,
               properties(),
               new Admins(properties()),
+              new TenantWrites(properties(), new Admins(properties())),
               TestI18n.english(),
               mock(ObjectProvider.class));
       return provider.compose(
@@ -145,7 +156,7 @@ class AgentToolsProviderMemoryTest {
 
   private static SpringAgentProperties properties() {
     return new SpringAgentProperties(
-        new Ai(Set.of(), Map.of(), null, null, null, "You are an agent.", null, null),
+        new Ai(Set.of(), null, Map.of(), null, null, null, "You are an agent.", null, null),
         Locale.ENGLISH,
         null,
         null);

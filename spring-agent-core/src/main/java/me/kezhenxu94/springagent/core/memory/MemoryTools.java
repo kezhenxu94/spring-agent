@@ -9,6 +9,7 @@ import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
+import me.kezhenxu94.springagent.core.config.TenantWrites;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
@@ -58,15 +59,18 @@ public class MemoryTools {
 
   private final UserWorkspaceFactory userWorkspaceFactory;
   private final Admins admins;
+  private final TenantWrites tenantWrites;
   private final CoreMessages messages;
   private final MemoryFiles files;
 
   public MemoryTools(
       final UserWorkspaceFactory userWorkspaceFactory,
       final Admins admins,
+      final TenantWrites tenantWrites,
       final CoreMessages messages) {
     this.userWorkspaceFactory = userWorkspaceFactory;
     this.admins = admins;
+    this.tenantWrites = tenantWrites;
     this.messages = messages;
     this.files = new MemoryFiles(messages);
   }
@@ -197,7 +201,8 @@ For feedback/project types, structure the body as:
               required = false,
               description =
                   "Which memory to write to: own, group or tenant. Leave it out for your own."
-                      + " group and tenant are only writable from a group chat.")
+                      + " Which shared memories you may write is stated with the memory scopes"
+                      + " listed for this conversation; a write to one you may not is refused.")
           String scope,
       @ToolParam(
               description =
@@ -558,14 +563,18 @@ and each of those calls can be refused on its own.
       };
     }
     if (write && !scopes.writable(target)) {
-      // Reachable but not writable is only the tenant, and only outside a group chat.
-      return messages.get("memory-p2p-shared-write", target.word());
+      // Reachable but not writable is only the tenant, for one of two reasons, and which one it
+      // was is the whole of what the model can do about it: the first is answered by writing to
+      // the group's memory instead, and the second is not answered by anything the model can try.
+      return scopes.tenantOpenToEveryone()
+          ? messages.get("memory-p2p-shared-write", target.word())
+          : messages.get("memory-tenant-admins-only", target.word());
     }
     return null;
   }
 
   private MemoryScopes scopes(final ToolContext context) {
-    return MemoryScopes.forRequest(userWorkspaceFactory, admins, context);
+    return MemoryScopes.forRequest(userWorkspaceFactory, admins, tenantWrites, context);
   }
 
   private static String join(final List<ScopeTarget> targets) {

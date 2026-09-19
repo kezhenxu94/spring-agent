@@ -9,8 +9,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.config.TenantWrites;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
 import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
@@ -103,7 +105,8 @@ class KnowledgeBaseToolsTest {
     source.setDefaultEncoding("UTF-8");
     final var properties =
         new SpringAgentProperties(
-            new SpringAgentProperties.Ai(Set.of(), Map.of(), null, null, null, null, null, null),
+            new SpringAgentProperties.Ai(
+                Set.of(), null, Map.of(), null, null, null, null, null, null),
             Locale.ENGLISH,
             null,
             null);
@@ -113,6 +116,7 @@ class KnowledgeBaseToolsTest {
             new UserWorkspaceFactory(
                 FileSystemStorageProperties.builder().location(location.toString()).build()),
             properties,
+            new TenantWrites(properties, new Admins(properties)),
             new CoreMessages(source, properties));
   }
 
@@ -276,6 +280,83 @@ class KnowledgeBaseToolsTest {
 
       assertThat(result).contains("no group");
       assertThat(indexed.get()).isNull();
+    }
+  }
+
+  @Nested
+  @DisplayName("the company-wide knowledge base")
+  class CompanyKnowledge {
+
+    private static final String ADMIN = "ou_admin";
+
+    private KnowledgeBaseTools tools(final boolean open, final String userId) {
+      final var properties =
+          new SpringAgentProperties(
+              new SpringAgentProperties.Ai(
+                  Set.of(ADMIN), open, Map.of(), null, null, null, null, null, null),
+              Locale.ENGLISH,
+              null,
+              null);
+      final var source = new ResourceBundleMessageSource();
+      source.setBasename(CoreMessages.BASENAME);
+      source.setDefaultEncoding("UTF-8");
+      return new KnowledgeBaseTools(
+          knowledgeBase,
+          new UserWorkspaceFactory(
+              FileSystemStorageProperties.builder().location(location.toString()).build()),
+          properties,
+          new TenantWrites(properties, new Admins(properties)),
+          new CoreMessages(source, properties));
+    }
+
+    private ToolContext tenantContext(final String userId) {
+      return new ToolContext(
+          Map.of(ToolContexts.KEY_USER_ID, userId, ToolContexts.KEY_TENANT_ID, "t_1"));
+    }
+
+    @Test
+    @DisplayName("by default a member may not index, move into, move out of or delete from it")
+    void refusedByDefault() {
+      final var member = tools(false, "ou_1");
+      final var context = tenantContext("ou_1");
+
+      assertThat(
+              member.indexKnowledge("Policy", "tenant", null, "everybody reads this", "p", context))
+          .contains("only its administrators");
+      assertThat(member.updateKnowledgeScope("a-doc", "own", "tenant", context))
+          .contains("only its administrators");
+      assertThat(member.updateKnowledgeScope("a-doc", "tenant", "own", context))
+          .contains("only its administrators");
+      assertThat(member.deleteKnowledge("a-doc", "tenant", context))
+          .contains("only its administrators");
+
+      assertThat(indexed.get()).isNull();
+      assertThat(moved.get()).isNull();
+      assertThat(deleted.get()).isNull();
+    }
+
+    @Test
+    @DisplayName("reading it is untouched, which is what it is for")
+    void readsAreUntouched() {
+      assertThat(tools(false, "ou_1").searchKnowledge("anything", null, tenantContext("ou_1")))
+          .doesNotContain("only its administrators");
+    }
+
+    @Test
+    @DisplayName("an admin writes it, and so does anybody once the deployment says so")
+    void allowed() {
+      assertThat(
+              tools(false, ADMIN)
+                  .indexKnowledge("Policy", "tenant", null, "x", "p", tenantContext(ADMIN)))
+          .doesNotContain("only its administrators");
+      assertThat(indexed.get()).isNotNull();
+
+      indexed.set(null);
+      assertThat(
+              tools(true, "ou_1")
+                  .indexKnowledge("Policy", "tenant", null, "x", "p", tenantContext("ou_1")))
+          .doesNotContain("only its administrators");
+      assertThat(indexed.get()).isNotNull();
     }
   }
 }

@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
+import me.kezhenxu94.springagent.core.config.TenantWrites;
 import me.kezhenxu94.springagent.core.tools.HomeDir;
 import me.kezhenxu94.springagent.core.tools.HomeDir.Folder;
 import me.kezhenxu94.springagent.core.tools.ScopeTarget;
@@ -28,7 +29,8 @@ import org.springframework.ai.chat.model.ToolContext;
  * prompt cannot create a directory in shared storage on behalf of somebody who only read. Creating
  * is the write path's job, and {@code MemoryTools} does it in the write that needs it.
  */
-public record MemoryScopes(Path own, Path group, Path tenant, boolean admin) {
+public record MemoryScopes(
+    Path own, Path group, Path tenant, boolean admin, boolean tenantOpenToEveryone) {
 
   /**
    * The scopes of the request a tool call belongs to, and whether an admin is behind it.
@@ -38,10 +40,14 @@ public record MemoryScopes(Path own, Path group, Path tenant, boolean admin) {
    * so these ids are the run's own, and a tool has no business assembling that list itself.
    */
   public static MemoryScopes forRequest(
-      final UserWorkspaceFactory factory, final Admins admins, final ToolContext context) {
+      final UserWorkspaceFactory factory,
+      final Admins admins,
+      final TenantWrites tenantWrites,
+      final ToolContext context) {
     return forRequest(
         factory,
         admins.isAdmin(context),
+        tenantWrites.openToEveryone(),
         ToolContexts.require(context, ToolContexts.USER_ID),
         ToolContexts.get(context, ToolContexts.GROUP_ID),
         ToolContexts.get(context, ToolContexts.TENANT_ID));
@@ -55,6 +61,7 @@ public record MemoryScopes(Path own, Path group, Path tenant, boolean admin) {
   public static MemoryScopes forRequest(
       final UserWorkspaceFactory factory,
       final boolean admin,
+      final boolean tenantOpenToEveryone,
       final String userId,
       final String groupId,
       final String tenantId) {
@@ -62,7 +69,8 @@ public record MemoryScopes(Path own, Path group, Path tenant, boolean admin) {
         Strings.isNullOrEmpty(userId) ? null : memoriesOf(factory.forOwner(userId)),
         Strings.isNullOrEmpty(groupId) ? null : memoriesOf(factory.forGroup(groupId)),
         Strings.isNullOrEmpty(tenantId) ? null : memoriesOf(factory.forTenant(tenantId)),
-        admin);
+        admin,
+        tenantOpenToEveryone);
   }
 
   private static Path memoriesOf(final UserHome home) {
@@ -99,13 +107,19 @@ public record MemoryScopes(Path own, Path group, Path tenant, boolean admin) {
    * Whether a write may land in {@code target}.
    *
    * <p>Own is always writable. A shared scope needs somewhere to be shared with, and the tenant
-   * needs one thing more: a group chat, or an admin. A p2p chat is a room with one person in it and
-   * no witness, so a fact the agent was talked into believing there must not become what the whole
-   * company remembers — and the only person who would find out is the same person who put it there.
-   * In a group chat the write happens in front of everyone it affects, which is the only review
-   * this has. An admin is exempt because this deployment already trusts that set with everybody
-   * else's work; see {@link Admins}, which also refuses the reverse pairing, so an identity that
-   * reads text written by strangers can never take this exemption.
+   * needs two things more.
+   *
+   * <p>The first is that this deployment lets anybody but an admin write the company scope at all —
+   * {@link TenantWrites}, off by default. An admin is always exempt, because this deployment
+   * already trusts that set with everybody else's work; see {@link Admins}, which also refuses the
+   * reverse pairing, so an identity that reads text written by strangers can never take the
+   * exemption.
+   *
+   * <p>The second, for everybody else once it is on, is a group chat. A p2p chat is a room with one
+   * person in it and no witness, so a fact the agent was talked into believing there must not
+   * become what the whole company remembers — and the only person who would find out is the same
+   * person who put it there. In a group chat the write happens in front of everyone it affects,
+   * which is the only review this has.
    *
    * <p>Keyed on the group root being present, not on {@code chatType}: chatType is a free-form
    * string whichever integration is in play picks, while a blank groupId is what every other scoped
@@ -118,7 +132,7 @@ public record MemoryScopes(Path own, Path group, Path tenant, boolean admin) {
     return switch (target) {
       case OWN -> own != null;
       case GROUP -> group != null;
-      case TENANT -> tenant != null && (group != null || admin);
+      case TENANT -> tenant != null && (admin || (tenantOpenToEveryone && group != null));
     };
   }
 
@@ -142,9 +156,27 @@ public record MemoryScopes(Path own, Path group, Path tenant, boolean admin) {
               target.word(),
               root(target),
               messages.get(audienceKey(target)),
-              messages.get(writable(target) ? "memory-scope-writable" : "memory-scope-read-only")));
+              messages.get(accessKey(target))));
     }
     return String.join("\n", lines);
+  }
+
+  /**
+   * How this scope's access is put to the model: writable, or read-only for the reason it is.
+   *
+   * <p>Two read-only sentences rather than one, because the two are different facts about the world
+   * and only one of them is something the run can do anything about. "Read only in a one-to-one
+   * chat" tells the model to raise it again in a group chat; "only an administrator can change
+   * this" tells it not to try at all, and the wrong one of those is a model that keeps offering the
+   * user something that will never work.
+   */
+  private String accessKey(final ScopeTarget target) {
+    if (writable(target)) {
+      return "memory-scope-writable";
+    }
+    return target == ScopeTarget.TENANT && !tenantOpenToEveryone
+        ? "memory-scope-admins-only"
+        : "memory-scope-read-only";
   }
 
   private static String audienceKey(final ScopeTarget target) {

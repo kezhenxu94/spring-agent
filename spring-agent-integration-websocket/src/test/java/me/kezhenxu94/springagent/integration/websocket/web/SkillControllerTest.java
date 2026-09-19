@@ -9,6 +9,10 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import me.kezhenxu94.springagent.core.config.Admins;
+import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.config.TenantWrites;
 import me.kezhenxu94.springagent.core.skills.SkillFiles;
 import me.kezhenxu94.springagent.core.storage.StorageProperties;
 import me.kezhenxu94.springagent.core.tools.ScopeTarget;
@@ -18,6 +22,7 @@ import me.kezhenxu94.springagent.integration.websocket.config.WebProperties;
 import me.kezhenxu94.springagent.integration.websocket.security.WebUser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.http.HttpStatus;
@@ -47,9 +52,27 @@ class SkillControllerTest {
 
   @BeforeEach
   void setUp() throws Exception {
-    controller = new SkillController(new SkillFiles(), workspaces(storage), messages());
+    // Open by default in this suite, so that every test below is about paths, scopes and files
+    // rather than about who may write the company's — the closed default has a section of its own.
+    controller = controller(tenantWrites(true));
     Files.createDirectories(storage.resolve(ME + "/skills"));
     Files.createDirectories(storage.resolve("tenant/" + TENANT + "/skills"));
+  }
+
+  private SkillController controller(final TenantWrites tenantWrites) {
+    return new SkillController(new SkillFiles(), workspaces(storage), tenantWrites, messages());
+  }
+
+  /** {@code app.ai.non-admin-tenant-writes}, with nobody listed as an admin. */
+  private static TenantWrites tenantWrites(final boolean open) {
+    final var properties =
+        new SpringAgentProperties(
+            new SpringAgentProperties.Ai(
+                Set.of(), open, Map.of(), null, null, null, null, null, null),
+            Locale.ENGLISH,
+            null,
+            null);
+    return new TenantWrites(properties, new Admins(properties));
   }
 
   private Path skill(final String home, final String name, final String description)
@@ -271,8 +294,7 @@ class SkillControllerTest {
   }
 
   @Test
-  @DisplayName(
-      "anybody in the company may write a company skill, as the agent's tools already let them")
+  @DisplayName("with non-admin tenant writes on, anybody in the company may write a company skill")
   void anyoneMayWriteCompanySkills() throws Exception {
     skill("tenant/" + TENANT, "ours", "shared");
 
@@ -282,6 +304,70 @@ class SkillControllerTest {
 
     assertThat(storage.resolve("tenant/" + TENANT + "/skills/ours/references/notes.md"))
         .hasContent("added");
+  }
+
+  @Nested
+  @DisplayName("by default the company's skills are an administrator's to change")
+  class CompanySkillsClosed {
+
+    private SkillController closed;
+
+    @BeforeEach
+    void closed() {
+      closed = controller(tenantWrites(false));
+    }
+
+    @Test
+    @DisplayName("a member may still read, list and export them")
+    void readsAreUntouched() throws Exception {
+      skill("tenant/" + TENANT, "ours", "shared");
+
+      assertThat(skillsIn(closed.list(principal(ME, TENANT), "tenant"))).hasSize(1);
+      assertThat(closed.tree(principal(ME, TENANT), "tenant", "ours")).containsKey("entries");
+    }
+
+    @Test
+    @DisplayName("every write into them is refused, and nothing is left behind")
+    void writesAreRefused() throws Exception {
+      skill("tenant/" + TENANT, "ours", "shared");
+
+      assertThatThrownBy(
+              () ->
+                  closed.save(
+                      principal(ME, TENANT),
+                      new SkillController.Save("ours", "notes.md", "added", "tenant")))
+          .isInstanceOf(ResponseStatusException.class)
+          .hasMessageContaining("403");
+      assertThatThrownBy(
+              () ->
+                  closed.create(
+                      principal(ME, TENANT),
+                      new SkillController.NewSkill("theirs", "no", "tenant")))
+          .isInstanceOf(ResponseStatusException.class)
+          .hasMessageContaining("403");
+      assertThatThrownBy(() -> closed.delete(principal(ME, TENANT), "tenant", "ours"))
+          .isInstanceOf(ResponseStatusException.class)
+          .hasMessageContaining("403");
+      assertThatThrownBy(
+              () -> closed.deleteFile(principal(ME, TENANT), "tenant", "ours", "SKILL.md"))
+          .isInstanceOf(ResponseStatusException.class)
+          .hasMessageContaining("403");
+
+      assertThat(storage.resolve("tenant/" + TENANT + "/skills/ours/SKILL.md")).exists();
+      assertThat(storage.resolve("tenant/" + TENANT + "/skills/ours/notes.md")).doesNotExist();
+      assertThat(storage.resolve("tenant/" + TENANT + "/skills/theirs")).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("their own skills are still theirs")
+    void ownIsUntouched() throws Exception {
+      skill(ME, "greeting", "mine");
+
+      closed.save(
+          principal(ME, TENANT), new SkillController.Save("greeting", "notes.md", "added", null));
+
+      assertThat(storage.resolve(ME + "/skills/greeting/notes.md")).hasContent("added");
+    }
   }
 
   @Test

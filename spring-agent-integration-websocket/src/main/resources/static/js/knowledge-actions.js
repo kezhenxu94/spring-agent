@@ -23,14 +23,22 @@ import { knowledgeRoute, go } from './route.js';
  * only ever mean moving it into the admin's own company knowledge base, which is not what "share
  * this" means about a document that is not theirs. The server draws the same line; this is only
  * about not offering what it would refuse.
+ *
+ * A company document is the other case of the same thing: where this deployment keeps the company
+ * knowledge base to its administrators, sharing into it and deleting out of it are both refused,
+ * so neither is drawn — while everything about reading it stays exactly as it was.
  */
 export function documentActions(entry, options) {
+  const company = entry.scope === 'tenant';
+  // Both directions, because both ends of a move are writes: taking a document out of the company
+  // base removes it from everybody exactly as a delete would.
+  const mayShare = options.tenant && options.tenantWritable;
   return [
-    !options.readOnly && options.tenant && {
-      label: t(entry.scope === 'tenant' ? 'knowledge.unshare' : 'knowledge.share'),
+    !options.readOnly && mayShare && {
+      label: t(company ? 'knowledge.unshare' : 'knowledge.share'),
       onSelect: () => moveDocument(entry, options),
     },
-    {
+    (!company || options.tenantWritable) && {
       label: t('knowledge.delete'),
       danger: true,
       onSelect: () => deleteDocument(entry, options),

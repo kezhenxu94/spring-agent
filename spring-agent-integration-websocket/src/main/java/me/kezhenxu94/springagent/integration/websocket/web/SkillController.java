@@ -12,6 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.config.TenantWrites;
 import me.kezhenxu94.springagent.core.skills.SkillAccessDenied;
 import me.kezhenxu94.springagent.core.skills.SkillFiles;
 import me.kezhenxu94.springagent.core.skills.SkillSummary;
@@ -55,11 +56,11 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
  * instructions the agent will execute, and there is no view of somebody else's worth the door it
  * opens.
  *
- * <p><b>Anyone in the tenant may write company skills</b>, which is not an oversight. {@code
- * WriteSkillFile} already lets any member write into the tenant's skills directory by asking the
- * agent, so a stricter rule here would not protect the directory — it would only mean the page is
- * the slow way round. If that is ever tightened, it has to be tightened in {@code SkillFiles}'
- * callers together, not on this side alone.
+ * <p><b>Who may write company skills is {@code app.ai.non-admin-tenant-writes}</b>, and by default
+ * that is administrators only: a skill there is instructions every colleague's agent loads and acts
+ * on. It is the same check {@code SkillManagementTools} makes, so asking the agent is not the way
+ * round the page — which is the rule this side has to keep, because a stricter page over an open
+ * tool would only mean the page is the slow way round.
  *
  * <p>Unlike the knowledge base there is nothing optional about any of this: skills are folders on
  * the filesystem core always has. Every endpoint therefore answers, and {@code /api/me} reports
@@ -79,6 +80,13 @@ public class SkillController {
 
   private final SkillFiles skills;
   private final UserWorkspaceFactory workspaces;
+
+  /**
+   * Whether this caller may change the company's skills, or only read them. Core's decision, asked
+   * here so that the page and a run are refused in the same place — see {@code TenantWrites}.
+   */
+  private final TenantWrites tenantWrites;
+
   private final WebMessages messages;
 
   // ─────────────────────────────────────── reading ───────────────────────────────────────
@@ -227,6 +235,7 @@ public class SkillController {
 
     final var user = ChatController.user(principal);
     final var target = targetFor(body == null ? null : body.scope(), user);
+    requireTenantWritable(target, user);
     final var home = homeFor(target, user);
 
     final var name = trimmed(body == null ? null : body.name());
@@ -302,6 +311,7 @@ public class SkillController {
 
     final var user = ChatController.user(principal);
     final var target = targetFor(scope, user);
+    requireTenantWritable(target, user);
     final var home = homeFor(target, user);
 
     final var name = trimmed(wantedName);
@@ -378,7 +388,9 @@ public class SkillController {
       @AuthenticationPrincipal final OAuth2User principal, @RequestBody final Save body) {
 
     final var user = ChatController.user(principal);
-    final var home = homeFor(targetFor(body == null ? null : body.scope(), user), user);
+    final var target = targetFor(body == null ? null : body.scope(), user);
+    requireTenantWritable(target, user);
+    final var home = homeFor(target, user);
     final var dir = located(home, body == null ? null : body.skill());
 
     // The same ceiling the read has, and deliberately the same one. A larger write cap means a
@@ -412,7 +424,9 @@ public class SkillController {
       @RequestParam("files") final List<MultipartFile> files) {
 
     final var user = ChatController.user(principal);
-    final var home = homeFor(targetFor(scope, user), user);
+    final var target = targetFor(scope, user);
+    requireTenantWritable(target, user);
+    final var home = homeFor(target, user);
     final var skillDir = located(home, skill);
 
     if (files == null || files.isEmpty()) {
@@ -452,7 +466,9 @@ public class SkillController {
       @RequestParam("path") final String path) {
 
     final var user = ChatController.user(principal);
-    final var home = homeFor(targetFor(scope, user), user);
+    final var target = targetFor(scope, user);
+    requireTenantWritable(target, user);
+    final var home = homeFor(target, user);
     final var dir = located(home, skill);
 
     guarding(() -> skills.deleteFile(home, dir, path));
@@ -467,7 +483,9 @@ public class SkillController {
       @RequestParam("skill") final String skill) {
 
     final var user = ChatController.user(principal);
-    final var home = homeFor(targetFor(scope, user), user);
+    final var target = targetFor(scope, user);
+    requireTenantWritable(target, user);
+    final var home = homeFor(target, user);
     final var dir = located(home, skill);
 
     guarding(() -> skills.deleteSkill(home, dir));
@@ -503,6 +521,19 @@ public class SkillController {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, messages.get("skill-no-tenant"));
     }
     return target;
+  }
+
+  /**
+   * Refuses a write to the company's skills where this deployment keeps them to its admins.
+   *
+   * <p>403 and not 404: these are skills the caller reads, lists and exports, and hiding them on a
+   * write would be a refusal nothing on the page could explain.
+   */
+  private void requireTenantWritable(final ScopeTarget target, final WebUser user) {
+    if (target == ScopeTarget.TENANT && !tenantWrites.allowed(user.id())) {
+      throw new ResponseStatusException(
+          HttpStatus.FORBIDDEN, messages.get("skill-tenant-read-only"));
+    }
   }
 
   /**

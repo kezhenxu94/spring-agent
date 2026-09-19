@@ -201,6 +201,18 @@ export function scopesAvailable() {
 }
 
 /**
+ * The scopes a person may file into, which is not the same list as the one they may read.
+ *
+ * app.ai.non-admin-tenant-writes decides whether the company base is anybody's to change; by
+ * default it is an administrator's. Offering the company here anyway would be offering a 403 —
+ * and the reader still narrows a list to it, which is why the two questions are separate.
+ */
+export function writableScopes() {
+  return scopesAvailable()
+    .filter((scope) => scope !== 'tenant' || state.me?.knowledge?.tenantWritable);
+}
+
+/**
  * Shows the knowledge base, with the document `docId` in `scope` selected if one was named.
  *
  * Reached only from the route handler. The list is fetched the first time and then kept, so moving
@@ -376,6 +388,9 @@ function renderList() {
     readOnly: Boolean(knowledge.owner),
     owner: knowledge.owner,
     tenant: Boolean(state.me?.knowledge?.tenant),
+    // Whether the company base is theirs to change or only to read. The endpoints check it again;
+    // this is about not offering what they would refuse.
+    tenantWritable: Boolean(state.me?.knowledge?.tenantWritable),
     refresh: () => attempt(refetch),
   });
   $('knowledge-more').hidden = !knowledge.hasMore;
@@ -387,6 +402,7 @@ function renderDetail() {
   renderKnowledgeDetail(entry, {
     readOnly: Boolean(knowledge.owner),
     tenant: Boolean(state.me?.knowledge?.tenant),
+    tenantWritable: Boolean(state.me?.knowledge?.tenantWritable),
     // Whose knowledge base is being read, for the one request that fetches a document's text. Read
     // endpoints only, and the server checks it again.
     owner: knowledge.owner,

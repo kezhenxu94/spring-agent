@@ -11,6 +11,7 @@ import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.config.TenantWrites;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
 import me.kezhenxu94.springagent.core.scheduling.ScheduledTaskService;
@@ -219,6 +220,7 @@ class AgentToolsProviderScenarioTest {
             new SpringAgentProperties(
                 new SpringAgentProperties.Ai(
                     admin == null ? Set.of() : Set.of(admin),
+                    null,
                     Map.of(),
                     null,
                     null,
@@ -229,6 +231,8 @@ class AgentToolsProviderScenarioTest {
                 Locale.ENGLISH,
                 null,
                 null)),
+        new TenantWrites(
+            mock(SpringAgentProperties.class), new Admins(mock(SpringAgentProperties.class))),
         TestI18n.english(),
         mock(org.springframework.beans.factory.ObjectProvider.class));
   }

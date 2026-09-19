@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Set;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.config.TenantWrites;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
 import me.kezhenxu94.springagent.core.support.TestI18n;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
@@ -33,20 +34,35 @@ class MemoryToolsTest {
   private MemoryTools tools;
   private UserWorkspaceFactory factory;
 
+  /** The shipped default: the company's memories are an administrator's to change. */
   private MemoryTools tools() {
     if (tools == null) {
-      final var properties =
-          new SpringAgentProperties(
-              new SpringAgentProperties.Ai(Set.of(ADMIN), null, null, null, null, null, null, null),
-              Locale.ENGLISH,
-              null,
-              null);
-      factory =
-          new UserWorkspaceFactory(
-              FileSystemStorageProperties.builder().location(location.toString()).build());
-      tools = new MemoryTools(factory, new Admins(properties), TestI18n.english());
+      tools = tools(false);
     }
     return tools;
+  }
+
+  /** {@code app.ai.non-admin-tenant-writes: true} — any member may, from a group chat. */
+  private MemoryTools openTools() {
+    return tools(true);
+  }
+
+  private MemoryTools tools(final boolean tenantOpenToEveryone) {
+    final var properties =
+        new SpringAgentProperties(
+            new SpringAgentProperties.Ai(
+                Set.of(ADMIN), tenantOpenToEveryone, null, null, null, null, null, null, null),
+            Locale.ENGLISH,
+            null,
+            null);
+    factory =
+        new UserWorkspaceFactory(
+            FileSystemStorageProperties.builder().location(location.toString()).build());
+    return new MemoryTools(
+        factory,
+        new Admins(properties),
+        new TenantWrites(properties, new Admins(properties)),
+        TestI18n.english());
   }
 
   /** A p2p request: a user and a tenant, no group. */
@@ -90,6 +106,16 @@ class MemoryToolsTest {
     @DisplayName("a one-to-one chat cannot write the tenant memory it can read")
     void p2pRefusesTenant() {
       final var answer = tools().memoryCreate("a.md", "tenant", "x", p2p("ou_1"));
+      assertThat(answer).contains("only its administrators");
+      assertThat(memories("tenant/t_3")).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("with non-admin tenant writes on, a one-to-one chat is told to wait for a group")
+    void p2pRefusesTenantWhenOpen() {
+      // The refusal is the correction the model acts on, so which of the two reasons it is told
+      // decides whether it offers to save this again in a group chat or drops the idea.
+      final var answer = openTools().memoryCreate("a.md", "tenant", "x", p2p("ou_1"));
       assertThat(answer).contains("cannot be written to from a one-to-one chat");
       assertThat(memories("tenant/t_3")).doesNotExist();
     }
@@ -111,9 +137,17 @@ class MemoryToolsTest {
     }
 
     @Test
-    @DisplayName("a group chat writes the tenant memory too")
-    void groupWritesTenant() {
-      assertThat(tools().memoryCreate("a.md", "company", "x", group("ou_1"))).contains("Saved");
+    @DisplayName("by default a group chat cannot write the tenant memory either")
+    void groupRefusesTenant() {
+      final var answer = tools().memoryCreate("a.md", "company", "x", group("ou_1"));
+      assertThat(answer).contains("only its administrators");
+      assertThat(memories("tenant/t_3")).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("with non-admin tenant writes on, a group chat writes the tenant memory too")
+    void groupWritesTenantWhenOpen() {
+      assertThat(openTools().memoryCreate("a.md", "company", "x", group("ou_1"))).contains("Saved");
       assertThat(memories("tenant/t_3").resolve("a.md")).exists();
     }
 

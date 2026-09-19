@@ -897,6 +897,26 @@ app:
     # application refuses to start on that pairing rather than leaving it to be noticed. If such an
     # identity needs to reach chats it is not in, give that source an identity of its own.
     admins: ${ADMINS:}
+    # Whether somebody who is not an admin may change what the whole company shares: its memories
+    # (MemoryTools' tenant scope), its skills (the tenant skills directory, from the agent's tools
+    # and from the browser's Customize section alike) and its knowledge base (the tenant scope of
+    # IndexKnowledge, UpdateKnowledgeScope and DeleteKnowledge, and of /api/knowledge).
+    #
+    # False here, and that is the safe default rather than a cautious one. A tenant memory is
+    # recalled as fact in every colleague's conversation, a tenant skill is instructions their
+    # agent loads and acts on, and a tenant knowledge document is retrieved into their answers —
+    # none of it reviewed on the way in, and the person it misleads is never the person who wrote
+    # it. So the company scope is an administrator's to change, and everybody else reads it.
+    #
+    # Reading is untouched either way: that is what the company scope is for. And nothing here
+    # narrows the scopes below it — a person's own memories, skills and knowledge stay theirs, and
+    # a group chat's stay the group's.
+    #
+    # Turning it on restores the older rule, which is a reasonable one for a deployment small
+    # enough that everybody in it would be trusted with everybody else's work: the company scope
+    # becomes writable by any member, memories still only from a group chat, where the write
+    # happens in front of the people it affects.
+    non-admin-tenant-writes: ${NON_ADMIN_TENANT_WRITES:false}
     memory:
       # How many messages of a conversation are kept, and so replayed into the next turn. Counted
       # in messages rather than in turns, and a turn here is several: the memory advisor sits
