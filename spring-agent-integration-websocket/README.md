@@ -196,7 +196,26 @@ conversation's title, and below md the button that opens the drawer — and the 
 need neither: each names itself in a heading inside its own panel, so a bar repeating that word over
 a rule was two lines of chrome saying nothing. `showPanel` marks it `data-bare` for those sections
 and `chrome.css` removes it at md and up, where the drawer toggle it was holding is gone too. Below
-md it stays even when bare, because it is the only way back into the drawer.
+md it stays even when bare, because it is the only way back into the drawer — wearing the same
+panel glyph the fold button does, since what is behind it is not a menu but the column that fold
+hides and shows at a wider window.
+
+**Below md every navigation closes the drawer**, not only one that names an item. It used to stay
+open when a section was pressed, on the argument that the list it switches to is what you opened
+the drawer to read — true of the two sections whose list is in the rail, false of Customize, whose
+list is the page. One rule rather than a rule per section: the drawer is modal, and a modal that
+outlives the choice made in it is one you have to dismiss twice. The cost is that picking the
+knowledge base or the schedule now closes the rail their list is in, so choosing a document is two
+presses.
+
+**The column moves on one timing, `--sidebar-motion`.** It has two motions — the fold animates a
+width at md and up, the drawer a transform below it — and they are the same column going away and
+coming back, so they share a duration and a curve. Both are declared on `#sidebar` in
+`sidebar.css` rather than one in each file: they were two rules at equal specificity and this file
+is imported after `chrome.css`, so `width` won and the drawer had no animation at all while the
+rule meant to give it one looked correct where it was written. The backdrop fades on the same
+timing, switched by a class rather than `hidden` — an element with `display: none` has nothing to
+fade from.
 
 `styles.css` is a single linked entry that `@import`s `css/*`, and that order is load-bearing: rules
 there tie on specificity with Tailwind's utilities and with each other, so a rule that must hold

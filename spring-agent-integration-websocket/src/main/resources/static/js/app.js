@@ -78,17 +78,17 @@ function dispatch(route) {
   showPanel(route.view);
   if (route.view === 'knowledge') {
     showKnowledge(route.id, route.scope, route.narrowing);
-    getOutOfTheWay(route);
+    getOutOfTheWay();
     return;
   }
   if (route.view === 'tasks') {
     showTasks(route.id);
-    getOutOfTheWay(route);
+    getOutOfTheWay();
     return;
   }
   if (route.view === 'customize') {
     showCustomize(route);
-    getOutOfTheWay(route);
+    getOutOfTheWay();
     return;
   }
   renderConversationTitle();
@@ -104,16 +104,19 @@ function dispatch(route) {
 /**
  * The drawer, once it has done what it was opened for.
  *
- * Below md the sidebar covers the column it selects into, so picking a document or a task has to
- * close it — otherwise the thing you chose is drawn behind the list you chose it from, and it looks
- * as though nothing happened. `openConversation` does this for itself, which is why the chat branch
- * does not come through here.
+ * Below md the sidebar covers the column it selects into, so anything that navigates has to close
+ * it — otherwise what you chose is drawn behind the thing you chose it from, and it looks as though
+ * nothing happened. `openConversation` does this for itself, which is why the chat branch does not
+ * come through here.
  *
- * Only where the route names something. Pressing a tab is not picking a thing: the list it switches
- * to is what you opened the drawer to read.
+ * Every navigation and not only one that names an item. Pressing a section used to leave the
+ * drawer standing, on the argument that the list it switches to is what you opened the drawer to
+ * read — which was true of the two sections whose list is in the rail, and false of Customize,
+ * whose list is the page. One rule rather than a rule per section: the drawer is modal, and a
+ * modal that outlives the choice made in it is a modal you have to dismiss twice.
  */
-function getOutOfTheWay(route) {
-  if (route.id && onNarrowScreen()) sidebarOpen(false);
+function getOutOfTheWay() {
+  if (onNarrowScreen()) sidebarOpen(false);
 }
 
 async function start() {

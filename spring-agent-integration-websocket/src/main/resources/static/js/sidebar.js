@@ -17,7 +17,10 @@ export function sidebarOpen(open) {
   const backdrop = $('sidebar-backdrop');
   if (!sidebar) return; // removed on the no-access screen
   sidebar.classList.toggle('sidebar-open', open);
-  backdrop.hidden = !open;
+  // A class rather than the `hidden` attribute, because the backdrop fades with the panel and an
+  // element with `display: none` has nothing to fade from. It is kept out of the pointer's and a
+  // screen reader's way by `visibility` instead — see #sidebar-backdrop in chrome.css.
+  backdrop.classList.toggle('is-open', open);
   $('toggle-sidebar').setAttribute('aria-expanded', String(open));
   // The page behind a modal drawer must not scroll under it.
   document.body.classList.toggle('drawer-open', open);

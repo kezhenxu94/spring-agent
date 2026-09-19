@@ -95,7 +95,7 @@
 
   <!-- ───────────────────────────── conversations and scheduled work ───────────────────────────── -->
   <!-- Tapping away from the drawer closes it, which is what everyone tries first. -->
-  <div id="sidebar-backdrop" class="fixed inset-0 z-30 bg-black/40" hidden></div>
+  <div id="sidebar-backdrop" class="fixed inset-0 z-30 bg-black/40"></div>
 
   <!--
     display:flex at every width, never toggled. Hiding this with `hidden` is what broke the drawer
@@ -457,11 +457,24 @@
       entirely once the drawer toggle it carries has.
     -->
     <header id="app-header" class="flex h-12 shrink-0 items-center gap-3 px-4">
+      <!--
+        The same panel the fold button draws, with the arrow pointing the way this one goes. Three
+        lines say "a menu", and what is behind this is not a menu — it is the column, the same
+        column the fold hides and shows at a wider window. One glyph for one thing, so the control
+        that brings the sidebar back is recognisable as such whichever width you meet it at.
+
+        Only the outward arrow, and no swap: this button can only ever open. Closing the drawer is
+        done from inside it — the close button, the backdrop, Escape — because once it is open this
+        one is behind it.
+      -->
       <button id="toggle-sidebar" class="tool-button drawer-only -ml-1"
               aria-expanded="false" aria-controls="sidebar" data-i18n-title="nav.menu">
-        <svg viewBox="0 0 16 16" fill="none" class="size-[15px]" aria-hidden="true">
-          <path d="M2.5 4h11M2.5 8h11M2.5 12h11" stroke="currentColor" stroke-width="1.5"
-                stroke-linecap="round"/>
+        <svg viewBox="0 0 16 16" fill="currentColor" class="size-[15px]" aria-hidden="true">
+          <path d="M6.823 7.823a.25.25 0 0 1 0 .354l-2.396 2.396A.25.25 0
+                0 1 4 10.396V5.604a.25.25 0 0 1 .427-.177Z"/>
+          <path d="M1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75
+                1.75 0 0 1 0 14.25V1.75C0 .784.784 0 1.75 0ZM1.5 1.75v12.5c0 .138.112.25.25.25H9.5v-13H1.75a.25.25
+                0 0 0-.25.25ZM11 14.5h3.25a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25H11Z"/>
         </svg>
         <span class="sr-only" data-i18n="nav.menu">Menu</span>
       </button>
