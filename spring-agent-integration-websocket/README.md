@@ -217,6 +217,12 @@ rule meant to give it one looked correct where it was written. The backdrop fade
 timing, switched by a class rather than `hidden` — an element with `display: none` has nothing to
 fade from.
 
+Below md it takes the **whole width**. At that size it is not a column beside anything — it is a
+screen you are on, and the sliver of the run left past a 270px panel was too little to read and not
+something you could press, so all it did was make the drawer look as though it had stopped half way
+open. The fold button is already hidden at that width (folding a drawer to a rail would leave the
+run covered by 3.25rem of nothing), so the way out is the close button, the backdrop and Escape.
+
 `styles.css` is a single linked entry that `@import`s `css/*`, and that order is load-bearing: rules
 there tie on specificity with Tailwind's utilities and with each other, so a rule that must hold
 regardless of file order buys specificity and says why (see `.drawer-only`).
