@@ -1,5 +1,5 @@
 /*
- * What Tailwind's utilities do not cover, in nine files.
+ * What Tailwind's utilities do not cover, in ten files.
  *
  * Still one <link> in the page: the browser resolves these imports itself, and keeping the entry
  * point single means the load order is stated here rather than left to the order the tags happen
@@ -16,4 +16,7 @@
 @import "./css/composer.css";
 @import "./css/detail.css";
 @import "./css/knowledge.css";
+/* After detail.css and knowledge.css: Customize builds on the record card's vocabulary and ties
+   with both on specificity, so it has to be the later rule where the two meet. */
+@import "./css/customize.css";
 @import "./css/busy.css";

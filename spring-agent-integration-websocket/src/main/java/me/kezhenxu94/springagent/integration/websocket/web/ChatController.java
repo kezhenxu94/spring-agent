@@ -31,6 +31,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -148,6 +149,11 @@ public class ChatController {
     // name one: the endpoint refuses it, so offering it would be offering a refusal.
     knowledge.put("owners", admins.isAdmin(user.id()) ? systemIdentityJson() : List.of());
     out.put("knowledge", knowledge);
+    // The skills page, which unlike the knowledge base is never unavailable: a skill is a folder
+    // under app.storage.location, and core always has one. So there is nothing to advertise except
+    // whether the second scope exists — a sign-in carrying no company has no company skills, and
+    // the page must not draw a Yours | Company pair whose other half can only answer 400.
+    out.put("skills", Map.of("tenant", !Strings.isNullOrEmpty(user.tenantId())));
     // Whether an answer written here can also be put on a chat, and on which platform. The page
     // draws that platform's own icon on the button, so a name it does not recognise is a button it
     // does not draw — availability rather than a promise, exactly as with the knowledge base
@@ -202,6 +208,27 @@ public class ChatController {
   public Map<String, Object> newConversation(@AuthenticationPrincipal final OAuth2User principal) {
     final var session = sessions.create(user(principal));
     return Map.of("id", session.id());
+  }
+
+  /**
+   * Renames a conversation, or clears the name so it goes back to naming itself.
+   *
+   * <p>A conversation is called the first thing that was said in it, which is a good enough name
+   * for most and a poor one for the few somebody comes back to — the first message of a thread
+   * worth keeping is rarely what the thread turned out to be about. So the derived name stays the
+   * default and this is the override, and sending nothing takes the override away again.
+   *
+   * <p>The id is a path variable here where a skill's is not, and that is not an inconsistency: a
+   * conversation id is a UUID this application minted, so it has no slashes in it by construction.
+   */
+  @PatchMapping("/conversations/{id}")
+  public Map<String, Object> renameConversation(
+      @AuthenticationPrincipal final OAuth2User principal,
+      @PathVariable final String id,
+      @RequestBody(required = false) final Rename body) {
+
+    final var renamed = sessions.rename(mine(id, principal), body == null ? null : body.title());
+    return Map.of("id", renamed.id(), "title", sessions.titleOf(renamed));
   }
 
   @DeleteMapping("/conversations/{id}")
@@ -280,6 +307,11 @@ public class ChatController {
    * the default rather than a rejection.
    */
   public record Send(String text, Boolean mirror) {}
+
+  /**
+   * @param title what to call it, or blank/absent to let it name itself again
+   */
+  public record Rename(String title) {}
 
   @PostMapping("/conversations/{id}/messages")
   public Map<String, Object> send(

@@ -12,7 +12,6 @@ import { skeletonList } from './busy.js';
 import { confirmAction } from './confirm.js';
 import { menuButton } from './menu.js';
 import { chatRoute, tasksRoute, go } from './route.js';
-import { headline } from './panels.js';
 import { editTask, renderTaskDetail, taskName } from './tasks-detail.js';
 import { state } from './state.js';
 
@@ -61,7 +60,6 @@ function renderDetail() {
     redraw: renderDetail,
     saved: loadTasks,
   });
-  headline(task ? taskName(task) : t('tasks.title'));
 }
 
 function row(task) {

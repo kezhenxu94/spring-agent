@@ -631,6 +631,36 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
   }
 
   @Test
+  @DisplayName("a conversation somebody named keeps that name, and clearing it gives back nothing")
+  void chatSessionTitleRoundTrips() {
+    // A name somebody typed is the one thing about a conversation that cannot be derived from it,
+    // so it is the one thing this row has to actually store — on every backend, or renaming works
+    // on jpa and silently does nothing on redis.
+    final var now = Instant.now();
+    chatSessionRepo.save(
+        ChatSession.builder()
+            .id(owner() + "-named")
+            .userId(owner())
+            .title("Quarterly numbers")
+            .createdAt(now)
+            .updatedAt(now)
+            .build());
+
+    assertThat(chatSessionRepo.findById(owner() + "-named"))
+        .get()
+        .satisfies(it -> assertThat(it.title()).isEqualTo("Quarterly numbers"));
+
+    // Cleared back to blank, which is how a conversation is told to go back to naming itself.
+    chatSessionRepo.save(
+        chatSessionRepo.findById(owner() + "-named").orElseThrow().toBuilder().title("").build());
+    assertThat(chatSessionRepo.findById(owner() + "-named"))
+        .get()
+        .satisfies(it -> assertThat(it.title()).isNullOrEmpty());
+
+    chatSessionRepo.deleteById(owner() + "-named");
+  }
+
+  @Test
   @DisplayName("how much of the update notes a person has read survives a round trip")
   void seenUpdateRoundTrips() {
     final var now = Instant.now();

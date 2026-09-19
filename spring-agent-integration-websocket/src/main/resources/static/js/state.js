@@ -8,8 +8,10 @@
 // theme, which reads none of them), then the three pieces every section reuses to ask before it
 // destroys something, to offer what can be done to a row, and to draw one record opened (confirm,
 // menu, detail), then status, sidebar and language, then questions, stream, conversations,
-// attachments, composer, and finally tasks, knowledge, identity, account and denied. app.js is the
-// only file that imports across the whole set, and the only place the wiring is visible.
+// attachments, composer, and finally tasks, knowledge, the skills page (skills-list, skills-tree,
+// skills-actions, skills-detail, then customize, which owns the section), identity, account and
+// denied. app.js is the only file that imports across the whole set, and the only place the
+// wiring is visible.
 //
 // An edge that would point backwards goes through the bus instead. That matters more here than the
 // tidiness suggests: an ES module cycle does not fail, it resolves the binding to `undefined` and

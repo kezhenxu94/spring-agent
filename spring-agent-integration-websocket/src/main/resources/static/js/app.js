@@ -18,7 +18,8 @@ import { initSidebar, initTabs, onNarrowScreen, selectTab, sidebarOpen } from '.
 import { chatRoute, current, go, onRoute } from './route.js';
 import { attachRun } from './stream.js';
 import {
-  loadConversations, openConversation, renderConversationList, renderConversationTitle,
+  initConversationTitle, loadConversations, openConversation, renderConversationList,
+  renderConversationTitle,
 } from './conversations.js';
 import { initScrollToEnd, renderEmptyTranscript } from './transcript.js';
 import { initAttachments } from './attachments.js';
@@ -27,6 +28,7 @@ import { loadTasks, showTasks } from './tasks.js';
 import { initKnowledge, knowledgeAvailable, scopesAvailable, showKnowledge } from './knowledge.js';
 import { showPanel } from './panels.js';
 import { initKnowledgeAdd } from './knowledge-upload.js';
+import { initCustomize, showCustomize } from './customize.js';
 import { initLanguage } from './language.js';
 import { initAccount } from './account.js';
 import { renderIdentity } from './identity.js';
@@ -81,6 +83,11 @@ function dispatch(route) {
   }
   if (route.view === 'tasks') {
     showTasks(route.id);
+    getOutOfTheWay(route);
+    return;
+  }
+  if (route.view === 'customize') {
+    showCustomize(route);
     getOutOfTheWay(route);
     return;
   }
@@ -152,6 +159,7 @@ async function start() {
   wire();
   initComposer();
   initAttachments();
+  initConversationTitle();
   initScrollToEnd();
   initSidebar();
   initLanguage(state.me);
@@ -161,6 +169,9 @@ async function start() {
     initKnowledge();
     initKnowledgeAdd(scopesAvailable());
   }
+  // Unconditionally, unlike the knowledge base above it: a skill is a folder under
+  // app.storage.location, which core always has, so there is no deployment without this section.
+  initCustomize();
   initTabs({ knowledge: knowledgeAvailable() });
   setStatus('idle');
   renderIdentity(state.me);

@@ -57,7 +57,7 @@ export function renderEmptyTranscript() {
   // index.html are its markup, and this is the one drawn in JavaScript. A person moving between the
   // sections is looking at one page, so a heading two steps larger here would read as a different
   // page rather than as the same one with nothing in it yet.
-  empty.className = 'empty-state mx-auto flex max-w-[46rem] flex-col gap-1';
+  empty.className = 'empty-state page-column flex flex-col gap-1';
   const heading = document.createElement('p');
   heading.className = 'font-display text-[20px] font-semibold tracking-tight';
   heading.textContent = t('empty.title');
@@ -107,7 +107,7 @@ export function appendTurn(role, text) {
   transcript.querySelector('.empty-state')?.remove();
   const wrapper = document.createElement('div');
   if (role === 'user') {
-    wrapper.className = 'mx-auto mt-7 flex max-w-[46rem] justify-end first:mt-0';
+    wrapper.className = 'page-column mt-7 flex justify-end first:mt-0';
     const bubble = document.createElement('div');
     // Markdown, as the answer is — see .turn-user in run.css for why, and note that `breaks: true`
     // keeps a plain multi-line message looking exactly as it was typed.
@@ -115,7 +115,7 @@ export function appendTurn(role, text) {
     bubble.innerHTML = markdown(text ?? '');
     wrapper.append(bubble);
   } else {
-    wrapper.className = 'mx-auto mt-4 max-w-[46rem]';
+    wrapper.className = 'page-column mt-4';
     const body = document.createElement('div');
     body.className = 'prose max-w-none text-[14.5px] leading-[1.7]';
     body.innerHTML = markdown(text);

@@ -544,6 +544,42 @@ user, the chat and the path.
 `UserWorkspaceFactory.forRequest(userId, groupId, tenantId)` is the entry point if your own code
 needs the same paths; `HomeDir` names the subdirectories.
 
+### Reading and writing skills yourself
+
+A skill is a folder under `skills/` holding a `SKILL.md` with YAML front matter, plus whatever files
+it needs; `core.tools.SkillsTool` turns each one into a `skill_<name>` tool at composition time. If
+your surface wants to show or change them without going through the model, use
+`core.skills.SkillFiles` rather than walking the directory — it is the same component
+`SkillManagementTools` and the browser's `SkillController` both call, and it holds the path guard.
+
+```java
+final var home = workspaces.forOwner(userId);          // one scope, never a composite — see below
+final List<SkillSummary> skills = skillFiles.list(home);
+final Optional<SkillDetail> one  = skillFiles.detail(home, "pdf-filler");
+final Optional<SkillFile>  file  = skillFiles.read(home, "pdf-filler", "references/fields.md");
+skillFiles.write(home, skillFiles.target(home, "pdf-filler"), "SKILL.md", text);
+```
+
+`SkillSummary` carries the folder name (the identity), the `name:` the front matter *declares* —
+which can disagree, and is blank for a skill the runtime silently skips — a description, a file
+count and a modification time. `SkillDetail` adds the tree as `SkillEntry` records with
+`/`-separated relative paths. `SkillFile` says whether the bytes are text at all, and whether they
+were too large to carry, rather than handing back something that looks like the file and is not.
+
+`unpack(InputStream)` reads a zip into its files without writing any of them, and `writeAll` puts an
+unpacked one into a skill — two calls, so an archive that fails validation leaves nothing behind.
+
+Three rules, and the first is the one to get right:
+
+- **Pass a single-scope `HomeDir`** — `forOwner` or `forTenant`, never `forRequest`. Every method
+  asks the home it is given whether a path is inside it, so a composite home spanning two scopes
+  will accept a path in either of them.
+- A refusal is `SkillAccessDenied`, which is deliberately its own type: a caller that cannot tell it
+  from "that file is not there" will report a traversal attempt as a typo. Translate it into your
+  surface's own dialect; the message it carries names no path, on purpose.
+- Anything that cannot be read or written raises `UncheckedIOException`, and a tree too large to be
+  a skill raises `IllegalArgumentException`.
+
 Published files (`PublishFile`) are served by core's `ShareController` under
 `/share/{visibility}/{userId}/{token}/**`, with the public half deliberately reachable without a
 login — a published link carries a token this application checks itself, and expires.
@@ -794,9 +830,11 @@ strings naming your package, your bundle and your prompt directory.
 `spring-agent-integration-websocket` is a whole surface as a dependency: a single-page UI, the REST
 endpoints behind it, and runs streamed live over STOMP. It is what `spring-agent-app-webui` is made
 of, and taking it gives an application of your own the same conversation list, transcript, live run
-view, file uploads, question forms, the schedule and the knowledge base — three sidebar sections
-addressed by hash route (`#/chat/<id>`, `#/tasks/<id>`, `#/kb/<docId>`), so a link into any of them
-is a link worth keeping.
+view, renaming a conversation from its heading, file uploads, question forms, the schedule, the
+knowledge base and Customize — four sidebar
+sections addressed by hash route (`#/chat/<id>`, `#/tasks/<id>`, `#/kb/<scope>/<docId>`,
+`#/customize/skills/<scope>/<skill>?file=`), so a link into any of them is a link worth keeping,
+down to one file of one skill.
 
 ```groovy
 implementation 'me.kezhenxu94:spring-agent-integration-websocket:<version>'

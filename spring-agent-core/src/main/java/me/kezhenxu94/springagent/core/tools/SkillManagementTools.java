@@ -1,15 +1,18 @@
 package me.kezhenxu94.springagent.core.tools;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
+import me.kezhenxu94.springagent.core.skills.SkillAccessDenied;
+import me.kezhenxu94.springagent.core.skills.SkillFiles;
+import me.kezhenxu94.springagent.core.skills.SkillSummary;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -21,13 +24,31 @@ import org.springframework.stereotype.Component;
 public class SkillManagementTools {
   private final UserWorkspaceFactory userWorkspaceFactory;
 
+  /**
+   * Where a skill actually lives, and the one guard on reaching it.
+   *
+   * <p>The browser's skills page calls the same component, which is the point: a path that may not
+   * be written has to be refused identically whether a model asked or a person clicked, and two
+   * copies of that decision would be one copy fixed.
+   */
+  private final SkillFiles skills;
+
   /** What this hands back to the model, in the workspace's language. */
   private final CoreMessages messages;
 
-  private String validatePath(final String path, final HomeDir home) {
-    final var resolved = Path.of(path).toAbsolutePath().normalize();
-    if (home.containsIn(HomeDir.Folder.SKILLS, resolved)) return null;
-    return messages.get("skill-access-denied");
+  /**
+   * {@code path}, once {@link SkillFiles} has agreed it is inside the home — or null, with the
+   * refusal already turned into the sentence the model reads.
+   *
+   * <p>The sentence stays here rather than moving with the check. {@code SkillFiles} answers a
+   * controller as well, and a controller has no business emitting prose written for a model.
+   */
+  private Path validated(final String path, final HomeDir home) {
+    try {
+      return skills.guarded(home, Path.of(path));
+    } catch (final SkillAccessDenied | InvalidPathException e) {
+      return null;
+    }
   }
 
   @Tool(
@@ -46,31 +67,22 @@ Usage:
   (when the request has one) are all included.
 """)
   public String listSkills(final ToolContext context) {
-    final List<Path> skillsDirs;
+    final List<SkillSummary> found;
     try {
-      skillsDirs = userWorkspaceFactory.forRequest(context).dirs(HomeDir.Folder.SKILLS);
-    } catch (IOException e) {
+      found = skills.list(userWorkspaceFactory.forRequest(context));
+    } catch (final UncheckedIOException e) {
       return messages.get("skill-no-directory", e.getMessage());
     }
 
+    // A name that exists in two of the request's scopes is listed once, because it is one skill to
+    // the model: SkillsTool keeps the nearest and drops the rest, so a second line here would name
+    // a folder nothing will ever load. SkillFiles resolves that the same way, and once.
+    if (found.isEmpty()) return messages.get("skill-none");
     final var result = new StringBuilder();
-    int total = 0;
-    for (final var skillsDir : skillsDirs) {
-      final var root = skillsDir.toFile();
-      final var subDirs =
-          root.exists() && root.isDirectory() ? root.listFiles(File::isDirectory) : null;
-      if (subDirs != null) {
-        for (final var skillDir : subDirs) {
-          final var skillMd = new File(skillDir, "SKILL.md");
-          if (skillMd.exists()) {
-            result.append(skillDir.getAbsolutePath()).append("\n");
-            total++;
-          }
-        }
-      }
+    for (final var skill : found) {
+      result.append(skill.directory().toAbsolutePath()).append("\n");
     }
-    if (total == 0) return messages.get("skill-none");
-    return messages.get("skill-found", total, result);
+    return messages.get("skill-found", found.size(), result);
   }
 
   @Tool(
@@ -100,19 +112,14 @@ Usage:
 
     final var home = userWorkspaceFactory.forRequest(context);
 
-    final var accessError = validatePath(filePath, home);
-    if (accessError != null) return accessError;
+    final var file = validated(filePath, home);
+    if (file == null) return messages.get("skill-access-denied");
 
-    final var file = new File(filePath);
-    final var parent = file.getParentFile();
-    if (parent != null && !parent.exists() && !parent.mkdirs()) {
-      return messages.get("skill-no-parent-dirs", filePath);
-    }
-
-    final boolean existed = file.exists();
-    try (final var writer = new BufferedWriter(new FileWriter(file, false))) {
-      writer.write(content != null ? content : "");
-    } catch (IOException e) {
+    final boolean existed = Files.isRegularFile(file);
+    try {
+      Files.createDirectories(file.getParent());
+      Files.writeString(file, content != null ? content : "", StandardCharsets.UTF_8);
+    } catch (final IOException e) {
       return messages.get("skill-write-failed", e.getMessage());
     }
 
@@ -137,22 +144,19 @@ Usage:
 
     final var home = userWorkspaceFactory.forRequest(context);
 
-    final var accessError = validatePath(skillFolderPath, home);
-    if (accessError != null) return accessError;
+    final var dir = validated(skillFolderPath, home);
+    if (dir == null) return messages.get("skill-access-denied");
 
-    final var dir = new File(skillFolderPath);
-    if (!dir.exists()) return messages.get("skill-folder-missing", skillFolderPath);
-    if (!dir.isDirectory()) return messages.get("skill-not-a-directory", skillFolderPath);
-    if (!new File(dir, "SKILL.md").exists()) {
-      return messages.get("skill-not-a-skill", skillFolderPath);
-    }
+    if (!Files.exists(dir)) return messages.get("skill-folder-missing", skillFolderPath);
+    if (!Files.isDirectory(dir)) return messages.get("skill-not-a-directory", skillFolderPath);
 
     try {
-      Files.walk(Path.of(skillFolderPath))
-          .sorted(Comparator.reverseOrder())
-          .map(Path::toFile)
-          .forEach(File::delete);
-    } catch (IOException e) {
+      skills.deleteSkill(home, dir);
+    } catch (final SkillAccessDenied e) {
+      // The one SkillFiles raises after the path itself was accepted: a folder with no SKILL.md in
+      // it. Said as its own sentence, because it is not a refusal about where the folder is.
+      return messages.get("skill-not-a-skill", skillFolderPath);
+    } catch (final UncheckedIOException e) {
       return messages.get("skill-delete-failed", e.getMessage());
     }
 
@@ -175,14 +179,19 @@ Usage:
 
     final var home = userWorkspaceFactory.forRequest(context);
 
-    final var accessError = validatePath(filePath, home);
-    if (accessError != null) return accessError;
+    final var file = validated(filePath, home);
+    if (file == null) return messages.get("skill-access-denied");
 
-    final var file = new File(filePath);
-    if (!file.exists()) return messages.get("skill-file-missing", filePath);
-    if (file.isDirectory()) return messages.get("skill-file-is-directory", filePath);
+    if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
+      return messages.get("skill-file-missing", filePath);
+    }
+    if (Files.isDirectory(file)) return messages.get("skill-file-is-directory", filePath);
 
-    if (!file.delete()) return messages.get("skill-file-delete-failed", filePath);
+    try {
+      Files.delete(file);
+    } catch (final IOException e) {
+      return messages.get("skill-file-delete-failed", filePath);
+    }
     return messages.get("skill-file-deleted", filePath);
   }
 }

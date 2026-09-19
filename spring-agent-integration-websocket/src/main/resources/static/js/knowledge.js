@@ -17,7 +17,6 @@ import { openMenu } from './menu.js';
 import { knowledgeRoute, go } from './route.js';
 import { isSelected, renderKnowledgeList } from './knowledge-list.js';
 import { forgetDocumentText, renderKnowledgeDetail } from './knowledge-detail.js';
-import { headline } from './panels.js';
 import { bus, state } from './state.js';
 
 const PAGE = 30;
@@ -220,7 +219,6 @@ export function showKnowledge(docId, scope, narrowing = {}) {
 
 function title() {
   const entry = selectedEntry();
-  headline(entry ? entry.title || entry.docId : t('knowledge.title'));
 }
 
 /**

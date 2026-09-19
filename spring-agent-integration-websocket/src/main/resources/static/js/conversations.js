@@ -7,7 +7,7 @@
 import { t } from './i18n.js';
 import { $, glyph, scrollToEnd } from './dom.js';
 import { api } from './api.js';
-import { toast } from './toast.js';
+import { attempt, toast } from './toast.js';
 import { skeletonList, skeletonTranscript } from './busy.js';
 import { confirmAction } from './confirm.js';
 import { menuButton } from './menu.js';
@@ -85,9 +85,79 @@ function row(conversation) {
   // handler it reaches closes the drawer.
   open.addEventListener('click', () => go(chatRoute(conversation.id)));
 
+  // Renaming happens in the row itself rather than in a dialog over it: the name is read here, so
+  // it is corrected here. The field takes the row's own box, so opening it moves nothing.
+  const field = document.createElement('input');
+  field.type = 'text';
+  field.className = 'row-rename';
+  field.autocomplete = 'off';
+  field.spellcheck = false;
+  field.setAttribute('aria-label', t('nav.rename'));
+  field.hidden = true;
+
+  const closeRow = () => {
+    renamingRow = null;
+    field.hidden = true;
+    open.hidden = false;
+  };
+
+  const commitRow = () => {
+    if (!renamingRow || renamingRow.id !== conversation.id) return;
+    const wanted = field.value.trim();
+    closeRow();
+    if (wanted === (conversation.title || '')) return;
+    attempt(() => rename(conversation.id, wanted));
+  };
+
+  field.addEventListener('input', () => {
+    if (renamingRow) renamingRow.text = field.value;
+  });
+  field.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commitRow();
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeRow();
+      open.focus();
+    }
+  });
+  field.addEventListener('blur', () => {
+    // A redraw of the list removes this element, and removing a focused element fires blur. That
+    // is not somebody clicking away, and treating it as one commits an edit that the list merely
+    // re-rendered underneath — which is exactly the case renamingRow exists to survive. Checked
+    // on the next tick, by which time a removal has happened and a click-away has not.
+    setTimeout(() => {
+      if (field.isConnected) commitRow();
+    }, 0);
+  });
+
+  // Redrawn mid-edit — see renamingRow. The row comes back already open, holding what had been
+  // typed rather than what was stored.
+  if (renamingRow && renamingRow.id === conversation.id) {
+    open.hidden = true;
+    field.hidden = false;
+    field.value = renamingRow.text;
+    // After this element is in the document; focus on a detached node does nothing.
+    queueMicrotask(() => { field.focus(); field.setSelectionRange(field.value.length, field.value.length); });
+  }
+
   // The same ⋯ the other two lists carry. The work happens inside the dialog, so the row cannot be
   // pressed a second time while the delete is in flight.
   const actions = menuButton(t('nav.actions'), [
+    {
+      label: t('nav.rename'),
+      onSelect: () => {
+        renamingRow = { id: conversation.id, text: conversation.title || '' };
+        open.hidden = true;
+        field.hidden = false;
+        field.value = renamingRow.text;
+        field.focus();
+        field.select();
+      },
+    },
     {
       label: t('nav.delete'),
       danger: true,
@@ -113,7 +183,7 @@ function row(conversation) {
   ]);
   actions.classList.add('row-action');
 
-  item.append(open, actions);
+  item.append(open, field, actions);
   return item;
 }
 
@@ -127,9 +197,127 @@ export async function newConversation() {
 /** What the header says about the conversation on screen; also what leaving the knowledge base restores. */
 export function renderConversationTitle() {
   const conversation = state.conversations.find((it) => it.id === state.conversationId);
-  $('conversation-title').textContent = conversation
+  const button = $('conversation-title');
+  button.textContent = conversation
     ? conversation.title || t('nav.untitled')
     : t('app.title');
+  // With nothing open the heading is the application's own name, which belongs to no conversation
+  // and so cannot be renamed. Disabled rather than hidden, or the bar would change height between
+  // the empty state and the first conversation.
+  button.disabled = !conversation;
+}
+
+// ─────────────────────────────────────── renaming one ───────────────────────────────────────
+//
+// A conversation is called the first thing that was said in it. That is a good name for most and a
+// poor one for the few somebody comes back to, so the derived name stays the default and this is
+// the override — and emptying the box puts the derived one back rather than leaving a blank row.
+//
+// The field and the heading are the same size and in the same place (see .chat-title in
+// chrome.css), so pressing the heading moves nothing: the title is corrected where it is read.
+
+/** Whether the field is open, so a blur that follows Escape does not save what Escape discarded. */
+let renaming = false;
+
+/**
+ * The row being renamed, and what has been typed into it so far.
+ *
+ * In module state rather than in the input, because this list is redrawn by things that have
+ * nothing to do with the rename — a run finishing, a conversation being created, the language
+ * changing — and an edit living only in the DOM would be silently thrown away by one of them. The
+ * same lesson the skill editor's draft learned; see skills-detail.js.
+ */
+let renamingRow = null;
+
+/**
+ * Sets the field to the width of what is in it, up to whatever room the bar has.
+ *
+ * An `<input>` has no intrinsic width, so the value is drawn once into a mirror set in the same
+ * type and the field is made that wide. The mirror's own padding matches the field's, so what is
+ * measured is the box rather than the glyphs, and the caret has somewhere to sit at the end of the
+ * last character. The cap is CSS's — `max-width: 100%` — so this never has to know how wide the
+ * bar is.
+ */
+function fitTitle(field, mirror) {
+  mirror.textContent = field.value;
+  // A pixel or two past the text, or the caret at the end of the line sits on the border.
+  field.style.width = `${Math.ceil(mirror.getBoundingClientRect().width) + 3}px`;
+}
+
+export function initConversationTitle() {
+  const button = $('conversation-title');
+  const field = $('conversation-title-input');
+  const mirror = $('conversation-title-mirror');
+
+  // Every keystroke, because the box grows with what is typed into it rather than being sized once
+  // from the name it opened with.
+  field.addEventListener('input', () => fitTitle(field, mirror));
+
+  button.addEventListener('click', () => {
+    if (button.disabled) return;
+    const conversation = state.conversations.find((it) => it.id === state.conversationId);
+    if (!conversation) return;
+    renaming = true;
+    // The name it has, derived or not — so renaming starts from what is on screen rather than
+    // from an empty box somebody has to retype the old name into to change one word of it.
+    field.value = conversation.title || '';
+    button.hidden = true;
+    field.hidden = false;
+    // Measured while it is on screen; a hidden box has no width to read.
+    fitTitle(field, mirror);
+    field.focus();
+    field.select();
+  });
+
+  const close = () => {
+    renaming = false;
+    field.hidden = true;
+    button.hidden = false;
+  };
+
+  const commit = () => {
+    if (!renaming) return;
+    const conversationId = state.conversationId;
+    const wanted = field.value.trim();
+    const conversation = state.conversations.find((it) => it.id === conversationId);
+    close();
+    // Unchanged is not a request. Saying so here rather than letting the server decide keeps a
+    // click that opened the field and changed nothing from touching the conversation at all.
+    if (!conversation || wanted === (conversation.title || '')) return;
+    attempt(() => rename(conversationId, wanted));
+  };
+
+  field.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commit();
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+      // Back to the heading, or focus is left on a field that is no longer there and the next
+      // Tab starts from the top of the document.
+      $('conversation-title').focus();
+    }
+  });
+  // Clicking away is the same as pressing enter. A field that threw the edit away when the pointer
+  // went somewhere else would lose a rename to a stray click, which is the more expensive mistake.
+  field.addEventListener('blur', commit);
+}
+
+async function rename(conversationId, title) {
+  const renamed = await api(`/api/conversations/${encodeURIComponent(conversationId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title }),
+  });
+  // What the server settled on, not what was typed — it trims and caps, and an empty one comes
+  // back as whatever the conversation derives. Written into the list so the row and the heading
+  // say the same thing without a second round trip.
+  const conversation = state.conversations.find((it) => it.id === conversationId);
+  if (conversation) conversation.title = renamed.title;
+  renderConversationList();
+  renderConversationTitle();
 }
 
 export async function openConversation(id) {

@@ -79,7 +79,7 @@ const LABEL = 'font-mono text-[10px] font-medium uppercase tracking-[0.14em]';
 
 export class RunView {
   constructor(container) {
-    this.root = el('div', 'run mx-auto max-w-[46rem]');
+    this.root = el('div', 'run page-column');
 
     this.body = el('div', 'run-body');
     this.root.append(this.body);

@@ -12,6 +12,7 @@
 const CHAT = '#/chat/';
 const KNOWLEDGE = '#/kb';
 const TASKS = '#/tasks';
+const CUSTOMIZE = '#/customize';
 
 /** The knowledge bases a document can be in, for reading one back out of a route. */
 const SCOPES = ['own', 'group', 'tenant'];
@@ -25,6 +26,26 @@ const SCOPES = ['own', 'group', 'tenant'];
  * its own. `q` is the committed search — what was typed and entered, not what is in the box.
  */
 const NARROWING = ['q', 'owner', 'scope'];
+
+/**
+ * What Customize is divided into, in the order the strip draws them.
+ *
+ * A closed set of slash-free words, so it is a path segment rather than a query key — the same
+ * test the knowledge base's scope passes. Adding a second tab is adding a word here.
+ */
+const TABS = ['skills'];
+
+/** The two stores a skill can be in. There is no group one: this surface carries no group. */
+const SKILL_SCOPES = ['own', 'tenant'];
+
+/**
+ * What can narrow the skills page.
+ *
+ * `q` is the committed search, as it is in the knowledge base. `file` is which file of the open
+ * skill is being read, and it is a query key rather than a segment because a path inside a skill
+ * has slashes in it — as a second segment it would be indistinguishable from the folders it names.
+ */
+const CUSTOMIZE_NARROWING = ['q', 'file'];
 
 /** The hash that opens a conversation, or the empty conversation list when there is none. */
 export function chatRoute(conversationId) {
@@ -53,7 +74,29 @@ export function knowledgeRoute(docId, scope, narrowing) {
   // somebody else's knowledge base means opening it *in* that list, and a route that quietly
   // dropped the narrowing would answer the click by throwing away what was being read. Clearing is
   // therefore something a caller has to ask for, by passing one.
-  return path + query(narrowing === undefined ? current().narrowing : narrowing);
+  return path + query(NARROWING, narrowing === undefined ? current().narrowing : narrowing);
+}
+
+/**
+ * The hash that opens Customize: a tab, a store, and — with one chosen — a skill and a file in it.
+ *
+ * The store is part of the route for the reason the knowledge base's scope is: a skill name is
+ * unique inside one store and not across them, and `pdf-filler` filed privately and company-wide
+ * is two different folders wearing one name. Worse than the knowledge base, in fact — the agent
+ * only ever loads the nearer of the two, so a route naming only the name would open one and act on
+ * the other.
+ *
+ * Left out, the narrowing is whatever the address bar already says, exactly as `knowledgeRoute`
+ * leaves it: choosing a file in a tree means choosing it *in* the search that found the skill.
+ */
+export function customizeRoute(tab, scope, skill, narrowing) {
+  const section = TABS.includes(tab) ? tab : TABS[0];
+  const store = SKILL_SCOPES.includes(scope) ? scope : SKILL_SCOPES[0];
+  const path = `${CUSTOMIZE}/${section}/${store}`
+    + (skill ? `/${encodeURIComponent(skill)}` : '');
+  return path + query(
+    CUSTOMIZE_NARROWING, narrowing === undefined ? current().narrowing : narrowing,
+  );
 }
 
 /**
@@ -64,9 +107,9 @@ export function knowledgeRoute(docId, scope, narrowing) {
  * and two spellings of one place would each read as a move to the other, which is a history entry
  * per press and a back button that goes nowhere.
  */
-function query(narrowing) {
+function query(keys, narrowing) {
   const params = new URLSearchParams();
-  NARROWING.forEach((key) => {
+  keys.forEach((key) => {
     const value = ((narrowing || {})[key] || '').trim();
     if (value) params.set(key, value);
   });
@@ -99,6 +142,25 @@ export function parse(hash) {
       return { view: 'knowledge', id: decode(rest), scope: null, narrowing };
     }
     return { view: 'knowledge', id: decode(rest.slice(cut + 1)), scope: head, narrowing };
+  }
+  if (raw.startsWith('/customize')) {
+    const rest = raw.slice('/customize'.length).replace(/^\//, '');
+    const parts = rest ? rest.split('/') : [];
+    // Each of the two words is taken only if it is one of its own set, and skipped otherwise. So
+    // `#/customize` alone lands on the first tab and the first store, and a hand-typed word that
+    // names neither is read as the skill it probably is rather than putting the page in a state no
+    // control can undo — the same forgiveness readNarrowing shows an unknown scope.
+    const tab = TABS.includes(parts[0]) ? parts[0] : TABS[0];
+    const afterTab = TABS.includes(parts[0]) ? parts.slice(1) : parts;
+    const scope = SKILL_SCOPES.includes(afterTab[0]) ? afterTab[0] : SKILL_SCOPES[0];
+    const named = SKILL_SCOPES.includes(afterTab[0]) ? afterTab.slice(1) : afterTab;
+    return {
+      view: 'customize',
+      tab,
+      scope,
+      id: named.length ? decode(named.join('/')) : null,
+      narrowing: readCustomize(mark < 0 ? '' : whole.slice(mark + 1)),
+    };
   }
   if (raw.startsWith('/tasks')) {
     const rest = raw.slice('/tasks'.length).replace(/^\//, '');
@@ -155,6 +217,12 @@ function readNarrowing(text) {
     owner: params.get('owner') || '',
     scope: SCOPES.includes(scope) ? scope : '',
   };
+}
+
+/** What the skills page is narrowed to, as `{ q, file }` with a blank for each one absent. */
+function readCustomize(text) {
+  const params = new URLSearchParams(text);
+  return { q: params.get('q') || '', file: params.get('file') || '' };
 }
 
 function decode(value) {

@@ -54,6 +54,24 @@
   --alarm-fg: #FF6B6B;
 }
 
+/* ─────────────────────────────────────── the column everything is read in ───────────────────────────────────────
+ *
+ * Every section's content sits in one column of one width: the transcript and the composer under
+ * it, the schedule, the knowledge base and Customize. One token rather than the number written out
+ * in each of them, because the only thing worse than the wrong width is two of them — a person
+ * moving between sections reads the shift as the page jumping, and nothing on screen explains it.
+ *
+ * `width: 100%` alongside the cap is load-bearing: these are flex items in a column that is itself
+ * a flex child, and without it a short panel shrinks to its content and stops being centred.
+ */
+:root { --page-width: 64rem; }
+
+.page-column {
+  margin-inline: auto;
+  width: 100%;
+  max-width: var(--page-width);
+}
+
 /* ─────────────────────────────────────── the quality floor ─────────────────────────────────────── */
 
 /* Nothing widens the page. The strings this application shows are the ones with no spaces in them —
