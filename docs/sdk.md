@@ -498,7 +498,8 @@ or to `-1` to remove that limit entirely.
 
 ### The tools that ship
 
-Roughly: filesystem (`Read`, `Write`, `Edit`), `TodoWrite`, memories (`MemoryView`, `MemoryCreate`,
+Roughly: filesystem (`Read`, `Write`, `Edit`, and `Glob`, `Grep`, `ListDirectory` to find a file
+rather than read one), `TodoWrite`, memories (`MemoryView`, `MemoryCreate`,
 `MemoryInsert`, `MemoryStrReplace`, `MemoryRename`, `MemoryDelete`), skills (`ListSkills`,
 `WriteSkillFile`, `DeleteSkill`, `DeleteSkillFile`), MCP registration (`AddMcpServer`,
 `ListMcpServers`, `RemoveMcpServer`, `ShareMcpServer`, `UnshareMcpServer`), credentials
