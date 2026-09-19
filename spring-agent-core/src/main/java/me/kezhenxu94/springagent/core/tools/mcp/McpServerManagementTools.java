@@ -1,32 +1,31 @@
 package me.kezhenxu94.springagent.core.tools.mcp;
 
-import io.modelcontextprotocol.client.McpSyncClient;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
-import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import org.springframework.ai.chat.model.ToolContext;
-import org.springframework.ai.mcp.client.common.autoconfigure.properties.McpStreamableHttpClientProperties;
-import org.springframework.ai.mcp.client.common.autoconfigure.properties.McpStreamableHttpClientProperties.ConnectionParameters;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
- * MCP server registry, exposed to the agent as tools. The owner (and the chat the request came
- * from) is resolved per call from {@link ToolContext}; every mutating operation
- * (add/remove/share/unshare) is scoped to that owner — sharing a server does not grant the
- * recipient the ability to manage it.
+ * The MCP server registry, put to the model as tools.
+ *
+ * <p>Everything that decides anything is {@link McpServerRegistry}'s; this is the half that talks
+ * to a model. It reads the owner and the chat out of the {@link ToolContext}, hands the registry a
+ * request, and turns whatever comes back — a registration or an {@link McpRegistryException} — into
+ * a sentence in the workspace's language. The browser's {@code McpController} is the other caller
+ * of that registry and says something different about the same refusals.
+ *
+ * <p>Which sentence a refusal gets is partly the operation's, not the reason's alone: "no server of
+ * that name is registered to you" is the right answer to a remove and the wrong one to a share,
+ * where what the model needs to hear is that only servers it owns can be shared.
  *
  * <p>Only remote streamable HTTP servers are supported; stdio and SSE are rejected.
  */
@@ -35,21 +34,8 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class McpServerManagementTools {
-  private final McpServerConfigRepo repo;
-  private final McpClientFactory clientFactory;
 
-  /**
-   * The servers this application configures for everyone under {@code
-   * spring.ai.mcp.client.streamable-http}, which reach a run through {@link
-   * me.kezhenxu94.springagent.core.tools.AgentToolsProvider} rather than through the repository
-   * above. Listed here because a user asking what MCP servers they have means the ones the agent
-   * can reach, not the ones a particular table happens to hold.
-   *
-   * <p>Through an {@link ObjectProvider} because the bean only exists while {@code
-   * spring.ai.mcp.client.enabled} is true, and an application that turns MCP off entirely must
-   * still get its MCP registry tools.
-   */
-  private final ObjectProvider<McpStreamableHttpClientProperties> streamableHttpProperties;
+  private final McpServerRegistry registry;
 
   /** What this hands back to the model, in the workspace's language. */
   private final CoreMessages messages;
@@ -113,113 +99,26 @@ unreadable. Two servers the same user can reach may not share a prefix.
     if (url == null || url.isBlank()) {
       return messages.get("mcp-no-url");
     }
-    final var serverName = name.trim();
-    final var serverUrl = url.trim();
 
+    final McpRegistration registered;
     try {
-      clientFactory.validateRemoteUrl(serverUrl);
-      McpClientFactory.validateToolPrefix(toolPrefix);
-    } catch (IllegalArgumentException e) {
-      return messages.get("mcp-error", e.getMessage());
+      registered =
+          registry.register(
+              ownerId,
+              ToolContexts.get(context, ToolContexts.CHAT_ID),
+              new McpServerSpec(
+                  name, url, headers, title, version, description, websiteUrl, toolPrefix),
+              context.getContext());
+    } catch (final McpRegistryException e) {
+      return refusal(e, "mcp-verb-registered", "mcp-unknown");
     }
 
-    final var existing = repo.findByOwnerIdAndName(ownerId, serverName).orElse(null);
-    final var config =
-        (existing != null
-                ? existing.toBuilder()
-                // Same as ScheduledTaskTool#newTaskId: neither backend generates an identifier, so
-                // a new config has to arrive with one.
-                : McpServerConfig.builder().id(UUID.randomUUID().toString().replace("-", "")))
-            .ownerId(ownerId)
-            .name(serverName)
-            .transport(McpServerConfig.Transport.STREAMABLE_HTTP)
-            .url(serverUrl)
-            .headers(headers == null ? null : new LinkedHashMap<>(headers))
-            .title(blankToNull(title))
-            .version(blankToNull(version))
-            .description(blankToNull(description))
-            .websiteUrl(blankToNull(websiteUrl))
-            .toolPrefix(blankToNull(toolPrefix))
-            .enabled(true)
-            .build();
-
-    final var taken = prefixTakenBy(config, context);
-    if (taken != null) {
-      return messages.get("mcp-prefix-taken", McpClientFactory.toolPrefix(config), taken);
-    }
-
-    final List<String> toolNames;
-    McpSyncClient client = null;
-    try {
-      // The registration probe goes out with the same headers a run would send, contributors
-      // included, so a server that only accepts the call once one is present is not rejected here.
-      client = clientFactory.createAndInitialize(config, context.getContext());
-      toolNames = client.listTools().tools().stream().map(t -> t.name()).toList();
-    } catch (IllegalArgumentException e) {
-      return messages.get("mcp-error", e.getMessage());
-    } catch (Exception e) {
-      log.warn(
-          "Failed to connect to MCP server '{}' at {} for user {}",
-          serverName,
-          serverUrl,
-          ownerId,
-          e);
-      return messages.get("mcp-unreachable", serverName, e.getMessage());
-    } finally {
-      if (client != null) {
-        try {
-          client.close();
-        } catch (Exception e) {
-          log.warn("Failed to close validation MCP client for '{}'", serverName, e);
-        }
-      }
-    }
-
-    try {
-      repo.save(config);
-    } catch (Exception e) {
-      log.error("Failed to persist MCP server '{}' for user {}", serverName, ownerId, e);
-      return messages.get("mcp-save-failed", serverName, e.getMessage());
-    }
-    log.info(
-        "Registered MCP server '{}' ({}) for user {}",
-        serverName,
-        McpServerConfig.Transport.STREAMABLE_HTTP,
-        ownerId);
+    final var toolNames = registered.toolNames();
     return messages.get(
         "mcp-registered",
-        serverName,
+        registered.config().name(),
         McpServerConfig.Transport.STREAMABLE_HTTP,
         toolNames.isEmpty() ? messages.get("mcp-no-tools") : String.join(", ", toolNames));
-  }
-
-  /**
-   * The name of another server this caller can reach whose tools would be named the same as {@code
-   * config}'s, or null when the prefix is free.
-   *
-   * <p>Checked against everything {@code findAccessibleTo} returns rather than only what the owner
-   * registered, because that is the exact set a run assembles: a prefix free among a user's own
-   * servers can still collide with one shared with them, and the collision costs the run every MCP
-   * tool rather than the one call. Disabled servers count — a server is re-enabled far more easily
-   * than a prefix is renamed once the model has been calling it.
-   *
-   * <p>Effective prefixes, from {@link McpClientFactory#toolPrefix}, so a chosen prefix that
-   * happens to spell out another server's name hash is caught too.
-   */
-  private String prefixTakenBy(final McpServerConfig config, final ToolContext context) {
-    final var prefix = McpClientFactory.toolPrefix(config);
-    final var identifiers =
-        McpServerConfig.accessIdentifiers(
-            config.ownerId(), ToolContexts.get(context, ToolContexts.CHAT_ID));
-    return repo.findAccessibleTo(config.ownerId(), identifiers).stream()
-        // Re-adding a name overwrites that very row, so it is not a second server.
-        .filter(
-            other ->
-                !(other.ownerId().equals(config.ownerId()) && other.name().equals(config.name())))
-        .filter(other -> prefix.equals(McpClientFactory.toolPrefix(other)))
-        .map(McpServerConfig::name)
-        .findFirst()
-        .orElse(null);
   }
 
   @Tool(
@@ -235,14 +134,9 @@ unreadable. Two servers the same user can reach may not share a prefix.
     final var ownerId = ToolContexts.require(context, ToolContexts.USER_ID);
     final var chatId = ToolContexts.get(context, ToolContexts.CHAT_ID);
 
-    final var owned = repo.findByOwnerId(ownerId);
-    final var identifiers = McpServerConfig.accessIdentifiers(ownerId, chatId);
-    final var shared =
-        repo.findBySharedWithIn(identifiers).stream()
-            .filter(s -> !s.ownerId().equals(ownerId))
-            .toList();
-
-    final var configured = applicationConfigured();
+    final var owned = registry.owned(ownerId);
+    final var shared = registry.sharedWith(ownerId, chatId);
+    final var configured = registry.applicationConfigured();
 
     if (owned.isEmpty() && shared.isEmpty() && configured.isEmpty()) {
       return messages.get("mcp-none");
@@ -251,45 +145,45 @@ unreadable. Two servers the same user can reach may not share a prefix.
     final var sb = new StringBuilder();
     if (!owned.isEmpty()) {
       sb.append(messages.get("mcp-owned-by-you")).append("\n");
-      for (final var s : owned) {
+      for (final var server : owned) {
         sb.append("- ")
-            .append(s.name())
+            .append(server.name())
             .append(" [")
-            .append(s.transport())
+            .append(server.transport())
             .append("] ")
-            .append(s.url())
-            .append(s.enabled() ? "" : " " + messages.get("mcp-disabled"))
+            .append(server.url())
+            .append(server.enabled() ? "" : " " + messages.get("mcp-disabled"))
             .append(
-                s.sharedWith() == null || s.sharedWith().isEmpty()
+                server.sharedWith() == null || server.sharedWith().isEmpty()
                     ? ""
-                    : " " + messages.get("mcp-shared-with", shareTargets(s.sharedWith())))
+                    : " " + messages.get("mcp-shared-with", shareTargets(server.sharedWith())))
             .append("\n");
       }
     }
     if (!shared.isEmpty()) {
       sb.append(messages.get("mcp-shared-with-you")).append("\n");
-      for (final var s : shared) {
+      for (final var server : shared) {
         sb.append("- ")
-            .append(s.name())
+            .append(server.name())
             .append(" [")
-            .append(s.transport())
+            .append(server.transport())
             .append("] ")
             .append(messages.get("mcp-shared-by"))
             .append(' ')
-            .append(s.ownerId())
-            .append(s.enabled() ? "" : " " + messages.get("mcp-disabled"))
+            .append(server.ownerId())
+            .append(server.enabled() ? "" : " " + messages.get("mcp-disabled"))
             .append("\n");
       }
     }
     if (!configured.isEmpty()) {
       sb.append(messages.get("mcp-configured-here")).append("\n");
-      for (final var entry : configured.entrySet()) {
+      for (final var server : configured) {
         sb.append("- ")
-            .append(entry.getKey())
+            .append(server.name())
             .append(" [")
             .append(McpServerConfig.Transport.STREAMABLE_HTTP)
             .append("] ")
-            .append(connectionUrl(entry.getValue()))
+            .append(server.url())
             .append("\n");
       }
     }
@@ -318,24 +212,11 @@ unreadable. Two servers the same user can reach may not share a prefix.
     final var serverName = name.trim();
     final var target = targetId.trim();
 
-    if (isApplicationConfigured(serverName)) {
-      return notYoursToManage(serverName, "mcp-verb-shared");
+    try {
+      registry.share(ownerId, serverName, target);
+    } catch (final McpRegistryException e) {
+      return refusal(e, "mcp-verb-shared", "mcp-not-yours-share");
     }
-    final var config = repo.findByOwnerIdAndName(ownerId, serverName).orElse(null);
-    if (config == null) {
-      return messages.get("mcp-not-yours-share", serverName);
-    }
-    var sharedWith = config.sharedWith();
-    if (sharedWith == null) {
-      sharedWith = new ArrayList<String>();
-      config.sharedWith(sharedWith);
-    }
-    if (sharedWith.contains(target)) {
-      return messages.get("mcp-already-shared", serverName, target);
-    }
-    sharedWith.add(target);
-    repo.save(config);
-    log.info("Shared MCP server '{}' with {} by owner {}", serverName, target, ownerId);
     return messages.get("mcp-share-done", serverName, target);
   }
 
@@ -358,69 +239,12 @@ unreadable. Two servers the same user can reach may not share a prefix.
     final var serverName = name.trim();
     final var target = targetId.trim();
 
-    if (isApplicationConfigured(serverName)) {
-      return notYoursToManage(serverName, "mcp-verb-unshared");
+    try {
+      registry.unshare(ownerId, serverName, target);
+    } catch (final McpRegistryException e) {
+      return refusal(e, "mcp-verb-unshared", "mcp-not-yours-unshare");
     }
-    final var config = repo.findByOwnerIdAndName(ownerId, serverName).orElse(null);
-    if (config == null) {
-      return messages.get("mcp-not-yours-unshare", serverName);
-    }
-    if (config.sharedWith() == null || !config.sharedWith().remove(target)) {
-      return messages.get("mcp-not-shared", serverName, target);
-    }
-    repo.save(config);
-    log.info("Unshared MCP server '{}' from {} by owner {}", serverName, target, ownerId);
     return messages.get("mcp-unshare-done", serverName, target);
-  }
-
-  /**
-   * The share list as the reader should see it: {@link McpServerConfig#SHARED_WITH_ALL} is a
-   * sentinel, and a bare {@code *} in the answer says nothing about who can reach the server.
-   */
-  private static String shareTargets(final List<String> sharedWith) {
-    return sharedWith.stream()
-        .map(target -> McpServerConfig.SHARED_WITH_ALL.equals(target) ? "everyone" : target)
-        .collect(Collectors.joining(", "));
-  }
-
-  /**
-   * The connections configured under {@code spring.ai.mcp.client.streamable-http}, keyed by name,
-   * empty when none are or when MCP is disabled altogether.
-   *
-   * <p>Only that transport: stdio would launch a subprocess beside this application and SSE is
-   * deprecated upstream, so neither is configured anywhere here — a deployment that configured one
-   * regardless would not see it listed.
-   */
-  private Map<String, ConnectionParameters> applicationConfigured() {
-    final var properties = streamableHttpProperties.getIfAvailable();
-    return properties == null ? Map.of() : properties.getConnections();
-  }
-
-  private boolean isApplicationConfigured(final String name) {
-    return applicationConfigured().containsKey(name);
-  }
-
-  /**
-   * Where the connection's requests actually go. The endpoint is a path under the URL and defaults
-   * to {@code /mcp} when unset, exactly as Spring AI's transport builds it.
-   */
-  private static String connectionUrl(final ConnectionParameters connection) {
-    final var url = connection.url() == null ? "" : connection.url();
-    final var endpoint = connection.endpoint() == null ? "/mcp" : connection.endpoint();
-    return url + endpoint;
-  }
-
-  /**
-   * What a mutating tool says about a name this application configures. Without it the answer is
-   * that no such server is registered, which reads as "it does not exist" for a server whose tools
-   * the model can see itself calling — and invites it to register one under the same name.
-   */
-  private String notYoursToManage(final String name, final String verb) {
-    return messages.get("mcp-not-yours-to-manage", name, messages.get(verb));
-  }
-
-  private static String blankToNull(final String value) {
-    return value == null || value.isBlank() ? null : value.trim();
   }
 
   @Tool(
@@ -435,14 +259,47 @@ unreadable. Two servers the same user can reach may not share a prefix.
       return messages.get("mcp-no-server-name");
     }
     final var serverName = name.trim();
-    if (isApplicationConfigured(serverName)) {
-      return notYoursToManage(serverName, "mcp-verb-removed");
+
+    try {
+      registry.remove(ownerId, serverName);
+    } catch (final McpRegistryException e) {
+      return refusal(e, "mcp-verb-removed", "mcp-unknown");
     }
-    if (!repo.existsByOwnerIdAndName(ownerId, serverName)) {
-      return messages.get("mcp-unknown", serverName);
-    }
-    repo.deleteByOwnerIdAndName(ownerId, serverName);
-    log.info("Removed MCP server '{}' for user {}", serverName, ownerId);
     return messages.get("mcp-removed", serverName);
+  }
+
+  /**
+   * A refusal as the model should read it.
+   *
+   * <p>Two of the reasons have no sentence of their own, because what to say about them depends on
+   * what was being attempted: {@code verbKey} is the word that finishes "cannot be … through these
+   * tools" for a name this application configures, and {@code unknownKey} is the whole sentence for
+   * a name the caller does not own — which for a share has to say that ownership is the point,
+   * while for a remove it need only say there is no such server.
+   */
+  private String refusal(
+      final McpRegistryException e, final String verbKey, final String unknownKey) {
+    final var arguments = e.arguments();
+    return switch (e.reason()) {
+      case INVALID -> messages.get("mcp-error", arguments);
+      case PREFIX_TAKEN -> messages.get("mcp-prefix-taken", arguments);
+      case UNREACHABLE -> messages.get("mcp-unreachable", arguments);
+      case SAVE_FAILED -> messages.get("mcp-save-failed", arguments);
+      case ALREADY_SHARED -> messages.get("mcp-already-shared", arguments);
+      case NOT_SHARED -> messages.get("mcp-not-shared", arguments);
+      case UNKNOWN -> messages.get(unknownKey, arguments);
+      case APPLICATION_CONFIGURED ->
+          messages.get("mcp-not-yours-to-manage", arguments[0], messages.get(verbKey));
+    };
+  }
+
+  /**
+   * The share list as the reader should see it: {@link McpServerConfig#SHARED_WITH_ALL} is a
+   * sentinel, and a bare {@code *} in the answer says nothing about who can reach the server.
+   */
+  private static String shareTargets(final List<String> sharedWith) {
+    return sharedWith.stream()
+        .map(target -> McpServerConfig.SHARED_WITH_ALL.equals(target) ? "everyone" : target)
+        .collect(Collectors.joining(", "));
   }
 }

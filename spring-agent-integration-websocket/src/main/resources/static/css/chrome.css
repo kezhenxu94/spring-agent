@@ -223,18 +223,17 @@
  * most people take once.
  */
 .chat-title,
+/* The title is a field that does not look like one until it is being used: a box around a heading
+   is chrome on the one line that names the page. So it carries .field for its behaviour and hides
+   the frame until it is editable — see the rule below, which puts .field's own ground and line
+   back the moment it is. */
 .chat-title-input {
-  min-width: 0;
   height: 1.7rem;
   padding-inline: 0.4rem;
-  border: 1px solid transparent;
-  border-radius: 0.4rem;
+  border-color: transparent;
   background: transparent;
-  font-family: inherit;
-  font-size: 13px;
   font-weight: 500;
   line-height: 1.7rem;
-  color: var(--fg);
   text-align: left;
 }
 

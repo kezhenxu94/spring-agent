@@ -123,7 +123,12 @@ another's files. The same line runs through everything else:
 - **MCP servers** are registered by their owner. `ShareMcpServer` grants use to another person, a
   group chat, or everyone, while editing, removing and re-sharing stay with the owner — the
   recipient never sees the URL or headers. Servers the deployment configures for everybody under
-  `spring.ai.mcp.client.*` are listed alongside them and belong to nobody.
+  `spring.ai.mcp.client.*` are listed alongside them and belong to nobody. On the browser surface
+  they are also a page — **Customize → MCP servers** — which is where a URL and a token are worth
+  typing rather than dictating to a model that will echo them into a transcript. Adding one connects
+  to it and lists what it offers before anything is stored, so a wrong URL is caught where it was
+  typed; the stored token is never sent back to the page, and a server can be turned off without
+  being forgotten.
 - **Skills** are folders with a `SKILL.md` in the user's own skills directory. The agent writes and
   deletes them on request; paths outside that directory are refused. On the browser surface they are
   also a page of their own — **Customize → Skills** lists what you and your company have, opens one
@@ -138,7 +143,13 @@ another's files. The same line runs through everything else:
   convention that binds a chat is remembered by the chat rather than by whoever happened to be
   typing. A shared memory can only be written from a group chat, where the write happens in front
   of the people it affects — in a one-to-one chat the agent reads the company's memory but saves to
-  your own, unless you are listed in `AI_ADMINS`.
+  your own, unless you are listed in `AI_ADMINS`. On the browser surface they are also a page —
+  **Customize → Memories** — which lists what the agent has learnt with the front matter of each
+  memory read onto its card, and opens one to correct or forget it. That matters more than it does
+  for a skill: a skill is something you wrote, while a memory is what the agent concluded about you,
+  and the only other way to fix one is to ask the thing that wrote it to unwrite it. Writing the
+  company's from there follows `AI_NON_ADMIN_TENANT_WRITES`, the same switch that governs company
+  skills and knowledge.
 - **Credentials** are per-user: a Kubernetes Secret mounted into that user's sandbox, or an
   encrypted row, so a token reaches a shell as an environment variable and never a prompt. On
   Kubernetes an operator can also share Secrets they provisioned themselves — with a group, a

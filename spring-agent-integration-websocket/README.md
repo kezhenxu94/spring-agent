@@ -46,10 +46,11 @@ a conversation with no tools row is the ordinary case there rather than a fault.
 
 ## Reaching a store without a run in between
 
-This is the one surface that does, and it does it twice — for the knowledge base and for skills.
-Both are things a user owns, and both were previously reachable only by asking the model to operate
-on them, which is a poor way to check a list or correct one line: the model has to pick the tool,
-guess the id and report back, and any of the three can go wrong quietly.
+This is the one surface that does, and it does it four times — for the knowledge base, for skills,
+for memories and for MCP servers. All four are things a user owns, and all four were previously
+reachable only by asking the model to operate on them, which is a poor way to check a list or correct
+one line: the model has to pick the tool, guess the id and report back, and any of the three can go
+wrong quietly.
 
 ### The knowledge base
 
@@ -142,8 +143,129 @@ guard, which is what answers zip slip; entries are read to a budget rather than 
 which is what answers a zip bomb; a single top-level folder is stripped, because that is the shape a
 downloaded repository has and unpacked as-is its `SKILL.md` is one level too deep to be a skill.
 
+### Memories
+
+`MemoryController` puts core's `MemoryStore` behind `/api/memories`, which is the **Customize**
+section's *Memories* tab. It lists a scope's `memories/` root recursively with each file's front
+matter read onto its row, and reads, writes and deletes one file at a time.
+
+The case for it is the strongest of the four. A skill is something somebody wrote and a knowledge
+document is something they filed; a memory is what the agent *concluded* about them, and the only
+other way to correct one is to ask the thing that wrote it to unwrite it — the one request most
+likely to go round in a circle.
+
+`core/memory/MemoryStore` is where the work is, and it is in core for the reason `SkillFiles` is:
+both callers need the same guard. `MemoryFiles.resolveSafe` is what stops a symlink planted in a
+shared `memories/` turning a read of a group's memories into a read of one member's home, and a
+guard that exists twice is one that will eventually only be half fixed. The tools call it with a
+scope word a model wrote and answer in localized prose; this calls it with a scope and a path and
+answers in JSON.
+
+Four things differ from the skills page:
+
+- **Scope is `own` or `tenant` and there is no `owner` parameter**, so not even an administrator
+  reaches another person's memories here. That is the skills rule rather than the knowledge base's:
+  reading somebody's notes is a moderation question, reading what the agent decided about them is
+  not a question anybody should be able to ask.
+- **Who may write company memories is `app.ai.non-admin-tenant-writes`**, asked through
+  `TenantWrites` exactly as the skills page and the knowledge base ask it — and deliberately *not*
+  through `MemoryScopes.writable`, which is the same question plus one more: that a shared write
+  happen in a group chat, in front of the people it affects. A browser session has no group at all,
+  so reusing that answer would leave the company scope permanently read-only here whatever a
+  deployment configured, which is a control no setting could ever open. The witness rule is a rule
+  about chats and stays in the chat tools; what this page grants is what it already grants over
+  company *skills*, which are instructions the agent executes and so strictly the more dangerous.
+- **Create and overwrite are one endpoint.** `MemoryCreate` refuses a path that exists, which is
+  right for a model that cannot see the file and would otherwise replace something it never read,
+  and wrong for a person who is looking at it in an editor.
+- **Nothing here maintains `MEMORY.md`.** The index is prose, one line per memory, and what belongs
+  on that line is a judgement — so it is a file on this page like any other. A page that appended a
+  line of its own devising would be fighting the agent over the shape of a file they both write.
+
+A memory opens in the **shared record card** — `detailHead`, `detailFacts`, `detailBody` — which is
+the card a knowledge document and a scheduled task open in, with the actions in the head's menu and
+the text as `.detail-text prose`. Not the skills tab's two panes: a skill is a folder and needs a
+tree beside the file, while a memory is one file, and the pane's frame and inset only make sense
+against a tree that is not there. The front matter is read into the facts and left out of the
+rendered body, because otherwise it is on screen twice — and the second time as markdown, where
+consecutive `key: value` lines run together into a sentence that is not in the file. Editing still
+opens the whole file.
+
+`MemoryEntry` is the wire shape and is handed straight to Jackson, which it can be only because it
+carries no `Path`. `SkillSummary` carries the directory its skill is in and therefore needs a
+controller to strip it on the way out; anything added to `MemoryEntry` is something every browser
+that can open the page will see.
+
+### MCP servers
+
+`McpController` puts core's `McpServerRegistry` behind `/api/mcp`, which is the *MCP servers* tab.
+Registering a server means typing a URL and a bearer token, and dictating a credential to a model
+that will echo it into a transcript is not a reasonable way to configure anything.
+
+`core/tools/mcp/McpServerRegistry` is the extraction that made this possible, and it is the same
+split again: registering a server is URL validation, a tool-prefix collision check across everything
+the caller can reach, a live probe of the endpoint and only then a save. `McpServerManagementTools`
+is now a translator from an `McpRegistryException` reason to `CoreMessages`, and this controller from
+the same reason to an HTTP status plus `WebMessages` — which is why the registry throws a reason
+rather than a sentence: a URL this runtime will not take and a server that did not answer look alike
+and are not, and a page reporting the second as a bad request has somebody editing a URL that was
+right all along.
+
+Three things about it are load-bearing:
+
+- **Headers never come back.** A row's headers are exactly where the token lives. A response carries
+  their *names* only, and a save that omits the field keeps what is stored while an empty object
+  clears it. Without that distinction, opening a server to correct its URL and pressing save would
+  quietly drop its credential, and the next run would get a 401 from a server that had been working.
+  Getting it backwards would make `GET /api/mcp` the shortest path between a stolen session and
+  every token the person has pasted in.
+- **Three groups, and only one of them is the caller's.** What others have shared carries a name and
+  an owner and nothing about the connection, which is what `ListMcpServers` already refuses to leak;
+  what the application configures under `spring.ai.mcp.client.*` is read-only because nobody owns it.
+  The wire shapes are records rather than maps precisely because *what is not on them* is the point:
+  a record has no field that could carry a header, while one more `put` on a map is one line. On the
+  page the three are the tab's **stores** — the same pill switch over the same grid skills and
+  memories use — so each is a link, rather than three headings stacked down one column.
+- **Saving connects.** Nothing is stored unless the endpoint answered and listed its tools, and the
+  response carries those names — the only evidence anybody gets that the credential is right. A row
+  that was never reached is a row whose tools a later run fails to assemble, and the failure lands on
+  a conversation rather than on whoever typed the URL.
+
+There is no scope here: a server is not a file under a home but a row owned by whoever registered it,
+and the way it reaches anybody else is a share. The browser is given no chat id, so only servers
+shared with the person directly or with everyone reach them — a server shared with a Feishu group
+they are in is theirs to use *in that group*, and this session is not in it. `enabled` is the one
+operation the chat tools cannot do at all: the field has always been stored and honoured and nothing
+ever set it, which left removing a misbehaving server as the only way to quieten it — throwing away
+a URL, a prefix the model has learnt and a credential somebody has to find again.
+
 CSRF is on in the applications carrying this module, unlike the webhook servers': a POST here makes
 the agent act with the logged-in person's credentials, files and MCP servers.
+
+### One field vocabulary, and one frame
+
+Three things about the record card were settled while the two tabs above were added, and each is a
+rule for whatever comes next rather than a detail of those two.
+
+**Every field is `css/fields.css`.** There used to be six vocabularies — `.detail-input` and
+`.detail-edit` on the record cards, the knowledge note form spelt in utilities in the markup,
+`.file-edit` in the skills pane, `.row-rename` in the rail, `.chat-title-input` in the header and
+`.composer-box` around the composer — and four of them already carried the same four declarations,
+each restated in full. There are two shapes now: `.field`, where the element draws its own frame,
+and `.field-box`, where a wrapper draws it and a `.field-bare` child scrolls inside. The second is
+what you need when the frame holds something besides the text — the composer's send button, the
+skills pane's path. Sans by default; `.field-mono` where the content is data rather than prose.
+
+The **search lens is deliberately neither**, and there is a note in `fields.css` saying so: it
+frames itself with an `outline` rather than a border, because a border would make the closed box 2px
+wider than the buttons beside it and shift the glyph, and its frame goes amber while it is being
+typed into. Folding it in draws a second rectangle around it.
+
+**An open detail card has no frame of its own**, which `detail.css` has always said and, until now,
+only half did: the rule matched `.detail-body > .detail-card`, and Customize puts a tabpanel in
+between, so the skills tab drew the frame the rule exists to remove and every tab added beside it
+inherited that. It matches at any depth now, and the tabpanel passes the height through — which is
+also what finally lets the skills tab's two panes fill the panel and scroll inside it.
 
 ## The page
 
@@ -164,14 +286,17 @@ a fold look like a fold rather than a redraw; the geometry and the reasons are i
 and changing one of the three rows that state it means changing all three.
 
 **Navigation is one-way.** `route.js` owns the hash (`#/chat/<id>`, `#/tasks/<id>`,
-`#/kb/<scope>/<docId>?q=&owner=&scope=`, `#/customize/<tab>/<scope>/<skill>?q=&file=`), a click calls `go`, and `app.js`'s `dispatch` decides what
+`#/kb/<scope>/<docId>?q=&owner=&scope=`, `#/customize/<tab>[/<scope>]/<id>?q=&file=`), a click calls `go`, and `app.js`'s `dispatch` decides what
 is on screen. Nothing opens a thing and then writes the hash. That holds for a *list* as well as for
 a panel: everything that narrows the knowledge base — the search, the scope, the identity an admin is
 reading — is in the query string and nowhere else, so each of those lists is reachable by a link, a
 reload and the back button. The controls hold no state of their own; `showKnowledge` writes them from
 the route on the way in, and re-fetches only when the narrowing actually changed. Customize follows
-the same rule down to the file: which skill, which store, which file and the search are all in the
-hash, so a file inside a skill is a link. Which folders of the tree are folded is the one thing that
+the same rule down to the file: which tab, which store, which skill, which file and the search are
+all in the hash, so a file inside a skill is a link, and so is one memory and one MCP server. The
+store segment is **per tab** — `TAB_SCOPES` in `route.js` — because skills and memories are files
+under a home while an MCP server is not, so its route carries no store and a server called `own` is
+read as the name it is. Which folders of the tree are folded is the one thing that
 is not, because a folded folder shows nothing different — it is a setting, like the sidebar's own
 fold. `panels.js` is the only thing that hides and shows the main column's four panels, so
 a section cannot forget to put the composer back.

@@ -185,7 +185,7 @@ function body(task, options) {
   }
 
   const field = document.createElement('textarea');
-  field.className = 'detail-edit';
+  field.className = 'field field-area field-area-fill field-mono';
   field.value = editing.text;
   field.setAttribute('aria-label', t('task.what'));
 
@@ -283,7 +283,7 @@ function form(options) {
   // value somebody forgot to fill in.
   const runs = input('number', editing.maxRuns, (value) => { editing.maxRuns = value; });
   runs.min = '1';
-  runs.classList.add('detail-input-narrow');
+  runs.classList.add('field-narrow');
   // Labelled for what it is — the ceiling — and never as "runs", which on the card beside it is the
   // count of firings that have already happened. That is a record of what the task did and is not
   // editable here or anywhere else.
@@ -342,7 +342,7 @@ function hint(text) {
 function input(type, value, onInput) {
   const box = document.createElement('input');
   box.type = type;
-  box.className = 'detail-input';
+  box.className = 'field field-grow field-mono';
   box.value = value ?? '';
   box.addEventListener('input', () => {
     onInput(box.value);

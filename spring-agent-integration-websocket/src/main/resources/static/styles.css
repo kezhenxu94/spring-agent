@@ -9,6 +9,9 @@
  * @theme, is explained at the top of base.css.
  */
 @import "./css/base.css";
+/* Second, and before anything that draws a form: base.css defines the tokens a field reads, and
+   every file below this one either uses .field or wraps something in .field-box. */
+@import "./css/fields.css";
 @import "./css/run.css";
 @import "./css/prose.css";
 @import "./css/chrome.css";
