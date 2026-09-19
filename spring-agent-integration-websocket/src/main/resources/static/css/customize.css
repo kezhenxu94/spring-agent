@@ -189,9 +189,12 @@
   border-radius: 0.7rem;
   text-align: left;
   background: transparent;
-  transition: border-color 120ms ease, background 120ms ease;
+  transition: background 120ms ease;
 }
-.skill-card:hover { border-color: var(--fg-dim); background: var(--surface); }
+/* Hover is a ground and nothing else — the same --code-bg every other hoverable thing on this page
+   takes. Darkening the border as well drew the card's outline twice as hard as its neighbours', so
+   a pointer moving across a grid made each card in turn look like the selected one. */
+.skill-card:hover { background: var(--code-bg); }
 /* The ring belongs to the card, not to the button inside it: what is focused is the card, and a
    ring drawn around only the name and description would stop short of the foot. */
 .skill-card:focus-within { outline: 2px solid var(--mist); outline-offset: 2px; }
