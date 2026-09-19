@@ -523,12 +523,15 @@
     </header>
 
     <!--
-      The same vertical padding the schedule's and the knowledge base's panels state. The three are
-      peers in this column and a person moves between them by pressing a row in the sidebar, so a
-      panel that started its content eight pixels lower than the last one read as the page shifting
-      rather than as the section changing.
+      The same vertical padding every other panel in this column states. They are peers and a person
+      moves between them by pressing a row in the sidebar, so a panel that started its content eight
+      pixels lower than the last one read as the page shifting rather than as the section changing.
+
+      Half of it on a phone, where the same inch of screen has to hold the header, the content and
+      the composer: a 24px band under a 48px header is a quarter of what is left spent on saying
+      nothing, and on a desktop window that space is what keeps the column from filling the glass.
     -->
-    <div id="transcript" class="flex-1 overflow-y-auto scroll-smooth px-4 py-6 sm:px-6"></div>
+    <div id="transcript" class="flex-1 overflow-y-auto scroll-smooth px-4 py-3 sm:px-6 sm:py-6"></div>
 
     <!--
       The schedule, over the run for the same reason the knowledge base is: the composer belongs to
@@ -536,7 +539,7 @@
       hung off the chat rather than built as a peer of it.
     -->
     <section id="tasks-panel" hidden
-             class="detail-panel flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+             class="detail-panel flex-1 overflow-y-auto px-4 py-3 sm:px-6 sm:py-6">
       <div id="tasks-body" class="detail-body page-column space-y-5">
 
         <div id="tasks-intro" class="space-y-1">
@@ -563,7 +566,7 @@
       out-specify it, the same reason the composer toggles display explicitly.
     -->
     <section id="knowledge-panel" hidden
-             class="detail-panel flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+             class="detail-panel flex-1 overflow-y-auto px-4 py-3 sm:px-6 sm:py-6">
       <div id="knowledge-body" class="detail-body page-column space-y-5">
 
         <div id="knowledge-intro" class="space-y-1">
@@ -626,7 +629,7 @@
       is what the rail's lists are for.
     -->
     <section id="customize-panel" hidden
-             class="detail-panel flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+             class="detail-panel flex-1 overflow-y-auto px-4 py-3 sm:px-6 sm:py-6">
       <div id="customize-body" class="detail-body page-column space-y-5">
 
         <div id="customize-intro" class="space-y-1">
