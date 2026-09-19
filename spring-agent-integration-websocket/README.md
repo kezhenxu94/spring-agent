@@ -223,6 +223,14 @@ something you could press, so all it did was make the drawer look as though it h
 open. The fold button is already hidden at that width (folding a drawer to a rail would leave the
 run covered by 3.25rem of nothing), so the way out is the close button, the backdrop and Escape.
 
+That close button stands **exactly where the button that opened it stands** — first in the column's
+head, before the brand, on the same 0.75rem/0.55rem the header's toggle sits on, which is what the
+mobile-only padding on `.side-head` is for. The header's toggle is directly behind the drawer once
+it is open, so landing on the same spot makes the two read as one control that opens and closes.
+It wears the same panel glyph with the arrow turned round; an × would have said "dismiss this
+thing", and the column is not a dialog. The padding is mobile-only because at md the head's inset
+is what puts the brand on the rail's centre line, which the fold depends on.
+
 `styles.css` is a single linked entry that `@import`s `css/*`, and that order is load-bearing: rules
 there tie on specificity with Tailwind's utilities and with each other, so a rule that must hold
 regardless of file order buys specificity and says why (see `.drawer-only`).

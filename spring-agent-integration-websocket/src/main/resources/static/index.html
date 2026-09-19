@@ -116,6 +116,27 @@
       and its arrow points the other way — see .fold-arrow-in in sidebar.css.
     -->
     <div class="side-head flex items-center gap-2.5 pt-3.5 pr-2.5 pb-2.5 pl-[1.125rem]">
+      <!--
+        The way out of the drawer, and it stands where the way in stood: the header's toggle is
+        directly behind this once the drawer is open, so putting the two on the same spot makes
+        one control that opens and closes rather than two that each live somewhere else. The
+        geometry is in .side-head in sidebar.css.
+
+        The same panel the toggle draws, with the arrow turned round — this one collapses where
+        that one expands. An × would have said "dismiss this thing", and the column is not a
+        dialog; it is the same column the fold puts away at a wider window.
+      -->
+      <button id="close-sidebar" type="button" aria-controls="sidebar"
+              class="tool-button drawer-only" data-i18n-title="nav.close">
+        <svg viewBox="0 0 16 16" fill="currentColor" class="size-[15px]" aria-hidden="true">
+          <path d="m4.177 7.823 2.396-2.396A.25.25 0 0 1 7 5.604v4.792a.25.25
+                0 0 1-.427.177L4.177 8.177a.25.25 0 0 1 0-.354Z"/>
+          <path d="M1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75
+                1.75 0 0 1 0 14.25V1.75C0 .784.784 0 1.75 0ZM1.5 1.75v12.5c0 .138.112.25.25.25H9.5v-13H1.75a.25.25
+                0 0 0-.25.25ZM11 14.5h3.25a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25H11Z"/>
+        </svg>
+        <span class="sr-only" data-i18n="nav.close">Close</span>
+      </button>
       <!-- In the same 1rem box the section icons sit in, overflowing it the way the avatar does, so
            that the mark is on the rail's centre line in both states and does not shift on a fold.
            Replaced wholesale by an <img> where app.web.logo names one; see brand.js. -->
@@ -150,15 +171,6 @@
         <!-- Named by drawFold rather than by a data-i18n key: what this button is called
              depends on which way it is about to go. -->
         <span id="fold-label" class="sr-only">Fold the sidebar</span>
-      </button>
-      <!-- A way out of the drawer. The header's toggle is behind it once it is open. -->
-      <button id="close-sidebar" type="button" class="tool-button drawer-only -mr-1"
-              data-i18n-title="nav.close">
-        <svg viewBox="0 0 16 16" fill="none" class="size-[15px]" aria-hidden="true">
-          <path d="m4.5 4.5 7 7m0-7-7 7" stroke="currentColor" stroke-width="1.5"
-                stroke-linecap="round"/>
-        </svg>
-        <span class="sr-only" data-i18n="nav.close">Close</span>
       </button>
     </div>
 
