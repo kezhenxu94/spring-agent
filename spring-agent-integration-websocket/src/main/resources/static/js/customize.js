@@ -58,6 +58,9 @@ export function initCustomize() {
     skills: [],
     detail: null,
     body: null,
+    // Which file `body` is the contents of. What is on screen has to be droppable the moment the
+    // route names another one; see load().
+    bodyPath: null,
     collapsed: new Set(),
     draft: null,
     loading: false,
@@ -154,12 +157,22 @@ async function load(scope, skill, file, again, opening) {
   const mine = (wanted += 1);
   customize.loading = true;
   customize.loadingFile = Boolean(file);
+  // The pane holds one file's contents and `bodyPath` says which, so a route naming a different
+  // one has to drop it here: left in place it is the file somebody just navigated away from, drawn
+  // under the new file's path and above its actions, and the waiting state below never appears
+  // because there is something to show. Keyed on the path rather than on `again`, so that a
+  // reload of the file already open — what a save asks for — does not blink it away and back.
+  if (customize.bodyPath !== file) {
+    customize.body = null;
+    customize.bodyPath = null;
+  }
   if (!again) {
     // Arriving somewhere new, the old skill's tree is not this one's. Cleared so the panes draw
     // their own silhouette rather than the last skill's files under this skill's name.
     if (customize.skill !== skill) {
       customize.detail = null;
       customize.body = null;
+      customize.bodyPath = null;
     }
   }
   draw();
@@ -197,9 +210,11 @@ async function load(scope, skill, file, again, opening) {
       ? await fetchFile(scope, skill, file).catch(() => null)
       : null;
     if (mine !== wanted) return;
+    customize.bodyPath = customize.body ? file : null;
   } else {
     customize.detail = null;
     customize.body = null;
+    customize.bodyPath = null;
   }
 
   customize.loading = false;
@@ -309,6 +324,11 @@ function drawScopes() {
 
 function drawList() {
   const customize = state.customize;
+  // Making one lands in the scope on screen, so the button goes with the scope rather than with
+  // the page — and before the skeleton below returns, or a read-only scope would offer it for as
+  // long as the first fetch takes.
+  const mayWrite = writable(customize.scope);
+  $('skills-new').hidden = !mayWrite;
   // Nothing has arrived yet, so the list is drawn as the shape of what is coming rather than as an
   // empty grid that will jump when it fills. Not on a reload of a list already on screen — see
   // `again` in load(): replacing what somebody is reading with a silhouette of it is worse than a
@@ -320,14 +340,16 @@ function drawList() {
   }
 
   const shown = matching(customize.skills, customize.query);
-  renderSkillList($('skills-list'), shown, (name) => open(name), (skill) => [
+  // The one thing a row offers is a delete, so where this scope is read-only the row carries no
+  // menu at all rather than a menu of nothing.
+  renderSkillList($('skills-list'), shown, (name) => open(name), mayWrite ? (skill) => [
     {
       label: t('skills.delete'),
       danger: true,
       // Built per press, so a skill deleted from under the menu is not still offered by it.
       onSelect: () => deleteSkill(customize.scope, skill.name),
     },
-  ]);
+  ] : null);
 
   const note = $('skills-note');
   if (shown.length) {
@@ -357,6 +379,7 @@ function drawDetail() {
   }
   renderSkillDetail($('skill-detail'), {
     scope: customize.scope,
+    writable: writable(customize.scope),
     scopeWord: t(`skills.scope.${customize.scope}`),
     detail: customize.detail,
     file: customize.body,
@@ -421,6 +444,18 @@ function openFile(path) {
 
 function hasManifest(detail) {
   return Boolean(detail) && (detail.entries || []).some((it) => !it.dir && it.path === MANIFEST);
+}
+
+/**
+ * Whether the scope on screen is one this person may write.
+ *
+ * Their own always is. The company's is app.ai.non-admin-tenant-writes, which by default keeps it
+ * to administrators: a skill there is instructions every colleague's agent loads and acts on. The
+ * endpoints answer 403 either way — this is what stops the page offering the buttons that would
+ * earn one, while everything about reading, opening and exporting a company skill stays.
+ */
+function writable(scope) {
+  return scope !== 'tenant' || Boolean(state.me && state.me.skills && state.me.skills.tenantWritable);
 }
 
 function scopeOf(scope) {

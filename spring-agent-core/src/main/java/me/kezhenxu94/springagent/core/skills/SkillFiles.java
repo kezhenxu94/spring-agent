@@ -145,6 +145,19 @@ public class SkillFiles {
   }
 
   /**
+   * Whether {@code candidate} lies inside one of {@code home}'s skills directories, links and all.
+   *
+   * <p>{@link HomeDir#containsIn} answers the same question by string arithmetic, and that is not
+   * enough for a caller deciding <em>whose</em> directory a write lands in: a symlink under the
+   * caller's own skills folder pointing at the company's is a path that reads as private and writes
+   * as shared, and the sandbox shell can create one. So this is the question a scope check has to
+   * ask, and it is the same one {@link #guarded} asks about the home it was given.
+   */
+  public boolean inSkillsOf(final HomeDir home, final Path candidate) {
+    return reallyInside(home, candidate.toAbsolutePath().normalize());
+  }
+
+  /**
    * Whether {@code resolved} is still inside a skills directory once every link on the way to it
    * has been followed.
    *

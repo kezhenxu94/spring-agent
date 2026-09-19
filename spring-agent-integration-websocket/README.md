@@ -68,6 +68,11 @@ Rules that hold there and must keep holding:
   delete that names one they could be overwritten and never removed. No other write accepts an
   owner, and the one that does reaches only that identity's *own* knowledge base — naming an owner
   and `tenant` together is refused rather than deleting from the admin's company base.
+- **Writing the company knowledge base is `app.ai.non-admin-tenant-writes`**, off by default, so it
+  is an `app.ai.admins` member's to change and everybody else's to read and search. Core's
+  `TenantWrites` again, the same rule the knowledge tools keep; `/api/me` reports
+  `knowledge.tenantWritable` so the page draws neither the Company scope on the add form nor the
+  share and delete actions on a company document.
 - **Every endpoint answers 404 where no `KnowledgeBase` bean exists**, and `/api/me` reports that
   first so the page never offers the section.
 - **A document id travels in the query string or the body, never in the path.** A document indexed
@@ -87,13 +92,16 @@ What is different here from the knowledge base, and why:
   live under an identity nobody logs in as. There is no such case for skills, and a skill is
   *instructions the agent will load and act on* — there is no view of somebody else's worth the door
   it would open.
-- **Anyone in the tenant may write company skills.** Not an oversight: `WriteSkillFile` already lets
-  any member write into the tenant's skills directory by asking the agent, so a stricter rule on this
-  side would not protect the directory, only make the page the slow way round. Tightening it means
-  tightening both callers of `SkillFiles` together.
+- **Who may write company skills is `app.ai.non-admin-tenant-writes`**, and by default that is
+  `app.ai.admins` and nobody else: a skill in the tenant's directory is instructions every
+  colleague's agent loads and acts on. The same check `SkillManagementTools` makes, through core's
+  `TenantWrites`, so asking the agent is not the way round the page — a stricter rule on one side
+  alone would not protect the directory, only make the page the slow way round. Reading, opening and
+  exporting a company skill are untouched.
 - **Nothing here is optional**, so no endpoint answers 404 for absence the way the knowledge base's
-  do. `/api/me` reports only `skills.tenant`, which is what decides whether the page draws the
-  Company scope at all.
+  do. `/api/me` reports `skills.tenant`, which is what decides whether the page draws the Company
+  scope at all, and `skills.tenantWritable`, which decides whether it draws that scope's write
+  controls; the endpoints answer 403 regardless, and that is the check that counts.
 - **A skill name and a file path travel in the query string**, never in the path — the same rule, for
   the same reason.
 - **The list reports `shadowed`.** `HomeDir.dirs` answers nearest scope first and `SkillsTool` keeps

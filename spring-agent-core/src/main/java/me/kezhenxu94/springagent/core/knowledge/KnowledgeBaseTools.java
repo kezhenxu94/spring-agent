@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import lombok.RequiredArgsConstructor;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.config.TenantWrites;
 import me.kezhenxu94.springagent.core.tools.ScopeTarget;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
@@ -30,6 +31,14 @@ public class KnowledgeBaseTools {
   private final KnowledgeBase knowledgeBase;
   private final UserWorkspaceFactory userWorkspaceFactory;
   private final SpringAgentProperties properties;
+
+  /**
+   * Whether this run's person may change the company's knowledge base at all. Off for everybody but
+   * an admin by default, because what is stored there is retrieved into every colleague's answers
+   * as fact; see {@link TenantWrites}.
+   */
+  private final TenantWrites tenantWrites;
+
   private final CoreMessages messages;
 
   @Tool(
@@ -172,6 +181,10 @@ Usage:
     if (refusal != null) {
       return refusal;
     }
+    final var closed = refuseClosedTenant(target, context);
+    if (closed != null) {
+      return closed;
+    }
 
     final KnowledgeSource knowledge;
     if (hasText) {
@@ -299,6 +312,13 @@ Usage:
     if (targetRefusal != null) {
       return targetRefusal;
     }
+    // Both ends, because a move is a write at each of them: taking a document out of the company's
+    // knowledge base removes it from everybody exactly as a delete would.
+    final var closed = refuseClosedTenant(owning, context);
+    final var closedTarget = refuseClosedTenant(target, context);
+    if (closed != null || closedTarget != null) {
+      return closed != null ? closed : closedTarget;
+    }
 
     final java.util.Optional<KnowledgeEntry> moved;
     try {
@@ -363,6 +383,10 @@ Usage:
     if (refusal != null) {
       return refusal;
     }
+    final var closed = refuseClosedTenant(owning.get(), context);
+    if (closed != null) {
+      return closed;
+    }
     try {
       knowledgeBase.delete(readable, owning.get(), docId);
     } catch (RuntimeException e) {
@@ -405,6 +429,20 @@ Usage:
       return messages.get("knowledge-no-tenant");
     }
     return null;
+  }
+
+  /**
+   * Refuses a write to the company's knowledge base where this deployment keeps it to its admins.
+   *
+   * <p>Separate from {@link #refuseUnreachableTarget} because it is a different question and only
+   * writes ask it: that one says the request has no such knowledge base, this one says it has one
+   * and may only read it. Reading the company's is what it is for, and searching, listing and
+   * retrieval are untouched.
+   */
+  private String refuseClosedTenant(final ScopeTarget target, final ToolContext context) {
+    return target == ScopeTarget.TENANT && !tenantWrites.allowed(context)
+        ? messages.get("knowledge-tenant-admins-only")
+        : null;
   }
 
   /**

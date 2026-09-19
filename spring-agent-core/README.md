@@ -57,8 +57,13 @@ Four decisions in there are load-bearing, and each has its reasoning at the code
   means every reachable scope; omitted on a write, the requester's own; misspelt, refused either way.
 - **Who may write a shared memory** is `MemoryScopes.writable`, keyed on the group root being
   present rather than on `chatType` — the same thing every other scoped decision here keys on. A
-  one-to-one chat is a room with one witness, so it reads the tenant's memory and cannot add to it;
-  an `app.ai.admins` member is exempt.
+  one-to-one chat is a room with one witness, so it reads the tenant's memory and cannot add to it.
+  On top of that the tenant's is an `app.ai.admins` member's to change at all, unless
+  `app.ai.non-admin-tenant-writes` is on — `config.TenantWrites`, which answers the same question
+  for skills and for the knowledge base, so that the company scope has one rule rather than three.
+  Reading it is untouched either way, and the block the model is given says which of the two
+  read-only reasons it is: one is answered by asking again in a group chat, and the other by
+  nothing the run can try.
 - **Nothing creates a shared directory on a read.** `HomeDir.folderPath` exists for that: it names
   where a folder would be without making it, which `folder` cannot do and `dirs` will not answer for
   an absent one. Only `MemoryCreate` and a rename's destination create.

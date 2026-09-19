@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.core.tools;
 
+import com.google.common.base.Strings;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -10,6 +11,7 @@ import java.nio.file.Path;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
+import me.kezhenxu94.springagent.core.config.TenantWrites;
 import me.kezhenxu94.springagent.core.skills.SkillAccessDenied;
 import me.kezhenxu94.springagent.core.skills.SkillFiles;
 import me.kezhenxu94.springagent.core.skills.SkillSummary;
@@ -33,6 +35,13 @@ public class SkillManagementTools {
    */
   private final SkillFiles skills;
 
+  /**
+   * Whether this run's person may change what the whole company loads. A skill in the tenant's
+   * folder is instructions every colleague's agent acts on, so the default is that only an admin
+   * writes there; see {@link TenantWrites}.
+   */
+  private final TenantWrites tenantWrites;
+
   /** What this hands back to the model, in the workspace's language. */
   private final CoreMessages messages;
 
@@ -49,6 +58,27 @@ public class SkillManagementTools {
     } catch (final SkillAccessDenied | InvalidPathException e) {
       return null;
     }
+  }
+
+  /**
+   * The refusal for a write that would land in the company's skills while this deployment keeps
+   * that folder to its admins — or null, when the path is somewhere else or the person may.
+   *
+   * <p>Asked of the resolved path rather than of a scope the call named, because these tools take
+   * an absolute path the model wrote: which scope it is in is a fact about where it points, and
+   * {@link SkillFiles#inSkillsOf} is what answers that with the links followed.
+   */
+  private String refuseTenantWrite(final Path path, final ToolContext context) {
+    if (tenantWrites.allowed(context)) {
+      return null;
+    }
+    final var tenantId = ToolContexts.get(context, ToolContexts.TENANT_ID);
+    if (Strings.isNullOrEmpty(tenantId)) {
+      return null;
+    }
+    return skills.inSkillsOf(userWorkspaceFactory.forTenant(tenantId), path)
+        ? messages.get("skill-tenant-denied")
+        : null;
   }
 
   @Tool(
@@ -103,7 +133,8 @@ Usage:
 - Additional files (scripts, references, etc.) can be written alongside SKILL.md.
 - Write into the user's own skills directory. A group's or the tenant's shared one is for a skill
   the user has asked to share: everyone who shares that directory will have the skill loaded into
-  their own conversations, and nobody reviews it on the way in.
+  their own conversations, and nobody reviews it on the way in. Many deployments keep the company's
+  directory to their administrators, and a write there is then refused and says so.
 """)
   public String writeSkillFile(
       @ToolParam(description = "Absolute path to the file inside a skill folder") String filePath,
@@ -114,6 +145,9 @@ Usage:
 
     final var file = validated(filePath, home);
     if (file == null) return messages.get("skill-access-denied");
+
+    final var denied = refuseTenantWrite(file, context);
+    if (denied != null) return denied;
 
     final boolean existed = Files.isRegularFile(file);
     try {
@@ -146,6 +180,9 @@ Usage:
 
     final var dir = validated(skillFolderPath, home);
     if (dir == null) return messages.get("skill-access-denied");
+
+    final var denied = refuseTenantWrite(dir, context);
+    if (denied != null) return denied;
 
     if (!Files.exists(dir)) return messages.get("skill-folder-missing", skillFolderPath);
     if (!Files.isDirectory(dir)) return messages.get("skill-not-a-directory", skillFolderPath);
@@ -181,6 +218,9 @@ Usage:
 
     final var file = validated(filePath, home);
     if (file == null) return messages.get("skill-access-denied");
+
+    final var denied = refuseTenantWrite(file, context);
+    if (denied != null) return denied;
 
     if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
       return messages.get("skill-file-missing", filePath);

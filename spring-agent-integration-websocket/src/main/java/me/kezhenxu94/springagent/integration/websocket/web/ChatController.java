@@ -12,6 +12,7 @@ import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.config.Admins;
+import me.kezhenxu94.springagent.core.config.TenantWrites;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.identity.SystemIdentityProvider;
@@ -57,6 +58,7 @@ public class ChatController {
   private final SpringAgent springAgent;
   private final ObjectProvider<KnowledgeBase> knowledgeBases;
   private final Admins admins;
+  private final TenantWrites tenantWrites;
   private final ObjectProvider<SystemIdentityProvider> systemIdentities;
   private final ChatSessions sessions;
   private final RunJournals journals;
@@ -138,6 +140,11 @@ public class ChatController {
     knowledge.put("enabled", knowledgeBases.getIfAvailable() != null);
     knowledge.put("admin", admins.isAdmin(user.id()));
     knowledge.put("tenant", !Strings.isNullOrEmpty(user.tenantId()));
+    // And whether the company's is theirs to change or only to read — app.ai.non-admin-tenant-
+    // writes, off by default. Reported so the page can draw the company scope without the controls
+    // that would only earn a 403; the endpoints check the same thing again, and it is the check
+    // that counts.
+    knowledge.put("tenantWritable", tenantWrites.allowed(user.id()));
     // And, for an admin, the ids that box can usefully be filled with: the identities this
     // deployment runs unattended work as. Nobody signs in as one of those and no directory lists
     // them, so an administrator who wanted to read what a triage run has remembered would
@@ -153,7 +160,13 @@ public class ChatController {
     // under app.storage.location, and core always has one. So there is nothing to advertise except
     // whether the second scope exists — a sign-in carrying no company has no company skills, and
     // the page must not draw a Yours | Company pair whose other half can only answer 400.
-    out.put("skills", Map.of("tenant", !Strings.isNullOrEmpty(user.tenantId())));
+    out.put(
+        "skills",
+        Map.of(
+            "tenant",
+            !Strings.isNullOrEmpty(user.tenantId()),
+            "tenantWritable",
+            tenantWrites.allowed(user.id())));
     // Whether an answer written here can also be put on a chat, and on which platform. The page
     // draws that platform's own icon on the button, so a name it does not recognise is a button it
     // does not draw — availability rather than a promise, exactly as with the knowledge base

@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.config.TenantWrites;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeEntry;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeReference;
@@ -73,6 +74,13 @@ public class KnowledgeController {
 
   private final ObjectProvider<KnowledgeBase> knowledgeBases;
   private final Admins admins;
+
+  /**
+   * Whether this caller may change the company's knowledge base, or only read it. Core's decision,
+   * asked here so that the page is refused in the same place a run is — see {@code TenantWrites}.
+   */
+  private final TenantWrites tenantWrites;
+
   private final UserWorkspaceFactory workspaces;
   private final WebMessages messages;
   private final SpringAgentProperties properties;
@@ -299,8 +307,12 @@ public class KnowledgeController {
     }
     final var target = targetFor(move.scope(), user);
     final var caller = callerScope(user);
+    // Both ends of the move, because taking a document out of the company base removes it from
+    // everybody exactly as a delete would; targetFor has already answered for the destination.
+    final var owning = owningTarget(caller, move.from());
+    requireTenantWritable(owning, user);
     return knowledgeBase()
-        .move(caller, owningTarget(caller, move.from()), move.docId(), target)
+        .move(caller, owning, move.docId(), target)
         .map(KnowledgeController::asJson)
         // Not found rather than forbidden, the same as everywhere else here: whether somebody
         // else's document exists is not this caller's business.
@@ -340,6 +352,7 @@ public class KnowledgeController {
     final var user = ChatController.user(principal);
     final var reach = readableScope(user, owner);
     final var owning = owningTarget(reach, scope);
+    requireTenantWritable(owning, user);
     // Scoped, so a docId belonging to somebody else matches nothing rather than being refused —
     // which is also what keeps this from being a way to ask whether a document exists.
     knowledgeBase().delete(reach, owning, docId);
@@ -513,7 +526,22 @@ public class KnowledgeController {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST, messages.get("knowledge-no-tenant"));
     }
+    requireTenantWritable(target, user);
     return target;
+  }
+
+  /**
+   * Refuses a write to the company knowledge base where this deployment keeps it to its admins.
+   *
+   * <p>403 and not 404: the company base is one this caller reads every word of, and pretending it
+   * is not there would be a lie the page cannot act on. The same check core makes for a run, so
+   * that asking the agent is not the way round the page.
+   */
+  private void requireTenantWritable(final ScopeTarget target, final WebUser user) {
+    if (target == ScopeTarget.TENANT && !tenantWrites.allowed(user.id())) {
+      throw new ResponseStatusException(
+          HttpStatus.FORBIDDEN, messages.get("knowledge-tenant-read-only"));
+    }
   }
 
   /**

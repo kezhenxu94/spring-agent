@@ -140,7 +140,8 @@ class UserPodManagerTest {
   private static Admins noAdmins() {
     return new Admins(
         new SpringAgentProperties(
-            new SpringAgentProperties.Ai(Set.of(), Map.of(), null, null, null, null, null, null),
+            new SpringAgentProperties.Ai(
+                Set.of(), null, Map.of(), null, null, null, null, null, null),
             Locale.ENGLISH,
             null,
             null));

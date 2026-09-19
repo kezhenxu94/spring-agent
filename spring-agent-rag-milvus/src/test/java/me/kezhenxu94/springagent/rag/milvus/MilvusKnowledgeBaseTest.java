@@ -98,6 +98,7 @@ class MilvusKnowledgeBaseTest {
     return new SpringAgentProperties(
         new SpringAgentProperties.Ai(
             Set.of(),
+            null,
             Map.of(),
             null,
             // Defaults for everything: zero means unset, and the record fills them in.

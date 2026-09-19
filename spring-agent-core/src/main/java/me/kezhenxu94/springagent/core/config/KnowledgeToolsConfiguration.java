@@ -47,8 +47,10 @@ public class KnowledgeToolsConfiguration {
       final KnowledgeBase knowledgeBase,
       final UserWorkspaceFactory userWorkspaceFactory,
       final SpringAgentProperties properties,
+      final TenantWrites tenantWrites,
       final CoreMessages messages) {
-    return new KnowledgeBaseTools(knowledgeBase, userWorkspaceFactory, properties, messages);
+    return new KnowledgeBaseTools(
+        knowledgeBase, userWorkspaceFactory, properties, tenantWrites, messages);
   }
 
   /**

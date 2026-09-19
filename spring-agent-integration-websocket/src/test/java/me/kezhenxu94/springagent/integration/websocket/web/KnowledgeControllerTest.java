@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.Set;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
+import me.kezhenxu94.springagent.core.config.TenantWrites;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeDocument;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeEntry;
@@ -395,10 +396,65 @@ class KnowledgeControllerTest {
   }
 
   @Test
+  @DisplayName("by default only an administrator may write the company knowledge base")
+  void companyWritesAreAdminsOnlyByDefault() {
+    final var recorder = new Recorder();
+    final var closed =
+        new KnowledgeController(
+            provider(recorder),
+            admins(Set.of()),
+            tenantWrites(false, Set.of()),
+            null,
+            messages(),
+            properties());
+
+    assertThatThrownBy(
+            () ->
+                closed.note(
+                    principal(ME, TENANT),
+                    new KnowledgeController.Note("A", "for us all", "tenant")))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("403");
+    assertThatThrownBy(() -> closed.delete(principal(ME, TENANT), "a-doc", "tenant", null))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("403");
+    assertThat(recorder.indexed).isEmpty();
+
+    // Their own is untouched, and so is every read: the company base is one they still search.
+    closed.note(principal(ME, TENANT), new KnowledgeController.Note("A", "for me", "own"));
+    assertThat(recorder.indexed).hasSize(1);
+  }
+
+  @Test
+  @DisplayName("an administrator writes it whatever the toggle says")
+  void companyWritesAreAnAdminsToMake() {
+    final var recorder = new Recorder();
+    final var closed =
+        new KnowledgeController(
+            provider(recorder),
+            admins(Set.of(ME)),
+            tenantWrites(false, Set.of(ME)),
+            null,
+            messages(),
+            properties());
+
+    closed.note(principal(ME, TENANT), new KnowledgeController.Note("A", "for us all", "tenant"));
+
+    assertThat(recorder.indexed).hasSize(1);
+    assertThat(recorder.indexed.get(0).target()).isEqualTo(ScopeTarget.TENANT);
+  }
+
+  @Test
   @DisplayName("every endpoint is absent where the deployment has no knowledge base")
   void withoutAKnowledgeBase() {
     final var controller =
-        new KnowledgeController(provider(null), admins(Set.of()), null, messages(), properties());
+        new KnowledgeController(
+            provider(null),
+            admins(Set.of()),
+            tenantWrites(true, Set.of()),
+            null,
+            messages(),
+            properties());
     assertThatThrownBy(() -> controller.delete(principal(ME, TENANT), "anything", "own", null))
         .isInstanceOf(ResponseStatusException.class)
         .hasMessageContaining("404");
@@ -411,7 +467,14 @@ class KnowledgeControllerTest {
   private KnowledgeController controller(
       final Recorder recorder, final Set<String> adminIds, final Path storage) {
     return new KnowledgeController(
-        provider(recorder), admins(adminIds), workspaces(storage), messages(), properties());
+        provider(recorder),
+        admins(adminIds),
+        // Open, so that these are about scoping and identity rather than about who may write the
+        // company's; the closed default has a section of its own.
+        tenantWrites(true, adminIds),
+        workspaces(storage),
+        messages(),
+        properties());
   }
 
   private static UserWorkspaceFactory workspaces(final Path storage) {
@@ -456,10 +519,21 @@ class KnowledgeControllerTest {
     return new SpringAgentProperties(null, Locale.ENGLISH, null, null);
   }
 
+  /** {@code app.ai.non-admin-tenant-writes}, over the same admin set the controller is given. */
+  private static TenantWrites tenantWrites(final boolean open, final Set<String> ids) {
+    final var properties =
+        new SpringAgentProperties(
+            new SpringAgentProperties.Ai(ids, open, Map.of(), null, null, null, null, null, null),
+            Locale.ENGLISH,
+            null,
+            null);
+    return new TenantWrites(properties, new Admins(properties));
+  }
+
   private static Admins admins(final Set<String> ids) {
     return new Admins(
         new SpringAgentProperties(
-            new SpringAgentProperties.Ai(ids, Map.of(), null, null, null, null, null, null),
+            new SpringAgentProperties.Ai(ids, null, Map.of(), null, null, null, null, null, null),
             Locale.ENGLISH,
             null,
             null));

@@ -406,7 +406,11 @@
   max-width: 60%;
   overflow: auto;
   padding: 0.4rem;
-  border-right: 1px solid var(--line);
+  /* The same 0.125rem the rail puts between its rows (`space-y-0.5` on every list in the sidebar).
+     Rows that touch read as one block of text rather than as things you pick one of, and the tree
+     is the same kind of list the rail is — see .tree-row, which already borrows .side-row's
+     geometry to the pixel. */
+  gap: 0.125rem;
 }
 
 /*
@@ -475,6 +479,13 @@
  * inside it never gets a bounded height to scroll within, and the pane's own `overflow: hidden`
  * clips a long file at the fold with no way to reach the rest. Every step of the chain needs one;
  * detail.css says the same thing about the panel above it.
+ *
+ * The hairline between the two panes belongs to this one, and that side is load-bearing.
+ * .pane-resize is pulled over both its neighbours by its negative margins, so this pane starts a
+ * hair to the left of the tree's right edge — and .file-gutter is sticky with an opaque ground of
+ * its own, which would paint straight over a border drawn on the tree the moment a file is open. A
+ * border of this pane's own it cannot cover, because the gutter is inside it. Below md the panes
+ * stack and the tree carries a border-bottom instead; see the media query.
  */
 .skill-file {
   display: flex;
@@ -482,6 +493,7 @@
   min-width: 0;
   min-height: 0;
   flex-direction: column;
+  border-left: 1px solid var(--line);
 }
 
 /* The path, and what can be done to the file. Mono and small: it is an address, not a title — the
@@ -738,9 +750,9 @@
     width: auto;
     max-width: none;
     max-height: 14rem;
-    border-right: 0;
     border-bottom: 1px solid var(--line);
   }
+  .skill-file { border-left: 0; }
   .skill-panes { flex-direction: column; }
   .pane-resize { display: none; }
   .skill-panes[data-on="file"] > .skill-tree { display: none; }

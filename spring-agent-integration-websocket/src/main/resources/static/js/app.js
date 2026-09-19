@@ -25,7 +25,7 @@ import { initScrollToEnd, renderEmptyTranscript } from './transcript.js';
 import { initAttachments } from './attachments.js';
 import { initComposer, refreshMirror, refreshSendState, setRunning } from './composer.js';
 import { loadTasks, showTasks } from './tasks.js';
-import { initKnowledge, knowledgeAvailable, scopesAvailable, showKnowledge } from './knowledge.js';
+import { initKnowledge, knowledgeAvailable, scopesAvailable, showKnowledge, writableScopes } from './knowledge.js';
 import { showPanel } from './panels.js';
 import { initKnowledgeAdd } from './knowledge-upload.js';
 import { initCustomize, showCustomize } from './customize.js';
@@ -170,7 +170,7 @@ async function start() {
   // Only where this deployment has one at all — see the knowledge block in /api/me.
   if (knowledgeAvailable()) {
     initKnowledge();
-    initKnowledgeAdd(scopesAvailable());
+    initKnowledgeAdd(writableScopes());
   }
   // Unconditionally, unlike the knowledge base above it: a skill is a folder under
   // app.storage.location, which core always has, so there is no deployment without this section.

@@ -21,6 +21,7 @@ import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.Tools;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai.Tools.AskUserQuestion;
+import me.kezhenxu94.springagent.core.config.TenantWrites;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.support.TestI18n;
 import me.kezhenxu94.springagent.core.tools.mcp.McpClientFactory;
@@ -117,6 +118,7 @@ class AgentToolsProviderSkillToolsTest {
               context,
               properties(),
               new Admins(properties()),
+              new TenantWrites(properties(), new Admins(properties())),
               TestI18n.english(),
               mock(ObjectProvider.class));
 
@@ -161,6 +163,7 @@ class AgentToolsProviderSkillToolsTest {
     return new SpringAgentProperties(
         new Ai(
             Set.of(),
+            null,
             Map.of(),
             null,
             null,

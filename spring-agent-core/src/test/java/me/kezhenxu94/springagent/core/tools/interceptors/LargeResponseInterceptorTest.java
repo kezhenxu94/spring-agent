@@ -118,6 +118,7 @@ class LargeResponseInterceptorTest {
                 null,
                 null,
                 null,
+                null,
                 new SpringAgentProperties.Ai.Tools(null, null, null, maxResultChars, null),
                 null,
                 null,
