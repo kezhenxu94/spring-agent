@@ -175,7 +175,9 @@ public class FeishuTools {
                             .build())
                     .build());
 
-    file.delete();
+    // The file is the user's own, in their workspace, and sending it is a copy rather than a
+    // move: a later turn may send it again, show it, or edit it. Only a file this class itself
+    // created may be removed here, and there is none.
 
     if (sendResponse.getCode() != 0) {
       log.error(
