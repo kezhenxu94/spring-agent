@@ -49,6 +49,12 @@ Type a sentence to talk to the agent; anything starting with `/` is a command â€
 switches, `/config default` returns to the built-in one, and `/config <name> <effort>` sets how hard it
 thinks.
 
+`/kb <question>` is not a command but a **scenario memo**: it answers that one turn out of the
+knowledge base and the agent's memories alone, with no shell, no files and no MCP servers.
+`/knowledge-base` and `/knowledge_base` mean the same and case does not matter. Memos are resolved
+*before* the line reaches Spring Shell, so a command added later under a memo's name cannot swallow
+the question â€” see `CliShellRunner`.
+
 Ctrl-C cancels the run in progress rather than the session.
 
 ## The one way it differs from every server here

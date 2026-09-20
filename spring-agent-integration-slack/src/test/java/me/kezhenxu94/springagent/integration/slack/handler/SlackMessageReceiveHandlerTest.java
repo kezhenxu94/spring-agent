@@ -12,6 +12,7 @@ import com.slack.api.app_backend.events.payload.EventsApiPayload;
 import com.slack.api.bolt.context.builtin.EventContext;
 import com.slack.api.model.event.MessageEvent;
 import java.util.List;
+import me.kezhenxu94.springagent.core.agent.ScenarioMemos;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
@@ -59,6 +60,7 @@ class SlackMessageReceiveHandlerTest {
           observations,
           messageText,
           userNames,
+          new ScenarioMemos(List.of()),
           reactions,
           // No model settings form in these tests: /config is not a command without one, which is
           // also the default for a deployment that has not configured an encryption key.

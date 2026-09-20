@@ -19,7 +19,6 @@ import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.agent.AgentRunRegistry;
-import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
@@ -203,10 +202,10 @@ public class FeishuCardListener implements AgentResponseListener {
       registry.addTodoEventHandler(cardUpdater);
       registry.addToolContext(FeishuCardUpdater.TOOL_CONTEXT_KEY.key(), cardUpdater);
 
-      // Only a chat run, and registering this is what decides whether the agent may ask at all. A
-      // scheduled task has no conversation memory, so an answer arriving later would have nothing
-      // to rejoin — its prompt already tells the model there is nobody to ask.
-      if (request.scenario() == BuiltInScenarios.CHAT) {
+      // Only a run somebody is waiting on, and registering this is what decides whether the agent
+      // may ask at all. A scheduled task has no conversation memory, so an answer arriving later
+      // would have nothing to rejoin — its prompt already tells the model there is nobody to ask.
+      if (request.scenario().interactive()) {
         registry.addQuestionHandler(
             new FeishuQuestionHandler(
                 request,
@@ -279,11 +278,11 @@ public class FeishuCardListener implements AgentResponseListener {
   }
 
   /**
-   * A chat message whose card never appeared has nowhere to put its answer, so the run is
+   * A run somebody is waiting on whose card never appeared has nowhere to put its answer, so it is
    * pointless; a scheduled task does its work regardless and goes ahead unreported.
    */
   private static void abortOrCarryOn(final AgentRunRegistry registry, final String reason) {
-    if (registry.request().scenario() == BuiltInScenarios.CHAT) {
+    if (registry.request().scenario().interactive()) {
       registry.abort(reason);
     }
   }

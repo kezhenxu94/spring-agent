@@ -47,7 +47,7 @@ public class CliRunListener implements AgentResponseListener {
     // a run somebody is watching: a scheduled task fires whether or not the user is at the
     // terminal,
     // and its prompt already tells the model there is nobody to ask.
-    if (registry.request().scenario() == BuiltInScenarios.CHAT) {
+    if (registry.request().scenario().interactive()) {
       registry.addQuestionHandler(questionHandler);
     }
 

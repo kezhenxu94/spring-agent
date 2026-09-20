@@ -180,11 +180,14 @@ flowchart LR
     request[AgentRequest and its AgentScenario]
 
     subgraph COLLECTED[Collected per request]
-        beans[AgentTool beans the scenario offers]
+        beans[AgentTool beans]
+        ambient[filesystem search todo ask skills]
         providers[every ToolCallbackProvider bean]
         peruser[the user own MCP servers]
         search[tool search only what a search named]
     end
+
+    gate{AgentScenario offers each one}
 
     compose[AgentToolsProvider compose]
     intercept[ToolCallInterceptors]
@@ -193,13 +196,16 @@ flowchart LR
     kb[KnowledgeBase consulted unasked]
 
     request --> beans
+    request --> ambient
     request --> providers
     request --> peruser
     request --> search
-    beans --> compose
-    providers --> compose
-    peruser --> compose
-    search --> compose
+    beans --> gate
+    ambient --> gate
+    providers --> gate
+    peruser --> gate
+    search --> gate
+    gate --> compose
     compose --> intercept
     intercept --> model
     skills --> model
@@ -209,9 +215,14 @@ flowchart LR
 `AgentScenario` is the gate, and it is an interface rather than an enum so a consumer can pass their
 own — `BuiltInScenarios` holds the ones shipped here. The annotation carries no scenario, because an
 annotation attribute cannot have an interface type; instead `AgentScenario.offers(tool)` is asked
-about every `@AgentTool` bean and says yes by default. `SUBAGENT` saying no to both `ScheduledTaskTool`
-and `SubagentTools` is what caps subagent depth at one, with no counter to get wrong. A scenario also
-decides whether a run uses conversation memory and whether it consults the knowledge base.
+about every tool a run is composed of — the beans, the sandbox, the ask, the skills and every MCP
+callback alike — and says yes by default. `SUBAGENT` saying no to both `ScheduledTaskTool` and
+`SubagentTools` is what caps subagent depth at one, with no counter to get wrong; `KNOWLEDGE_BASE`
+goes the other way and names the few tools it wants, which is only possible because the gate reaches
+everything. A scenario also decides whether a run uses conversation memory, whether it consults the
+knowledge base, whether a surface draws anything for it (`interactive()`), and which words a person
+may select it by from a chat (`memoNames()`, read by `ScenarioMemos` — `/kb` and a turn is answered
+out of the knowledge base alone).
 
 Skills are the odd one out: they are directories of prose under an identity's home, listed and
 written by tools but *read* by the model as part of its context rather than invoked. That is why

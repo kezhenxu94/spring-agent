@@ -7,7 +7,6 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.agent.AgentRunRegistry;
-import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.integration.websocket.config.WebProperties;
 import me.kezhenxu94.springagent.integration.websocket.web.WebQuestionHandler;
@@ -84,7 +83,7 @@ public class WebRunListener implements AgentResponseListener {
     // Registering a handler is what decides whether the agent is offered the ask tool at all. Only
     // for a run somebody is having a conversation with: a scheduled task fires whether or not
     // anyone has the page open, and an answer to it would have no turn to rejoin.
-    if (request.scenario() == BuiltInScenarios.CHAT) {
+    if (request.scenario().interactive()) {
       registry.addQuestionHandler(
           new WebQuestionHandler(request, journal, pendingQuestionRepo, om, questionTtl()));
     }

@@ -3,6 +3,8 @@ package me.kezhenxu94.springagent.appcli;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
+import me.kezhenxu94.springagent.core.agent.ScenarioMemos;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,7 +32,7 @@ class CliHighlighterTest {
     registry.registerCommand(
         Command.builder().name("exit").description("exit").aliases("quit").execute(context -> {}));
     when(console.styled()).thenReturn(true);
-    highlighter = new CliHighlighter(registry, console);
+    highlighter = new CliHighlighter(registry, console, new ScenarioMemos(List.of()));
   }
 
   private String highlight(final String buffer) {

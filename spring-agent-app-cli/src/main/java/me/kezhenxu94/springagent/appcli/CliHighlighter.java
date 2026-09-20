@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.appcli;
 
+import me.kezhenxu94.springagent.core.agent.ScenarioMemos;
 import org.jline.reader.LineReader;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
@@ -20,6 +21,10 @@ import org.springframework.stereotype.Component;
  * /} is a command, bold when the registry knows it and red when it does not, and anything else is a
  * prompt and left as the user typed it.
  *
+ * <p>A scenario memo is bold for the same reason and in the same place. It is not in the command
+ * registry — it is read before the registry is asked at all — so without this {@code /kb} would be
+ * drawn in red as somebody typed the one thing the runner is about to accept.
+ *
  * <p>{@link Primary} because Spring Shell's {@code commandHighlighter} bean is unconditional, so
  * both exist and the {@code lineReader} bean asks for the type rather than the name.
  */
@@ -31,11 +36,14 @@ public class CliHighlighter extends CommandHighlighter {
 
   private final CommandRegistry commandRegistry;
   private final CliConsole console;
+  private final ScenarioMemos memos;
 
-  public CliHighlighter(final CommandRegistry commandRegistry, final CliConsole console) {
+  public CliHighlighter(
+      final CommandRegistry commandRegistry, final CliConsole console, final ScenarioMemos memos) {
     super(commandRegistry);
     this.commandRegistry = commandRegistry;
     this.console = console;
+    this.memos = memos;
   }
 
   @Override
@@ -47,7 +55,7 @@ public class CliHighlighter extends CommandHighlighter {
     if (name.isEmpty()) {
       return new AttributedString(buffer);
     }
-    if (commandRegistry.getCommandByName(name) == null) {
+    if (commandRegistry.getCommandByName(name) == null && memos.named(name).isEmpty()) {
       return new AttributedString(buffer, AttributedStyle.DEFAULT.foreground(AttributedStyle.RED));
     }
     final var command = COMMAND_PREFIX + name;

@@ -16,6 +16,14 @@ surface sets — and it contributes no `PromptVariablesContributor` and no `Noti
 it sit beside a chat integration, and it is the whole of what makes that safe: anything added here
 has to say which runs it answers for.
 
+**Scenario memos.** A message carrying `/kb`, `/knowledge-base` or `/knowledge_base` runs that turn
+in `BuiltInScenarios.KNOWLEDGE_BASE` — the knowledge base, the memories and the vision tools, and
+nothing else. `ChatController.send` has the text in hand, so it parses and strips in one step, and
+the mirror and the queue both take the stripped text: what the chat surface shows is the words the
+agent was given. `core/agent/ScenarioMemos` owns the rule — whole token, case-insensitive, anywhere
+in the message, including at the end of it — and a slash word it does not know reaches the model
+untouched.
+
 ## The run journal, and why a browser is only ever a reader
 
 `RunJournal` holds every event a run emitted, and an HTTP or websocket connection is only ever a

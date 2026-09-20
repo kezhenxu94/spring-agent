@@ -1,12 +1,22 @@
 package me.kezhenxu94.springagent.core.agent;
 
+import java.util.Set;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeAdminTools;
+import me.kezhenxu94.springagent.core.knowledge.KnowledgeBaseTools;
+import me.kezhenxu94.springagent.core.memory.MemoryTools;
 import me.kezhenxu94.springagent.core.tools.FiringScheduledTaskTool;
 import me.kezhenxu94.springagent.core.tools.ScheduledTaskTool;
 import me.kezhenxu94.springagent.core.tools.SubagentTools;
+import me.kezhenxu94.springagent.core.tools.VisionTools;
 
 /** The scenarios this runtime ships with. */
 public enum BuiltInScenarios implements AgentScenario {
   CHAT {
+    @Override
+    public boolean interactive() {
+      return true;
+    }
+
     @Override
     public boolean offers(final Object tool) {
       // Nothing is firing, so there is no task for the firing tools to act on. They would refuse if
@@ -96,6 +106,63 @@ public enum BuiltInScenarios implements AgentScenario {
     @Override
     public boolean tools() {
       return false;
+    }
+  },
+
+  /**
+   * A turn answered out of what this deployment has been told to remember, and out of nothing else.
+   *
+   * <p>A person asks for it by memo — {@code /kb what do we do about a failing canary} — and what
+   * they are asking for is not "answer this with the knowledge base as well", which an ordinary
+   * chat run already does. It is the narrower thing: an answer whose sources they can name. A chat
+   * run reaching for a web search, a shell or an MCP server produces something better in the
+   * general case and unusable in this one, because nothing afterwards says which part came from
+   * where.
+   *
+   * <p>So {@link #offers} is an allow-list rather than the usual few exclusions, and it is the only
+   * one in this enum. That works because {@code offers} is asked about everything a run is composed
+   * of and not the {@code @AgentTool} beans alone — without that this would name two tools and
+   * quietly also receive a file-system sandbox, the todo tool and every MCP server the asker has
+   * registered.
+   *
+   * <p>Conversation memory and automatic retrieval both stay on. This is a turn in a real
+   * conversation, said into the same thread as everything around it, and retrieval is the whole
+   * point of the run rather than an augmentation of it.
+   *
+   * <p>The memory tools are in deliberately, and are the one thing here that is not the knowledge
+   * base. The two are separate stores answering the same question — what has this agent been told —
+   * and a person who says {@code /kb} means both; leaving memory out would have the agent answer "I
+   * have nothing on that" about something written in the file it keeps for exactly this.
+   *
+   * <p>So are the vision tools, for a narrower reason: a question can arrive as a picture. A person
+   * who sends a screenshot and says {@code /kb} has asked about what is in it, and a run that
+   * cannot look has nothing to search the knowledge base for. That is reading the question rather
+   * than reaching past it, which is what everything else here is kept out for. Absent unless a
+   * provider published a vision client, like every other tool {@code ModelToolsConfiguration}
+   * registers.
+   */
+  KNOWLEDGE_BASE {
+    @Override
+    public boolean interactive() {
+      return true;
+    }
+
+    @Override
+    public Set<String> memoNames() {
+      // Three spellings of one word, because a person typing at a chat is not consulting a manual.
+      // Matching is case-insensitive, so /KB and /Knowledge-Base arrive here too.
+      return Set.of("kb", "knowledge-base", "knowledge_base");
+    }
+
+    @Override
+    public boolean offers(final Object tool) {
+      // KnowledgeAdminTools is here because it is a knowledge-base tool; who actually receives it
+      // is not this method's ruling but @AgentTool(admin = true) and app.ai.admins, which are
+      // applied either way.
+      return tool instanceof KnowledgeBaseTools
+          || tool instanceof KnowledgeAdminTools
+          || tool instanceof MemoryTools
+          || tool instanceof VisionTools;
     }
   }
 }
