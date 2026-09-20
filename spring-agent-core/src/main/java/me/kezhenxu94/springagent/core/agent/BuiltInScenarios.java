@@ -17,6 +17,19 @@ public enum BuiltInScenarios implements AgentScenario {
       return true;
     }
 
+    /**
+     * Named, although it is the default, because a default is a thing a person can change.
+     *
+     * <p>Once {@code UserPreferences} lets somebody make {@code KNOWLEDGE_BASE} what they get
+     * without asking, there has to be a way to say "not this time" — and the memo is the only
+     * vocabulary a chat has for that. Without one the way back to an ordinary run would be to go
+     * and change the preference, answer the question, and change it back.
+     */
+    @Override
+    public Set<String> memoNames() {
+      return Set.of("full");
+    }
+
     @Override
     public boolean offers(final Object tool) {
       // Nothing is firing, so there is no task for the firing tools to act on. They would refuse if

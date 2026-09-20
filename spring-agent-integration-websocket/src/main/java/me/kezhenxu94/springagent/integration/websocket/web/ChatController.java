@@ -9,7 +9,6 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
-import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.agent.ScenarioMemos;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.config.Admins;
@@ -19,6 +18,7 @@ import me.kezhenxu94.springagent.core.dao.repo.ChatReasoningRepo;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.identity.SystemIdentityProvider;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
+import me.kezhenxu94.springagent.core.preferences.UserPreferences;
 import me.kezhenxu94.springagent.integration.websocket.config.WebLocaleConfiguration;
 import me.kezhenxu94.springagent.integration.websocket.config.WebMessages;
 import me.kezhenxu94.springagent.integration.websocket.config.WebProperties;
@@ -68,6 +68,7 @@ public class ChatController {
   private final ChatReasoningRepo reasonings;
   private final ChatMirrors mirrors;
   private final ScenarioMemos memos;
+  private final UserPreferences preferences;
   private final WebMessages messages;
   private final WebProperties properties;
   private final JsonMapper om;
@@ -367,7 +368,7 @@ public class ChatController {
     // the prompt on the way. Nothing else in this method reads `text` afterwards: the mirror below
     // and the queue both take the message the model will see, so the chat surface shows the same
     // words the agent was given.
-    final var chosen = memos.parse(text, BuiltInScenarios.CHAT);
+    final var chosen = memos.parse(text, preferences.scenarioFor(user.id()));
     final var prompt = chosen.text();
     final var builder =
         AgentRequest.builder()

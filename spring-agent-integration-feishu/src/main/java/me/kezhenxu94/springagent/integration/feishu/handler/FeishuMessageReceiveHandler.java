@@ -17,13 +17,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
-import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.agent.ScenarioMemos;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
 import me.kezhenxu94.springagent.core.logging.RunMdc;
+import me.kezhenxu94.springagent.core.preferences.UserPreferences;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
@@ -57,6 +57,7 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
   final FeishuQuestionFormCloser questionFormCloser;
   final FeishuChatObservations chatObservations;
   final ScenarioMemos memos;
+  final UserPreferences preferences;
 
   /**
    * Absent unless {@code app.ai.user-models.encryption-key} is configured, which is the default.
@@ -250,7 +251,7 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
       // text is produced later and off this thread. The memo is taken out of the assembled text
       // instead, in the supplier below — which is why it is looked for anywhere in the message and
       // not at the front, since by then whatever addToChat put in front of it is there too.
-      final var chosen = memos.parse(typedText(message), BuiltInScenarios.CHAT);
+      final var chosen = memos.parse(typedText(message), preferences.scenarioFor(userOpenId));
 
       // Produced only when it is needed, and never on this thread: turning a message into text can
       // mean downloading what it carries, and Feishu concludes a message it is still waiting on was

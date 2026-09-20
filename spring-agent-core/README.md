@@ -265,6 +265,27 @@ caches the fingerprint of the tool set it last indexed per key. Where the deploy
 tool search the builder bean is already plain, and `SpringAgent` uses it for both answers rather
 than building a redundant twin.
 
+**A person can also make a scenario their default**, which is what `core/preferences/` is for.
+`UserPreference` is one row per person with a typed field per setting — not a key/value table,
+because the row is only ever read whole and a field is something you can document and spell-check.
+`UserPreferences` turns the stored word into a scenario, and the reading is deliberately lopsided: a
+**read** that fails falls back and logs, since an unreachable store must not cost somebody an
+answer, while a **write** is allowed to fail and say so, since being told a setting took effect when
+it did not is worse than being told it failed. The stored value is the memo (`kb`), never the enum
+constant: it is the word the person typed and the word a tool says back, and an unknown one resolves
+to nothing and falls back where a stale enum name would refuse to deserialize.
+
+**A memo always beats a preference.** A surface passes `preferences.scenarioFor(userId)` as the
+*fallback* to `ScenarioMemos.parse`, so the word in the message decides that one turn — which is why
+`CHAT` now carries `/full`, the only way back to an ordinary run for somebody whose default is not
+one. `Chosen.named()` distinguishes a found memo from a fallback, and that is load-bearing rather
+than convenient: the CLI routes a line to Spring Shell or to the agent by it, and reading the
+scenario instead would stop delivering `/help` to anybody who set a default.
+
+`UserPreferenceTools` is the way a person changes it, and takes no user id — whose row is being
+written comes from `ToolContexts`, which `SpringAgent.toolContextFor` overwrites, and that is the
+whole of the access control.
+
 **`interactive()` is what a surface asks before abandoning a run whose rendering never appeared**,
 and before registering a question handler — which is what decides whether the agent is offered the
 ask at all. It does *not* gate the rendering itself; a card is drawn for any run that is not
