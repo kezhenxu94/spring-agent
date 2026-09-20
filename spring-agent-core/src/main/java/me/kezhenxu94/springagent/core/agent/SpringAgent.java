@@ -47,6 +47,8 @@ import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
+import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.model.tool.ToolExecutionEligibilityChecker;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.EventListener;
@@ -147,6 +149,22 @@ public class SpringAgent {
   final ObjectProvider<ToolCallingAdvisor.Builder<?>> toolCallingAdvisorBuilder;
 
   /**
+   * The manager the plain advisor below is built on, so that a run declining the tool search still
+   * gets this runtime's interception, localization and tool limits. Core declares this bean itself
+   * — see {@code SpringAgentCoreAutoConfiguration.toolCallingManager} — and it is the same instance
+   * the tool-search builder was handed, which is what makes the two advisors differ in one respect
+   * and no other.
+   */
+  final ToolCallingManager toolCallingManager;
+
+  /**
+   * Optional, and read for the same reason: Spring AI's tool-search auto-configuration applies this
+   * bean to its builder where one exists, so the plain advisor has to apply it too or a deployment
+   * that customized when a tool call is executed would find the rule holds for some of its runs.
+   */
+  final ObjectProvider<ToolExecutionEligibilityChecker> toolExecutionEligibilityChecker;
+
+  /**
    * How a failed run's cause chain is turned into what the endpoint actually said. Empty on a
    * deployment whose provider module contributes none, in which case a rejection is logged as
    * whatever the stack trace says — see {@link ProviderRejection} for why that is not enough.
@@ -167,6 +185,21 @@ public class SpringAgent {
    * exist before this one and a deployment with no tool advisor configured still starts.
    */
   private final AtomicReference<Advisor> toolCallingAdvisor = new AtomicReference<>();
+
+  /**
+   * The advisor for a run whose scenario declines the tool search, built on first use and shared
+   * for the same reason as the one above.
+   *
+   * <p>A second instance rather than a flag, because the tool-search advisor has no flag: it
+   * indexes and rewrites the options on every request it sees, and nothing on a request turns that
+   * off. So declining it means being given a different advisor — a plain {@link ToolCallingAdvisor}
+   * on the same {@link #toolCallingManager}, which is the one this runtime would have had before a
+   * tool search was configured.
+   *
+   * <p>Stays unset where a deployment has no tool search at all: the configured advisor is plain
+   * already, so every run takes that one and this is never built.
+   */
+  private final AtomicReference<Advisor> plainToolCallingAdvisor = new AtomicReference<>();
 
   /**
    * The runs in flight, by request id. Four things read it: a cancel, which is the only reason it
@@ -1134,7 +1167,7 @@ public class SpringAgent {
     // toolCallingAdvisor. ChatClient builds a new one from the builder for every prompt, which is
     // exactly what has to stop, so this registration covers the runs without conversation memory
     // as well: ChatClient skips its own registration once a tool advisor is in the list.
-    final var toolAdvisor = toolCallingAdvisor();
+    final var toolAdvisor = toolCallingAdvisor(request.scenario());
     if (toolAdvisor != null) {
       advisors.add(toolAdvisor);
     }
@@ -1167,6 +1200,32 @@ public class SpringAgent {
     return clients == null ? chatClient : clients.forUser(request.userId());
   }
 
+  /**
+   * The shared tool advisor this run belongs on, or null where no tool advisor builder is
+   * configured.
+   *
+   * <p>Two of them, because {@link AgentScenario#toolSearch()} cannot be answered by a parameter:
+   * the tool-search advisor holds no per-request switch, and declining it is therefore a matter of
+   * being handed the other one. Where the configured builder is already plain — no tool search in
+   * this deployment — both answers are the same advisor and the second is never built.
+   */
+  private Advisor toolCallingAdvisor(final AgentScenario scenario) {
+    final var configured = toolCallingAdvisor();
+    // The last clause asks whether the configured advisor is already the plain base class, not
+    // whether it is the tool-search subtype. Those differ for any other subtype a deployment might
+    // register, and this is the question actually being asked: a scenario declines the search, and
+    // where the configured advisor has none there is nothing to decline — so it is used as it is,
+    // keeping whatever order and manager the deployment configured, and no redundant twin is built.
+    // Naming the searching class here would compile (core carries that module) and would be one
+    // more place to keep in step with a class core otherwise never mentions.
+    if (configured == null
+        || scenario.toolSearch()
+        || configured.getClass() == ToolCallingAdvisor.class) {
+      return configured;
+    }
+    return plainToolCallingAdvisor();
+  }
+
   /** The shared tool advisor, or null where no tool advisor builder is configured. */
   private Advisor toolCallingAdvisor() {
     final var existing = toolCallingAdvisor.get();
@@ -1181,6 +1240,36 @@ public class SpringAgent {
     // before they have indexed anything.
     final var built = builder.copy().conversationHistoryEnabled(true).build();
     return toolCallingAdvisor.compareAndSet(null, built) ? built : toolCallingAdvisor.get();
+  }
+
+  /**
+   * The tool advisor without the search, for a scenario that declined it.
+   *
+   * <p>Built from {@link ToolCallingAdvisor}'s own builder rather than from the injected one, whose
+   * {@code copy()} preserves its subtype and so can only ever produce another searching advisor.
+   * What has to be carried across by hand is therefore the manager and the eligibility checker —
+   * everything else upstream sets is the tool search's own.
+   *
+   * <p>The order is {@link ToolCallingAdvisor#DEFAULT_ORDER}, which is what the chat-memory and
+   * knowledge-retrieval advisors above are already placed relative to. A deployment that moves the
+   * tool-search advisor with {@code spring.ai.chat.client.tool-search-advisor.advisor-order} moves
+   * it away from those two as well, so this does not follow it there.
+   */
+  private Advisor plainToolCallingAdvisor() {
+    final var existing = plainToolCallingAdvisor.get();
+    if (existing != null) {
+      return existing;
+    }
+    final var builder =
+        ToolCallingAdvisor.builder()
+            .toolCallingManager(toolCallingManager)
+            .advisorOrder(ToolCallingAdvisor.DEFAULT_ORDER)
+            .conversationHistoryEnabled(true);
+    toolExecutionEligibilityChecker.ifAvailable(builder::toolExecutionEligibilityChecker);
+    final var built = builder.build();
+    return plainToolCallingAdvisor.compareAndSet(null, built)
+        ? built
+        : plainToolCallingAdvisor.get();
   }
 
   /**

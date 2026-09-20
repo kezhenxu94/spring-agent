@@ -240,6 +240,31 @@ filename. The matched word is taken out of the prompt, with a comma, semicolon o
 with, since that punctuation belongs to the interjected word rather than to the sentence. Read
 `ScenarioMemos` before changing the rule.
 
+**`toolSearch()` says how a run's tools reach the model.** The tool-search advisor replaces the
+tool set rather than indexing it alongside — the model gets `toolSearchTool` and a paragraph about
+looking, and sees nothing else until it searches. Worth it for a run reaching a few hundred MCP
+tools; a wasted round trip for one composed of four, which is why `KNOWLEDGE_BASE` and `ONE_OFF`
+decline it. `ONE_OFF` is the one that was actually wrong: `tools()` empties the composition, but the
+advisor puts its own tool into the options and its own suffix into the system message, so a run
+documented as having nothing in between was reaching the model with exactly one tool.
+
+**Nothing here names `ToolSearchToolCallingAdvisor`**, and that is worth knowing before reading
+`SpringAgent`. Spring AI's `ToolSearchAdvisorAutoConfiguration` registers its builder under the
+declared type `ToolCallingAdvisor.Builder<?>`, so the builder core injects silently *is* the
+searching one wherever the deployment configured a tool search, and is the plain one otherwise. Core
+registers the advisor explicitly — `advisors.add(...)`, rather than letting `ChatClient` do it, for
+the two reasons the comment there gives — but it never chooses the class, and deliberately does not:
+reproducing that builder means copying seven property mappings and an eviction strategy, which drift
+the moment upstream adds one.
+
+There is **no per-request switch on that advisor**, so this is not a flag passed down — `SpringAgent`
+holds two advisors and hands the run one of them. The second is a plain `ToolCallingAdvisor` on the
+same `ToolCallingManager` bean, so interception, localization and the tool limits are unchanged;
+only the search is gone. Both are singletons, and that is load-bearing for the searching one, which
+caches the fingerprint of the tool set it last indexed per key. Where the deployment configured no
+tool search the builder bean is already plain, and `SpringAgent` uses it for both answers rather
+than building a redundant twin.
+
 **`interactive()` is what a surface asks before drawing anything for a run**, and before registering
 a question handler — which is what decides whether the agent is offered the ask at all. False by
 default and true on `CHAT` and `KNOWLEDGE_BASE`. It replaced four surfaces each comparing
