@@ -84,8 +84,10 @@ class BuiltInScenariosTest {
         .containsExactlyInAnyOrder("kb", "knowledge-base", "knowledge_base");
     assertThat(BuiltInScenarios.ONE_OFF.memoNames())
         .containsExactlyInAnyOrder("one-off", "one_off", "mini");
-    // CHAT needs none: it is what every surface asks for when nobody named anything else.
-    assertThat(BuiltInScenarios.CHAT.memoNames()).isEmpty();
+    // CHAT carries one although it is the default, because a default is a thing a person can
+    // change: once a preference can make KNOWLEDGE_BASE what they get without asking, /full is the
+    // only way to say "not this time" without going and changing the preference back.
+    assertThat(BuiltInScenarios.CHAT.memoNames()).containsExactly("full");
     assertThat(BuiltInScenarios.SUBAGENT.memoNames()).isEmpty();
     assertThat(BuiltInScenarios.SCHEDULED_TASK.memoNames()).isEmpty();
   }

@@ -77,6 +77,34 @@ class ScenarioMemosTest {
   }
 
   @Test
+  @DisplayName("a memo is found after CJK punctuation, which is where the spaces are not")
+  void aMemoIsFoundAfterCjkPunctuation() {
+    // Chinese and Japanese put no space between clauses, so a rule needing whitespace in front of
+    // the slash meant memos never worked in either language. These are the marks that stand where
+    // an English sentence would have a space.
+    for (final var text :
+        List.of("先看看文档、/kb 这个怎么处理", "我想了一下，/kb 这个怎么处理", "问题是这样；/kb 请给我答案", "注意：/kb 只看知识库")) {
+      assertThat(parse(text).scenario()).as(text).isEqualTo(BuiltInScenarios.KNOWLEDGE_BASE);
+      assertThat(parse(text).text()).as(text).doesNotContain("/kb");
+    }
+    // And directly against the text, which is how it is typed when there is no punctuation at all.
+    final var inline = parse("请用/kb回答这个问题");
+    assertThat(inline.scenario()).isEqualTo(BuiltInScenarios.KNOWLEDGE_BASE);
+    assertThat(inline.text()).isEqualTo("请用回答这个问题");
+  }
+
+  @Test
+  @DisplayName("full-width punctuation after a memo goes with it, as the ASCII kind does")
+  void fullWidthPunctuationAfterAMemo() {
+    // The space before the memo goes with it: it was only there to hold a Latin word apart from
+    // the characters around it, and Chinese does not want one once the word is gone.
+    assertThat(parse("这个怎么处理 /kb、请只看知识库").text()).isEqualTo("这个怎么处理请只看知识库");
+    assertThat(parse("这个怎么处理 /kb，请只看知识库").text()).isEqualTo("这个怎么处理请只看知识库");
+    // A full stop is the sentence's, not the memo's, so it stays and closes what is left.
+    assertThat(parse("这个怎么处理 /kb。").text()).isEqualTo("这个怎么处理。");
+  }
+
+  @Test
   @DisplayName("a path or a URL is not a memo, which is what whole-token matching is for")
   void aPathIsNotAMemo() {
     // The one thing narrowing an anywhere-match back down. Without it every message quoting a

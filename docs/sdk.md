@@ -377,11 +377,19 @@ the safe way round: a scenario that says nothing is treated as one nobody is wai
 
 `memoNames()` is how a person selects a scenario from a chat. `ScenarioMemos` collects them from
 `BuiltInScenarios` and from every `AgentScenario` bean in the context, so declaring yours as a bean
-is the whole of making it selectable; it refuses to start where two scenarios claim one word. Two
-built-ins carry one: `KNOWLEDGE_BASE` (`/kb`) and `ONE_OFF` (`/mini`). A memo
+is the whole of making it selectable; it refuses to start where two scenarios claim one word. Three
+built-ins carry one: `KNOWLEDGE_BASE` (`/kb`), `ONE_OFF` (`/mini`) and `CHAT` (`/full`). `CHAT` needs
+one although it is the default, because `core/preferences/UserPreferences` lets a person make
+something else their default — and then `/full` is the only way to say "not this time". That
+ordering is the contract: a surface passes `preferences.scenarioFor(userId)` as the *fallback* to
+`parse`, so a memo in the message always wins over a stored preference. `Chosen.named()` is how a
+caller tells a memo from a fallback, which the CLI needs to keep routing `/help` to Spring Shell
+once somebody has set a default. A memo
 is matched case-insensitively and as a whole token anywhere in the message — `@bot /kb what is this`
 and `what do we do when a deployment failed? /kb, tell me something` both work, while
-`/kb/notes/2024` is a path — and the matched word is taken out of the prompt, along with a comma,
+`/kb/notes/2024` is a path. The rule says what may *not* precede a memo rather than requiring
+whitespace, so it works in Chinese and Japanese, which put none between clauses — `文档、/kb 怎么处理`
+is a memo. The matched word is taken out of the prompt, along with a comma,
 semicolon or colon it was typed with. Declaring none,
 which is the default, is what keeps `SUBAGENT` and `SCHEDULED_TASK` out of a person's reach.
 

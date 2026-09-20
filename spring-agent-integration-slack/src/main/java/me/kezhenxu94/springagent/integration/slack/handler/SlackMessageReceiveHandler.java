@@ -9,13 +9,13 @@ import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
-import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.agent.ScenarioMemos;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
 import me.kezhenxu94.springagent.core.logging.RunMdc;
+import me.kezhenxu94.springagent.core.preferences.UserPreferences;
 import me.kezhenxu94.springagent.integration.slack.config.SlackIdentity;
 import me.kezhenxu94.springagent.integration.slack.usermodels.SlackConfigHandler;
 import org.springframework.beans.factory.ObjectProvider;
@@ -48,6 +48,7 @@ public class SlackMessageReceiveHandler {
   private final SlackMessageText messageText;
   private final SlackUserNames userNames;
   private final ScenarioMemos memos;
+  private final UserPreferences preferences;
 
   /**
    * Told where this message lives, so a reaction later can find it.
@@ -255,7 +256,7 @@ public class SlackMessageReceiveHandler {
       // text is produced later and off this thread. The memo is taken out of the assembled text
       // instead, in the supplier below — which is why it is looked for anywhere in the message and
       // not at the front, since in a channel the bot has to be mentioned before anything else.
-      final var chosen = memos.parse(event.getText(), BuiltInScenarios.CHAT);
+      final var chosen = memos.parse(event.getText(), preferences.scenarioFor(userId));
 
       // Produced only when it is needed, and never on this thread: turning a message into text can
       // mean downloading what it carries, and Slack concludes a message it is still waiting on was

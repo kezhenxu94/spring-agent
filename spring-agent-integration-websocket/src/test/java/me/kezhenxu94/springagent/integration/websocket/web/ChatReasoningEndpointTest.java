@@ -52,6 +52,7 @@ class ChatReasoningEndpointTest {
           null,
           null,
           null,
+          null,
           null);
 
   private void mine(final String conversationId) {

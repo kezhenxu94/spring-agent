@@ -15,6 +15,7 @@ import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.models.SeenUpdate;
 import me.kezhenxu94.springagent.core.dao.models.Situation;
+import me.kezhenxu94.springagent.core.dao.models.UserPreference;
 import me.kezhenxu94.springagent.core.dao.repo.ChatReasoningRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ChatSessionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
@@ -24,6 +25,7 @@ import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
 import me.kezhenxu94.springagent.core.dao.repo.SeenUpdateRepo;
 import me.kezhenxu94.springagent.core.dao.repo.SituationRepo;
+import me.kezhenxu94.springagent.core.dao.repo.UserPreferenceRepo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
@@ -57,6 +59,7 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
   @Autowired ChatSessionRepo chatSessionRepo;
   @Autowired ChatReasoningRepo chatReasoningRepo;
   @Autowired SeenUpdateRepo seenUpdateRepo;
+  @Autowired UserPreferenceRepo userPreferenceRepo;
 
   /**
    * Not one of this repository's own contracts, but Spring AI's, chosen by {@code
@@ -737,6 +740,42 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
     // And somebody who has never been greeted has no row, which is what the greeting reads as
     // "this person is new" rather than "this person is up to date".
     assertThat(seenUpdateRepo.findById(owner() + "-stranger")).isEmpty();
+  }
+
+  @Test
+  @DisplayName("what a person set is kept, changed and forgotten, on every backend")
+  void userPreferenceRoundTrips() {
+    final var now = Instant.now();
+    userPreferenceRepo.save(
+        UserPreference.builder().id(owner() + "-chooser").scenario("kb").updatedAt(now).build());
+
+    assertThat(userPreferenceRepo.findById(owner() + "-chooser"))
+        .get()
+        .satisfies(it -> assertThat(it.scenario()).isEqualTo("kb"));
+
+    // Changing one's mind is a save over the same id, so the second write wins rather than being
+    // refused as a duplicate.
+    userPreferenceRepo.save(
+        UserPreference.builder().id(owner() + "-chooser").scenario("mini").updatedAt(now).build());
+    assertThat(userPreferenceRepo.findById(owner() + "-chooser"))
+        .get()
+        .satisfies(it -> assertThat(it.scenario()).isEqualTo("mini"));
+
+    // Clearing one setting is a null in the column, and has to read back as absent rather than as
+    // the empty string — UserPreferences treats a blank as "nothing set" either way, but a backend
+    // that turned null into "" would have every run resolve a scenario called nothing.
+    userPreferenceRepo.save(
+        UserPreference.builder().id(owner() + "-chooser").scenario(null).updatedAt(now).build());
+    assertThat(userPreferenceRepo.findById(owner() + "-chooser"))
+        .get()
+        .satisfies(it -> assertThat(it.scenario()).isNullOrEmpty());
+
+    // And resetting is the row going away, which is what puts every default back at once.
+    userPreferenceRepo.deleteById(owner() + "-chooser");
+    assertThat(userPreferenceRepo.findById(owner() + "-chooser")).isEmpty();
+
+    // Somebody who never set anything has no row, which is how every default stays the default.
+    assertThat(userPreferenceRepo.findById(owner() + "-never-asked")).isEmpty();
   }
 
   @Test

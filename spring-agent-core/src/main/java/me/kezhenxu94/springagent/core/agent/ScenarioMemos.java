@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
@@ -30,11 +31,11 @@ import org.springframework.stereotype.Component;
  * for itself, and it is declined there because that command takes no arguments and this one is
  * nothing but arguments.
  *
- * <p>What narrows it back down is that a memo is a whole token: preceded by the start of the
- * message or by whitespace, and ending at something that is not part of a word. So {@code
- * /kb/notes/2024} and {@code https://wiki/kb} are paths and not memos, which is most of what would
- * otherwise go wrong, while {@code what do we do when a deployment failed? /kb, tell me something}
- * is one — see {@link #MEMO} for exactly where a memo is allowed to end.
+ * <p>What narrows it back down is that a memo is a whole token: not preceded by anything that would
+ * make the slash part of a word or a path, and ending at something that is not part of a word. So
+ * {@code /kb/notes/2024} and {@code https://wiki/kb} are paths and not memos, which is most of what
+ * would otherwise go wrong, while {@code what do we do when a deployment failed? /kb, tell me
+ * something} is one — see {@link #MEMO} for exactly where a memo is allowed to end.
  *
  * <p>The first memo in the message wins and that one occurrence is removed from the prompt. A
  * {@code /word} that is nobody's memo is left exactly where it is and reaches the model as it does
@@ -49,18 +50,28 @@ public class ScenarioMemos {
    * A slash-word standing on its own.
    *
    * <p>The lookbehind is what keeps it a token rather than a suffix: {@code x/kb} and {@code
-   * https://wiki/kb} are not memos, because what precedes the slash is not whitespace. The word
-   * itself may not contain a slash or a dot, so {@code /kb/notes/2024} is a path.
+   * https://wiki/kb} are not memos, because what precedes the slash is part of a word or a path.
+   * The word itself may not contain a slash or a dot, so {@code /kb/notes/2024} is a path.
    *
-   * <p>What may follow is looser, because a memo is typed mid-sentence. It ends at anything that is
-   * not a word character — {@code /kb, tell me something} and {@code /kb?} are both the memo — and
-   * a comma, semicolon or colon immediately after it is eaten with it, since that punctuation
-   * belongs to the interjected word rather than to the sentence around it. A dot is kept where it
-   * ends the sentence and refused where it does not, so {@code /kb.} is a memo and {@code /kb.md}
-   * is a filename.
+   * <p><b>It says what may not precede a memo rather than what must.</b> Requiring whitespace is
+   * the obvious rule and it is wrong outside English: Chinese and Japanese are written without
+   * spaces between clauses, so {@code 先看看文档、/kb 这个怎么处理} has an ideographic comma where an English
+   * sentence would have a space, and every such message went unrecognised. The characters ruled out
+   * are the ones that would make the slash part of something else — a word character, a dot, a dash
+   * or another slash — and everything else, punctuation of any script and CJK text itself, may sit
+   * in front of one.
+   *
+   * <p>What may follow is looser again, because a memo is typed mid-sentence. It ends at anything
+   * that is not a word character — {@code /kb, tell me something} and {@code /kb?} are both the
+   * memo — and a comma, semicolon or colon immediately after it is eaten with it, in both the ASCII
+   * and the full-width spellings, since that punctuation belongs to the interjected word rather
+   * than to the sentence around it. A dot is kept where it ends the sentence and refused where it
+   * does not, so {@code /kb.} is a memo and {@code /kb.md} is a filename.
    */
   private static final Pattern MEMO =
-      Pattern.compile("(?<=^|\\s)/([A-Za-z0-9_-]+)(?:[,;:]|(?![A-Za-z0-9_/-])(?!\\.\\S))");
+      Pattern.compile(
+          "(?<=^|[^A-Za-z0-9_./-])/([A-Za-z0-9_-]+)"
+              + "(?:[,;:\\u3001\\uFF0C\\uFF1B\\uFF1A]|(?![A-Za-z0-9_/-])(?!\\.\\S))");
 
   /** Lower-cased memo to the scenario that claimed it. */
   private final Map<String, AgentScenario> byMemo;
@@ -125,22 +136,34 @@ public class ScenarioMemos {
    * @param scenario what to run as, which is {@code fallback} where the message named nobody
    * @param text what to send the model, with a recognised memo removed and the result trimmed;
    *     untouched otherwise
+   * @param memo the word that was found, or null where none was and {@code scenario} is therefore
+   *     the fallback. Not decoration: a caller cannot tell the two apart from {@code scenario}
+   *     alone once the fallback is a person's stored preference rather than always {@code CHAT},
+   *     and at least one has to — the CLI routes a line to Spring Shell or to the agent by it, and
+   *     would otherwise stop delivering {@code /help} to anybody who set a default.
    */
-  public record Chosen(AgentScenario scenario, String text) {}
+  public record Chosen(AgentScenario scenario, String text, String memo) {
+
+    /** Whether the message named a scenario, as opposed to falling back to one. */
+    public boolean named() {
+      return memo != null;
+    }
+  }
 
   /** What {@code text} asked for, falling back to {@code fallback} where it asked for nothing. */
   public Chosen parse(final String text, final AgentScenario fallback) {
     if (Strings.isNullOrEmpty(text) || byMemo.isEmpty()) {
-      return new Chosen(fallback, text);
+      return new Chosen(fallback, text, null);
     }
     final var matcher = MEMO.matcher(text);
     while (matcher.find()) {
-      final var scenario = byMemo.get(matcher.group(1).toLowerCase(Locale.ROOT));
+      final var word = matcher.group(1).toLowerCase(Locale.ROOT);
+      final var scenario = byMemo.get(word);
       if (scenario != null) {
-        return new Chosen(scenario, cut(text, matcher));
+        return new Chosen(scenario, cut(text, matcher), word);
       }
     }
-    return new Chosen(fallback, text);
+    return new Chosen(fallback, text, null);
   }
 
   /**
@@ -164,6 +187,15 @@ public class ScenarioMemos {
       }
     }
     return text;
+  }
+
+  /**
+   * Every word a person may select a scenario by, for a tool or a page that has to offer the
+   * choice. Lower case and without the slash, the way {@link AgentScenario#memoNames()} declares
+   * them.
+   */
+  public Set<String> names() {
+    return byMemo.keySet();
   }
 
   /** Whether {@code word}, without its slash, selects a scenario. */

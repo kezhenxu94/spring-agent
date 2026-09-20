@@ -23,11 +23,14 @@ import java.util.Locale;
 import java.util.Set;
 import me.kezhenxu94.springagent.core.agent.ScenarioMemos;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
+import me.kezhenxu94.springagent.core.dao.models.UserPreference;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
+import me.kezhenxu94.springagent.core.dao.repo.UserPreferenceRepo;
 import me.kezhenxu94.springagent.core.observing.EventIntake;
 import me.kezhenxu94.springagent.core.observing.EventIntakes;
 import me.kezhenxu94.springagent.core.observing.Observation;
+import me.kezhenxu94.springagent.core.preferences.UserPreferences;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import me.kezhenxu94.springagent.integration.feishu.usermodels.FeishuConfigHandler;
@@ -102,6 +105,7 @@ class FeishuChatObservationTest {
         null,
         observations,
         new ScenarioMemos(List.of()),
+        new UserPreferences(noPreferences(), new ScenarioMemos(List.of())),
         // No model settings card in these tests: /config is not a command without one, which is
         // also the default for a deployment that has not configured an encryption key.
         new ObjectProvider<>() {
@@ -341,5 +345,23 @@ class FeishuChatObservationTest {
     assertThat(observation.summary()).startsWith("ou_alice 说：");
     // Said in English, recorded in English, whatever language the workspace speaks.
     assertThat(observation.summary()).contains("rotate the gateway certificate");
+  }
+
+  /** Nobody in these tests has set a preference, so every read comes back empty. */
+  private static UserPreferenceRepo noPreferences() {
+    return new UserPreferenceRepo() {
+      @Override
+      public UserPreference save(final UserPreference preference) {
+        return preference;
+      }
+
+      @Override
+      public java.util.Optional<UserPreference> findById(final String id) {
+        return java.util.Optional.empty();
+      }
+
+      @Override
+      public void deleteById(final String id) {}
+    };
   }
 }

@@ -14,8 +14,11 @@ import com.slack.api.model.event.MessageEvent;
 import java.util.List;
 import me.kezhenxu94.springagent.core.agent.ScenarioMemos;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
+import me.kezhenxu94.springagent.core.dao.models.UserPreference;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
+import me.kezhenxu94.springagent.core.dao.repo.UserPreferenceRepo;
+import me.kezhenxu94.springagent.core.preferences.UserPreferences;
 import me.kezhenxu94.springagent.integration.slack.config.SlackIdentity;
 import me.kezhenxu94.springagent.integration.slack.usermodels.SlackConfigHandler;
 import org.junit.jupiter.api.BeforeEach;
@@ -61,6 +64,7 @@ class SlackMessageReceiveHandlerTest {
           messageText,
           userNames,
           new ScenarioMemos(List.of()),
+          new UserPreferences(noPreferences(), new ScenarioMemos(List.of())),
           reactions,
           // No model settings form in these tests: /config is not a command without one, which is
           // also the default for a deployment that has not configured an encryption key.
@@ -213,5 +217,23 @@ class SlackMessageReceiveHandlerTest {
     verify(springAgent).fireOrQueue(captor.capture(), any(), any());
     assertThat(captor.getValue().conversationId()).isEqualTo("1699999999.000001");
     assertThat(captor.getValue().replyMessageId()).isEqualTo("1700000000.000100");
+  }
+
+  /** Nobody in these tests has set a preference, so every read comes back empty. */
+  private static UserPreferenceRepo noPreferences() {
+    return new UserPreferenceRepo() {
+      @Override
+      public UserPreference save(final UserPreference preference) {
+        return preference;
+      }
+
+      @Override
+      public java.util.Optional<UserPreference> findById(final String id) {
+        return java.util.Optional.empty();
+      }
+
+      @Override
+      public void deleteById(final String id) {}
+    };
   }
 }

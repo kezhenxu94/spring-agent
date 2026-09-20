@@ -10,9 +10,9 @@ import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
-import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.agent.ScenarioMemos;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
+import me.kezhenxu94.springagent.core.preferences.UserPreferences;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
 import org.jline.reader.UserInterruptException;
@@ -63,6 +63,7 @@ public class CliShellRunner implements ShellRunner {
   private final CliQuestionHandler questionHandler;
   private final CliMessages messages;
   private final ScenarioMemos memos;
+  private final UserPreferences preferences;
 
   /** The latch the loop is blocked on, so a second Ctrl-C can release it. Null between turns. */
   private final AtomicReference<CountDownLatch> waiting = new AtomicReference<>();
@@ -100,13 +101,19 @@ public class CliShellRunner implements ShellRunner {
         continue;
       }
       final var input = line.strip();
-      final var chosen = memos.parse(input, BuiltInScenarios.CHAT);
-      if (chosen.scenario() != BuiltInScenarios.CHAT) {
+      // The person's own default is the fallback, and only the fallback: a memo typed into
+      // the line names the scenario for that one turn and wins, which is what /full is for.
+      final var chosen = memos.parse(input, preferences.scenarioFor(properties.userId()));
+      // named() and not the scenario, because the fallback is now whatever this person set as
+      // their default: read the scenario instead and a line like /help would stop reaching Spring
+      // Shell the moment somebody chose one, which is a command going missing for the people most
+      // likely to have gone looking for it.
+      if (chosen.named()) {
         ask(chosen.text(), chosen.scenario());
       } else if (input.startsWith(COMMAND_PREFIX)) {
         runCommand(input.substring(COMMAND_PREFIX.length()).strip());
       } else {
-        ask(input, BuiltInScenarios.CHAT);
+        ask(input, chosen.scenario());
       }
     }
     console.writeLine("");
