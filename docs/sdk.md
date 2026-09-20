@@ -308,6 +308,7 @@ public interface AgentScenario {
     return offers((Object) tool);
   }
   default boolean knowledgeRetrieval() { return true; }       // consult the knowledge base first
+  default boolean toolSearch() { return true; }               // reach the tools via the tool search?
   default boolean interactive() { return false; }             // is a person waiting for it?
   default Set<String> memoNames() { return Set.of(); }        // words a person may select it by
 }
@@ -358,6 +359,16 @@ anything is built, so a run refusing tools there is spared the MCP fan-out, whic
 server the user can reach before the model is asked anything. A scenario refusing everything through
 `offers` instead composes the same empty set, having connected to each server and thrown the
 callbacks away.
+
+`toolSearch()` decides how a run's tools reach the model where the deployment configured a tool
+search. That advisor does not index the tools *as well* — it replaces them: the model is handed
+`toolSearchTool` plus whatever the conversation has already named, and has to search before it can
+see the rest. The right bargain for an open-ended run reaching a few hundred MCP tools, and the
+wrong one for a run composed of four, which pays a mandatory round trip to discover what would have
+fitted in the prompt. `KNOWLEDGE_BASE` and `ONE_OFF` decline it. There is no per-request switch on
+the advisor itself, so declining means `SpringAgent` hands the run a plain `ToolCallingAdvisor`
+built on the same `ToolCallingManager`; both are singletons, because the searching one caches the
+fingerprint of the tool set it last indexed.
 
 `interactive()` is what a surface asks before drawing a card, a reply or a gutter for the run, before
 abandoning it when that could not be put on screen, and before registering a question handler —

@@ -78,6 +78,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.DefaultToolCallingManager;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.model.tool.ToolExecutionEligibilityChecker;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
@@ -140,6 +141,8 @@ class SpringAgentTest {
             // under test here is the conversation history the agent turns back on, which both
             // carry the same way.
             providerOf(ToolCallingAdvisor.builder()),
+            ToolCallingManager.builder().build(),
+            providerOf((ToolExecutionEligibilityChecker) null),
             // No provider on this test classpath contributes one, and a rejection is then logged as
             // whatever the stack trace says — see ProviderRejection.
             List.<ProviderRejection>of());
@@ -1367,6 +1370,8 @@ class SpringAgentTest {
             contributorProvider(),
             recorderProvider(new AskedQuestionsRecorder(chatMemory, messagesIn(Locale.ENGLISH))),
             providerOf(ToolCallingAdvisor.builder().toolCallingManager(manager)),
+            manager,
+            providerOf((ToolExecutionEligibilityChecker) null),
             List.<ProviderRejection>of());
   }
 
@@ -1401,6 +1406,8 @@ class SpringAgentTest {
             contributorProvider(),
             recorderProvider(new AskedQuestionsRecorder(chatMemory, messagesIn(Locale.ENGLISH))),
             providerOf(ToolCallingAdvisor.builder()),
+            ToolCallingManager.builder().build(),
+            providerOf((ToolExecutionEligibilityChecker) null),
             // No provider on this test classpath contributes one, and a rejection is then logged as
             // whatever the stack trace says — see ProviderRejection.
             List.<ProviderRejection>of());

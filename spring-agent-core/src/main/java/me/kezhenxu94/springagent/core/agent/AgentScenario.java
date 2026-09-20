@@ -85,6 +85,26 @@ public interface AgentScenario {
   }
 
   /**
+   * Whether this run's tools reach the model through the tool search, where the deployment
+   * configured one.
+   *
+   * <p>What the tool search does is not "index the tools as well": it <i>replaces</i> them. The
+   * advisor hands the model one tool, {@code toolSearchTool}, plus whichever tools the conversation
+   * has already named, and the model has to search before it can see any of the rest. That is the
+   * right bargain for an open-ended run reaching a few hundred MCP tools, and the wrong one for a
+   * run composed of four: it buys nothing to narrow, and costs a mandatory round trip before the
+   * model can begin, plus an embedding of every description the first time a session indexes.
+   *
+   * <p>True by default, which is every run as it behaved before this existed. Override to false
+   * where the scenario already knows the tool set is small — and note that the deployment-wide
+   * {@code spring.ai.chat.client.tool-search-advisor.enabled} still decides whether there is a tool
+   * search at all; this only declines one that exists.
+   */
+  default boolean toolSearch() {
+    return true;
+  }
+
+  /**
    * Whether somebody is on the other end of this run, waiting to read its answer.
    *
    * <p>What a surface does with it: whether to draw a card, a stop button or a gutter for the run,

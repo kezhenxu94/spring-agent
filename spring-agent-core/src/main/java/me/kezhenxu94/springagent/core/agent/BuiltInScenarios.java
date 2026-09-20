@@ -107,6 +107,19 @@ public enum BuiltInScenarios implements AgentScenario {
     public boolean tools() {
       return false;
     }
+
+    /**
+     * And no tool search either, which is not a second way of saying the same thing.
+     *
+     * <p>{@link #tools()} empties the composition, and the tool-search advisor does not read it: it
+     * puts {@code toolSearchTool} into the options itself and appends its own paragraph to the
+     * system message. So a run documented as having nothing in between was reaching the model with
+     * exactly one tool, and an explanation of how to look for more.
+     */
+    @Override
+    public boolean toolSearch() {
+      return false;
+    }
   },
 
   /**
@@ -152,6 +165,16 @@ public enum BuiltInScenarios implements AgentScenario {
       // Three spellings of one word, because a person typing at a chat is not consulting a manual.
       // Matching is case-insensitive, so /KB and /Knowledge-Base arrive here too.
       return Set.of("kb", "knowledge-base", "knowledge_base");
+    }
+
+    /**
+     * No tool search, because there is nothing here to search. The allow-list below is four tools
+     * on the best day, and the search would hand the model one tool and a paragraph about finding
+     * the others — a round trip spent discovering what would have fitted in the prompt.
+     */
+    @Override
+    public boolean toolSearch() {
+      return false;
     }
 
     @Override
