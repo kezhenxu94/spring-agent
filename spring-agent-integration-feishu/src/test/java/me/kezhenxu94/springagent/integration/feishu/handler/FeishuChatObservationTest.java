@@ -21,6 +21,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import me.kezhenxu94.springagent.core.agent.ScenarioMemos;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
@@ -100,6 +101,7 @@ class FeishuChatObservationTest {
         processedMessageRepo,
         null,
         observations,
+        new ScenarioMemos(List.of()),
         // No model settings card in these tests: /config is not a command without one, which is
         // also the default for a deployment that has not configured an encryption key.
         new ObjectProvider<>() {

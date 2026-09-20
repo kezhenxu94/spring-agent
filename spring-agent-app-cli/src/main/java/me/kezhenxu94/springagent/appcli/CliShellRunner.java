@@ -9,7 +9,9 @@ import me.kezhenxu94.springagent.appcli.config.CliProperties;
 import me.kezhenxu94.springagent.core.agent.AgentOutcome;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentResponseListener;
+import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
+import me.kezhenxu94.springagent.core.agent.ScenarioMemos;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
@@ -30,6 +32,12 @@ import org.springframework.stereotype.Component;
  * sentence to — so every question would have to be typed as {@code chat "..."}, quoting and all.
  * This reads a line instead: anything starting with {@code /} goes to Spring Shell's parser and
  * registry, everything else to the agent.
+ *
+ * <p>Scenario memos share that {@code /} and are resolved first, which is a deliberate order. A
+ * memo is a way of asking the agent something — {@code /kb what do we know about X} — and it is a
+ * sentence, not a command; letting the registry see it first would mean a command added later under
+ * a memo's name silently swallowed the question, and the person who typed it would be told their
+ * options were wrong rather than that their scenario was gone.
  *
  * <p>{@link Primary} because Spring Shell's own runner bean is conditional on properties rather
  * than on a missing bean, so both exist; this is the one {@code springShellApplicationRunner} picks
@@ -54,6 +62,7 @@ public class CliShellRunner implements ShellRunner {
   private final CliProperties properties;
   private final CliQuestionHandler questionHandler;
   private final CliMessages messages;
+  private final ScenarioMemos memos;
 
   /** The latch the loop is blocked on, so a second Ctrl-C can release it. Null between turns. */
   private final AtomicReference<CountDownLatch> waiting = new AtomicReference<>();
@@ -91,10 +100,13 @@ public class CliShellRunner implements ShellRunner {
         continue;
       }
       final var input = line.strip();
-      if (input.startsWith(COMMAND_PREFIX)) {
+      final var chosen = memos.parse(input, BuiltInScenarios.CHAT);
+      if (chosen.scenario() != BuiltInScenarios.CHAT) {
+        ask(chosen.text(), chosen.scenario());
+      } else if (input.startsWith(COMMAND_PREFIX)) {
         runCommand(input.substring(COMMAND_PREFIX.length()).strip());
       } else {
-        ask(input);
+        ask(input, BuiltInScenarios.CHAT);
       }
     }
     console.writeLine("");
@@ -129,7 +141,7 @@ public class CliShellRunner implements ShellRunner {
     }
   }
 
-  private void ask(final String text) {
+  private void ask(final String text, final AgentScenario scenario) {
     if (!springAgent.accepting()) {
       console.writeLine(console.yellow(messages.get("shutting-down")));
       session.quit();
@@ -143,7 +155,7 @@ public class CliShellRunner implements ShellRunner {
       springAgent.fire(
           AgentRequest.builder()
               .requestId(runId)
-              .scenario(BuiltInScenarios.CHAT)
+              .scenario(scenario)
               .userId(properties.userId())
               // No chat and no message to reply to: a terminal session is the whole conversation,
               // and CliRunListener attaches to a run without needing either.

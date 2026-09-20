@@ -27,6 +27,19 @@ It is a **chat surface**, so at most one of these may be on the classpath at a t
 | A greeting | `FeishuGreetings` and `FeishuUpdates`, the welcome card and the per-version notes |
 | A long connection | `FeishuLongConnection`, watched and reopened by this module rather than by the SDK |
 
+**Scenario memos.** A message carrying `/kb`, `/knowledge-base` or `/knowledge_base` runs that turn
+in `BuiltInScenarios.KNOWLEDGE_BASE` — the knowledge base, the memories and the vision tools, and
+nothing else. Read out of the raw text this surface already has in hand, matched case-insensitively
+as a whole token *anywhere* in the message — the bot has to be mentioned first in a group chat, and
+a memo is as often typed at the end of a thought — and taken out of the prompt.
+`core/agent/ScenarioMemos` owns the rule; a slash word it does not know is left where it is.
+
+**Where it is read.** The scenario has to be on the request before the prompt text exists — that is
+assembled in a supplier, off the event thread, because a message carrying an attachment has to
+download it first. So the memo is read from `content.text` and removed from the assembled text
+later, which is the other reason it is looked for anywhere rather than at the front: by then
+`addToChat` has put the quoted parent message in front of it.
+
 ## The card
 
 A turn is answered in one card that is rewritten as the run goes: the answer as it streams, what the

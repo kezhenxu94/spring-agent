@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
+import me.kezhenxu94.springagent.core.agent.ScenarioMemos;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
@@ -46,6 +47,7 @@ public class SlackMessageReceiveHandler {
   private final SlackChatObservations chatObservations;
   private final SlackMessageText messageText;
   private final SlackUserNames userNames;
+  private final ScenarioMemos memos;
 
   /**
    * Told where this message lives, so a reaction later can find it.
@@ -248,12 +250,21 @@ public class SlackMessageReceiveHandler {
 
       final var mentionsText = userNames.mentionsIn(event.getText());
 
+      // Read from what was typed rather than from the assembled text, because the two happen at
+      // different times: the scenario has to be on the request before the text exists, and the
+      // text is produced later and off this thread. The memo is taken out of the assembled text
+      // instead, in the supplier below — which is why it is looked for anywhere in the message and
+      // not at the front, since in a channel the bot has to be mentioned before anything else.
+      final var chosen = memos.parse(event.getText(), BuiltInScenarios.CHAT);
+
       // Produced only when it is needed, and never on this thread: turning a message into text can
       // mean downloading what it carries, and Slack concludes a message it is still waiting on was
       // never delivered and sends it again. Assembly happens off this thread for that very reason
       // (see SpringAgent#fire), and a message queued onto a run already going is read on the thread
-      // of the tool call that reads it.
-      final Supplier<String> text = () -> messageText.of(event, userId);
+      // of the tool call that reads it. Stripping the memo goes inside it: leaving the word in the
+      // prompt would have the model read a piece of this application's syntax as the question.
+      final Supplier<String> text =
+          () -> memos.strip(messageText.of(event, userId), chosen.scenario());
 
       // Queued rather than fired where the user is already being answered in this conversation: a
       // second run would mean a second reply, a second stop button and two runs writing the same
@@ -263,7 +274,7 @@ public class SlackMessageReceiveHandler {
       springAgent.fireOrQueue(
           AgentRequest.builder()
               .requestId(messageId)
-              .scenario(BuiltInScenarios.CHAT)
+              .scenario(chosen.scenario())
               .userId(userId)
               .chatId(channelId)
               .chatType(chatType)
@@ -283,7 +294,7 @@ public class SlackMessageReceiveHandler {
               .userMessage(user -> user.text(text.get()))
               .build(),
           text,
-          messageText.display(event));
+          memos.strip(messageText.display(event), chosen.scenario()));
     } catch (Throwable t) {
       // Released, because nothing has answered this message and nothing now will. Holding the claim
       // would turn a failure here into a message silently dropped — worse than the duplicate the

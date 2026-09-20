@@ -34,23 +34,23 @@ import me.kezhenxu94.springagent.core.tools.ScheduledTaskTool;
  *       that, which is why the check is on the configuration and not on the run.
  * </ul>
  *
- * <p>An allow-list here would add little to that and cost something real. {@link #offers} is
- * consulted about the {@code @AgentTool} beans and nothing else — the file-system tools, the todo
- * tool, the skills tool and every MCP callback, including the application-wide servers under {@code
- * spring.ai.mcp.client.*}, reach every run whatever this says. So a scenario that withheld the
- * shell would still hand a run whatever reach the deployment's MCP servers have, while losing the
- * agent the ability to look at the thing it is being asked about; an alert triaged without being
- * able to read a log is mostly guesswork.
+ * <p><b>An allow-list here would cost something real and buy little.</b> {@link #offers} can write
+ * one — it is consulted about everything a run is composed of, the file-system tools, the todo
+ * tool, the skills and every MCP callback included — and this scenario deliberately does not. An
+ * alert triaged without being able to read a log is mostly guesswork, so withholding the shell
+ * would lose the agent the ability to look at the thing it is being asked about; and it would still
+ * be holding whatever reach the deployment's own MCP servers have, since those are configuration
+ * and not something a list here can anticipate. The four items above are where the safety is, and
+ * none of them is a tool list.
  *
- * <p><b>Memory, including a shared one, is deliberately left in.</b> The memory tools are an
- * {@code @AgentTool} bean, so unlike the list above this scenario could withhold them, and it does
- * not: a triage run that works out how this deployment's alerts actually behave should be able to
- * write that down where the next one — and the people in the chat it reports to — will read it.
- * Which scopes that reaches is the operator's decision and nothing else: {@code MemoryScopes}
- * allows a shared write only where the request carries a group, and a triage request's group and
- * tenant come from {@code owner.group-id} and {@code owner.tenant-id} rather than from the
- * observation, so a source configured with a user-id alone can write nothing shared at all. The
- * admin exemption is out of reach too, by the fourth item above.
+ * <p><b>Memory, including a shared one, is deliberately left in.</b> A triage run that works out
+ * how this deployment's alerts actually behave should be able to write that down where the next one
+ * — and the people in the chat it reports to — will read it. Which scopes that reaches is the
+ * operator's decision and nothing else: {@code MemoryScopes} allows a shared write only where the
+ * request carries a group, and a triage request's group and tenant come from {@code owner.group-id}
+ * and {@code owner.tenant-id} rather than from the observation, so a source configured with a
+ * user-id alone can write nothing shared at all. The admin exemption is out of reach too, by the
+ * fourth item above.
  *
  * <p>What that leaves is a real exposure, and it belongs stated here rather than discovered:
  * whoever writes an event can try to talk a triage run into writing something into a shared memory,

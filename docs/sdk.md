@@ -301,10 +301,15 @@ than an enum so that your own scenarios are first-class:
 
 ```java
 public interface AgentScenario {
-  default boolean conversationMemory() { return true; }   // read and append chat memory
-  default boolean tools() { return true; }                // any tools at all?
-  default boolean offers(Object tool) { return true; }    // is this @AgentTool bean offered?
-  default boolean knowledgeRetrieval() { return true; }   // consult the knowledge base first
+  default boolean conversationMemory() { return true; }       // read and append chat memory
+  default boolean tools() { return true; }                    // any tools at all?
+  default boolean offers(Object tool) { return true; }        // is this tool offered?
+  default boolean offers(ToolCallback tool) {                 // ...and this one, by name
+    return offers((Object) tool);
+  }
+  default boolean knowledgeRetrieval() { return true; }       // consult the knowledge base first
+  default boolean interactive() { return false; }             // is a person waiting for it?
+  default Set<String> memoNames() { return Set.of(); }        // words a person may select it by
 }
 ```
 
@@ -316,6 +321,7 @@ public interface AgentScenario {
 | `SCHEDULED_TASK` | A task firing on its own schedule | Conversation memory, in either direction: a firing that read the conversation it was created in read the previous occurrence — the same prompt, already answered with a report — and handed that result back rather than doing the work; and a report appended every morning is a history the person's next question is answered against. The report still reaches them as the run's reply. Also `ScheduledTaskTool` — a run that fires on a schedule must not be able to schedule more, which is how one task becomes a growing pile. It keeps `FiringScheduledTaskTool`, which acts only on the task that is firing: it can end that task or give it its next time, so a run can honour "until X happens" and "remind me again later" without the number of tasks ever growing |
 | `SUBAGENT` | A run another run asked for, whose answer is a tool result | `SubagentTools`, `ScheduledTaskTool` and `FiringScheduledTaskTool`; and no conversation memory in either direction, since a subagent is given its task in full and must not write turns nobody said into the history |
 | `ONE_OFF` | One prompt turned into one answer — a summary, a classification, a translation — for a caller using `fireAndAwait` | Everything: `tools()` is false, so nothing is composed at all, and no conversation memory and no knowledge retrieval either |
+| `KNOWLEDGE_BASE` | A turn answered out of what the deployment has been told to remember and out of nothing else, asked for by memo — `/kb what do we do about a failing canary` | Everything but the knowledge-base tools, the memory tools and the vision tools. The only allow-list in the enum: what a person asking for it wants is an answer whose sources they can name, and a run reaching for a web search or a shell produces something better in general and unusable here, because nothing afterwards says which part came from where. Vision is in because a question can arrive as a screenshot. Conversation memory and retrieval both stay on |
 
 `spring-agent-events` adds `SituationTriageScenario` for a run woken by something the agent
 observed rather than by a person.
@@ -333,13 +339,39 @@ public enum MyScenarios implements AgentScenario {
 }
 ```
 
-`tools()` and `offers(tool)` are two gates at different altitudes, and the difference matters.
-`offers` rules on the `@AgentTool` beans alone; everything else a run is composed of — the
-filesystem and todo tools, the ask, one tool per installed skill, the memory tools, the user's MCP servers and
-the application-wide ones under `spring.ai.mcp.client.*` — comes from elsewhere and no per-tool
-ruling reaches it. So an `offers` that returns false for everything is *not* a run without tools.
-`tools()` returning false is: nothing is composed, and the MCP fan-out is skipped rather than
-connected and discarded.
+`offers` rules on **everything** a run is composed of, not only the `@AgentTool` beans: the
+filesystem and todo tools, the ask, one tool per installed skill, the memory tools, the user's MCP
+servers and the application-wide ones under `spring.ai.mcp.client.*`. That is what makes an
+allow-list mean what it says — `KNOWLEDGE_BASE` names four tools and receives four tools, not four
+tools plus a sandbox and every MCP server the asker registered.
+
+Which of the two overloads answers is decided **statically**, by the declared type at the call site.
+Anything already built as a callback — an MCP server's tools, a skill, the ask on a surface whose
+answer arrives later — reaches `offers(ToolCallback)`, and there is no type to tell those apart from
+each other, so rule on `tool.getToolDefinition().name()`. It delegates to `offers(Object)` by
+default, so a scenario wanting none of them writes one method. If you compose tools yourself, keep
+your `List<ToolCallback>` typed until you have filtered it; merging it into a `List<Object>` first
+silently routes every callback to the wrong overload.
+
+`tools()` is still a separate gate, and what it buys is not reach but cost. It is answered before
+anything is built, so a run refusing tools there is spared the MCP fan-out, which dials out to every
+server the user can reach before the model is asked anything. A scenario refusing everything through
+`offers` instead composes the same empty set, having connected to each server and thrown the
+callbacks away.
+
+`interactive()` is what a surface asks before drawing a card, a reply or a gutter for the run, before
+abandoning it when that could not be put on screen, and before registering a question handler —
+which is what decides whether the agent is offered the ask at all. It is false by default, which is
+the safe way round: a scenario that says nothing is treated as one nobody is waiting on.
+
+`memoNames()` is how a person selects a scenario from a chat. `ScenarioMemos` collects them from
+`BuiltInScenarios` and from every `AgentScenario` bean in the context, so declaring yours as a bean
+is the whole of making it selectable; it refuses to start where two scenarios claim one word. A memo
+is matched case-insensitively and as a whole token anywhere in the message — `@bot /kb what is this`
+and `what do we do when a deployment failed? /kb, tell me something` both work, while
+`/kb/notes/2024` is a path — and the matched word is taken out of the prompt, along with a comma,
+semicolon or colon it was typed with. Declaring none,
+which is the default, is what keeps `SUBAGENT` and `SCHEDULED_TASK` out of a person's reach.
 
 A tool declared `@AgentTool(admin = true)` is additionally withheld unless the run's user is named
 in `app.ai.admins`. That is on the user id alone, so an administrator holds them in their own scheduled
@@ -388,9 +420,9 @@ Per-request identity reaches a tool through the tool context, under typed keys i
 
 `AgentToolsProvider.compose(...)` assembles the set once per request out of:
 
-- the `@AgentTool` beans in the context, minus whatever the scenario keeps out and minus the
-  admin-only ones unless the run's user is named in `app.ai.admins`;
-- filesystem and todo tools bound to that user's home;
+- the `@AgentTool` beans in the context, minus the admin-only ones unless the run's user is named in
+  `app.ai.admins`;
+- filesystem, search and todo tools bound to that user's home;
 - the ask tool, when a handler exists and the property allows it;
 - that user's skills;
 - the MCP servers that user owns or has been given, connected for this request and closed after it;
@@ -398,6 +430,9 @@ Per-request identity reaches a tool through the tool context, under typed keys i
   configured under `spring.ai.mcp.client.*` reach the model — Spring AI publishes them as such a
   bean but never wires it into a `ChatClient` itself. Those clients belong to the context and are
   never closed by a run.
+
+The scenario rules on every one of those, through `offers(Object)` or `offers(ToolCallback)` as the
+item's type decides, so the list above is what a run may be offered rather than what it gets.
 
 It also contributes two advisors, since both belong with the tools rather than with the run:
 `MemoryToolsAdvisor` (`core.advisors`), which appends the paragraph naming which memories this run
@@ -413,7 +448,8 @@ takes only a prompt `Resource` (a template over `TOOL_CALL_COUNT`), a threshold 
 holds no type of this project's own. The memory one is the same shape — a prompt `Resource` over
 `MEMORY_SCOPES` and the rendered block to fill it with — and registers no tools of its own: the six
 memory tools are an `@AgentTool` bean (`core.memory.MemoryTools`), so a scenario's `offers` rules on
-them like any other. This is a fork of the library's `AutoMemoryToolsAdvisor`/`AutoMemoryTools`,
+them like any other. The advisor travels with the tools and is therefore false without them: a run
+offered no memory tools must not be told it has a memory. This is a fork of the library's `AutoMemoryToolsAdvisor`/`AutoMemoryTools`,
 which take a single memory directory and so cannot reach a group's or the tenant's; the tool names
 and parameter names are unchanged.
 

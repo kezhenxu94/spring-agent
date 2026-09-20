@@ -18,6 +18,7 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
+import me.kezhenxu94.springagent.core.agent.ScenarioMemos;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
@@ -55,6 +56,7 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
   final ProcessedMessageRepo processedMessageRepo;
   final FeishuQuestionFormCloser questionFormCloser;
   final FeishuChatObservations chatObservations;
+  final ScenarioMemos memos;
 
   /**
    * Absent unless {@code app.ai.user-models.encryption-key} is configured, which is the default.
@@ -83,6 +85,25 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
     } catch (Exception e) {
       // Not something we can read is not the command; the agent gets it, as it would have anyway.
       return false;
+    }
+  }
+
+  /**
+   * What the person actually typed, or empty where this message is not typing.
+   *
+   * <p>Only used to read a scenario memo out of, and only a text message can carry one — an image
+   * or a file has no words until it has been downloaded, which happens on another thread long after
+   * the scenario has to be decided. Nothing here does any work {@code isConfigCommand} above does
+   * not already do on the same path.
+   */
+  private String typedText(final EventMessage message) {
+    if (!"text".equals(message.getMessageType())) {
+      return "";
+    }
+    try {
+      return om.readTree(message.getContent()).path("text").asString("");
+    } catch (Exception e) {
+      return "";
     }
   }
 
@@ -224,6 +245,13 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
               : Stream.of(message.getMentions())
                   .map(m -> m.getName() + " (" + m.getId().getOpenId() + ")")
                   .collect(Collectors.joining(", "));
+      // Read from what was typed rather than from the assembled text, because the two happen at
+      // different times: the scenario has to be on the request before the text exists, and the
+      // text is produced later and off this thread. The memo is taken out of the assembled text
+      // instead, in the supplier below — which is why it is looked for anywhere in the message and
+      // not at the front, since by then whatever addToChat put in front of it is there too.
+      final var chosen = memos.parse(typedText(message), BuiltInScenarios.CHAT);
+
       // Produced only when it is needed, and never on this thread: turning a message into text can
       // mean downloading what it carries, and Feishu concludes a message it is still waiting on was
       // never delivered and sends it again. Assembly happens off this thread for that very reason
@@ -239,7 +267,9 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
                 message.getContent(),
                 userOpenId,
                 feishuTools);
-            return content.toString();
+            // The memo chose the scenario; leaving the word in the prompt as well would have the
+            // model read a piece of this application's syntax as part of the question.
+            return memos.strip(content.toString(), chosen.scenario());
           };
 
       // Queued rather than fired where the user is already being answered in this conversation: a
@@ -250,7 +280,7 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
       springAgent.fireOrQueue(
           AgentRequest.builder()
               .requestId(messageId)
-              .scenario(BuiltInScenarios.CHAT)
+              .scenario(chosen.scenario())
               .userId(userOpenId)
               .chatId(message.getChatId())
               .chatType(message.getChatType())
@@ -270,7 +300,8 @@ public class FeishuMessageReceiveHandler extends ImService.P2MessageReceiveV1Han
               .userMessage(user -> user.text(text.get()))
               .build(),
           text,
-          displayOf(message.getMessageType(), message.getContent()));
+          memos.strip(
+              displayOf(message.getMessageType(), message.getContent()), chosen.scenario()));
     } catch (Throwable t) {
       // Released, because nothing has answered this message and nothing now will. Holding the claim
       // would turn a failure here into a message silently dropped — worse than the duplicate the

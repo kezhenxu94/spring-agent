@@ -182,11 +182,14 @@ public class AgentToolsProvider {
       final Consumer<List<KnowledgeReference>> knowledgeHandler)
       throws IOException {
     if (!request.scenario().tools()) {
-      // No tools means no MCP client is built, which is the whole point of asking before build()
-      // rather than filtering after it — the fan-out dials out to every server the user can reach,
-      // and a run that will be offered none of them should not pay for the handshakes. The memory
-      // advisor goes with them, being tools of its own; retrieval does not, since it contributes
-      // no tool and answers to a switch of its own.
+      // No tools means no MCP client is built, and this is the one thing asking here buys that
+      // AgentScenario.offers cannot: the fan-out dials out to every server the user can reach, and
+      // a run that will be offered none of them should not pay for the handshakes. A scenario that
+      // refuses every tool through offers instead — KNOWLEDGE_BASE does — composes the same empty
+      // set of them, having connected to each server and thrown the callbacks away. That is a
+      // deliberate price for keeping one gate rather than two; a scenario wanting it back says so
+      // here. The memory advisor goes with them, being tools of its own; retrieval does not, since
+      // it contributes no tool and answers to a switch of its own.
       final var retrieval = knowledgeRetrieval(request, knowledgeHandler);
       return new AgentComposition(
           new Object[0],
@@ -220,11 +223,18 @@ public class AgentToolsProvider {
       final boolean answersArriveLater,
       final Consumer<List<KnowledgeReference>> knowledgeHandler)
       throws IOException {
+    // The scenario is asked about every one of these, not only about the @AgentTool beans below.
+    // Keeping the two overloads apart is what makes that work: Java resolves an overload from the
+    // static type, so anything already built as a ToolCallback has to stay in a List<ToolCallback>
+    // until it has been ruled on. Merge it into `tools` first and offers(Object) answers for it
+    // instead — silently, and with the name the callback carries never looked at.
+    final var scenario = request.scenario();
     final var tools = new ArrayList<Object>();
-    tools.addAll(resolveScenarioTools(request.scenario(), request.userId()));
-    tools.add(agentTools.fileSystemTools());
-    tools.addAll(agentTools.searchTools());
-    tools.add(TodoWriteTool.builder().todoEventHandler(todoEventHandler).build());
+    tools.addAll(resolveScenarioTools(scenario, request.userId()));
+    offered(scenario, agentTools.fileSystemTools()).ifPresent(tools::add);
+    agentTools.searchTools().stream().filter(scenario::offers).forEach(tools::add);
+    offered(scenario, TodoWriteTool.builder().todoEventHandler(todoEventHandler).build())
+        .ifPresent(tools::add);
     // Two independent gates, and both have to open. No handler means the run has no way to reach
     // the user, so offering the tool would only invite the agent to ask into the void; the property
     // is how a deployment turns the whole interaction off whatever the channel can do.
@@ -238,9 +248,14 @@ public class AgentToolsProvider {
               .answersValidation(!answersArriveLater)
               .questionHandler(questionHandler)
               .build();
-      // Ending the turn is a property of the callback, not of the tool, so that path hands over a
-      // wrapped one while the other hands over the tool itself and lets the far end derive it.
-      tools.add(answersArriveLater ? endsTurnCallback(askTool) : askTool);
+      // Ruled on as the tool, before either branch below, so the two paths cannot disagree about
+      // whether this run may ask: one of them wraps it into a ToolCallback, and a scenario reading
+      // types would then see the wrapper on one surface and the tool on another.
+      if (scenario.offers(askTool)) {
+        // Ending the turn is a property of the callback, not of the tool, so that path hands over a
+        // wrapped one while the other hands over the tool itself and lets the far end derive it.
+        tools.add(answersArriveLater ? endsTurnCallback(askTool) : askTool);
+      }
     }
 
     final var callbacks = new ArrayList<ToolCallback>();
@@ -249,6 +264,10 @@ public class AgentToolsProvider {
       Collections.addAll(callbacks, mcpCallbacks);
     }
     callbacks.addAll(globalToolCallbacks());
+    // Filtered before the duplicate check, not after: two tools of one name that this run is not
+    // offered are not this run's problem, and failing over a collision the model never sees would
+    // cost somebody their answer over somebody else's configuration.
+    callbacks.removeIf(callback -> !scenario.offers(callback));
     rejectDuplicateToolNames(callbacks);
     tools.addAll(callbacks);
 
@@ -257,7 +276,9 @@ public class AgentToolsProvider {
     // out of the way of this repository's own tools; what a prefix cannot rule out is an MCP server
     // whose own toolPrefix is "skill" landing on the same name. There the skill loses and is left
     // out, rather than the composition failing — see withoutTakenNames.
-    tools.addAll(withoutTakenNames(agentTools.skillTools(), callbacks));
+    tools.addAll(
+        withoutTakenNames(
+            agentTools.skillTools().stream().filter(scenario::offers).toList(), callbacks));
 
     final var advisors = new ArrayList<Advisor>();
     knowledgeRetrieval(request, knowledgeHandler).ifPresent(advisors::add);
@@ -283,6 +304,17 @@ public class AgentToolsProvider {
     skillOffer(tools).ifPresent(advisors::add);
 
     return new AgentComposition(tools.toArray(), List.copyOf(advisors), agentTools.mcpTools());
+  }
+
+  /**
+   * {@code tool} where the scenario offers it, nothing where it does not.
+   *
+   * <p>A method rather than an {@code if} per tool because the argument is usually the {@code new}
+   * expression itself, and hoisting each one into a local to test it would be three more names for
+   * three things nothing else reads.
+   */
+  private static Optional<Object> offered(final AgentScenario scenario, final Object tool) {
+    return scenario.offers(tool) ? Optional.of(tool) : Optional.empty();
   }
 
   /**
@@ -602,7 +634,8 @@ public class AgentToolsProvider {
    * The {@code @AgentTool} beans a run in {@code scenario} for {@code userId} is offered, in
    * registration order.
    *
-   * <p>Two rulings. {@link AgentScenario#offers} decides each tool for this kind of run; {@code
+   * <p>Two rulings. {@link AgentScenario#offers(Object)} decides each tool for this kind of run —
+   * here and, for everything else a run is composed of, in {@code composeWith}; {@code
    * app.ai.admins} decides the ones declared {@link AgentTool#admin()}, on the run's user id alone.
    * See that attribute for why the user id is the whole of the test, and why the identity a run
    * assumes is therefore the boundary worth guarding.

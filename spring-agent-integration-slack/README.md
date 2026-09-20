@@ -28,6 +28,17 @@ It is a **chat surface**, so at most one of these may be on the classpath at a t
 | A greeting | `SlackGreetings` and `SlackUpdates`, over `slack/welcome.md` and `slack/updates/N.md` |
 | A socket connection | `SlackSocketConnection` — Socket Mode, so no public URL and no request signing |
 
+**Scenario memos.** A message carrying `/kb`, `/knowledge-base` or `/knowledge_base` runs that turn
+in `BuiltInScenarios.KNOWLEDGE_BASE` — the knowledge base, the memories and the vision tools, and
+nothing else. Read out of the raw text this surface already has in hand, matched case-insensitively
+as a whole token *anywhere* in the message — the bot has to be mentioned first in a group chat, and
+a memo is as often typed at the end of a thought — and taken out of the prompt.
+`core/agent/ScenarioMemos` owns the rule; a slash word it does not know is left where it is.
+
+**Where it is read.** From `event.getText()`, because the scenario has to be on the request before
+the prompt text exists — that is assembled in a supplier, off the event thread, since a message
+carrying a file has to download it first. The memo is removed from the assembled text later.
+
 ## The message
 
 Slack allows a message 50 blocks, and a long turn outgrows that — so when one fills up the agent

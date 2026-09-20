@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
+import me.kezhenxu94.springagent.core.agent.ScenarioMemos;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.TenantWrites;
@@ -66,6 +67,7 @@ public class ChatController {
   private final PendingQuestionRepo pendingQuestionRepo;
   private final ChatReasoningRepo reasonings;
   private final ChatMirrors mirrors;
+  private final ScenarioMemos memos;
   private final WebMessages messages;
   private final WebProperties properties;
   private final JsonMapper om;
@@ -361,10 +363,16 @@ public class ChatController {
     supersedePendingQuestions(session.id());
 
     final var requestId = UUID.randomUUID().toString();
+    // A memo in what was typed — /kb — chooses the kind of run this turn is, and is taken out of
+    // the prompt on the way. Nothing else in this method reads `text` afterwards: the mirror below
+    // and the queue both take the message the model will see, so the chat surface shows the same
+    // words the agent was given.
+    final var chosen = memos.parse(text, BuiltInScenarios.CHAT);
+    final var prompt = chosen.text();
     final var builder =
         AgentRequest.builder()
             .requestId(requestId)
-            .scenario(BuiltInScenarios.CHAT)
+            .scenario(chosen.scenario())
             .userId(user.id())
             .chatId(session.id())
             .chatType(WebRunListener.CHAT_TYPE)
@@ -379,9 +387,9 @@ public class ChatController {
             .conversationId(session.id())
             .rootMessageId(session.id())
             .replyMessageId(requestId)
-            .userMessage(spec -> spec.text(text));
+            .userMessage(spec -> spec.text(prompt));
     if (Boolean.TRUE.equals(body.mirror())) {
-      final var mirror = mirrors.forRun(session, user, text);
+      final var mirror = mirrors.forRun(session, user, prompt);
       if (mirror != null) {
         builder.listener(mirror);
       }
@@ -391,7 +399,7 @@ public class ChatController {
     // fireOrQueue rather than fire: a message sent while a run is going joins that run and reaches
     // the model mid-turn, so a correction lands before the tool call it was meant to prevent. Only
     // if it cannot does it become a run of its own.
-    final var queued = springAgent.fireOrQueue(request, () -> text, text);
+    final var queued = springAgent.fireOrQueue(request, () -> prompt, prompt);
     sessions.touch(session);
 
     return Map.of("requestId", requestId, "queued", queued);

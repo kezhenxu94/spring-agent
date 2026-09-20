@@ -113,6 +113,30 @@ configured — so a set that grew a minute ago is offered to the next turn. Beca
 both applications turn on tool search, which retrieves the few tools a turn actually needs instead
 of sending the model all of them.
 
+### Asking for a narrower run
+
+Sometimes the open-ended set is the wrong thing. Ask *what do we do about a failing canary* and the
+agent may search the web, read a file and shell out — a better answer in general, and the wrong one
+when what you wanted was what **this team** wrote down, in a form you can go and check.
+
+Start the message with `/kb` and that turn is answered out of the knowledge base and the agent's
+memories alone, with no web, no shell, no files and no MCP servers:
+
+```
+/kb what do we do about a failing canary
+```
+
+`/knowledge-base` and `/knowledge_base` mean the same and case does not matter. The word may sit
+anywhere in the message, not only at the front — so it still works in a group chat, where the bot
+has to be mentioned first, and it reads naturally at the end of a thought:
+
+```
+what do we do when a deployment failed? /kb, tell me something
+```
+
+It works on every surface: Feishu, Slack, the browser and the command line. A slash word the agent
+does not recognise is left alone and reaches the model as ordinary text.
+
 ## Every user gets their own agent
 
 Every run carries a user id, and that id — not the process — owns the state. Under

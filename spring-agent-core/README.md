@@ -209,10 +209,42 @@ discarded on reflection, which is why core declares those persistence APIs `comp
 
 **A scenario decides what a run is offered, not the annotation.** `@AgentTool` carries no scenario — an
 annotation attribute cannot have an interface type, which would confine gating to the built-in enum.
-`AgentScenario.offers(tool)` is asked about every `@AgentTool` bean and says yes by default. That is
-how `SCHEDULED_TASK` keeps `ScheduledTaskTool` out of a run that fires on a schedule, and how
+`AgentScenario.offers(tool)` is asked about every tool a run is composed of and says yes by default.
+That is how `SCHEDULED_TASK` keeps `ScheduledTaskTool` out of a run that fires on a schedule, and how
 `SUBAGENT` keeps both it and `SubagentTools` out — which caps subagent depth at one with no counter to
 get wrong.
+
+**Every tool, and not the `@AgentTool` beans alone**, which is what lets a scenario write an
+allow-list instead of the usual few exclusions. `KNOWLEDGE_BASE` is the one that does: it names the
+knowledge-base tools, the memory tools and the vision tools, and receives those and nothing else — no
+sandbox, no todo tool, no skills, no MCP. There are two overloads because a tool that arrives already
+built as a `ToolCallback` — an MCP server's, a skill's, the ask where the answer comes later — has no
+type of its own to rule on, only the name on its definition. `offers(ToolCallback)` delegates to
+`offers(Object)` by default, so a scenario wanting none of them still writes one method. **Java picks
+an overload statically**, so `composeWith` keeps its `List<ToolCallback>` typed until it has filtered
+it; merging the callbacks into the tool list first would route every one of them to the wrong
+overload, silently.
+
+What `tools()` still buys over an `offers` that refuses everything is not reach but cost: it is asked
+before anything is built, so the run is spared the MCP fan-out. Refusing through `offers` composes the
+same empty set, having dialled every server first.
+
+**A person can choose the scenario from the chat.** `AgentScenario.memoNames()` declares the words
+that select it — `/kb`, `/knowledge-base`, `/knowledge_base` — and declaring none, the default, is
+what keeps `SUBAGENT` and `SCHEDULED_TASK` unreachable by typing. `ScenarioMemos` collects them from
+`BuiltInScenarios` and from every `AgentScenario` bean, refuses to start where two claim one word,
+and matches case-insensitively as a whole token anywhere in the message — anywhere, because in a
+group chat the bot has to be mentioned first and because a memo is as often typed at the end of a
+thought as at its start, and a whole token so that `/kb/notes/2024` stays a path and `/kb.md` a
+filename. The matched word is taken out of the prompt, with a comma, semicolon or colon it was typed
+with, since that punctuation belongs to the interjected word rather than to the sentence. Read
+`ScenarioMemos` before changing the rule.
+
+**`interactive()` is what a surface asks before drawing anything for a run**, and before registering
+a question handler — which is what decides whether the agent is offered the ask at all. False by
+default and true on `CHAT` and `KNOWLEDGE_BASE`. It replaced four surfaces each comparing
+`scenario() == BuiltInScenarios.CHAT`, which made every new scenario invisible until somebody
+remembered those lines.
 
 **A run is offered exactly what `compose(...)` returns.** Tools from elsewhere have to be collected
 there too: alongside the `@AgentTool` beans and the user's own MCP servers it appends the callbacks of
