@@ -131,6 +131,19 @@ class ScenarioMemosTest {
   }
 
   @Test
+  @DisplayName("a second scenario's memos resolve to it and not to the first")
+  void memosAreScenarioSpecific() {
+    // Two built-ins carry memos now, so this is the check that the registry keys them apart rather
+    // than answering whichever it happened to register first.
+    for (final var memo : List.of("/one-off", "/one_off", "/mini", "/MINI")) {
+      assertThat(parse(memo + " summarize this").scenario())
+          .as(memo)
+          .isEqualTo(BuiltInScenarios.ONE_OFF);
+    }
+    assertThat(parse("/kb what is this").scenario()).isEqualTo(BuiltInScenarios.KNOWLEDGE_BASE);
+  }
+
+  @Test
   void aWordIsResolvedWithoutItsSlash() {
     assertThat(memos.named("KB")).contains(BuiltInScenarios.KNOWLEDGE_BASE);
     assertThat(memos.named("help")).isEmpty();

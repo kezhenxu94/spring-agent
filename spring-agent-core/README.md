@@ -265,11 +265,14 @@ caches the fingerprint of the tool set it last indexed per key. Where the deploy
 tool search the builder bean is already plain, and `SpringAgent` uses it for both answers rather
 than building a redundant twin.
 
-**`interactive()` is what a surface asks before drawing anything for a run**, and before registering
-a question handler — which is what decides whether the agent is offered the ask at all. False by
-default and true on `CHAT` and `KNOWLEDGE_BASE`. It replaced four surfaces each comparing
-`scenario() == BuiltInScenarios.CHAT`, which made every new scenario invisible until somebody
-remembered those lines.
+**`interactive()` is what a surface asks before abandoning a run whose rendering never appeared**,
+and before registering a question handler — which is what decides whether the agent is offered the
+ask at all. It does *not* gate the rendering itself; a card is drawn for any run that is not
+`background()`. False by default, and true on `CHAT`, `KNOWLEDGE_BASE` and `ONE_OFF` — the last
+because `/mini` makes it something a person asks for and then waits on, and it costs nothing there
+since a run with no tools is offered no ask whatever a surface registers. It replaced four surfaces
+each comparing `scenario() == BuiltInScenarios.CHAT`, which made every new scenario invisible until
+somebody remembered those lines.
 
 **A run is offered exactly what `compose(...)` returns.** Tools from elsewhere have to be collected
 there too: alongside the `@AgentTool` beans and the user's own MCP servers it appends the callbacks of

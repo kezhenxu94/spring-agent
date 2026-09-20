@@ -51,9 +51,10 @@ thinks.
 
 `/kb <question>` is not a command but a **scenario memo**: it answers that one turn out of the
 knowledge base and the agent's memories alone, with no shell, no files and no MCP servers.
-`/knowledge-base` and `/knowledge_base` mean the same and case does not matter. Memos are resolved
-*before* the line reaches Spring Shell, so a command added later under a memo's name cannot swallow
-the question — see `CliShellRunner`.
+`/knowledge-base` and `/knowledge_base` mean the same and case does not matter. `/mini` (or
+`/one-off`, `/one_off`) is the other memo: the model alone, no tools and nothing written to the
+session. Memos are resolved *before* the line reaches Spring Shell, so a command added later under
+a memo's name cannot swallow the question — see `CliShellRunner`.
 
 Ctrl-C cancels the run in progress rather than the session.
 
