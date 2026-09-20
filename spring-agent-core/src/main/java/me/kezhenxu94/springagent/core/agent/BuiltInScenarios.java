@@ -91,8 +91,34 @@ public enum BuiltInScenarios implements AgentScenario {
    * tools. For a caller that wants one prompt turned into one answer (a summary, a classification,
    * a translation) with no chance of the run reaching for a tool, remembering a past turn, or
    * pulling in retrieved context nobody asked for.
+   *
+   * <p>A person can ask for one too, with {@code /mini}, and the thing to know before typing it is
+   * that <b>the turn leaves no trace in the conversation</b>: {@link #conversationMemory()} is
+   * false in both directions, so neither the question nor the answer is there for the next turn to
+   * refer back to. That is the point rather than a wart — it is what keeps a quick aside out of the
+   * history a real question is answered against — but "why does it not remember what I just asked"
+   * has one answer and this is it.
    */
   ONE_OFF {
+    /**
+     * Interactive, because somebody typing {@code /mini} is plainly waiting for the answer.
+     *
+     * <p>Nothing follows from it that a run with no tools would not want. The question handler a
+     * surface registers decides whether the ask is <i>composed</i>, and {@link #tools()} being
+     * false means nothing is, so the model is still offered no way to ask. What it does buy is the
+     * other half: a chat surface that could not put its card on screen abandons the run instead of
+     * carrying on writing an answer into nowhere.
+     */
+    @Override
+    public boolean interactive() {
+      return true;
+    }
+
+    @Override
+    public Set<String> memoNames() {
+      return Set.of("one-off", "one_off", "mini");
+    }
+
     @Override
     public boolean conversationMemory() {
       return false;

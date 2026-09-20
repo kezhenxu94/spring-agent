@@ -321,7 +321,7 @@ public interface AgentScenario {
 | `CHAT` | Somebody is talking to the agent | `FiringScheduledTaskTool` — nothing is firing, so there is no task for it to act on |
 | `SCHEDULED_TASK` | A task firing on its own schedule | Conversation memory, in either direction: a firing that read the conversation it was created in read the previous occurrence — the same prompt, already answered with a report — and handed that result back rather than doing the work; and a report appended every morning is a history the person's next question is answered against. The report still reaches them as the run's reply. Also `ScheduledTaskTool` — a run that fires on a schedule must not be able to schedule more, which is how one task becomes a growing pile. It keeps `FiringScheduledTaskTool`, which acts only on the task that is firing: it can end that task or give it its next time, so a run can honour "until X happens" and "remind me again later" without the number of tasks ever growing |
 | `SUBAGENT` | A run another run asked for, whose answer is a tool result | `SubagentTools`, `ScheduledTaskTool` and `FiringScheduledTaskTool`; and no conversation memory in either direction, since a subagent is given its task in full and must not write turns nobody said into the history |
-| `ONE_OFF` | One prompt turned into one answer — a summary, a classification, a translation — for a caller using `fireAndAwait` | Everything: `tools()` is false, so nothing is composed at all, and no conversation memory and no knowledge retrieval either |
+| `ONE_OFF` | One prompt turned into one answer — a summary, a classification, a translation — for a caller using `fireAndAwait`, or a person typing `/mini` | Everything: `tools()` is false, so nothing is composed at all, no tool search, and no conversation memory and no knowledge retrieval either. The memory one is what a person should know before typing it: the turn leaves no trace, so the next question cannot refer back to it |
 | `KNOWLEDGE_BASE` | A turn answered out of what the deployment has been told to remember and out of nothing else, asked for by memo — `/kb what do we do about a failing canary` | Everything but the knowledge-base tools, the memory tools and the vision tools. The only allow-list in the enum: what a person asking for it wants is an answer whose sources they can name, and a run reaching for a web search or a shell produces something better in general and unusable here, because nothing afterwards says which part came from where. Vision is in because a question can arrive as a screenshot. Conversation memory and retrieval both stay on |
 
 `spring-agent-events` adds `SituationTriageScenario` for a run woken by something the agent
@@ -377,7 +377,8 @@ the safe way round: a scenario that says nothing is treated as one nobody is wai
 
 `memoNames()` is how a person selects a scenario from a chat. `ScenarioMemos` collects them from
 `BuiltInScenarios` and from every `AgentScenario` bean in the context, so declaring yours as a bean
-is the whole of making it selectable; it refuses to start where two scenarios claim one word. A memo
+is the whole of making it selectable; it refuses to start where two scenarios claim one word. Two
+built-ins carry one: `KNOWLEDGE_BASE` (`/kb`) and `ONE_OFF` (`/mini`). A memo
 is matched case-insensitively and as a whole token anywhere in the message — `@bot /kb what is this`
 and `what do we do when a deployment failed? /kb, tell me something` both work, while
 `/kb/notes/2024` is a path — and the matched word is taken out of the prompt, along with a comma,

@@ -29,8 +29,9 @@ It is a **chat surface**, so at most one of these may be on the classpath at a t
 
 **Scenario memos.** A message carrying `/kb`, `/knowledge-base` or `/knowledge_base` runs that turn
 in `BuiltInScenarios.KNOWLEDGE_BASE` — the knowledge base, the memories and the vision tools, and
-nothing else. Read out of the raw text this surface already has in hand, matched case-insensitively
-as a whole token *anywhere* in the message — the bot has to be mentioned first in a group chat, and
+nothing else; `/mini`, `/one-off` or `/one_off` runs it in `ONE_OFF`, which is the model alone and
+writes nothing to the conversation. Read out of the raw text this surface already has in hand,
+matched case-insensitively as a whole token *anywhere* in the message — the bot has to be mentioned first in a group chat, and
 a memo is as often typed at the end of a thought — and taken out of the prompt.
 `core/agent/ScenarioMemos` owns the rule; a slash word it does not know is left where it is.
 

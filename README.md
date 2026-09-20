@@ -126,6 +126,10 @@ memories alone, with no web, no shell, no files and no MCP servers:
 /kb what do we do about a failing canary
 ```
 
+`/mini` is the other one: it answers out of the model alone — no tools, no knowledge base, no
+memories — for a quick aside you do not want in the thread. It leaves no trace, so the next question
+cannot refer back to it. `/one-off` and `/one_off` mean the same.
+
 `/knowledge-base` and `/knowledge_base` mean the same and case does not matter. The word may sit
 anywhere in the message, not only at the front — so it still works in a group chat, where the bot
 has to be mentioned first, and it reads naturally at the end of a thought:

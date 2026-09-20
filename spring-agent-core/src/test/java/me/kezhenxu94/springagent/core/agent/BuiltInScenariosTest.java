@@ -82,10 +82,12 @@ class BuiltInScenariosTest {
     // would let somebody start a run with no conversation memory and no surface waiting on it.
     assertThat(BuiltInScenarios.KNOWLEDGE_BASE.memoNames())
         .containsExactlyInAnyOrder("kb", "knowledge-base", "knowledge_base");
+    assertThat(BuiltInScenarios.ONE_OFF.memoNames())
+        .containsExactlyInAnyOrder("one-off", "one_off", "mini");
+    // CHAT needs none: it is what every surface asks for when nobody named anything else.
     assertThat(BuiltInScenarios.CHAT.memoNames()).isEmpty();
     assertThat(BuiltInScenarios.SUBAGENT.memoNames()).isEmpty();
     assertThat(BuiltInScenarios.SCHEDULED_TASK.memoNames()).isEmpty();
-    assertThat(BuiltInScenarios.ONE_OFF.memoNames()).isEmpty();
   }
 
   @Test
@@ -96,9 +98,12 @@ class BuiltInScenariosTest {
     // handler is registered — which is what decides whether the agent is offered the ask at all.
     assertThat(BuiltInScenarios.CHAT.interactive()).isTrue();
     assertThat(BuiltInScenarios.KNOWLEDGE_BASE.interactive()).isTrue();
+    // And ONE_OFF, since /mini makes it something a person asks for and then waits on. It composes
+    // no tools, so this does not put the ask within the model's reach; what it buys is a surface
+    // abandoning the run when it could not put the answer on screen.
+    assertThat(BuiltInScenarios.ONE_OFF.interactive()).isTrue();
     assertThat(BuiltInScenarios.SUBAGENT.interactive()).isFalse();
     assertThat(BuiltInScenarios.SCHEDULED_TASK.interactive()).isFalse();
-    assertThat(BuiltInScenarios.ONE_OFF.interactive()).isFalse();
   }
 
   @Test
