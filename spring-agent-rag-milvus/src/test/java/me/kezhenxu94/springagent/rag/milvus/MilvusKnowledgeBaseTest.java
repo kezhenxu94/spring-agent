@@ -106,6 +106,7 @@ class MilvusKnowledgeBaseTest {
             null,
             "you are an agent",
             null,
+            null,
             null),
         Locale.ENGLISH,
         null,

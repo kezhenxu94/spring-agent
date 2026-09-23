@@ -523,7 +523,8 @@ class KnowledgeControllerTest {
   private static TenantWrites tenantWrites(final boolean open, final Set<String> ids) {
     final var properties =
         new SpringAgentProperties(
-            new SpringAgentProperties.Ai(ids, open, Map.of(), null, null, null, null, null, null),
+            new SpringAgentProperties.Ai(
+                ids, open, Map.of(), null, null, null, null, null, null, null),
             Locale.ENGLISH,
             null,
             null);
@@ -533,7 +534,8 @@ class KnowledgeControllerTest {
   private static Admins admins(final Set<String> ids) {
     return new Admins(
         new SpringAgentProperties(
-            new SpringAgentProperties.Ai(ids, null, Map.of(), null, null, null, null, null, null),
+            new SpringAgentProperties.Ai(
+                ids, null, Map.of(), null, null, null, null, null, null, null),
             Locale.ENGLISH,
             null,
             null));
