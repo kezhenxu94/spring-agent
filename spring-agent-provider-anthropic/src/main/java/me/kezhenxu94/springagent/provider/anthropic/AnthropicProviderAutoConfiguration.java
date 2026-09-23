@@ -12,12 +12,14 @@ import me.kezhenxu94.springagent.provider.anthropic.aot.AnthropicRuntimeHints;
 import org.springframework.ai.anthropic.AnthropicChatModel;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.anthropic.http.okhttp.AnthropicHttpClientBuilderCustomizer;
+import org.springframework.ai.model.anthropic.autoconfigure.AnthropicChatProperties;
 import org.springframework.ai.model.anthropic.autoconfigure.AnthropicConnectionProperties;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ImportRuntimeHints;
@@ -119,6 +121,29 @@ public class AnthropicProviderAutoConfiguration {
   }
 
   /**
+   * {@code spring.ai.anthropic.chat.*} — max-tokens, cache-options, the rest — bound on its own
+   * rather than read off {@code AnthropicChatAutoConfiguration}'s bean, because that bean does not
+   * exist unless {@code spring.ai.model.chat} names {@code anthropic}: the whole autoconfiguration
+   * class carries that condition, {@code AnthropicChatProperties} included, so on a deployment
+   * chatting through another provider the block a person configured under {@code
+   * spring.ai.anthropic} is never bound anywhere. A BYOM Anthropic row must not inherit that gap —
+   * the person registering one has no reason to know the application's own chat model is OpenAI,
+   * still less that it decides whether their max-tokens setting is honoured.
+   *
+   * <p>This is the "third-party {@code @ConfigurationProperties}" recipe: the class is Spring AI's,
+   * the binding is ours. {@code @ConditionalOnMissingBean} is what keeps the two from fighting over
+   * the same prefix when the gate above <em>is</em> open and Spring AI already bound one — ours
+   * then backs off and {@link #anthropicProviderChatClients} reads the real bean instead, which
+   * also carries the connection details {@code AnthropicChatAutoConfiguration} folds in.
+   */
+  @Bean
+  @ConfigurationProperties(AnthropicChatProperties.CONFIG_PREFIX)
+  @ConditionalOnMissingBean(AnthropicChatProperties.class)
+  AnthropicChatProperties anthropicUserModelChatProperties() {
+    return new AnthropicChatProperties();
+  }
+
+  /**
    * How a user's own Anthropic endpoint is reached.
    *
    * <p><b>Deliberately not conditional on this module having built the application's chat
@@ -136,13 +161,14 @@ public class AnthropicProviderAutoConfiguration {
   @ConditionalOnMissingBean(name = "anthropicProviderChatClients")
   ProviderChatClients anthropicProviderChatClients(
       final ObjectProvider<AnthropicChatModel> chatModel,
+      final AnthropicChatProperties chatProperties,
       final UserModelRegistry registry,
       final ToolCallingManager toolCallingManager,
       final List<AnthropicHttpClientBuilderCustomizer> httpClientCustomizers,
       final UserModelsProperties userModelsProperties) {
     return new AnthropicUserChatClients(
         registry,
-        applicationDefaults(chatModel),
+        applicationDefaults(chatModel, chatProperties),
         // The model itself, not its credential: a row with nothing of its own borrows the built
         // clients, which works on both backends. See the field's javadoc for why lending the API
         // key
@@ -170,17 +196,22 @@ public class AnthropicProviderAutoConfiguration {
 
   /**
    * The options a user's endpoint starts from: the application's own where this module built the
-   * chat model, and null where it did not.
+   * chat model, and otherwise {@code spring.ai.anthropic.chat.*} bound directly by {@link
+   * #anthropicUserModelChatProperties()} — never null, now that a deployment on another provider
+   * still has that block read into something.
    *
    * <p>Copying the application's matters because Spring AI takes supplied options whole rather than
    * merging, so anything not copied is silently dropped — which {@code
-   * AnthropicUserChatClients#optionsFor} sets out. Where the application is on another provider
-   * there is nothing to copy and nothing that would be right to copy.
+   * AnthropicUserChatClients#optionsFor} sets out. The chat model's own options are preferred when
+   * both exist because they additionally carry the connection details {@code
+   * AnthropicChatAutoConfiguration} folded in, which {@code optionsFor} then overrides with the
+   * row's own anyway.
    */
   private static AnthropicChatOptions applicationDefaults(
-      final ObjectProvider<AnthropicChatModel> chatModel) {
+      final ObjectProvider<AnthropicChatModel> chatModel,
+      final AnthropicChatProperties chatProperties) {
     final var model = chatModel.getIfAvailable();
-    return model == null ? null : model.getOptions();
+    return model == null ? chatProperties.toOptions() : model.getOptions();
   }
 
   private static String keyOf(final ObjectProvider<AnthropicConnectionProperties> properties) {
