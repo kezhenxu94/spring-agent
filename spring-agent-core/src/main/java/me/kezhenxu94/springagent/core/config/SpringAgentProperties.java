@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.core.config;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -108,6 +109,15 @@ public record SpringAgentProperties(
    * @param subagentPrompt how a subagent is introduced to itself, as a template over {@code
    *     {taskText}} — the brief the run that started it wrote. Defaults to {@code
    *     core/prompts/subagent-prompt.md}, on the same reasoning.
+   * @param systemPromptParts {@code system-prompt} as several pieces rather than one string, each
+   *     already resolved — a resource location read into its content, a locale placeholder expanded
+   *     — but not yet rendered against a request's own variables, which {@link
+   *     me.kezhenxu94.springagent.core.agent.SpringAgent} still does per run. Empty unless {@link
+   *     SystemPromptParts} found a YAML list or a lone resource location under {@code
+   *     app.ai.system-prompt}; a run then gets one {@code SystemMessage} per element instead of
+   *     {@link #systemPrompt} rendered whole, which is what lets Anthropic's {@code cache_control}
+   *     land on the piece that does not change between requests without this record, or {@code
+   *     SpringAgent}, caring which provider that is.
    */
   public record Ai(
       Set<String> admins,
@@ -118,7 +128,8 @@ public record SpringAgentProperties(
       Tools tools,
       String systemPrompt,
       String scheduledTaskPrompt,
-      String subagentPrompt) {
+      String subagentPrompt,
+      List<String> systemPromptParts) {
 
     /**
      * What the agent is told when an application states no prompt of its own, in whatever language
@@ -177,6 +188,9 @@ public record SpringAgentProperties(
       }
       if (tools == null) {
         tools = new Tools(null, null, null, null, null);
+      }
+      if (systemPromptParts == null) {
+        systemPromptParts = List.of();
       }
     }
 

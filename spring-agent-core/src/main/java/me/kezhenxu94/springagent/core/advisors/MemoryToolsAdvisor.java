@@ -1,11 +1,14 @@
 package me.kezhenxu94.springagent.core.advisors;
 
+import java.util.ArrayList;
 import java.util.Map;
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.client.advisor.api.AdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.BaseAdvisor;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.core.io.Resource;
@@ -69,24 +72,40 @@ public final class MemoryToolsAdvisor implements BaseAdvisor {
       return chatClientRequest;
     }
 
-    // Through the mutating form, not by reading getSystemMessage().getText() as upstream does: a
-    // request assembled without a system message has none to read, and the NPE would surface from
-    // inside a Reactor operator with nothing in the trace pointing here.
-    final var augmented =
-        chatClientRequest
-            .prompt()
-            .augmentSystemMessage(
-                systemMessage ->
-                    systemMessage
-                        .mutate()
-                        .text(
-                            systemMessage.getText()
-                                + System.lineSeparator()
-                                + System.lineSeparator()
-                                + memoryPrompt)
-                        .build());
-
+    // Not Prompt.augmentSystemMessage: it mutates the *first* SystemMessage it finds and stops
+    // there, which was harmless while a run ever carried exactly one — see SpringAgentProperties.Ai
+    // for how it can now carry several, one per configured system-prompt part. Appended to the
+    // last instead, so this paragraph lands after whatever an operator put last regardless of how
+    // many pieces came before it, and a request assembled without any system message still gets
+    // one rather than an NPE from reading getSystemMessage().getText() the way upstream does.
+    final var augmented = appendToLastSystemMessage(chatClientRequest.prompt(), memoryPrompt);
     return chatClientRequest.mutate().prompt(augmented).build();
+  }
+
+  /**
+   * {@code text} appended to the last {@link SystemMessage} in {@code prompt}, or a new one at the
+   * front where the prompt carries none. See {@link #before} for why this is not {@link
+   * Prompt#augmentSystemMessage}.
+   */
+  private static Prompt appendToLastSystemMessage(final Prompt prompt, final String text) {
+    final var messages = new ArrayList<>(prompt.getInstructions());
+    for (int i = messages.size() - 1; i >= 0; i--) {
+      if (messages.get(i) instanceof SystemMessage systemMessage) {
+        messages.set(
+            i,
+            systemMessage
+                .mutate()
+                .text(
+                    systemMessage.getText()
+                        + System.lineSeparator()
+                        + System.lineSeparator()
+                        + text)
+                .build());
+        return new Prompt(messages, prompt.getOptions());
+      }
+    }
+    messages.add(0, SystemMessage.builder().text(text).build());
+    return new Prompt(messages, prompt.getOptions());
   }
 
   @Override

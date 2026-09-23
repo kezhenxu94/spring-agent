@@ -1165,6 +1165,7 @@ class SpringAgentTest {
             "You are {userId} in {chatId} ({chatType}), thread {threadId}, parent {parentId},"
                 + " mentions {mentions}. Format: {replyFormat}",
             null,
+            null,
             null),
         Locale.ENGLISH,
         null,

@@ -156,7 +156,7 @@ class AgentToolsProviderMemoryTest {
 
   private static SpringAgentProperties properties() {
     return new SpringAgentProperties(
-        new Ai(Set.of(), null, Map.of(), null, null, null, "You are an agent.", null, null),
+        new Ai(Set.of(), null, Map.of(), null, null, null, "You are an agent.", null, null, null),
         Locale.ENGLISH,
         null,
         null);

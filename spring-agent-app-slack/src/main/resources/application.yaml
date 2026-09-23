@@ -296,6 +296,26 @@ spring:
       # answer and calls tools in between; the symptom of that default is a run dying partway
       # through with a read timeout and no explanation from the endpoint.
       timeout: ${ANTHROPIC_TIMEOUT:30m}
+      # No line here on purpose — spring-agent-provider-anthropic's AnthropicRetryDefaults fills
+      # this in at the lowest-precedence property source, so it still shows up bound and an
+      # explicit spring.ai.anthropic.max-retries here (or ANTHROPIC_MAX_RETRIES, were this project
+      # to wire one) would still win over it.
+      #
+      # How many times a single request to Claude is retried before the run gives up, on both
+      # backends. The Anthropic SDK's own RetryingHttpClient already retries on 429 and 5xx and
+      # already backs off correctly — honouring Retry-After/Retry-After-Ms on a 429, falling back
+      # to its own exponential curve otherwise — and none of that curve is configurable from
+      # outside the SDK. This is the one knob it exposes. spring.ai.retry.* does not apply to
+      # Anthropic at all: that block configures the shared RestClient/WebClient retry template the
+      # OpenAI-protocol providers sit on, and Anthropic's auto-configuration never takes a
+      # RetryTemplate.
+      #
+      # The SDK's own default is 2, which a burst of 429s from Anthropic's per-model rate limit
+      # empties in under a second — the backoff curve barely gets going before the run gives up.
+      # AnthropicRetryDefaults raises it to 5, enough attempts to clear a burst that resolves
+      # within the minute-long window those limits usually reset on. See that class before
+      # changing the number; VertexAnthropicClients falls back to the same constant rather than one
+      # of its own, so the two backends cannot drift apart.
       chat:
         # No default, even though AnthropicChatOptions has one. An unset model there is not an
         # error: Spring AI substitutes a Claude model silently, so the deployment runs on one nobody
@@ -312,6 +332,20 @@ spring:
         # either: the turn simply stops, with stop_reason=max_tokens and nothing in the log. Named
         # here so the default is this project's rather than the SDK's.
         max-tokens: ${ANTHROPIC_MAX_TOKENS:8192}
+        # Anthropic's own prompt caching, over the seam core's SpringAgent already builds for it:
+        # every run's system prompt reaches AnthropicChatModel as two SystemMessages, not one — the
+        # operator's fixed persona and house rules, then a second block carrying this request's own
+        # {userId}, {replyFormat} and the rest, split at the first template placeholder in
+        # app.ai.system-prompt. `system-only` is what makes Spring AI notice: with two system
+        # messages and this turned on it puts cache_control on the second-to-last block, which is
+        # the static one — the one worth paying a cache write for once and reading back on every
+        # turn after. Off by default costs nothing extra; on, a deployment pays one cache write per
+        # five-minute TTL window and reads back cheaper on every turn inside it.
+        cache-options:
+          strategy: ${ANTHROPIC_CACHE_STRATEGY:none}
+          # Required alongside `strategy` above: Spring AI still joins every system message into one
+          # string unless this is also true, whatever the strategy says.
+          multi-block-system-caching: ${ANTHROPIC_CACHE_MULTI_BLOCK_SYSTEM:true}
       # Only read when backend is `vertex`.
       vertex:
         project-id: ${ANTHROPIC_VERTEX_PROJECT:}
@@ -764,6 +798,27 @@ app:
     # Set `system-prompt:` here to override it — a persona, house rules, domain knowledge. What you
     # write wins over the file in every locale, this being config data and that a lowest-precedence
     # default.
+    #
+    # May also be a list rather than one string, each element either literal text or a resource
+    # location (classpath:, file:, an http(s):// URL) whose content is substituted in whole and
+    # joined with a blank line — SystemPromptParts is what reads it. This is how a deployment
+    # combines its own house rules with one of core's own translations without pasting one into the
+    # other by hand:
+    #
+    #   system-prompt:
+    #     - "You work for Acme. Always answer in Acme's house style."
+    #     - classpath:core/prompts/system-prompt_zh_CN.md
+    #
+    # `${app.locale}` inside a resource location is expanded first, to this property's own value
+    # above or the host's locale where that is unset, so one list can name whichever translation an
+    # `app.locale` this deployment sets calls for without spelling out the suffix:
+    #
+    #   system-prompt:
+    #     - classpath:core/prompts/system-prompt_${app.locale}.md
+    #
+    # A single plain string, the way this property always worked — including one with commas in it
+    # — is untouched: only a YAML list (or a lone element that is itself a resource location) goes
+    # through this at all.
     # What a firing scheduled task says to the model: core/prompts/scheduled-task-prompt.md and its
     # siblings, for the same reason. One variable, {taskText}, the prompt the task was created with;
     # referencing any other name will fail the render, and a template that fails to render falls back

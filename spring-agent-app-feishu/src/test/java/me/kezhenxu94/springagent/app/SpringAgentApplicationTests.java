@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
+import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,9 +23,21 @@ class SpringAgentApplicationTests extends AbstractIntegrationTest {
 
   @Autowired SpringAgentProperties properties;
   @Autowired Environment environment;
+  @Autowired ToolCallingAdvisor.Builder<?> toolCallingAdvisorBuilder;
 
   @Test
   void contextLoads() {}
+
+  @Test
+  @DisplayName(
+      "the tool-search advisor builder wired into this application is core's fork, not"
+          + " upstream's — the whole point of forking it")
+  void toolSearchAdvisorBuilderIsTheFork() {
+    assertThat(toolCallingAdvisorBuilder)
+        .isInstanceOf(
+            me.kezhenxu94.springagent.core.advisors.toolsearch.ToolSearchToolCallingAdvisor.Builder
+                .class);
+  }
 
   @Test
   @DisplayName("the tool index key core defaults reaches the application without any configuration")

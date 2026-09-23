@@ -423,6 +423,7 @@ class SubagentSchedulerStarvationTest {
                 null),
             "You are {userId}. Format: {replyFormat}",
             null,
+            null,
             null),
         Locale.ENGLISH,
         null,

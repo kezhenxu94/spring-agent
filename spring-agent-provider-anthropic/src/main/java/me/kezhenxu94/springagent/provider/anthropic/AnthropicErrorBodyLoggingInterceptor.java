@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.provider.anthropic;
 
 import java.io.IOException;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Interceptor;
 import okhttp3.Response;
@@ -21,6 +22,15 @@ import okhttp3.Response;
  * two of them are the same status; the body is the only thing that tells them apart.
  *
  * <p>Only the raw bytes answer the question, and this is the one place they still exist.
+ *
+ * <p><b>A 429's body is deliberately unhelpful, which is why this also logs Anthropic's rate-limit
+ * headers.</b> A rejection carries {@code {"type":"rate_limit_error","message":"Error"}} — nothing
+ * in the body says which of the three limits (requests, input tokens, output tokens) per minute was
+ * the one exceeded. Anthropic puts that answer in headers instead, on every response, not only a
+ * failed one: {@code anthropic-ratelimit-*-remaining} and {@code -reset} for each of the three,
+ * plus {@code retry-after} on the 429 itself. Without them a 429 in the log is a fact with no
+ * cause, and raising the account's tier or this module's {@code max-retries} looks like it did
+ * nothing when the real ceiling being hit was never named.
  */
 @Slf4j
 public class AnthropicErrorBodyLoggingInterceptor implements Interceptor {
@@ -36,6 +46,23 @@ public class AnthropicErrorBodyLoggingInterceptor implements Interceptor {
    * spells it without the prefix, and reading the other one logs {@code null} on every failure.
    */
   private static final String REQUEST_ID = "request-id";
+
+  /**
+   * The headers that answer "which limit, and when does it clear". Read in this order so the log
+   * line groups by bucket rather than alphabetically; {@code retry-after} is Anthropic's own
+   * suggested wait and is what the SDK's backoff itself reads on a 429.
+   */
+  private static final List<String> RATE_LIMIT_HEADERS =
+      List.of(
+          "retry-after",
+          "anthropic-ratelimit-requests-remaining",
+          "anthropic-ratelimit-requests-reset",
+          "anthropic-ratelimit-input-tokens-remaining",
+          "anthropic-ratelimit-input-tokens-reset",
+          "anthropic-ratelimit-output-tokens-remaining",
+          "anthropic-ratelimit-output-tokens-reset",
+          "anthropic-ratelimit-tokens-remaining",
+          "anthropic-ratelimit-tokens-reset");
 
   @Override
   public Response intercept(final Chain chain) throws IOException {
@@ -60,14 +87,30 @@ public class AnthropicErrorBodyLoggingInterceptor implements Interceptor {
     // Host and path only. A Vertex path carries the project and the model, which is exactly what is
     // worth seeing; a query string is not, and some gateways carry the key in one.
     log.warn(
-        "Claude endpoint rejected the request: {} {}{} -> {} (request-id {}). Response body: {}",
+        "Claude endpoint rejected the request: {} {}{} -> {} (request-id {}). Rate limit: {}."
+            + " Response body: {}",
         request.method(),
         request.url().host(),
         request.url().encodedPath(),
         response.code(),
         String.valueOf(response.header(REQUEST_ID)),
+        rateLimitHeaders(response),
         body.isBlank() ? "<empty>" : body);
 
     return response;
+  }
+
+  /**
+   * The subset of {@link #RATE_LIMIT_HEADERS} this response actually carries, as {@code name=value}
+   * pairs. A gateway re-serving the protocol may drop these entirely, which is itself worth seeing
+   * rather than a line of {@code name=null}.
+   */
+  private static String rateLimitHeaders(final Response response) {
+    final var present =
+        RATE_LIMIT_HEADERS.stream()
+            .filter(name -> response.header(name) != null)
+            .map(name -> name + "=" + response.header(name))
+            .toList();
+    return present.isEmpty() ? "<none>" : String.join(", ", present);
   }
 }

@@ -86,6 +86,36 @@ class MemoryToolsAdvisorTest {
     private static int countOf(final String text) {
       return text.split("You have a memory\\.", -1).length - 1;
     }
+
+    @Test
+    @DisplayName(
+        "with several system messages — one per configured system-prompt part — the paragraph"
+            + " lands on the last one, not the first")
+    void appendsToTheLastOfSeveral() {
+      final List<Message> messages =
+          List.of(
+              new SystemMessage("Static house rules."),
+              new SystemMessage("You are an agent."),
+              new UserMessage("remember this"));
+      final var request =
+          ChatClientRequest.builder()
+              .prompt(new Prompt(messages, ToolCallingChatOptions.builder().build()))
+              .build();
+
+      final var result = advisor().before(request, chain);
+      final var systemMessages =
+          result.prompt().getInstructions().stream()
+              .filter(SystemMessage.class::isInstance)
+              .toList();
+
+      assertThat(systemMessages).hasSize(2);
+      assertThat(((SystemMessage) systemMessages.get(0)).getText())
+          .isEqualTo("Static house rules.");
+      assertThat(((SystemMessage) systemMessages.get(1)).getText())
+          .startsWith("You are an agent.")
+          .contains("You have a memory.")
+          .contains(SCOPES);
+    }
   }
 
   @Nested

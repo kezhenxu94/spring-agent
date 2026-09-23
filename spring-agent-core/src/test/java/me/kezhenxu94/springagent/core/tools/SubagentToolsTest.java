@@ -304,6 +304,7 @@ class SubagentToolsTest {
                 null),
             null,
             null,
+            null,
             null),
         Locale.ENGLISH,
         null,

@@ -250,6 +250,7 @@ class ToolInputFileRefsSecurityTest {
                 new SpringAgentProperties.Ai.Tools(null, null, null, null, null),
                 null,
                 null,
+                null,
                 null),
             Locale.ENGLISH,
             null,

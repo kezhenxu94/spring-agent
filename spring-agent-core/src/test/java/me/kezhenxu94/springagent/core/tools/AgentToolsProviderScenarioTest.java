@@ -227,6 +227,7 @@ class AgentToolsProviderScenarioTest {
                     null,
                     null,
                     null,
+                    null,
                     null),
                 Locale.ENGLISH,
                 null,

@@ -118,6 +118,7 @@ class AgentToolsProviderSkillOfferTest {
             new Tools(null, null, new Skills(offerAfterExpensiveRuns, 0), null, null),
             "You are an agent.",
             null,
+            null,
             null),
         Locale.ENGLISH,
         null,
