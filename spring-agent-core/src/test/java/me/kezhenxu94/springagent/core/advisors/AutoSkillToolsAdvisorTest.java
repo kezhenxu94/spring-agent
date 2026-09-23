@@ -145,6 +145,40 @@ class AutoSkillToolsAdvisorTest {
 
       assertThat(systemTextOf(advisor(1).before(request, chain))).doesNotContain("Offer a skill");
     }
+
+    @Test
+    @DisplayName(
+        "with several system messages — one per configured system-prompt part — the reminder"
+            + " lands on the last one, not the first")
+    void appendsToTheLastOfSeveral() {
+      final List<Message> messages =
+          List.of(
+              new SystemMessage("Static house rules."),
+              new SystemMessage("You are an agent."),
+              new UserMessage("do something expensive"),
+              AssistantMessage.builder()
+                  .content("")
+                  .toolCalls(
+                      List.of(new AssistantMessage.ToolCall("a", "function", "ReadFile", "{}")))
+                  .build());
+      final var request =
+          ChatClientRequest.builder()
+              .prompt(new Prompt(messages, ToolCallingChatOptions.builder().build()))
+              .build();
+
+      final var result = advisor(1).before(request, chain);
+      final var systemMessages =
+          result.prompt().getInstructions().stream()
+              .filter(SystemMessage.class::isInstance)
+              .toList();
+
+      assertThat(systemMessages).hasSize(2);
+      assertThat(((SystemMessage) systemMessages.get(0)).getText())
+          .isEqualTo("Static house rules.");
+      assertThat(((SystemMessage) systemMessages.get(1)).getText())
+          .startsWith("You are an agent.")
+          .contains("Offer a skill");
+    }
   }
 
   @Nested

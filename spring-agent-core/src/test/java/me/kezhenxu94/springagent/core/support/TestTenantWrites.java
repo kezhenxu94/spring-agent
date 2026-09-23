@@ -32,7 +32,7 @@ public final class TestTenantWrites {
     final var properties =
         new SpringAgentProperties(
             new SpringAgentProperties.Ai(
-                Set.of(admins), open, null, null, null, null, null, null, null),
+                Set.of(admins), open, null, null, null, null, null, null, null, null),
             Locale.ENGLISH,
             null,
             null);

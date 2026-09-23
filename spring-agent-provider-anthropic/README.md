@@ -172,6 +172,25 @@ with `spring.ai.anthropic.api-key` blank the SDK falls back to `ANTHROPIC_API_KE
 `ANTHROPIC_AUTH_TOKEN` in the **process** environment. A deployment that named `anthropic` and forgot
 the key would not fail on a machine that exports one — it would work, and bill somebody else.
 
+## Retrying against 429s
+
+`spring.ai.retry.*` does not reach Claude at all. That block configures the shared
+`RestClient`/`WebClient` retry template the OpenAI-protocol providers sit on, and neither Anthropic
+auto-configuration takes a `RetryTemplate`: chat goes through `com.anthropic.client.AnthropicClient`,
+whose own `RetryingHttpClient` already retries on 429 and 5xx and already backs off correctly —
+honouring `Retry-After`/`Retry-After-Ms` on a 429, falling back to its own exponential curve
+otherwise. None of that curve is configurable from outside the SDK. The one knob it exposes is how
+many attempts it gets, bound from `spring.ai.anthropic.max-retries` on both backends.
+
+[`AnthropicRetryDefaults`](src/main/java/me/kezhenxu94/springagent/provider/anthropic/AnthropicRetryDefaults.java)
+raises that from the SDK's own default of 2 — which a burst of 429s against Anthropic's per-model
+rate limit empties in under a second — to 5, enough for the SDK's backoff to clear a burst that
+resolves within the minute-long window those limits usually reset on. `VertexAnthropicClients` falls
+back to the same constant rather than one of its own, so the two backends cannot drift apart.
+`application.yaml` documents the property in a comment rather than a value, since the default lives
+in code; set `spring.ai.anthropic.max-retries` (there is no dedicated environment variable) to
+override it.
+
 ## The Vertex credential
 
 Application Default Credentials by default, which covers the three usual ways a deployment proves

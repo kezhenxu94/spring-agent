@@ -207,6 +207,7 @@ class ToolInputFileRefsTest {
                 new SpringAgentProperties.Ai.Tools(null, null, null, null, maxInlinedInputChars),
                 null,
                 null,
+                null,
                 null),
             Locale.ENGLISH,
             null,

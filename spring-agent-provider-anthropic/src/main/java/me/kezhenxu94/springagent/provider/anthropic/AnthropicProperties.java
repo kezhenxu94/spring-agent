@@ -55,6 +55,13 @@ public record AnthropicProperties(String backend, @NestedConfigurationProperty V
   public static final String API_KEY_PROPERTY = PREFIX + ".api-key";
 
   /**
+   * Spring AI's, not ours — {@code spring.ai.anthropic.max-retries}. Named here because {@link
+   * AnthropicRetryDefaults} reads it directly: it runs as an {@code EnvironmentPostProcessor},
+   * before anything is bound, so it cannot ask this record for it.
+   */
+  public static final String MAX_RETRIES_PROPERTY = PREFIX + ".max-retries";
+
+  /**
    * What an operator sets to point chat at this provider. Spring AI's switch, not one of ours — see
    * this module's README — and named here because the startup check has to ask about it.
    */

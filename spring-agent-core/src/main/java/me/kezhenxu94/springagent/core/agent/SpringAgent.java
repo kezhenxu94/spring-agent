@@ -45,6 +45,8 @@ import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
 import org.springframework.ai.model.tool.ToolCallingManager;
@@ -1131,13 +1133,42 @@ public class SpringAgent {
     }
   }
 
+  /**
+   * The run's system prompt, as one {@link SystemMessage} or several.
+   *
+   * <p>{@code app.ai.system-prompt-parts} is empty on every deployment that configures {@code
+   * system-prompt} as a single string — which is every deployment before {@link SystemPromptParts}
+   * existed and every one that has not opted into a list since — and there this is exactly what it
+   * always was: one message, the whole prompt rendered. A deployment that named several pieces gets
+   * one message per piece instead, each rendered against the same variables, so a provider with
+   * per-request prompt caching has a seam between the piece that never changes and the one that
+   * carries this request's own identity — see that class for why joining them back into one string
+   * would have thrown the seam away.
+   */
+  private List<Message> systemMessagesFor(final AgentRequest request) {
+    final var variables = promptVariablesFor(request);
+    final var parts = appConfiguration.ai().systemPromptParts();
+    if (parts.isEmpty()) {
+      return List.of(
+          SystemMessage.builder()
+              .text(
+                  new SystemPromptTemplate(appConfiguration.ai().systemPrompt()).render(variables))
+              .build());
+    }
+    return parts.stream()
+        .<Message>map(
+            part ->
+                SystemMessage.builder()
+                    .text(new SystemPromptTemplate(part).render(variables))
+                    .build())
+        .toList();
+  }
+
   private Flux<ChatResponse> rawStream(
       final AgentRequest request,
       final AgentComposition composition,
       final Map<String, Object> toolContext) {
-    final var renderedSystemPrompt =
-        new SystemPromptTemplate(appConfiguration.ai().systemPrompt())
-            .render(promptVariablesFor(request));
+    final var systemMessages = systemMessagesFor(request);
 
     // The tools the composition delivers as advisors rather than as callbacks, auto-memory among
     // them. What follows is the run's own wiring, which is nothing to do with tools.
@@ -1175,7 +1206,10 @@ public class SpringAgent {
 
     return clientFor(request)
         .prompt()
-        .system(renderedSystemPrompt)
+        // Not .system(String): that is exactly one message, and a run with several system-prompt
+        // parts carries one SystemMessage per piece. .messages(...) appends ahead of .user(...)'s
+        // own message, which keeps the order system(s), then user, that every provider expects.
+        .messages(systemMessages)
         .user(request.userMessage())
         .tools(composition.tools())
         .toolContext(toolContext)

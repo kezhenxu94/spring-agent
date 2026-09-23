@@ -240,6 +240,7 @@ class ScheduledTaskServiceTest {
             null,
             "you are an agent",
             scheduledTaskPrompt,
+            null,
             null),
         null,
         null,

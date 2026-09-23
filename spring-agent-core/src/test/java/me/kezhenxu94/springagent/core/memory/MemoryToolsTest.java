@@ -51,7 +51,16 @@ class MemoryToolsTest {
     final var properties =
         new SpringAgentProperties(
             new SpringAgentProperties.Ai(
-                Set.of(ADMIN), tenantOpenToEveryone, null, null, null, null, null, null, null),
+                Set.of(ADMIN),
+                tenantOpenToEveryone,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null),
             Locale.ENGLISH,
             null,
             null);

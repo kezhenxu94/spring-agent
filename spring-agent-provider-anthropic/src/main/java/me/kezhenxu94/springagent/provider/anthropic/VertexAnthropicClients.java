@@ -91,11 +91,6 @@ final class VertexAnthropicClients {
    */
   private static final Duration DEFAULT_TIMEOUT = Duration.ofMinutes(30);
 
-  /**
-   * What the SDK itself retries; named so that "nothing configured" is a decision rather than a 0.
-   */
-  private static final int DEFAULT_MAX_RETRIES = 2;
-
   private VertexAnthropicClients() {}
 
   /**
@@ -115,11 +110,15 @@ final class VertexAnthropicClients {
       final ObservationRegistry observationRegistry,
       final MeterRegistry meterRegistry) {
 
-    // Both are null when nothing is configured — Spring AI's properties class defaults neither —
-    // and the SDK's builders reject null rather than defaulting, being Kotlin.
+    // Both are null when Spring AI's properties class binds nothing — the SDK's builders reject
+    // null rather than defaulting, being Kotlin — and in a running application max-retries never
+    // actually is: AnthropicRetryDefaults fills it in ahead of binding. The fallback here is for a
+    // caller that builds this outside that environment, such as a test.
     final var timeout = configuredTimeout == null ? DEFAULT_TIMEOUT : configuredTimeout;
     final var maxRetries =
-        configuredMaxRetries == null ? DEFAULT_MAX_RETRIES : configuredMaxRetries;
+        configuredMaxRetries == null
+            ? AnthropicRetryDefaults.DEFAULT_MAX_RETRIES
+            : configuredMaxRetries;
 
     // Before the SDK's builder, whose own message for a missing project names a Kotlin field rather
     // than the variable an operator sets.

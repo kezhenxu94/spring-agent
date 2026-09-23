@@ -123,7 +123,7 @@ class KnowledgeAdminToolsTest {
     final var properties =
         new SpringAgentProperties(
             new SpringAgentProperties.Ai(
-                Set.of(), null, Map.of(), null, null, null, null, null, null),
+                Set.of(), null, Map.of(), null, null, null, null, null, null, null),
             Locale.ENGLISH,
             null,
             null);

@@ -275,6 +275,7 @@ class ScenarioToolSearchTest {
             new Tools(new AskUserQuestion(true, null), null, null, null, null),
             "You are an agent.",
             null,
+            null,
             null),
         Locale.ENGLISH,
         null,
