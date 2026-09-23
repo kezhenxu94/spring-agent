@@ -68,7 +68,7 @@ class SkillControllerTest {
     final var properties =
         new SpringAgentProperties(
             new SpringAgentProperties.Ai(
-                Set.of(), open, Map.of(), null, null, null, null, null, null),
+                Set.of(), open, Map.of(), null, null, null, null, null, null, null),
             Locale.ENGLISH,
             null,
             null);
