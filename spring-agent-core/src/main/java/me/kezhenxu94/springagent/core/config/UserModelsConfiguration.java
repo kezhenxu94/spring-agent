@@ -99,8 +99,10 @@ public class UserModelsConfiguration {
   UserModelProbe userModelProbe(
       final UserChatClients chatClients,
       final CoreMessages messages,
-      final UserModelsProperties properties) {
-    return new UserModelProbe(chatClients, messages, properties.probeTimeout());
+      final UserModelsProperties properties,
+      final SpringAgentProperties springAgentProperties) {
+    return new UserModelProbe(
+        chatClients, messages, properties.probeTimeout(), springAgentProperties);
   }
 
   @Bean
