@@ -3,6 +3,7 @@ package me.kezhenxu94.springagent.integration.feishu.usermodels;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -79,6 +80,7 @@ public class FeishuConfigForm {
   static final String MODEL = "cfg_model";
   static final String EFFORT = "cfg_effort";
   static final String TOKEN = "cfg_token";
+  static final String HEADERS = "cfg_headers";
 
   private final JsonMapper objectMapper;
   private final FeishuMessages messages;
@@ -142,6 +144,7 @@ public class FeishuConfigForm {
     formElements.add(root.path("effortLabel").deepCopy());
     formElements.add(effortSelect(root, active == null ? null : active.reasoningEffort()));
     formElements.add(root.path("tokenInput").deepCopy());
+    formElements.add(root.path("headersInput").deepCopy());
     formElements.add(root.path("submit").deepCopy());
 
     elements.add(form);
@@ -196,13 +199,19 @@ public class FeishuConfigForm {
     }
 
     for (final var config : configured) {
-      // The effort is in the label so the dropdown is also where you see what is set: it is stored
-      // per model and nothing else on this card would show it.
-      final var label =
-          config.reasoningEffort() == null
-              ? messages.get("config-option", config.name(), config.model())
-              : messages.get(
-                  "config-option-effort", config.name(), config.model(), config.reasoningEffort());
+      // The effort and the header names are in the label so the dropdown is also where you see
+      // what is set: it is stored per model and nothing else on this card would show it. Names
+      // only, never header values — see UserModelRegistry#headerNames.
+      final var details = new StringBuilder(config.model());
+      if (config.reasoningEffort() != null) {
+        details.append(messages.get("config-option-effort-suffix", config.reasoningEffort()));
+      }
+      final var headerNames = UserModelRegistry.headerNames(config);
+      if (!headerNames.isEmpty()) {
+        details.append(
+            messages.get("config-option-headers-suffix", String.join(", ", headerNames)));
+      }
+      final var label = messages.get("config-option", config.name(), details.toString());
       options.add(option(root, label, config.name()));
       if (config.name().equals(activeName)) {
         selected = options.size();
@@ -389,7 +398,33 @@ public class FeishuConfigForm {
         text(formValue, BASE_URL),
         text(formValue, MODEL),
         text(formValue, EFFORT),
-        text(formValue, TOKEN));
+        text(formValue, TOKEN),
+        parseHeaders(text(formValue, HEADERS)));
+  }
+
+  /**
+   * One {@code Header-Name: value} per line, trimmed on both sides of the first colon. A card has
+   * no per-field validation feedback, so a malformed or blank line is dropped rather than rejected
+   * — logged would be redundant here, since a header the user meant to set simply will not appear
+   * in the row's header list, which is the same signal the token field already gives on a typo.
+   */
+  private static Map<String, String> parseHeaders(final String raw) {
+    if (raw == null) {
+      return null;
+    }
+    final var headers = new LinkedHashMap<String, String>();
+    for (final var line : raw.split("\n")) {
+      final var colon = line.indexOf(':');
+      if (colon <= 0 || colon == line.length() - 1) {
+        continue;
+      }
+      final var name = line.substring(0, colon).trim();
+      final var value = line.substring(colon + 1).trim();
+      if (!name.isEmpty() && !value.isEmpty()) {
+        headers.put(name, value);
+      }
+    }
+    return headers;
   }
 
   private static String text(final Map<String, Object> formValue, final String key) {
@@ -421,7 +456,8 @@ public class FeishuConfigForm {
       String baseUrl,
       String model,
       String effort,
-      String token) {
+      String token,
+      Map<String, String> headers) {
 
     /**
      * The provider as it should be stored: null both for an untouched select and for the option

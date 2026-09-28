@@ -87,6 +87,31 @@ class OpenAiUserModelToolsTest {
     assertThat(request).contains("\"name\":\"forecast\"").doesNotContain(DisplayDescription.FIELD);
   }
 
+  @Test
+  @DisplayName("a row's extra headers reach the endpoint on every request")
+  void extraHeadersReachTheWire() throws Exception {
+    this.server.enqueue(
+        new MockResponse()
+            .setResponseCode(200)
+            .setHeader("Content-Type", "application/json")
+            .setBody(ANSWER));
+
+    final var client =
+        clientsWith(runtimeManager())
+            .probeClient(
+                UserModelConfig.builder()
+                    .name("mine")
+                    .baseUrl(this.server.url("/v1").toString())
+                    .model("own-model")
+                    .build(),
+                "own-token",
+                java.util.Map.of("X-Tenant", "acme"));
+
+    client.prompt().user("hi").call().content();
+
+    assertThat(this.server.takeRequest().getHeader("X-Tenant")).isEqualTo("acme");
+  }
+
   /** The body of the chat completion a run through {@code clients} sent to the endpoint. */
   private String requestFor(final OpenAiUserChatClients clients) throws Exception {
     this.server.enqueue(
@@ -104,7 +129,8 @@ class OpenAiUserModelToolsTest {
                 .baseUrl(this.server.url("/v1").toString())
                 .model("own-model")
                 .build(),
-            "own-token");
+            "own-token",
+            java.util.Map.of());
 
     client.prompt().user("what is the weather").tools(new Forecast()).call().content();
 

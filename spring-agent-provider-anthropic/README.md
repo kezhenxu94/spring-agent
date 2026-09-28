@@ -135,7 +135,11 @@ and the dispatcher still turns it into the application's own client and a warnin
 
 `requiresBaseUrl()` is `false` on both backends: Anthropic has one well-known host, so asking for a
 URL asks somebody to invent one. A URL that *is* given is honoured, for a gateway re-serving the
-protocol.
+protocol — and so are extra headers, which such a gateway is the likeliest reason to want. They go
+on as an OkHttp interceptor appended to the deployment's own customizers, per endpoint so two rows
+cannot send each other's, and only on the branch that opens a connection of its own: the builder
+refuses customizers beside a pre-built client, and a row with nothing to authenticate with is the
+borrowing one, which has no endpoint of its own to send anything to either.
 
 ## Reasoning effort is a token budget
 

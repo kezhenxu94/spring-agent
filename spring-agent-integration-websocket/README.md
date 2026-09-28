@@ -72,11 +72,15 @@ thinking.
 
 ## Reaching a store without a run in between
 
-This is the one surface that does, and it does it four times — for the knowledge base, for skills,
-for memories and for MCP servers. All four are things a user owns, and all four were previously
-reachable only by asking the model to operate on them, which is a poor way to check a list or correct
-one line: the model has to pick the tool, guess the id and report back, and any of the three can go
-wrong quietly.
+This is the one surface that does, and it does it five times — for the knowledge base, for skills,
+for memories, for MCP servers and for a person's own chat models. All five are things a user owns,
+and all five were previously
+reachable from a browser only by asking the model to operate on them, which is a poor way to check a
+list or correct one line: the model has to pick the tool, guess the id and report back, and any of
+the three can go wrong quietly. Chat models are the one of the five that already had a way in
+without a run — the `/config` form on Feishu and Slack, and `/config` on the command line — and this
+is that way in for a browser, for the same reason those exist: a model that has stopped answering
+would otherwise break the only run that could undo it.
 
 ### The knowledge base
 
@@ -267,6 +271,47 @@ a URL, a prefix the model has learnt and a credential somebody has to find again
 
 CSRF is on in the applications carrying this module, unlike the webhook servers': a POST here makes
 the agent act with the logged-in person's credentials, files and MCP servers.
+
+### Chat models
+
+`UserModelController` puts core's `UserModelRegistry` and `UserModelProbe` behind `/api/models`,
+which is the *Model* tab: the endpoints a person has brought of their own to answer their
+conversations instead of the application's. The case for it is `McpController`'s word for word —
+registering an endpoint means typing a base URL and an API token, and dictating a credential to a
+model that will echo it into a transcript is not a reasonable way to configure anything.
+
+Four things about it differ from the MCP tab, and each is a fact about what a chat model *is*:
+
+- **The tab is not always there.** A row holds a token, so `UserModelRegistry` exists only where
+  `app.ai.user-models.encryption-key` gave it somewhere sealed to keep one. The controller is
+  `@ConditionalOnBean(UserModelRegistry.class)`, `/api/me` reports `models.enabled`, and
+  `customize.js`'s tab table gained an `enabled` predicate for it — the first tab there that has
+  one. A tab drawn against a key nobody set would fail every save.
+- **There is no scope and no store.** A chat model is never shared and never configured by the
+  deployment for everyone, so there is one flat list and no pill switch, and `route.js`'s
+  `TAB_SCOPES` gives `model` an empty array — which is what makes every segment after the tab the
+  model being opened rather than a store word.
+- **There is no `owner` parameter and no admin override.** Ownership is the authenticated
+  principal's, full stop. A row holds a token, so there is no view of anybody else's worth the door
+  it opens — stricter than the knowledge base, where an admin may read another person's documents.
+- **The token has no "leave it alone" state.** `UserModelRegistry.save` always reseals whatever
+  token it is given, so editing a base URL means retyping the token, exactly as re-registering a
+  row over chat does. The *headers* do keep the MCP tab's tri-state — omitted keeps what is stored,
+  an empty object clears them — because, like an MCP server's, their values never come back: a
+  response carries header **names** only.
+
+Saving connects, the same rule the MCP tab keeps: `UserModelProbe` sends one tiny completion with
+the token and headers given, and nothing is stored unless the endpoint answered. A row that was
+never reached is a row whose first real message fails, on a conversation rather than on whoever
+typed the URL.
+
+**Extra headers are the store's own addition, not the page's.** A `UserModelConfig` carries a
+`headerCiphers` map — each value sealed by `AesGcmSealer` exactly as the token is, unlike
+`McpServerConfig#headers`, which stores its own in the clear — because a header on a chat endpoint
+routinely *is* a second credential: a gateway's tenant or routing token. Every surface that
+registers a model reaches it: this page, the Feishu `/config` card's headers box (one
+`Name: value` per line), and the `AddChatModel` tool's optional map. All three report the names
+back and none of them reports a value.
 
 ### One field vocabulary, and one frame
 

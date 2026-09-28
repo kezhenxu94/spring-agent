@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import me.kezhenxu94.springagent.core.dao.repo.UserModelConfigRepo;
 import me.kezhenxu94.springagent.core.security.AesGcmSealer;
@@ -95,7 +96,8 @@ class OpenAiUserChatClientsTest {
   private OpenAiChatOptions optionsFor(final String effort) {
     return OpenAiUserChatClients.optionsFor(
         appOptions,
-        new OpenAiUserChatClients.Endpoint("https://own/v1", "own-key", "own-model", effort));
+        new OpenAiUserChatClients.Endpoint(
+            "https://own/v1", "own-key", "own-model", effort, Map.of()));
   }
 
   private static UserModelConfig builtin(final String model, final String effort) {

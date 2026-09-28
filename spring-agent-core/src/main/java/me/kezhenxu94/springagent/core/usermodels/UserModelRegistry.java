@@ -2,8 +2,12 @@ package me.kezhenxu94.springagent.core.usermodels;
 
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
@@ -119,6 +123,31 @@ public class UserModelRegistry {
   }
 
   /**
+   * The plaintext extra headers of {@code config}, opened one at a time. Empty rather than null for
+   * a row with none, so callers never null-check before iterating.
+   */
+  public Map<String, String> headersOf(final UserModelConfig config) {
+    if (config.headerCiphers() == null || config.headerCiphers().isEmpty()) {
+      return Map.of();
+    }
+    final var opened = new LinkedHashMap<String, String>();
+    config
+        .headerCiphers()
+        .forEach(
+            (name, cipher) ->
+                opened.put(
+                    name, sealer.open("header " + name + " of model " + config.name(), cipher)));
+    return opened;
+  }
+
+  /** The names of the extra headers on {@code config}, sorted — never the values. */
+  public static Set<String> headerNames(final UserModelConfig config) {
+    return config.headerCiphers() == null
+        ? Set.of()
+        : new TreeSet<>(config.headerCiphers().keySet());
+  }
+
+  /**
    * Puts the user on one of the application's own models, named as its endpoint reports it.
    *
    * <p>Recorded as a row so that the choice survives a restart, but a row with nothing secret in
@@ -189,6 +218,11 @@ public class UserModelRegistry {
    *     {@link me.kezhenxu94.springagent.core.dao.models.UserModelConfig#provider}
    * @param reasoningEffort as {@link ReasoningEfforts} spells it, or null to leave the
    *     application's own setting in place
+   * @param headers extra headers to send with every request, plaintext in and sealed one value at a
+   *     time before storage: null keeps whatever is already stored, {@code Map.of()} clears them,
+   *     and anything else replaces the set wholesale — the same tri-state a re-registered token
+   *     already gets implicitly, made explicit here because headers are optional and a token is
+   *     not.
    */
   public UserModelConfig save(
       final String userId,
@@ -197,8 +231,10 @@ public class UserModelRegistry {
       final String baseUrl,
       final String model,
       final String token,
-      final String reasoningEffort) {
-    final var wasActive = repo.findByOwnerIdAndName(userId, name).map(UserModelConfig::activated);
+      final String reasoningEffort,
+      final Map<String, String> headers) {
+    final var existing = repo.findByOwnerIdAndName(userId, name);
+    final var wasActive = existing.map(UserModelConfig::activated);
     return repo.save(
         UserModelConfig.builder()
             .id(UserModelConfig.idFor(userId, name))
@@ -208,10 +244,24 @@ public class UserModelRegistry {
             .baseUrl(baseUrl)
             .model(model)
             .apiKeyCipher(sealer.seal(token))
+            .headerCiphers(sealHeaders(headers, existing.map(UserModelConfig::headerCiphers)))
             .reasoningEffort(ReasoningEfforts.normalize(reasoningEffort))
             .activated(wasActive.orElse(false))
             .updatedAt(Instant.now())
             .build());
+  }
+
+  private Map<String, String> sealHeaders(
+      final Map<String, String> headers, final Optional<Map<String, String>> stored) {
+    if (headers == null) {
+      return stored.orElse(null);
+    }
+    if (headers.isEmpty()) {
+      return null;
+    }
+    final var sealed = new LinkedHashMap<String, String>();
+    headers.forEach((name, value) -> sealed.put(name, sealer.seal(value)));
+    return sealed;
   }
 
   /** Empty means "the deployment's own", which is what null records. */

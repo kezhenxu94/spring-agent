@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.core.usermodels;
 
+import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -53,7 +54,11 @@ How hard the model should think is optional and must be one of the listed values
 whatever the application is configured with. Changing it later, without the token, is done on the
 /config form or by typing /config <name> <effort>.
 
-The token is stored encrypted and is never shown again, not even to the user who set it.
+Extra HTTP headers the endpoint needs (a second auth header, a routing header) are optional. Omit to
+send none; giving a map replaces whatever was stored for this name.
+
+The token, and every header value, are stored encrypted and never shown again, not even to the user
+who set them.
 """)
   public String addChatModel(
       @ToolParam(description = "Short name for this model, used to switch to it later")
@@ -80,6 +85,12 @@ The token is stored encrypted and is never shown again, not even to the user who
                       + " max, or not-sent to send no reasoning effort at all. Omit to use the"
                       + " application's own setting")
           final String reasoningEffort,
+      @ToolParam(
+              required = false,
+              description =
+                  "Extra HTTP headers this endpoint needs, header name to value. Omit for none; a"
+                      + " map replaces whatever headers were stored for this name")
+          final Map<String, String> headers,
       final ToolContext context) {
     final var userId = ToolContexts.require(context, ToolContexts.USER_ID);
 
@@ -120,7 +131,8 @@ The token is stored encrypted and is never shown again, not even to the user who
             isBlank(baseUrl) ? null : baseUrl.trim(),
             model.trim(),
             apiToken.trim(),
-            effort);
+            effort,
+            headers);
     if (failure != null) {
       return messages.get("user-model-unreachable", modelName, failure);
     }
@@ -132,7 +144,8 @@ The token is stored encrypted and is never shown again, not even to the user who
         isBlank(baseUrl) ? null : baseUrl.trim(),
         model.trim(),
         apiToken.trim(),
-        effort);
+        effort,
+        headers);
     return messages.get("user-model-added", modelName, model.trim());
   }
 
@@ -159,7 +172,7 @@ API tokens are never included. A user with none registered is using the applicat
                         config.name(),
                         config.model(),
                         config.baseUrl(),
-                        effortOf(config)))
+                        effortOf(config) + headersOf(config)))
             .collect(Collectors.joining("\n"));
     return active == null
         ? messages.get("user-model-list-on-default", lines)
@@ -258,6 +271,12 @@ conversations go back to the application's own model.
     return config.reasoningEffort() == null
         ? ""
         : messages.get("user-model-line-effort", config.reasoningEffort());
+  }
+
+  /** Names only, never values — see {@link UserModelRegistry#headerNames}. */
+  private String headersOf(final UserModelConfig config) {
+    final var names = UserModelRegistry.headerNames(config);
+    return names.isEmpty() ? "" : messages.get("user-model-line-headers", String.join(", ", names));
   }
 
   private String names(final String userId) {

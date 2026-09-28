@@ -23,7 +23,7 @@ It is a **chat surface**, so at most one of these may be on the classpath at a t
 | A question handler | `FeishuQuestionHandler`, asynchronous: the ask tool persists a `PendingQuestion` and the run ends |
 | An event source | `FeishuChatObservations` reports messages in a watched chat the bot was not addressed in, under the source name `feishu-chat` |
 | Tools | Documents, spreadsheets, bases, wiki, drive, files, chats and permissions — `FeishuDocTools`, `FeishuSheetTools`, `FeishuBitableTools`, `FeishuWikiTools`, `FeishuDriveAccess`, `FeishuChatTools`, `FeishuPermissionTools`, `FeishuImportExportTools`, `FeishuBotTools` |
-| A `/config` form | `FeishuConfigHandler` — choosing which model answers you, deliberately never going through the LLM |
+| A `/config` form | `FeishuConfigHandler` — choosing which model answers you, and registering one with the extra headers its endpoint needs (one `Name: value` per line, names echoed back in the dropdown and values never), deliberately never going through the LLM |
 | A greeting | `FeishuGreetings` and `FeishuUpdates`, the welcome card and the per-version notes |
 | A long connection | `FeishuLongConnection`, watched and reopened by this module rather than by the SDK |
 

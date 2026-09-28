@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import me.kezhenxu94.springagent.core.dao.repo.UserModelConfigRepo;
 import me.kezhenxu94.springagent.core.security.AesGcmSealer;
@@ -125,7 +126,7 @@ class AnthropicUserChatClientsTest {
     final var options =
         AnthropicUserChatClients.optionsFor(
             AnthropicChatOptions.builder().model("claude-haiku-4-5").build(),
-            new AnthropicUserChatClients.Endpoint(null, null, "claude-haiku-4-5", "low"));
+            new AnthropicUserChatClients.Endpoint(null, null, "claude-haiku-4-5", "low", Map.of()));
 
     assertThat(options.getApiKey()).isNull();
     assertThat(options.getBaseUrl()).isNull();
@@ -156,7 +157,7 @@ class AnthropicUserChatClientsTest {
         AnthropicUserChatClients.optionsFor(
             null,
             new AnthropicUserChatClients.Endpoint(
-                "https://gw.example.com", "sk-ant-x", "claude-sonnet-4-5", "medium"));
+                "https://gw.example.com", "sk-ant-x", "claude-sonnet-4-5", "medium", Map.of()));
 
     assertThat(options.getApiKey()).isEqualTo("sk-ant-x");
     assertThat(options.getBaseUrl()).isEqualTo("https://gw.example.com");
@@ -175,7 +176,8 @@ class AnthropicUserChatClientsTest {
     final var options =
         AnthropicUserChatClients.optionsFor(
             deployment,
-            new AnthropicUserChatClients.Endpoint(null, "sk-ant-x", "claude-sonnet-4-5", null));
+            new AnthropicUserChatClients.Endpoint(
+                null, "sk-ant-x", "claude-sonnet-4-5", null, Map.of()));
 
     assertThat(options.getMaxTokens()).isEqualTo(12345);
     assertThat(options.getModel()).isEqualTo("claude-sonnet-4-5");

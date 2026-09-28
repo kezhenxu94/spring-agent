@@ -20,6 +20,7 @@ import { customizeRoute, go } from './route.js';
 import { initSkills, showSkills } from './skills.js';
 import { initMemories, showMemories } from './memories.js';
 import { initMcp, showMcp } from './mcp.js';
+import { initModel, showModel } from './model.js';
 
 /**
  * The tabs, in the order the strip draws them, each with the section that owns it.
@@ -27,18 +28,34 @@ import { initMcp, showMcp } from './mcp.js';
  * A table rather than a switch in two places, because the strip and the dispatch have to agree
  * about the set — a tab drawn with nothing behind it is a button that empties the panel, and a
  * section with no tab is unreachable except by typing the hash.
+ *
+ * `enabled` is for a tab that is not always there — Model holds a token, so it exists only where
+ * `app.ai.user-models.encryption-key` gave it somewhere sealed to keep one, and `/api/me` says so
+ * as `models.enabled`. Omitted, a tab is simply always drawn, which is every tab but this one.
  */
 const TABS = [
   { id: 'skills', label: 'customize.skills', show: showSkills },
   { id: 'memories', label: 'customize.memories', show: showMemories },
   { id: 'mcp', label: 'customize.mcp', show: showMcp },
+  {
+    id: 'model',
+    label: 'customize.model',
+    show: showModel,
+    enabled: () => Boolean(state.me?.models?.enabled),
+  },
 ];
+
+/** The tabs this deployment actually offers, in order. */
+function visibleTabs() {
+  return TABS.filter((tab) => !tab.enabled || tab.enabled());
+}
 
 export function initCustomize() {
   drawTabs();
   initSkills();
   initMemories();
   initMcp();
+  initModel();
   // The strip is written in JavaScript, so it stays in whatever language the page started in
   // unless it is told otherwise — the rule every list drawn here follows.
   bus.on('language:changed', drawTabs);
@@ -46,11 +63,13 @@ export function initCustomize() {
 
 /** What the route means here: which tab, and then that tab's own reading of the rest of it. */
 export function showCustomize(route) {
-  const tab = TABS.find((each) => each.id === route.tab) || TABS[0];
+  const offered = visibleTabs();
+  const tab = offered.find((each) => each.id === route.tab) || offered[0];
   state.customize = { tab: tab.id };
   // Every tab's panel is hidden and then one is shown, rather than each tab hiding the others: a
   // section that forgot one of its siblings would leave two lists stacked in the same column, and
-  // the one that forgot would not be the one that looked broken.
+  // the one that forgot would not be the one that looked broken. A tab this deployment does not
+  // offer is hidden the same way and stays that way, whatever the route asks for.
   TABS.forEach((each) => { $(`customize-${each.id}`).hidden = each.id !== tab.id; });
   drawTabs();
   tab.show(route);
@@ -64,9 +83,10 @@ export function showCustomize(route) {
  */
 function drawTabs() {
   const host = $('customize-tabs');
-  const current = (state.customize && state.customize.tab) || TABS[0].id;
+  const offered = visibleTabs();
+  const current = (state.customize && state.customize.tab) || offered[0].id;
   host.textContent = '';
-  TABS.forEach((tab) => {
+  offered.forEach((tab) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.id = `customize-tab-${tab.id}`;

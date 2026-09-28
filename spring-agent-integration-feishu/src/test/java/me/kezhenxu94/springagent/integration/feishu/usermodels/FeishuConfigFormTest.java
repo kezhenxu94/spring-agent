@@ -165,6 +165,25 @@ class FeishuConfigFormTest {
   }
 
   @Test
+  @DisplayName("the dropdown shows a row's header names, never their values")
+  void dropdownShowsHeaderNamesOnly() throws Exception {
+    final var withHeaders =
+        config("kimi").toBuilder().headerCiphers(Map.of("X-Foo", "sealed-value-not-shown")).build();
+    final var card =
+        om.readTree(
+            form.card(
+                List.of(withHeaders),
+                withHeaders,
+                List.of(),
+                "gpt-4o",
+                List.of("openai"),
+                "openai"));
+
+    final var label = select(card).path("options").get(1).path("text").path("content").asString();
+    assertThat(label).contains("X-Foo").doesNotContain("sealed-value-not-shown");
+  }
+
+  @Test
   @DisplayName("a gateway with hundreds of models does not blow the card element limit")
   void capsBuiltinOptions() throws Exception {
     final var many = new java.util.ArrayList<String>();
@@ -223,6 +242,37 @@ class FeishuConfigFormTest {
 
     assertThat(submission.builtinByName()).isFalse();
     assertThat(submission.complete()).isTrue();
+  }
+
+  @Test
+  @DisplayName("headers are parsed one per line, name colon value")
+  void headersParsed() {
+    final var submission =
+        form.read(Map.of(FeishuConfigForm.HEADERS, "X-Foo: bar\nX-Baz: qux with spaces  "));
+
+    assertThat(submission.headers())
+        .containsExactlyInAnyOrderEntriesOf(Map.of("X-Foo", "bar", "X-Baz", "qux with spaces"));
+  }
+
+  @Test
+  @DisplayName("a malformed or blank header line is dropped rather than rejected")
+  void malformedHeaderLinesDropped() {
+    final var submission =
+        form.read(
+            Map.of(
+                FeishuConfigForm.HEADERS,
+                "X-Foo: bar\n\nno-colon-here\nEmpty-Value:\n:no-name\nX-Ok: yes"));
+
+    assertThat(submission.headers())
+        .containsExactlyInAnyOrderEntriesOf(Map.of("X-Foo", "bar", "X-Ok", "yes"));
+  }
+
+  @Test
+  @DisplayName("an untouched headers field is null, not an empty map")
+  void headersFieldUntouchedIsNull() {
+    final var submission = form.read(Map.of(FeishuConfigForm.ACTIVE, "kimi"));
+
+    assertThat(submission.headers()).isNull();
   }
 
   @Test

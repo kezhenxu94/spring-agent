@@ -33,7 +33,7 @@ const NARROWING = ['q', 'owner', 'scope'];
  * A closed set of slash-free words, so it is a path segment rather than a query key — the same
  * test the knowledge base's scope passes. Adding a tab is adding a word here.
  */
-const TABS = ['skills', 'memories', 'mcp'];
+const TABS = ['skills', 'memories', 'mcp', 'model'];
 
 /**
  * Which stores each tab has, which is not the same set for all three.
@@ -47,11 +47,17 @@ const TABS = ['skills', 'memories', 'mcp'];
  *
  * Per tab rather than one list for the section, because the words differ and a single list would
  * name stores a tab does not have.
+ *
+ * Model has none at all: a chat model is never shared and never configured by the deployment for
+ * everyone, so there is only ever one store — the empty array is what makes `customizeRoute` and
+ * `parse` below read every segment after the tab as the model being opened, with no store word to
+ * skip over first.
  */
 const TAB_SCOPES = {
   skills: ['own', 'tenant'],
   memories: ['own', 'tenant'],
   mcp: ['mine', 'shared', 'configured'],
+  model: [],
 };
 
 /**

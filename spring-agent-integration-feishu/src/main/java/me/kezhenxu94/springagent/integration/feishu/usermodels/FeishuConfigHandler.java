@@ -231,7 +231,13 @@ public class FeishuConfigHandler {
     final var effort = submission.storedEffort();
     final var provider = submission.storedProvider();
     final var failure =
-        probe.check(provider, submission.baseUrl(), submission.model(), submission.token(), effort);
+        probe.check(
+            provider,
+            submission.baseUrl(),
+            submission.model(),
+            submission.token(),
+            effort,
+            submission.headers());
     if (failure != null) {
       sendText(chatId, messages.get("config-add-failed", submission.name(), failure));
       return;
@@ -243,7 +249,8 @@ public class FeishuConfigHandler {
         submission.baseUrl(),
         submission.model(),
         submission.token(),
-        effort);
+        effort,
+        submission.headers());
     registry.activate(userId, submission.name());
     sendText(chatId, messages.get("config-added", submission.name()));
   }

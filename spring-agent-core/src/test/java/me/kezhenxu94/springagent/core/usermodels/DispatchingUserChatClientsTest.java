@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import me.kezhenxu94.springagent.core.dao.repo.UserModelConfigRepo;
 import me.kezhenxu94.springagent.core.security.AesGcmSealer;
@@ -39,7 +40,8 @@ class DispatchingUserChatClientsTest {
     }
 
     @Override
-    public ChatClient probeClient(final UserModelConfig config, final String token) {
+    public ChatClient probeClient(
+        final UserModelConfig config, final String token, final Map<String, String> headers) {
       return client;
     }
 
@@ -144,7 +146,7 @@ class DispatchingUserChatClientsTest {
     // works, and quietly testing a different protocol would answer a question they did not ask.
     final var clients = dispatching(registryWith(), "openai");
 
-    assertThatThrownBy(() -> clients.probeClient(row("anthropic", null), "sk-test"))
+    assertThatThrownBy(() -> clients.probeClient(row("anthropic", null), "sk-test", Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("anthropic")
         .hasMessageContaining("openai");

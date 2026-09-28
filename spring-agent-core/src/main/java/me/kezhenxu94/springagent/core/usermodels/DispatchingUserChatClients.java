@@ -182,14 +182,15 @@ public class DispatchingUserChatClients implements UserChatClients {
    * question. {@code UserModelProbe} turns the failure into a message they can act on.
    */
   @Override
-  public ChatClient probeClient(final UserModelConfig config, final String token) {
+  public ChatClient probeClient(
+      final UserModelConfig config, final String token, final Map<String, String> headers) {
     final var provider = resolve(config);
     if (provider == null) {
       throw new IllegalArgumentException(
           "No provider serves '%s'. This deployment offers: %s"
               .formatted(Strings.nullToEmpty(config.provider()), providers()));
     }
-    return provider.probeClient(config, token);
+    return provider.probeClient(config, token, headers);
   }
 
   /** The module serving {@code config}, or null where the row names one nobody publishes. */

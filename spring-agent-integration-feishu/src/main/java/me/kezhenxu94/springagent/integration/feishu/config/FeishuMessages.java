@@ -101,6 +101,8 @@ public class FeishuMessages {
         .replace("{effortHint}", jsonEscaped(get("config-effort-hint")))
         .replace("{tokenLabel}", jsonEscaped(get("config-token-label")))
         .replace("{tokenPlaceholder}", jsonEscaped(get("config-token-placeholder")))
+        .replace("{headersLabel}", jsonEscaped(get("config-headers-label")))
+        .replace("{headersPlaceholder}", jsonEscaped(get("config-headers-placeholder")))
         .replace("{submitText}", jsonEscaped(get("config-submit")));
   }
 

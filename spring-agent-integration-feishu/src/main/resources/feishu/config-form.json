@@ -198,6 +198,24 @@
       "content": "{tokenPlaceholder}"
     }
   },
+  "headersInput": {
+    "tag": "input",
+    "name": "cfg_headers",
+    "input_type": "multi_line",
+    "required": false,
+    "width": "fill",
+    "max_length": 4000,
+    "rows": 3,
+    "label": {
+      "tag": "plain_text",
+      "content": "{headersLabel}"
+    },
+    "label_position": "top",
+    "placeholder": {
+      "tag": "plain_text",
+      "content": "{headersPlaceholder}"
+    }
+  },
   "submit": {
     "tag": "button",
     "name": "cfg_submit",

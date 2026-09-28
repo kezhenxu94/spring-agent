@@ -803,14 +803,16 @@ for refuses everything.
 ## Bring your own model
 
 `app.ai.user-models.encryption-key` turns on per-user endpoints: a person registers a base URL, a
-credential, a model name, an optional reasoning effort, and — where the deployment serves more than
-one — **which protocol the endpoint speaks**.
+credential, a model name, an optional reasoning effort, optional extra HTTP headers, and — where the
+deployment serves more than one — **which protocol the endpoint speaks**. The headers are sealed
+value by value exactly as the credential is, because a gateway's routing or tenant header is a
+credential too.
 
 Two contracts, and the split matters:
 
 | | |
 | --- | --- |
-| `ProviderChatClients` | A `spring-agent-provider-*` module implements this: `provider()`, `clientFor(row)`, `probeClient(row, token)`, `configuredEffort()`. One bean per provider, published **whether or not that module built the application's chat model** — which is what lets somebody register an OpenAI endpoint on a Gemini deployment. |
+| `ProviderChatClients` | A `spring-agent-provider-*` module implements this: `provider()`, `clientFor(row)`, `probeClient(row, token, headers)`, `configuredEffort()`. One bean per provider, published **whether or not that module built the application's chat model** — which is what lets somebody register an OpenAI endpoint on a Gemini deployment. |
 | `UserChatClients` | Core implements this, once, as `DispatchingUserChatClients` over every `ProviderChatClients` on the classpath. Consumers inject it; nobody else implements it. |
 
 A row's `provider` is null for "the deployment's own", which is what every row written before the
@@ -1194,19 +1196,27 @@ The pieces a consumer would extend or reuse:
 
 | Type | What it is for |
 | --- | --- |
-| `UserModelRegistry` | The rows, and the one place a token is sealed or opened. `activate` clears every other row of that owner *before* setting the new one, so an interrupted switch leaves none activated rather than two — and none means the application's own model. `setEffort` rewrites one row's reasoning effort and nothing else, keeping the sealed token, which is the only way to change it: the token is never readable again. `setActiveEffort` applies one to whichever model the user is on, creating `DEFAULT_ROW` where that is the application's own. |
+| `UserModelRegistry` | The rows, and the one place a token — or a header value — is sealed or opened. `save` takes the extra headers as a tri-state, made explicit because headers are optional where a token is not: null keeps what is stored, an empty map clears them, anything else replaces the set. `headersOf` opens them for a provider building a client; `headerNames` is the static that answers what a listing may show, which is names and never values. `activate` clears every other row of that owner *before* setting the new one, so an interrupted switch leaves none activated rather than two — and none means the application's own model. `setEffort` rewrites one row's reasoning effort and nothing else, keeping the sealed token, which is the only way to change it: the token is never readable again. `setActiveEffort` applies one to whichever model the user is on, creating `DEFAULT_ROW` where that is the application's own. |
 | `UserChatClients` (interface) | Choosing a provider per row and resolving the client — **core implements it**; a provider implements `ProviderChatClients`. Never throws: an endpoint that cannot be read is a fallback and a log line, because failing here would fail the run the user needs to fix it. `effortInForce` answers what a run for one user will actually be made with, which is what a surface must label its thinking panel from rather than the deployment's property. |
-| `UserModelProbe` | The pre-save connection test — one tiny completion, since that exercises URL, token, model name **and** reasoning effort together where `GET /models` does not. |
+| `UserModelProbe` | The pre-save connection test — one tiny completion, since that exercises URL, token, model name, reasoning effort **and** the extra headers together where `GET /models` does not. The headers arrive plaintext here, there being nothing sealed to open before a row exists. |
 | `BuiltinModels` (interface) | What the application's own endpoint reports it can serve — **a provider module implements it**; cached and best-effort, and an empty list is an ordinary answer. |
 | `ProviderRejection` (`core/agent/`, interface) | The third and last thing a provider writes itself: reading what an endpoint said when it refused, so `SpringAgent` can log it beside the id of the run it refused. Nothing else can — an advisor rewraps the failure, and the SDK renders a non-JSON error body as the words `400: Unknown`. Asked about every failure of every run, so returning empty must be cheap and must never throw. |
 | `ReasoningEfforts` | The efforts a user may choose, stated in core rather than typed per call — Spring AI takes `reasoning_effort` as a bare string, so a typo is an endpoint that fails on every message. The list is core's, since three dropdowns are drawn from it; that it still matches the OpenAI SDK's is asserted in `spring-agent-provider-openai`, which is where that SDK exists. Three states: absent leaves the deployment's setting, a value sends it, `NOT_SENT` stops it being sent at all. |
 | `AesGcmSealer` (`core/security/`) | AES-GCM with a fresh nonce per write, shared with the shell credential store. Each caller brings its own key so a leak is contained to one feature. |
-| `UserModelConfig` (`core/dao/models/`) | The row. A **blank `baseUrl` means the application's own endpoint** and a **blank `model` means its configured model** — that is how choosing one of its models, or only an effort for it, records itself without copying the application's key per user. Such rows are named with a `@` prefix, which user-supplied names may not contain; `@` alone is `UserModelRegistry.DEFAULT_ROW`, the row that carries an effort for the application's model without pinning which model that is. |
+| `UserModelConfig` (`core/dao/models/`) | The row. A **blank `baseUrl` means the application's own endpoint** and a **blank `model` means its configured model** — that is how choosing one of its models, or only an effort for it, records itself without copying the application's key per user. Such rows are named with a `@` prefix, which user-supplied names may not contain; `@` alone is `UserModelRegistry.DEFAULT_ROW`, the row that carries an effort for the application's model without pinning which model that is. It also carries `headerCiphers`, the extra headers this endpoint needs, **each value sealed** as the token is rather than stored in the clear like `McpServerConfig#headers` — a header on a chat endpoint is routinely a second credential. A JSON column, since no query looks inside it. |
 
 A surface that wants to offer this needs no agent run for it: `spring-agent-integration-feishu`'s
-`/config` card and `spring-agent-integration-slack`'s `/config` modal both go straight to
+`/config` card, `spring-agent-integration-slack`'s `/config` modal and
+`spring-agent-integration-websocket`'s `UserModelController` behind `/api/models` all go straight to
 `UserModelRegistry`. That is deliberate rather than incidental — a model that has stopped answering
 would otherwise break the only route to changing it.
+
+Extra headers reach an endpoint through whichever hook its SDK exposes, and the providers do not
+agree on one. `GoogleGenAiUserChatClients` hands `HttpOptions.headers` a map; `OpenAiUserChatClients`
+and `AnthropicUserChatClients` append an OkHttp interceptor to the application's own
+`*HttpClientBuilderCustomizer` beans, since neither their options nor a raw API builder takes headers
+directly. That appended customizer is **endpoint-scoped** rather than shared, or two rows with
+different headers would send each other's.
 
 The **embedding** model is not configurable this way, and should not be made so: the knowledge base
 is shared and its collections are built with one embedding model.
