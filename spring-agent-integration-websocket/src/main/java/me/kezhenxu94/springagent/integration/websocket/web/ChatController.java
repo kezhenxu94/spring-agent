@@ -19,6 +19,7 @@ import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.identity.SystemIdentityProvider;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
 import me.kezhenxu94.springagent.core.preferences.UserPreferences;
+import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import me.kezhenxu94.springagent.integration.websocket.config.WebLocaleConfiguration;
 import me.kezhenxu94.springagent.integration.websocket.config.WebMessages;
 import me.kezhenxu94.springagent.integration.websocket.config.WebProperties;
@@ -59,6 +60,7 @@ public class ChatController {
 
   private final SpringAgent springAgent;
   private final ObjectProvider<KnowledgeBase> knowledgeBases;
+  private final ObjectProvider<UserModelRegistry> userModels;
   private final Admins admins;
   private final TenantWrites tenantWrites;
   private final ObjectProvider<SystemIdentityProvider> systemIdentities;
@@ -196,6 +198,11 @@ public class ChatController {
     final var surface = mirrors.surface();
     out.put(
         "mirror", Map.of("enabled", surface != null, "surface", surface == null ? "" : surface));
+    // The Model tab, which unlike Skills and Memories does not always exist. A row holds a token,
+    // so it is only ever stored where app.ai.user-models.encryption-key gave it somewhere sealed
+    // to go — see UserModelsConfiguration. A page offering the tab with no such key set would
+    // draw a form that fails every save.
+    out.put("models", Map.of("enabled", userModels.getIfAvailable() != null));
     return out;
   }
 

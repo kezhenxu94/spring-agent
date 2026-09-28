@@ -1,14 +1,17 @@
 package me.kezhenxu94.springagent.core.dao.models;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import me.kezhenxu94.springagent.core.dao.StringMapJsonConverter;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -88,6 +91,19 @@ public class UserModelConfig {
    */
   @Column(length = 131072)
   private String apiKeyCipher;
+
+  /**
+   * Extra HTTP headers to send to this endpoint, keyed by header name, each value sealed by {@code
+   * AesGcmSealer} the same way {@link #apiKeyCipher} is — a header can carry a second credential (a
+   * routing or tenant token), so it gets the same treatment rather than {@code
+   * McpServerConfig#headers}'s plaintext one. Null or empty means no extra headers.
+   *
+   * <p>A JSON column rather than a table, same reasoning as {@code McpServerConfig#headers}: no
+   * query ever looks inside it.
+   */
+  @Convert(converter = StringMapJsonConverter.class)
+  @Column(length = 8192)
+  private Map<String, String> headerCiphers;
 
   /**
    * How hard the model should think, as {@code ReasoningEfforts} spells it — one of its values, its

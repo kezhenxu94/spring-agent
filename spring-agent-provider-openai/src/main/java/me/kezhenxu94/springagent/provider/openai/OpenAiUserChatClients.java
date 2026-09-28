@@ -4,7 +4,9 @@ import com.google.common.base.Strings;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import me.kezhenxu94.springagent.core.usermodels.ProviderChatClients;
@@ -119,7 +121,8 @@ public class OpenAiUserChatClients implements ProviderChatClients {
             // should think without saying which model that is, so that the answer stays whatever
             // the deployment is configured with.
             Strings.isNullOrEmpty(config.model()) ? defaults.getModel() : config.model(),
-            config.reasoningEffort()));
+            config.reasoningEffort(),
+            registry.headersOf(config)));
   }
 
   private ChatClient clientFor(final Endpoint endpoint) {
@@ -146,9 +149,15 @@ public class OpenAiUserChatClients implements ProviderChatClients {
    * @param token the plaintext token, since there is nothing sealed to open yet
    */
   @Override
-  public ChatClient probeClient(final UserModelConfig config, final String token) {
+  public ChatClient probeClient(
+      final UserModelConfig config, final String token, final Map<String, String> headers) {
     return clientFor(
-        new Endpoint(config.baseUrl(), token, config.model(), config.reasoningEffort()));
+        new Endpoint(
+            config.baseUrl(),
+            token,
+            config.model(),
+            config.reasoningEffort(),
+            headers == null ? Map.of() : headers));
   }
 
   /**
@@ -197,9 +206,32 @@ public class OpenAiUserChatClients implements ProviderChatClients {
         OpenAiChatModel.builder()
             .options(optionsFor(defaults, endpoint))
             .toolCallingManager(toolCallingManager)
-            .httpClientBuilderCustomizers(httpClientCustomizers)
+            .httpClientBuilderCustomizers(customizersFor(endpoint))
             .build();
     return ChatClient.builder(chatModel).build();
+  }
+
+  /**
+   * The application's own HTTP client customizers, with one more appended where this endpoint
+   * carries extra headers of its own — an OkHttp interceptor is the only hook {@code
+   * OpenAiChatModel.Builder} exposes for them, since neither its options nor a raw {@code
+   * OpenAiApi} builder take a header map directly. Endpoint-scoped rather than shared, because two
+   * rows with different headers must not leak one row's headers onto the other's requests.
+   */
+  private List<OpenAiHttpClientBuilderCustomizer> customizersFor(final Endpoint endpoint) {
+    if (endpoint.headers().isEmpty()) {
+      return httpClientCustomizers;
+    }
+    final var combined = new ArrayList<>(httpClientCustomizers);
+    combined.add(
+        builder ->
+            builder.interceptor(
+                chain -> {
+                  final var request = chain.request().newBuilder();
+                  endpoint.headers().forEach(request::header);
+                  return chain.proceed(request.build());
+                }));
+    return combined;
   }
 
   /**
@@ -234,5 +266,14 @@ public class OpenAiUserChatClients implements ProviderChatClients {
    * options whole rather than merging them, so sending it per request would mean building a set
    * from scratch and losing everything else the application configured.
    */
-  record Endpoint(String baseUrl, String apiKey, String model, String reasoningEffort) {}
+  record Endpoint(
+      String baseUrl,
+      String apiKey,
+      String model,
+      String reasoningEffort,
+      Map<String, String> headers) {
+    Endpoint {
+      headers = headers == null ? Map.of() : Map.copyOf(headers);
+    }
+  }
 }

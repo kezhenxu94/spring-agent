@@ -158,6 +158,7 @@ const STRINGS = {
     'customize.skills': 'Skills',
     'customize.memories': 'Memories',
     'customize.mcp': 'MCP servers',
+    'customize.model': 'Models',
 
     // Memories: what the agent concluded about somebody, as against what they taught it. The
     // vocabulary is deliberately not the skills tab's — a skill is written, a memory is *learnt* —
@@ -283,6 +284,61 @@ const STRINGS = {
     'mcp.share.everyone.confirm': 'Share {0} with everyone?',
     'mcp.share.everyone.body': 'Every account this deployment serves gets to use this server\u2019s '
       + 'tools, through your credential. Nothing afterwards says how many people that is.',
+
+    // Chat models a person has brought of their own, to answer their conversations instead of the
+    // application's own model. Only offered where the deployment has somewhere sealed to keep a
+    // token \u2014 see models.enabled on /api/me.
+    'model.intro': 'Endpoints of your own that can answer your conversations instead of the '
+      + 'built-in model. Tested before being saved.',
+    'model.new': 'Add a model',
+    'model.new.title': 'New model',
+    'model.kind': 'Chat model',
+    'model.mine': 'Yours',
+    'model.none': 'You have not added a model yet.',
+    'model.actions': 'What can be done with this model',
+    'model.back': 'All models',
+    'model.active': 'in use',
+    'model.thinking': 'thinking {0}',
+    'model.headers.set': 'sends {0}',
+    'model.summary.endpoint': '{0} at {1}',
+    'model.summary.builtin': '{0}',
+    'model.activate': 'Switch to this model',
+    'model.switched': 'Now answering with {0}.',
+    'model.switched.default': 'Now answering with the built-in model.',
+    'model.delete': 'Remove this model',
+    'model.delete.confirm': 'Remove {0}?',
+    'model.delete.body': 'Its endpoint, its token and every header go with it. If your '
+      + 'conversations were going through it, they go back to the built-in model. This cannot be '
+      + 'undone.',
+    'model.deleted': 'Removed {0}.',
+    'model.field.name': 'Name',
+    'model.field.name.hint': 'What you will call it, used to switch to it later.',
+    'model.field.name.fixed': 'The name identifies the model and cannot be changed here. Add it '
+      + 'again under a new name, then remove this one.',
+    'model.field.provider': 'Protocol',
+    'model.field.provider.hint': 'Which protocol the endpoint speaks. Leave empty for this '
+      + 'deployment\u2019s own, which is almost always right.',
+    'model.field.baseurl': 'Base URL',
+    'model.field.baseurl.hint': 'The endpoint\u2019s base URL. Leave empty for a provider with '
+      + 'one well-known endpoint, such as Gemini\u2019s or Anthropic\u2019s own.',
+    'model.field.model': 'Model',
+    'model.field.model.hint': 'The model name as the endpoint spells it.',
+    'model.field.token': 'API token',
+    'model.field.token.hint': 'Stored encrypted, never shown again. Required every time you save, '
+      + 'even to change another field.',
+    'model.field.effort': 'How hard it should think',
+    'model.field.effort.inherit': 'Whatever this deployment is set to',
+    'model.field.effort.notsent': 'Do not send it at all',
+    'model.field.headers': 'Extra headers',
+    'model.field.headers.hint': 'One per line, Name: value. Left empty, nothing extra is sent.',
+    'model.field.headers.set': 'Currently sends {0}. Type to replace them; leave this empty and '
+      + 'they stay as they are.',
+    'model.field.headers.clear': 'Send none',
+    'model.field.headers.cleared': 'Saving will stop sending these headers.',
+    'model.register': 'Test and save',
+    'model.save': 'Save',
+    'model.connecting': 'Connecting to the endpoint\u2026',
+    'model.saved': 'Saved {0}.',
 
     'skills.scopes': 'Whose skills to show',
     'skills.scope.own': 'Yours',
@@ -545,6 +601,7 @@ const STRINGS = {
     'customize.skills': '技能',
     'customize.memories': '记忆',
     'customize.mcp': 'MCP 服务器',
+    'customize.model': '模型',
 
     // 记忆：智能体自己总结出来的东西，而不是别人教给它的。用词刻意与技能区分开——
     // 技能是写出来的，记忆是学到的，而这个区别正是有人想来看这些内容的理由。
@@ -659,6 +716,55 @@ const STRINGS = {
     'mcp.share.everyone.confirm': '把 {0} 分享给所有人？',
     'mcp.share.everyone.body': '本部署服务的每一个账号都将能通过你的凭据使用这个服务器的工具，'
       + '而事后没有任何地方会告诉你那是多少人。',
+
+    // 用户自己接入的聊天模型，用来代替内置模型回答对话。只有在本部署有地方安全存放令牌时
+    // 才会提供——见 /api/me 上的 models.enabled。
+    'model.intro': '你自己的接入点，可以代替内置模型回答你的对话。保存前会先测试一下。',
+    'model.new': '添加模型',
+    'model.new.title': '新模型',
+    'model.kind': '聊天模型',
+    'model.mine': '你的',
+    'model.none': '你还没有添加模型。',
+    'model.actions': '可以对这个模型做什么',
+    'model.back': '全部模型',
+    'model.active': '使用中',
+    'model.thinking': '思考强度 {0}',
+    'model.headers.set': '会发送 {0}',
+    'model.summary.endpoint': '{0}，接入地址 {1}',
+    'model.summary.builtin': '{0}',
+    'model.activate': '切换到这个模型',
+    'model.switched': '现在使用 {0} 回答。',
+    'model.switched.default': '现在使用内置模型回答。',
+    'model.delete': '移除这个模型',
+    'model.delete.confirm': '移除 {0}？',
+    'model.delete.body': '它的接入地址、令牌和所有请求头都会一并消失。如果你的对话原本经过它，'
+      + '将改回内置模型。此操作无法撤销。',
+    'model.deleted': '已移除 {0}。',
+    'model.field.name': '名称',
+    'model.field.name.hint': '你怎么称呼它，之后用这个名字切换到它。',
+    'model.field.name.fixed': '名称是这个模型的标识，不能在这里修改。请用新名称重新添加，'
+      + '再移除这一个。',
+    'model.field.provider': '协议',
+    'model.field.provider.hint': '接入点使用的协议。留空表示本部署自己的协议，几乎总是对的。',
+    'model.field.baseurl': '基础 URL',
+    'model.field.baseurl.hint': '接入点的基础 URL。对于只有一个固定接入点的协议（比如 Gemini '
+      + '或 Anthropic 自己的）可以留空。',
+    'model.field.model': '模型',
+    'model.field.model.hint': '按接入点的写法给出模型名称。',
+    'model.field.token': 'API 令牌',
+    'model.field.token.hint': '加密存储，之后不会再展示。每次保存都必须填写，即使只是改动其他字段。',
+    'model.field.effort': '思考强度',
+    'model.field.effort.inherit': '本部署当前设置的强度',
+    'model.field.effort.notsent': '完全不发送',
+    'model.field.headers': '额外请求头',
+    'model.field.headers.hint': '每行一个，格式为 名称: 值。留空表示不额外发送。',
+    'model.field.headers.set': '当前会发送 {0}。想替换就直接填写；留空则保持不变。',
+    'model.field.headers.clear': '不再发送',
+    'model.field.headers.cleared': '保存后将不再发送这些请求头。',
+    'model.register': '测试并保存',
+    'model.save': '保存',
+    'model.connecting': '正在连接接入点…',
+    'model.saved': '已保存 {0}。',
 
     'skills.scopes': '查看谁的技能',
     'skills.scope.own': '我的',

@@ -818,6 +818,33 @@
                    class="detail-card space-y-3 rounded-xl border border-zinc-200 p-4
                           dark:border-rail"></article>
         </div>
+
+        <!--
+          Chat models: the fourth tab, drawn only where /api/me reports models.enabled — see
+          customize.js. One store rather than the three MCP servers have: a chat model is never
+          shared and never configured by the deployment for everyone, so there is no scope switch
+          here, only a list and the form that adds to it.
+        -->
+        <div id="customize-model" role="tabpanel" aria-labelledby="customize-tab-model"
+             class="space-y-5" hidden>
+
+          <div id="model-browse" class="space-y-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <button id="model-new" type="button"
+                      class="panel-action panel-action-primary ml-auto"
+                      data-i18n="model.new">Add a model</button>
+            </div>
+
+            <p class="detail-hint max-w-[34rem]" data-i18n="model.intro"></p>
+
+            <ul id="model-list" class="skill-grid"></ul>
+            <p id="model-note" class="text-[11.5px] leading-relaxed text-mist"></p>
+          </div>
+
+          <article id="model-detail" hidden
+                   class="detail-card space-y-3 rounded-xl border border-zinc-200 p-4
+                          dark:border-rail"></article>
+        </div>
       </div>
     </section>
 

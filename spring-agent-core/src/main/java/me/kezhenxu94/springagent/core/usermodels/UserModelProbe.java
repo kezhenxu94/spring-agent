@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.core.usermodels;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -59,7 +60,8 @@ public class UserModelProbe {
       final String baseUrl,
       final String model,
       final String token,
-      final String reasoningEffort) {
+      final String reasoningEffort,
+      final Map<String, String> headers) {
     final var config =
         UserModelConfig.builder()
             .name("probe")
@@ -79,7 +81,7 @@ public class UserModelProbe {
       final Callable<String> ask =
           () ->
               chatClients
-                  .probeClient(config, token)
+                  .probeClient(config, token, headers == null ? Map.of() : headers)
                   .prompt()
                   .messages(systemMessages)
                   .user("Hi")

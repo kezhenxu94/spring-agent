@@ -231,6 +231,12 @@ the LLM**:
 | Feishu | Send `/config`. A card opens with a dropdown of what you could be on and fields for adding an endpoint. |
 | Slack | Type `/config`. A modal opens, private to you, so the API token never enters channel history. The command has to be declared on the Slack app — see below. If nobody did, send ` /config` with a leading space instead: Slack sends that verbatim rather than looking for a command, and the same form arrives as a message. |
 | Command line | `/config` lists your models, `/config <name>` switches, `/config default` returns to the built-in one, and `/config <name> <effort>` or `/config default <effort>` sets how hard it thinks. |
+| Browser | The **Model** tab under Customize, drawn only where the encryption key is set. It lists what you have registered, switches between them and back to the built-in one, and opens each as the form that registered it. |
+
+An endpoint that needs more than a bearer token — a gateway wanting a tenant or routing header —
+takes **extra headers**, typed as `Name: value` per line on the Feishu card and the browser form, or
+handed to `AddChatModel` as a map. They are sealed the same way the token is, and like the token
+they are never shown again: a listing says which headers are set, never what is in them.
 
 The dropdown also lists what the application's own endpoint reports it can serve, so choosing among
 the models the deployment already pays for needs no token of your own. That listing is best-effort:

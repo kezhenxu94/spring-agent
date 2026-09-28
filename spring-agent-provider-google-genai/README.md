@@ -192,7 +192,9 @@ Yes — `app.ai.user-models.encryption-key` works on a Gemini deployment, and a 
 endpoint gets `GoogleGenAiUserChatClients`: a `Client` built with their own API key, their own model
 name, and their chosen effort mapped onto a thinking level. `HttpOptions.baseUrl` is set only when
 they name one, so a row with no base URL is the application's own endpoint with a different model
-on it — the same meaning it has on the OpenAI provider. `GenAiByomTest` in
+on it — the same meaning it has on the OpenAI provider. Extra headers on a row are the one thing
+easier here than there: `HttpOptions.headers` takes the map directly, where the OpenAI and Anthropic
+providers each have to thread an OkHttp interceptor through a client-builder customizer. `GenAiByomTest` in
 `spring-agent-app-feishu` asserts the whole arrangement against a started context.
 
 **A person may now choose the protocol, not only the URL.** `UserModelConfig` carries a `provider`

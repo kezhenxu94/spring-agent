@@ -41,6 +41,7 @@ class ChatReasoningEndpointTest {
       new ChatController(
           null,
           mock(ObjectProvider.class),
+          mock(ObjectProvider.class),
           null,
           null,
           mock(ObjectProvider.class),

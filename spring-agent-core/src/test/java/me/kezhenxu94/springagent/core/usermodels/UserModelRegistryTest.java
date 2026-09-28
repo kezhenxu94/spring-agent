@@ -26,7 +26,7 @@ class UserModelRegistryTest {
   @DisplayName("a saved endpoint comes back with its token intact")
   void roundTrips() {
     final var saved =
-        registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "sk-secret", null);
+        registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "sk-secret", null, null);
 
     assertThat(registry.tokenOf(saved)).isEqualTo("sk-secret");
   }
@@ -34,7 +34,7 @@ class UserModelRegistryTest {
   @Test
   @DisplayName("the token does not reach the database in the clear")
   void sealsTheToken() {
-    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "sk-secret", null);
+    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "sk-secret", null, null);
 
     assertThat(repo.rows.values())
         .singleElement()
@@ -44,7 +44,7 @@ class UserModelRegistryTest {
   @Test
   @DisplayName("a newly saved endpoint is not switched to")
   void savingDoesNotActivate() {
-    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "sk-secret", null);
+    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "sk-secret", null, null);
 
     assertThat(registry.active("u1")).isEmpty();
   }
@@ -52,10 +52,10 @@ class UserModelRegistryTest {
   @Test
   @DisplayName("re-saving the one in use keeps the user on it")
   void resavingKeepsActivation() {
-    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "old", null);
+    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "old", null, null);
     registry.activate("u1", "kimi");
 
-    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "rotated", null);
+    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "rotated", null, null);
 
     assertThat(registry.active("u1")).map(UserModelConfig::name).contains("kimi");
     assertThat(registry.tokenOf(registry.active("u1").orElseThrow())).isEqualTo("rotated");
@@ -64,8 +64,8 @@ class UserModelRegistryTest {
   @Test
   @DisplayName("switching leaves exactly one endpoint activated")
   void switchingIsExclusive() {
-    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "a", null);
-    registry.save("u1", "glm", null, "https://glm/v1", "glm-4", "b", null);
+    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "a", null, null);
+    registry.save("u1", "glm", null, "https://glm/v1", "glm-4", "b", null, null);
 
     registry.activate("u1", "kimi");
     registry.activate("u1", "glm");
@@ -77,8 +77,8 @@ class UserModelRegistryTest {
   @Test
   @DisplayName("switching clears the old endpoint before setting the new one")
   void clearsBeforeSetting() {
-    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "a", null);
-    registry.save("u1", "glm", null, "https://glm/v1", "glm-4", "b", null);
+    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "a", null, null);
+    registry.save("u1", "glm", null, "https://glm/v1", "glm-4", "b", null, null);
     registry.activate("u1", "kimi");
 
     // The failure this ordering exists for: a switch that dies partway must never leave two rows
@@ -98,7 +98,7 @@ class UserModelRegistryTest {
   @Test
   @DisplayName("going back to the default leaves nothing activated")
   void useDefault() {
-    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "a", null);
+    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "a", null, null);
     registry.activate("u1", "kimi");
 
     registry.useDefault("u1");
@@ -109,7 +109,7 @@ class UserModelRegistryTest {
   @Test
   @DisplayName("deleting the one in use needs no separate cleanup")
   void deletingActive() {
-    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "a", null);
+    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "a", null, null);
     registry.activate("u1", "kimi");
 
     assertThat(registry.delete("u1", "kimi")).isTrue();
@@ -119,7 +119,7 @@ class UserModelRegistryTest {
   @Test
   @DisplayName("switching to a name the user does not have changes nothing")
   void unknownName() {
-    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "a", null);
+    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "a", null, null);
     registry.activate("u1", "kimi");
 
     assertThat(registry.activate("u1", "nope")).isFalse();
@@ -129,7 +129,7 @@ class UserModelRegistryTest {
   @Test
   @DisplayName("one user cannot see or switch another's endpoints")
   void ownerScoped() {
-    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "a", null);
+    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "a", null, null);
 
     assertThat(registry.list("u2")).isEmpty();
     assertThat(registry.activate("u2", "kimi")).isFalse();
@@ -153,7 +153,7 @@ class UserModelRegistryTest {
   @Test
   @DisplayName("a built-in choice is not listed as an endpoint the user registered")
   void builtinNotListed() {
-    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t", null);
+    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t", null, null);
     registry.activateBuiltin("u1", "gpt-4o");
 
     assertThat(registry.list("u1")).map(UserModelConfig::name).containsExactly("kimi");
@@ -162,7 +162,7 @@ class UserModelRegistryTest {
   @Test
   @DisplayName("switching between a built-in model and an endpoint stays exclusive")
   void builtinIsExclusive() {
-    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t", null);
+    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t", null, null);
     registry.activate("u1", "kimi");
 
     registry.activateBuiltin("u1", "gpt-4o");
@@ -186,7 +186,7 @@ class UserModelRegistryTest {
   @Test
   @DisplayName("an effort is stored as it will be sent, whatever case it was given in")
   void storesEffort() {
-    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t", "HIGH");
+    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t", "HIGH", null);
 
     assertThat(registry.find("u1", "kimi")).map(UserModelConfig::reasoningEffort).contains("high");
   }
@@ -194,7 +194,7 @@ class UserModelRegistryTest {
   @Test
   @DisplayName("changing the effort keeps the token and whether the model is in use")
   void setEffortKeepsEverythingElse() {
-    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "sk-secret", "low");
+    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "sk-secret", "low", null);
     registry.activate("u1", "kimi");
 
     assertThat(registry.setEffort("u1", "kimi", "max")).isTrue();
@@ -210,7 +210,7 @@ class UserModelRegistryTest {
   @Test
   @DisplayName("clearing the effort goes back to the application's setting")
   void setEffortClears() {
-    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t", "high");
+    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t", "high", null);
 
     assertThat(registry.setEffort("u1", "kimi", null)).isTrue();
 
@@ -220,7 +220,7 @@ class UserModelRegistryTest {
   @Test
   @DisplayName("an effort cannot be set on a model somebody else owns, or on none at all")
   void setEffortScoped() {
-    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t", null);
+    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t", null, null);
 
     assertThat(registry.setEffort("u2", "kimi", "high")).isFalse();
     assertThat(registry.setEffort("u1", "absent", "high")).isFalse();
@@ -242,7 +242,7 @@ class UserModelRegistryTest {
   @Test
   @DisplayName("going back to the built-in model keeps how hard it was asked to think")
   void defaultKeepsItsEffort() {
-    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t", null);
+    registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t", null, null);
     registry.setActiveEffort("u1", "high");
     registry.activate("u1", "kimi");
 
@@ -286,12 +286,93 @@ class UserModelRegistryTest {
   @Test
   @DisplayName("the ceiling counts endpoints, and replacing one is not adding one")
   void ceiling() {
-    registry.save("u1", "a", null, "u", "m", "t", null);
-    registry.save("u1", "b", null, "u", "m", "t", null);
-    registry.save("u1", "c", null, "u", "m", "t", null);
+    registry.save("u1", "a", null, "u", "m", "t", null, null);
+    registry.save("u1", "b", null, "u", "m", "t", null, null);
+    registry.save("u1", "c", null, "u", "m", "t", null, null);
 
     assertThat(registry.full("u1", "d")).isTrue();
     assertThat(registry.full("u1", "a")).isFalse();
+  }
+
+  @Test
+  @DisplayName("headers come back exactly as they were saved, opened one at a time")
+  void headersRoundTrip() {
+    final var saved =
+        registry.save(
+            "u1",
+            "kimi",
+            null,
+            "https://kimi/v1",
+            "kimi-k2",
+            "t",
+            null,
+            Map.of("X-Foo", "bar", "X-Baz", "qux"));
+
+    assertThat(registry.headersOf(saved))
+        .containsExactlyInAnyOrderEntriesOf(Map.of("X-Foo", "bar", "X-Baz", "qux"));
+  }
+
+  @Test
+  @DisplayName("header values do not reach the database in the clear")
+  void sealsHeaderValues() {
+    registry.save(
+        "u1",
+        "kimi",
+        null,
+        "https://kimi/v1",
+        "kimi-k2",
+        "t",
+        null,
+        Map.of("X-Foo", "super-secret"));
+
+    assertThat(repo.rows.values())
+        .singleElement()
+        .satisfies(
+            row ->
+                assertThat(row.headerCiphers().values())
+                    .noneMatch(v -> v.contains("super-secret")));
+  }
+
+  @Test
+  @DisplayName("only header names are ever listed, never values")
+  void headerNamesOnly() {
+    final var saved =
+        registry.save(
+            "u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t", null, Map.of("X-Foo", "bar"));
+
+    assertThat(UserModelRegistry.headerNames(saved)).containsExactly("X-Foo");
+  }
+
+  @Test
+  @DisplayName("a null headers argument on re-registration keeps whatever was already stored")
+  void nullHeadersKeepsStored() {
+    var saved =
+        registry.save(
+            "u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t", null, Map.of("X-Foo", "bar"));
+    saved = registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t2", null, null);
+
+    assertThat(registry.headersOf(saved)).containsEntry("X-Foo", "bar");
+  }
+
+  @Test
+  @DisplayName("an empty headers map on re-registration clears whatever was already stored")
+  void emptyHeadersClearsStored() {
+    registry.save(
+        "u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t", null, Map.of("X-Foo", "bar"));
+    final var saved =
+        registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t2", null, Map.of());
+
+    assertThat(registry.headersOf(saved)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("a row with no headers has none, never a null map exposed to a caller")
+  void noHeadersIsEmptyNotNull() {
+    final var saved =
+        registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t", null, null);
+
+    assertThat(registry.headersOf(saved)).isEmpty();
+    assertThat(UserModelRegistry.headerNames(saved)).isEmpty();
   }
 
   /** Enough of the contract to exercise the registry, with one arranged failure. */

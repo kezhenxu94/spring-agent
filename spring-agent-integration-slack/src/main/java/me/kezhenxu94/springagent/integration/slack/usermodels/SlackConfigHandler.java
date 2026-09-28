@@ -293,7 +293,8 @@ public class SlackConfigHandler {
     final var effort = submission.storedEffort();
     final var provider = submission.storedProvider();
     final var failure =
-        probe.check(provider, submission.baseUrl(), submission.model(), submission.token(), effort);
+        probe.check(
+            provider, submission.baseUrl(), submission.model(), submission.token(), effort, null);
     if (failure != null) {
       say(channelId, messages.get("config-add-failed", submission.name(), failure));
       return;
@@ -305,7 +306,8 @@ public class SlackConfigHandler {
         submission.baseUrl(),
         submission.model(),
         submission.token(),
-        effort);
+        effort,
+        null);
     registry.activate(userId, submission.name());
     say(channelId, messages.get("config-added", submission.name()));
   }

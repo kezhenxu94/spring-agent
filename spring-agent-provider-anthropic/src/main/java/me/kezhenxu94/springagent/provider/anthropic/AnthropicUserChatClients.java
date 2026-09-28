@@ -4,7 +4,9 @@ import com.google.common.base.Strings;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import me.kezhenxu94.springagent.core.usermodels.ProviderChatClients;
@@ -169,7 +171,8 @@ public class AnthropicUserChatClients implements ProviderChatClients {
         Strings.isNullOrEmpty(config.model())
             ? (defaults == null ? null : defaults.getModel())
             : config.model(),
-        config.reasoningEffort());
+        config.reasoningEffort(),
+        registry.headersOf(config));
   }
 
   /**
@@ -182,7 +185,8 @@ public class AnthropicUserChatClients implements ProviderChatClients {
   }
 
   @Override
-  public ChatClient probeClient(final UserModelConfig config, final String token) {
+  public ChatClient probeClient(
+      final UserModelConfig config, final String token, final Map<String, String> headers) {
     return clientFor(
         new Endpoint(
             Strings.emptyToNull(config.baseUrl()),
@@ -190,7 +194,8 @@ public class AnthropicUserChatClients implements ProviderChatClients {
             Strings.isNullOrEmpty(config.model())
                 ? (defaults == null ? null : defaults.getModel())
                 : config.model(),
-            config.reasoningEffort()));
+            config.reasoningEffort(),
+            headers == null ? Map.of() : headers));
   }
 
   private ChatClient clientFor(final Endpoint endpoint) {
@@ -253,9 +258,34 @@ public class AnthropicUserChatClients implements ProviderChatClients {
         AnthropicChatModel.builder()
             .options(optionsFor(defaults, endpoint))
             .toolCallingManager(toolCallingManager)
-            .httpClientBuilderCustomizers(customizers)
+            .httpClientBuilderCustomizers(customizersFor(endpoint))
             .build();
     return ChatClient.builder(chatModel).build();
+  }
+
+  /**
+   * The deployment's own customizers, with one more appended where this endpoint carries extra
+   * headers — the only hook {@code AnthropicChatModel.Builder} exposes for them here, since neither
+   * its options nor a raw {@code AnthropicApi} builder take a header map directly. Only reached
+   * from the branch that opens a connection of its own: a borrowed row's headers, if it somehow
+   * carried any, could not be applied — the builder refuses customizers beside a pre-built client,
+   * and by the time a row has nothing to authenticate with it has nothing to send an endpoint of
+   * its own to either.
+   */
+  private List<AnthropicHttpClientBuilderCustomizer> customizersFor(final Endpoint endpoint) {
+    if (endpoint.headers().isEmpty()) {
+      return customizers;
+    }
+    final var combined = new ArrayList<>(customizers);
+    combined.add(
+        builder ->
+            builder.interceptor(
+                chain -> {
+                  final var request = chain.request().newBuilder();
+                  endpoint.headers().forEach(request::header);
+                  return chain.proceed(request.build());
+                }));
+    return combined;
   }
 
   /**
@@ -304,5 +334,14 @@ public class AnthropicUserChatClients implements ProviderChatClients {
    * them, so sending it per request would mean building a set from scratch and losing everything
    * else the deployment configured.
    */
-  record Endpoint(String baseUrl, String apiKey, String model, String reasoningEffort) {}
+  record Endpoint(
+      String baseUrl,
+      String apiKey,
+      String model,
+      String reasoningEffort,
+      Map<String, String> headers) {
+    Endpoint {
+      headers = headers == null ? Map.of() : Map.copyOf(headers);
+    }
+  }
 }

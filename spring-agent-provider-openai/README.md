@@ -45,7 +45,11 @@ Four things, each because Spring AI has no way to know it:
   registers only *executes* tool calls, while the request's tool list is still resolved by the
   model, so a model built without one offers the endpoint tool definitions none of the runtime's
   rewrites reached — no `_display_description`, so no tool call has a title on a card, and no
-  localized descriptions. `OpenAiUserModelToolsTest` reads that off the wire.
+  localized descriptions. `OpenAiUserModelToolsTest` reads that off the wire. A row carrying extra
+  headers gets one more customizer appended, an OkHttp interceptor that sets them — the only hook
+  the builder exposes, since neither its options nor a raw `OpenAiApi` builder takes a header map.
+  That customizer is built per endpoint rather than shared, or two rows with different headers would
+  send each other's.
 - **`OpenAiErrorBodyLoggingInterceptor`** — the only place a rejected request's body still exists.
   openai-java renders a non-JSON error envelope as the words `400: Unknown`, so without this a run
   fails for literally unknowable reasons.

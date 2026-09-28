@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.core.usermodels;
 
+import java.util.Map;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import org.springframework.ai.chat.client.ChatClient;
 
@@ -55,8 +56,10 @@ public interface ProviderChatClients {
    * its token is written anywhere.
    *
    * @param token the plaintext token, since there is nothing sealed to open yet
+   * @param headers extra headers to send, plaintext, since there is nothing sealed to open yet;
+   *     empty for none
    */
-  ChatClient probeClient(UserModelConfig config, String token);
+  ChatClient probeClient(UserModelConfig config, String token, Map<String, String> headers);
 
   /**
    * Whether a person registering an endpoint here has to give a base URL.

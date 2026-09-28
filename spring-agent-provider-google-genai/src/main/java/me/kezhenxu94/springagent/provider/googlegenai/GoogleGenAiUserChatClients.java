@@ -6,6 +6,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.genai.Client;
 import com.google.genai.types.HttpOptions;
 import java.time.Duration;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import me.kezhenxu94.springagent.core.usermodels.ProviderChatClients;
@@ -141,7 +142,8 @@ public class GoogleGenAiUserChatClients implements ProviderChatClients {
         Strings.isNullOrEmpty(config.model())
             ? (defaults == null ? null : defaults.getModel())
             : config.model(),
-        config.reasoningEffort());
+        config.reasoningEffort(),
+        registry.headersOf(config));
   }
 
   /**
@@ -160,13 +162,15 @@ public class GoogleGenAiUserChatClients implements ProviderChatClients {
    * @param token the plaintext token, since there is nothing sealed to open yet
    */
   @Override
-  public ChatClient probeClient(final UserModelConfig config, final String token) {
+  public ChatClient probeClient(
+      final UserModelConfig config, final String token, final Map<String, String> headers) {
     return clientFor(
         new Endpoint(
             Strings.emptyToNull(config.baseUrl()),
             token,
             Strings.isNullOrEmpty(config.model()) ? defaults.getModel() : config.model(),
-            config.reasoningEffort()));
+            config.reasoningEffort(),
+            headers == null ? Map.of() : headers));
   }
 
   private ChatClient clientFor(final Endpoint endpoint) {
@@ -199,8 +203,17 @@ public class GoogleGenAiUserChatClients implements ProviderChatClients {
 
   private static Client clientOnto(final Endpoint endpoint) {
     final var builder = Client.builder().apiKey(endpoint.apiKey());
-    if (!Strings.isNullOrEmpty(endpoint.baseUrl())) {
-      builder.httpOptions(HttpOptions.builder().baseUrl(endpoint.baseUrl()).build());
+    if (!Strings.isNullOrEmpty(endpoint.baseUrl()) || !endpoint.headers().isEmpty()) {
+      final var httpOptions = HttpOptions.builder();
+      if (!Strings.isNullOrEmpty(endpoint.baseUrl())) {
+        httpOptions.baseUrl(endpoint.baseUrl());
+      }
+      // Native support, unlike OpenAI and Anthropic here: HttpOptions takes a header map directly
+      // rather than needing an OkHttp interceptor threaded through a customizer.
+      if (!endpoint.headers().isEmpty()) {
+        httpOptions.headers(endpoint.headers());
+      }
+      builder.httpOptions(httpOptions.build());
     }
     return builder.build();
   }
@@ -234,5 +247,14 @@ public class GoogleGenAiUserChatClients implements ProviderChatClients {
    * them, so sending it per request would mean building a set from scratch and losing everything
    * else the deployment configured.
    */
-  record Endpoint(String baseUrl, String apiKey, String model, String reasoningEffort) {}
+  record Endpoint(
+      String baseUrl,
+      String apiKey,
+      String model,
+      String reasoningEffort,
+      Map<String, String> headers) {
+    Endpoint {
+      headers = headers == null ? Map.of() : Map.copyOf(headers);
+    }
+  }
 }
