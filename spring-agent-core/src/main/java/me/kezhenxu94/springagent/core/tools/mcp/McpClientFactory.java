@@ -6,8 +6,11 @@ import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTranspor
 import io.modelcontextprotocol.client.transport.customizer.McpSyncHttpClientRequestCustomizer;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
+import java.net.Authenticator;
+import java.net.CookieHandler;
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.net.ProxySelector;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.net.http.HttpClient;
@@ -21,11 +24,15 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Executor;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.stereotype.Component;
 
 /**
@@ -55,7 +62,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-public class McpClientFactory {
+public class McpClientFactory implements DisposableBean {
 
   private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(30);
@@ -66,6 +73,19 @@ public class McpClientFactory {
 
   private final Set<String> trustedHosts;
   private final List<McpHeaderContributor> headerContributors;
+
+  /**
+   * The one HTTP client every transport this factory builds talks through.
+   *
+   * <p>Load-bearing. A JDK {@link HttpClient} owns a selector thread for as long as it lives, and a
+   * transport built from a fresh one per server per run leaked that thread every turn: {@code
+   * McpSyncClient.close()} ends the session but the transport never closes the client it built, and
+   * has no way to be handed one. Sharing it costs nothing — nothing on it differs by server or by
+   * caller, since headers, which are the only thing that does, go on per request through {@link
+   * #headerCustomizer} — and buys connection reuse between turns besides.
+   */
+  private final HttpClient httpClient =
+      HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
 
   public McpClientFactory(
       final McpProperties properties, final List<McpHeaderContributor> headerContributors) {
@@ -211,12 +231,84 @@ public class McpClientFactory {
     }
   }
 
-  private McpClientTransport buildTransport(final McpServerConfig config) {
-    final var clientBuilder = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT);
+  McpClientTransport buildTransport(final McpServerConfig config) {
     return HttpClientStreamableHttpTransport.builder(config.url())
-        .clientBuilder(clientBuilder)
+        .clientBuilder(new SharedClient(httpClient))
+        // The transport sets its own connect timeout on the builder it is given, so this is the
+        // value that counts; the shared client was built with the same one.
+        .connectTimeout(CONNECT_TIMEOUT)
         .httpRequestCustomizer(headerCustomizer(config))
         .build();
+  }
+
+  @Override
+  public void destroy() {
+    httpClient.shutdownNow();
+  }
+
+  /**
+   * A builder that builds nothing: it hands back the shared client whatever it was told.
+   *
+   * <p>The transport's builder accepts an {@link HttpClient.Builder} and nothing else, and calls
+   * {@code build()} on it itself, so this is the only seam through which a transport can be given
+   * an existing client. Every setter is ignored on purpose; the one the transport calls, {@code
+   * connectTimeout}, carries the value the shared client already has.
+   */
+  private record SharedClient(HttpClient client) implements HttpClient.Builder {
+    @Override
+    public HttpClient.Builder cookieHandler(final CookieHandler cookieHandler) {
+      return this;
+    }
+
+    @Override
+    public HttpClient.Builder connectTimeout(final Duration duration) {
+      return this;
+    }
+
+    @Override
+    public HttpClient.Builder sslContext(final SSLContext sslContext) {
+      return this;
+    }
+
+    @Override
+    public HttpClient.Builder sslParameters(final SSLParameters sslParameters) {
+      return this;
+    }
+
+    @Override
+    public HttpClient.Builder executor(final Executor executor) {
+      return this;
+    }
+
+    @Override
+    public HttpClient.Builder followRedirects(final HttpClient.Redirect policy) {
+      return this;
+    }
+
+    @Override
+    public HttpClient.Builder version(final HttpClient.Version version) {
+      return this;
+    }
+
+    @Override
+    public HttpClient.Builder priority(final int priority) {
+      return this;
+    }
+
+    @Override
+    public HttpClient.Builder proxy(final ProxySelector proxySelector) {
+      return this;
+    }
+
+    @Override
+    public HttpClient.Builder authenticator(final Authenticator authenticator) {
+      return this;
+    }
+
+    @Override
+    public HttpClient build() {
+      return client;
+    }
   }
 
   /**
