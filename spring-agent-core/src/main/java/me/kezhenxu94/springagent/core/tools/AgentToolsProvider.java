@@ -58,6 +58,9 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationContext;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
+import org.springframework.core.task.TaskExecutor;
+import org.springframework.core.task.support.ContextPropagatingTaskDecorator;
 import org.springframework.stereotype.Component;
 
 @Slf4j
@@ -114,6 +117,25 @@ public class AgentToolsProvider {
    * deployment that does not want a knowledge base.
    */
   private final ObjectProvider<KnowledgeBase> knowledgeBase;
+
+  /**
+   * What every knowledge-retrieval advisor fans its queries out on, one for the whole provider
+   * rather than one per advisor.
+   *
+   * <p>Load-bearing. Left unset, {@link RetrievalAugmentationAdvisor} builds and initializes a
+   * {@code ThreadPoolTaskExecutor} of its own whose four core threads never time out, and nothing
+   * ever shuts it down — a live thread is a GC root, so the pool outlives the advisor that made it.
+   * {@link #knowledgeRetrieval} builds an advisor per run, so that was four platform threads leaked
+   * per turn, until the process could not start a thread at all and the first thing to go was the
+   * Feishu long connection's reconnect.
+   *
+   * <p>Virtual threads rather than a shared pool, so that there is nothing here to size, nothing to
+   * shut down and nothing to leak even should this ever stop being a singleton: a retrieval is an
+   * embedding call and a vector search, blocking I/O and nothing else, and there is normally one
+   * query to run. The decorator is the one Spring AI's own default carries, and is kept for the
+   * same reason — it is what carries the observation and tracing context onto the retrieval thread.
+   */
+  private final TaskExecutor knowledgeRetrievalExecutor = newKnowledgeRetrievalExecutor();
 
   /**
    * @param searchTools the three tools that find a file rather than read one — {@code Glob}, {@code
@@ -425,6 +447,7 @@ public class AgentToolsProvider {
                 RetrievalAugmentationAdvisor.builder()
                     .documentRetriever(reporting(base.retrieverFor(scope, extra), knowledgeHandler))
                     .queryTransformers(transformers)
+                    .taskExecutor(knowledgeRetrievalExecutor)
                     .queryAugmenter(
                         ContextualQueryAugmenter.builder()
                             .allowEmptyContext(true)
@@ -449,6 +472,14 @@ public class AgentToolsProvider {
                     // cheaper of the two failures by a wide margin — the other one corrupts data.
                     .order(ToolCallingAdvisor.DEFAULT_ORDER + 200)
                     .build());
+  }
+
+  /** See {@link #knowledgeRetrievalExecutor}. */
+  static TaskExecutor newKnowledgeRetrievalExecutor() {
+    final var executor = new SimpleAsyncTaskExecutor("knowledge-retrieval-");
+    executor.setVirtualThreads(true);
+    executor.setTaskDecorator(new ContextPropagatingTaskDecorator());
+    return executor;
   }
 
   /**

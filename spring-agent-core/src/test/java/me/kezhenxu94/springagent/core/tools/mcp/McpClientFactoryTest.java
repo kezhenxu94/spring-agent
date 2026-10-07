@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.net.http.HttpClient;
 import java.util.List;
+import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -113,5 +115,32 @@ class McpClientFactoryTest {
   void hashHexRespectsRequestedLength() {
     assertThat(McpClientFactory.hashHex("github-mcp", 16)).hasSize(16).matches("^[0-9a-f]+$");
     assertThat(McpClientFactory.hashHex("github-mcp", 8)).hasSize(8).matches("^[0-9a-f]+$");
+  }
+
+  @Test
+  @DisplayName("every transport talks through one HTTP client, so a run leaks no selector thread")
+  void transportsShareOneHttpClient() throws Exception {
+    final var first = httpClientOf(factory.buildTransport(server("a")));
+    final var second = httpClientOf(factory.buildTransport(server("b")));
+    // A JDK HttpClient holds a selector thread until it is collected, and the transport never
+    // closes the one it builds; one per server per run is what leaked them.
+    assertThat(first).isSameAs(second);
+  }
+
+  private static HttpClient httpClientOf(final Object transport) throws Exception {
+    final var field = transport.getClass().getDeclaredField("httpClient");
+    field.setAccessible(true);
+    return (HttpClient) field.get(transport);
+  }
+
+  private static McpServerConfig server(final String name) {
+    return McpServerConfig.builder()
+        .id(name)
+        .ownerId("ou_1")
+        .name(name)
+        .transport(McpServerConfig.Transport.STREAMABLE_HTTP)
+        .url("https://" + name + ".example.invalid/mcp")
+        .enabled(true)
+        .build();
   }
 }
