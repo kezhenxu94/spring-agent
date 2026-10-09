@@ -86,6 +86,19 @@ class FeishuConfigFormTest {
   }
 
   @Test
+  @DisplayName("no input asks for more than Feishu's 1000-character max_length")
+  void inputsWithinFeishuLimit() throws Exception {
+    final var card =
+        om.readTree(form.card(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai"));
+
+    // Anything above 1000 is not clamped: the card is refused with `11310 max_length exceed the
+    // default maximum 1000`, and /config answers with no card at all.
+    assertThat(elements(card).valueStream().filter(node -> node.has("max_length")))
+        .isNotEmpty()
+        .allSatisfy(node -> assertThat(node.path("max_length").asInt()).isBetween(1, 1000));
+  }
+
+  @Test
   @DisplayName("the dropdown carries no label, which Feishu rejects the whole card over")
   void selectHasNoLabel() throws Exception {
     final var card =

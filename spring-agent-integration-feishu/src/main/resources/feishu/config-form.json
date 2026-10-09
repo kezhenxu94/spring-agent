@@ -19,7 +19,8 @@
     "written by the user and must not be able to break the card.",
     "",
     "Names must be unique across the whole card, start with a letter, hold only letters, digits",
-    "and underscores, and stay within 20 characters.",
+    "and underscores, and stay within 20 characters. An input's max_length is 1 to 1000: a larger",
+    "one is not clamped, it refuses the whole card with 11310 and the user gets no card at all.",
     "",
     "select_static carries no label of its own — unlike input, it has neither label nor",
     "label_position, and sending one is rejected outright with a 200621 parse error rather than",
@@ -204,7 +205,7 @@
     "input_type": "multi_line",
     "required": false,
     "width": "fill",
-    "max_length": 4000,
+    "max_length": 1000,
     "rows": 3,
     "label": {
       "tag": "plain_text",
