@@ -416,68 +416,25 @@ class FeishuCardUpdaterToolStatusTest {
   // -----------------------------------------------------------------------------------------
 
   @Test
-  @DisplayName("a turn making more calls than the pane holds says how many it is not showing")
-  void theOldestCallsAreSaidInALine() throws Exception {
+  @DisplayName("every call keeps its own pane, however many the turn makes")
+  void everyCallKeepsItsPane() throws Exception {
     answerDeletes();
     for (var i = 1; i <= 24; i++) {
       updater.setToolStatus("Tool" + i, "{\"n\":" + i + "}", null);
     }
 
-    final var elements = updated("tools").path("elements");
-    // The line stands where the calls it stands for would have been: above the oldest one shown.
-    assertThat(elements.path(0).path("content").asString()).isEqualTo("… and 1 earlier calls");
-    assertThat(elements.path(0).path("element_id").asString()).isEqualTo("tools_earlier");
-    assertThat(title(elements.path(1))).isEqualTo("Tool2");
-  }
-
-  @Test
-  @DisplayName("the first call to fall out of the window is what puts the line on the card")
-  void theWindowSlidesByRebuildingOnceAndThenIncrementally() throws Exception {
-    answerDeletes();
-    for (var i = 1; i <= 23; i++) {
-      updater.setToolStatus("Tool" + i, "{\"n\":" + i + "}", null);
-    }
-
-    // A line that is not on the card cannot be corrected in place, so the call that first pushes
-    // one out of the window is answered by building the pane again — once — and every call after
-    // it drops the oldest pane and rewrites the count.
-    assertThat(kinds("update").stream().filter("tools"::equals).toList()).hasSize(1);
-    assertThat(kinds("delete")).containsExactly("tool_call_1", "tool_call_2");
-    assertThat(kinds("update").stream().filter("tools_earlier"::equals).toList()).hasSize(2);
-    assertThat(updated("tools_earlier").path("content").asString())
-        .isEqualTo("… and 3 earlier calls");
-    // And the calls still shown are appended as ever: the window sliding is not a rebuild.
-    assertThat(kinds("append").stream().filter("tools"::equals).toList()).hasSize(21);
-  }
-
-  @Test
-  @DisplayName("a result for a call the window has dropped changes nothing on the card")
-  void aResultForADroppedCallIsNotWritten() throws Exception {
-    answerDeletes();
-    updater.setToolStatus("Tool0", "{\"n\":0}", null);
-    for (var i = 1; i <= 22; i++) {
-      updater.setToolStatus("Tool" + i, "{\"n\":" + i + "}", null);
-    }
-    writes.clear();
-
-    updater.clearToolStatus("Tool0", "{}", "ok");
-
-    // Its pane is behind the line saying how many the pane has dropped. There is nothing on the
-    // card to rewrite, and putting the pane back to say so would close every call a reader opened.
-    assertThat(writes).isEmpty();
-  }
-
-  @Test
-  @DisplayName("the count the run ends with is every call the turn made, dropped panes included")
-  void theFinalCountIncludesTheDroppedCalls() throws Exception {
-    answerDeletes();
-    for (var i = 1; i <= 24; i++) {
-      updater.setToolStatus("Tool" + i, "{\"n\":" + i + "}", null);
-    }
+    // Nothing is dropped to stay within the card's size: a card too full for one more call is
+    // finished and the run moves onto another, so the only limit is Feishu's own.
+    assertThat(kinds("delete")).isEmpty();
+    assertThat(kinds("update").stream().filter("tools"::equals).toList()).isEmpty();
+    assertThat(kinds("append").stream().filter("tools"::equals).toList()).hasSize(23);
 
     updater.onFinished(AgentOutcome.COMPLETED);
 
-    assertThat(title(updated("tools"))).isEqualTo("**Tool calls**(24)");
+    final var pane = updated("tools");
+    assertThat(title(pane)).isEqualTo("**Tool calls**(24)");
+    assertThat(pane.path("elements")).hasSize(24);
+    assertThat(title(pane.path("elements").path(0))).isEqualTo("Tool1");
   }
 
   // -----------------------------------------------------------------------------------------

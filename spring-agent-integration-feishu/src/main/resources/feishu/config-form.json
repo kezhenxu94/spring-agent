@@ -21,6 +21,7 @@
     "Names must be unique across the whole card, start with a letter, hold only letters, digits",
     "and underscores, and stay within 20 characters. An input's max_length is 1 to 1000: a larger",
     "one is not clamped, it refuses the whole card with 11310 and the user gets no card at all.",
+    "Its input_type is text, multiline_text or password, and any other spelling is 10002.",
     "",
     "select_static carries no label of its own — unlike input, it has neither label nor",
     "label_position, and sending one is rejected outright with a 200621 parse error rather than",
@@ -202,7 +203,7 @@
   "headersInput": {
     "tag": "input",
     "name": "cfg_headers",
-    "input_type": "multi_line",
+    "input_type": "multiline_text",
     "required": false,
     "width": "fill",
     "max_length": 1000,

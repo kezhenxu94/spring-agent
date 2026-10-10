@@ -99,6 +99,21 @@ class FeishuConfigFormTest {
   }
 
   @Test
+  @DisplayName("every input_type is one Feishu knows")
+  void inputTypesKnownToFeishu() throws Exception {
+    final var card =
+        om.readTree(form.card(List.of(), null, List.of(), "gpt-4o", List.of("openai"), "openai"));
+
+    // An unknown spelling is not ignored either: `10002 invalid input type` refuses the card.
+    assertThat(elements(card).valueStream().filter(node -> node.has("input_type")))
+        .isNotEmpty()
+        .allSatisfy(
+            node ->
+                assertThat(node.path("input_type").asString())
+                    .isIn("text", "multiline_text", "password"));
+  }
+
+  @Test
   @DisplayName("the dropdown carries no label, which Feishu rejects the whole card over")
   void selectHasNoLabel() throws Exception {
     final var card =
