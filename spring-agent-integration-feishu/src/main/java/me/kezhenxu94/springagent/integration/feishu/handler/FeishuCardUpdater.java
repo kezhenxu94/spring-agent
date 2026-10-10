@@ -79,15 +79,6 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   private static final int MAX_QUEUED_MESSAGE_LENGTH = 200;
 
   /**
-   * How many earlier calls get a pane each. A card has a size of its own to stay within — 30KB, or
-   * 200 elements — and a turn that makes fifty calls cannot carry fifty transcripts without filling
-   * one card after another. The ones past this are said in a line rather than dropped in silence,
-   * and the newest are the ones kept: a reader looking at a running turn is looking at what it just
-   * did.
-   */
-  private static final int CALLS_SHOWN = 20;
-
-  /**
    * How much of a call's input and of what it returned the pane holds. Both can be enormous — a
    * file written whole, a command that prints a log — and neither is what the pane is for: it says
    * what the run did, and the answer above it says what came of it.
@@ -172,9 +163,9 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    * incremental writes are addressed against: the panes on the card are this call and every call
    * after it, one each, in the run's own order.
    *
-   * <p>Moved only by the two things that can move it — a rebuild, which decides afresh what the
-   * pane shows, and the window sliding past a call as another is appended, which deletes that
-   * call's pane. Both keep it equal to what the earlier-calls line inside the pane says.
+   * <p>Moved only by a rebuild, which decides afresh what the pane shows, and by the run moving
+   * onto a new card, whose pane starts with the next call. Every call gets a pane: a card too full
+   * to take one more is the card the run leaves — see {@code FeishuCard#continueOnNewCard()}.
    */
   private int shownFrom;
 
@@ -655,9 +646,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    * touches one place: the panes already there are not sent, so nothing about them changes.
    *
    * <p>Whole-pane rebuilds are what is left when there is nothing to keep — a card with no pane on
-   * it yet, a pane a write found gone, a window that has to drop a call before the line saying how
-   * many exists to be updated. Each of those is once per card or once per turn rather than once per
-   * call.
+   * it yet, a pane a write found gone. Each of those is once per card or once per turn rather than
+   * once per call.
    */
   private synchronized void addToolCall() {
     if (elements == null || toolCalls.isEmpty()) {
@@ -670,7 +660,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       // saying so and holding nothing is not worth the space on a card that has just started.
       return;
     }
-    if (!toolPaneIntact() || !slideTo(hidden)) {
+    if (!toolPaneIntact()) {
       showToolCalls(true);
       return;
     }
@@ -714,8 +704,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       return;
     }
     if (index < shownFrom || index >= toolCalls.size()) {
-      // Its pane is not on this card: it is on the card the run left, or behind the line standing
-      // for the calls the window has dropped. Either way there is nothing here to rewrite.
+      // Its pane is on the card the run left, and there is nothing here to rewrite.
       return;
     }
     card.replaceNested(
@@ -725,37 +714,11 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   }
 
   /**
-   * How many of the run's calls the pane on this card does not show one each: the ones left on a
-   * card it filled, which have a pane already up there, and the ones this card has dropped to stay
-   * within its size. Said in a line inside the pane rather than dropped in silence.
+   * How many of the run's calls the pane on this card does not show: the ones left on a card it
+   * filled, which have a pane already up there.
    */
   private int hiddenCalls() {
-    return Math.max(callsOnEarlierCards, toolCalls.size() - CALLS_SHOWN);
-  }
-
-  /**
-   * Drops the panes of the calls that have fallen out of the window, and says whether the pane can
-   * now be appended to — the line counting them has to be there to be corrected, and it is on the
-   * card only where something was already hidden. So the first call to fall out of the window is
-   * answered with a rebuild, and every one after it incrementally.
-   */
-  private boolean slideTo(final int hidden) {
-    if (hidden <= shownFrom) {
-      return true;
-    }
-    if (shownFrom == 0) {
-      return false;
-    }
-    while (shownFrom < hidden) {
-      card.remove(FeishuCardElements.toolCallElementId(shownFrom));
-      shownFrom++;
-    }
-    card.replaceNested(
-        FeishuCardElements.TOOLS_EARLIER,
-        elements.earlierCallsLine(shownFrom),
-        card.cardId() + ":tools-earlier:" + shownFrom);
-    log.debug("The pane on card {} now shows the calls from {}", card.cardId(), shownFrom);
-    return true;
+    return callsOnEarlierCards;
   }
 
   /**
@@ -780,7 +743,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
         return false;
       }
     }
-    return !card.lost(FeishuCardElements.TOOLS_EARLIER);
+    return true;
   }
 
   /** One call as the pane shows it, addressed by the id the run appends and rewrites it under. */
@@ -808,9 +771,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       return;
     }
     sync();
-    // The calls left on a card the run has filled are hidden here for the same reason the oldest
-    // are: they have a pane already, on the card above, and the count says how many rather than
-    // this pane showing them twice.
+    // The calls left on a card the run has filled are not shown again: they have a pane already,
+    // on the card above.
     final var hidden = hiddenCalls();
     if (hidden >= toolCalls.size()) {
       // Every call this run has made is on an earlier card and it has made none since. A pane
@@ -830,9 +792,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
                 // call a reader had opened — on every call.
                 ? messages.get("card-tool-calls-running")
                 // The run is over, which is the one time the title is rewritten. The count is the
-                // turn's total, the calls behind the earlier-calls line included.
+                // turn's total, the calls on the cards above included.
                 : messages.get("card-tool-calls-done", toolCalls.size()),
-            hidden,
             shown);
     if (stillOnCard(FeishuCardElements.TOOLS)) {
       // A key that changes with the pane: an idempotency key is what stops a retry landing twice,
@@ -865,7 +826,6 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    */
   private void paneRebuilt(final int hidden) {
     shownFrom = hidden;
-    card.found(FeishuCardElements.TOOLS_EARLIER);
     for (var index = hidden; index < toolCalls.size(); index++) {
       card.found(FeishuCardElements.toolCallElementId(index));
     }
@@ -1133,8 +1093,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     firstSubagentPanelId = null;
     callsOnEarlierCards = toolCalls.size();
     // Nothing of the trail is on the card the run has moved onto, so the first call it makes there
-    // is the first one that card shows. Held in step with callsOnEarlierCards, which is what the
-    // pane's earlier-calls line will say the moment there is a pane again.
+    // is the first one that card shows.
     shownFrom = toolCalls.size();
   }
 

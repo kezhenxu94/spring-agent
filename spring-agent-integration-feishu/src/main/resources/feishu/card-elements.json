@@ -68,9 +68,8 @@
     "panel sent again is drawn again with everything inside it closed. Feishu reports a chevron to",
     "nobody, so a pane a reader had opened would snap shut under them on every call. So the run",
     "appends one pane as a call goes out and rewrites that one pane as it comes back, and touches",
-    "nothing else. The first thing inside, where anything is hidden, is the line standing for the",
-    "calls the pane has dropped to stay within the card's size; it carries an id of its own so that",
-    "its count can be corrected in place as the window slides.",
+    "nothing else. Every call gets a pane: a card too full to take one more is finished, and the",
+    "pane on the card the run moves onto starts with the call that did not fit.",
     "'tool_call' is one of those inner panes, titled by the tool it called, by how long the call",
     "took once it is back, and, where the model was asked for a description and wrote one, by what",
     "it said the call was for — twenty panes all reading 'Bash' tell a reader nothing about which",
@@ -162,14 +161,7 @@
       "icon_position": "follow_text",
       "icon_expanded_angle": 90
     },
-    "elements": [
-      {
-        "tag": "markdown",
-        "content": "",
-        "text_align": "left",
-        "text_size": "notation"
-      }
-    ]
+    "elements": []
   },
   "tool_call": {
     "tag": "collapsible_panel",

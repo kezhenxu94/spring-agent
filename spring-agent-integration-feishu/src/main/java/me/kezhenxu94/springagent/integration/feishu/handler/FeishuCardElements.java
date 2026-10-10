@@ -91,13 +91,6 @@ public class FeishuCardElements {
   private static final String TOOL_CALL = "tool_call";
 
   /**
-   * The line inside the tool pane standing for the calls the pane no longer shows one each. It has
-   * an id for the same reason a call's pane does: the count on it changes as the window slides, and
-   * rewriting the pane around it to say so is exactly what this design exists to avoid.
-   */
-  static final String TOOLS_EARLIER = "tools_earlier";
-
-  /**
    * The id of the pane holding the {@code index}-th call the run has made, counting every call of
    * the turn rather than the ones this card shows — a card the run continued onto starts its
    * numbering where the card before it left off, so the ids stay the ones the run's own list is
@@ -457,40 +450,17 @@ public class FeishuCardElements {
    * found it gone, and folding it away as the run ends. Which is why {@code expanded} is passed in:
    * a replacement decides afresh whether the pane is open, so the run has to say each time what it
    * was.
-   *
-   * @param hidden how many calls are too old to be shown a pane each, said in one line rather than
-   *     dropped in silence
    */
   @SneakyThrows
-  public String toolsPane(
-      final boolean expanded, final String title, final int hidden, final List<ToolCall> calls) {
+  public String toolsPane(final boolean expanded, final String title, final List<ToolCall> calls) {
     final var element = element(TOOLS);
     element.put("expanded", expanded);
     fillTitle(element, title);
     final var elements = (ArrayNode) element.path("elements");
-    // The template's one line is the style for the line standing in for the calls too old to show,
-    // and nothing else: every call is a pane, so with none dropped the pane holds panes alone.
-    elements.remove(0);
-    if (hidden > 0) {
-      elements.add(om.readTree(earlierCallsLine(hidden)));
-    }
     for (final var call : calls) {
       elements.add(om.readTree(toolCallPane(call)));
     }
     return om.writeValueAsString(element);
-  }
-
-  /**
-   * The line standing in for the calls the pane no longer shows one each, as an element of its own:
-   * what the run rewrites in place as the window slides past another call, so that the pane holding
-   * it is left alone and the panes a reader opened stay open.
-   */
-  @SneakyThrows
-  public String earlierCallsLine(final int hidden) {
-    final var line = (ObjectNode) template().get(TOOLS).path("elements").get(0);
-    line.put("element_id", TOOLS_EARLIER);
-    line.put("content", messages.get("card-tool-calls-earlier", hidden));
-    return om.writeValueAsString(line);
   }
 
   /**
