@@ -190,6 +190,28 @@ class FeishuCardContinuationTest {
   }
 
   @Test
+  @DisplayName("a call whose pane the full card refused is shown on the card the run moved onto")
+  void aCallTheFullCardRefusedIsShownOnTheNext() {
+    final var run =
+        FeishuCardUpdater.forRun(card, new JsonMapper(), null, messages, elements(), null);
+
+    run.setToolStatus("Bash", "{\"command\":\"ls\"}", null);
+    full.add("card-1");
+    // Appended without waiting, so nobody is told here that it did not fit.
+    run.setToolStatus("Read", "{\"path\":\"/etc/hosts\"}", null);
+    assertThat(card.cardId()).isEqualTo("card-2");
+
+    // The call never reached the card above, so it is not counted among the calls left there: the
+    // pane on the new card is built around it the next time the run writes to the pane.
+    run.clearToolStatus("Read", "{\"path\":\"/etc/hosts\"}", "127.0.0.1 localhost");
+
+    assertThat(inserted)
+        .filteredOn(insert -> insert[0].equals("card-2"))
+        .anySatisfy(
+            insert -> assertThat(insert[2]).contains("tool_call_1").doesNotContain("tool_call_0"));
+  }
+
+  @Test
   @DisplayName("the answer continues on the new card rather than being written out again")
   void continuesTheAnswerRatherThanRepeatingIt() {
     final var run =

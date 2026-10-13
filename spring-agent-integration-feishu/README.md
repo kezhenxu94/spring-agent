@@ -63,7 +63,10 @@ rebuilt on every tool call would snap shut every call a reader had opened, sever
 So `FeishuCardUpdater` appends one nested pane as a call goes out (`FeishuCard.appendInto`, the
 `append` mode of the element API, which is the one way a container already on the card can be added
 to) and rewrites that one pane as it comes back, carrying what the call returned and how long it
-took. Nothing else on the card is touched. The whole pane is built again only where there is nothing
+took. Nothing else on the card is touched. Both ride the card's paced queue like the answer does,
+and the append is not waited on, so the tool never waits on Feishu. A call that comes back before
+its append has gone out is folded into that append, so it costs one write instead of two. The appends
+of one round go out together as one insert. The whole pane is built again only where there is nothing
 to keep: a card with no pane yet, a pane a write found gone, the window dropping its oldest call, and
 the end of the run — which is also the only moment the pane's own title is rewritten, to fold it away
 and say how many calls the turn made in the end. A nested element that goes missing is *not*
