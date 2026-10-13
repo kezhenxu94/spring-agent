@@ -59,7 +59,7 @@ class FeishuCardFinishTest {
   @Test
   @DisplayName("the stop button goes, there being no run left to stop")
   void theStopButtonIsRemoved() throws Exception {
-    card.finish();
+    card.finish().join();
 
     final var captor = ArgumentCaptor.forClass(DeleteCardElementReq.class);
     verify(feishu.cardkit().v1().cardElement()).delete(captor.capture());
@@ -69,7 +69,7 @@ class FeishuCardFinishTest {
   @Test
   @DisplayName("streaming mode closes, so the card stops accepting what it is streamed")
   void streamingModeIsClosed() throws Exception {
-    card.finish();
+    card.finish().join();
 
     assertThat(om.readTree(settingsSent()).path("config").path("streaming_mode").asBoolean())
         .isFalse();

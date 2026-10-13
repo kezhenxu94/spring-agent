@@ -147,12 +147,15 @@ class FeishuCardToolCallBatchingTest {
     // The turn's first call puts the pane on the card, and goes out at once: the card has said
     // nothing yet, so there is no interval to wait out. Everything below is inside it.
     run.setToolStatus("Bash", "{\"command\":\"ls\"}", null);
-    assertThat(creates).extracting(Write::type).containsExactly("insert_before");
+    await()
+        .atMost(Duration.ofSeconds(10))
+        .untilAsserted(
+            () -> assertThat(creates).extracting(Write::type).containsExactly("insert_before"));
 
     run.setToolStatus("Read", "{\"path\":\"/etc/hosts\"}", null);
     run.setToolStatus("Grep", "{\"pattern\":\"localhost\"}", null);
     run.clearToolStatus("Read", "{\"path\":\"/etc/hosts\"}", "127.0.0.1 localhost");
-    card.finish();
+    card.finish().join();
 
     assertThat(creates).extracting(Write::type).containsExactly("insert_before", "append");
     final var appended = creates.get(1).elements();
@@ -176,7 +179,7 @@ class FeishuCardToolCallBatchingTest {
         .untilAsserted(() -> assertThat(creates).extracting(Write::type).contains("append"));
 
     run.clearToolStatus("Read", "{\"path\":\"/etc/hosts\"}", "127.0.0.1 localhost");
-    card.finish();
+    card.finish().join();
 
     assertThat(updates).containsExactly("tool_call_1");
   }

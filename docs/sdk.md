@@ -270,8 +270,7 @@ class MySurfaceListener implements AgentResponseListener {
 preconditions without a tool of its own.
 
 **Every callback runs on one virtual thread belonging to that run**, so they are serialized and a
-callback may block — waiting on the write that puts an element on a card before anything can be
-streamed into it, say. What it costs is the run's own lag: the chunks queue behind it and the surface
+callback may block — on a surface's own call to its platform, say. What it costs is the run's own lag: the chunks queue behind it and the surface
 falls behind the model rather than the model waiting on the surface. What it must not do is wait for
 *another* run (see `fireAndWait` below) or for something with no timeout: a run's stream is not read
 while its listeners are being called, so a callback that never returns is a turn that never ends.

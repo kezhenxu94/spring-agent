@@ -239,13 +239,15 @@ public class FeishuCardListener implements AgentResponseListener {
    * what it is calling and what it has spent all reach the panel through the ordinary per-run
    * callbacks, and the tool interceptor finds the updater under the same key as any other run's.
    *
-   * <p>The panel has to be inserted here, before the run is assembled: nothing can be streamed into
-   * an element the card does not have yet. The subagent's own id is the insert's idempotency key —
-   * unique to it and unchanged across a retry, so a retried insert cannot leave two panels behind.
+   * <p>The panel is queued here, before the run is assembled, so that it reaches the card ahead of
+   * everything the subagent goes on to write into it — and not waited on, since this is the
+   * parent's tool call starting the subagent. The subagent's own id is the insert's idempotency
+   * key: unique to it and unchanged across a retry, so a retried insert cannot leave two panels
+   * behind.
    *
    * <p>Where it lands is the parent's to say rather than the card's: the panels have a place among
    * the run's own elements, above its tool calls, and only the parent's updater knows which of
-   * those the card has reached. Which is also why the parent is told the panel landed — from then
+   * those the card has reached. Which is also why the parent is told the panel is there — from then
    * on the elements it adds go in above the subagents rather than among them.
    */
   private void attachSubagentPanel(
@@ -266,13 +268,7 @@ public class FeishuCardListener implements AgentResponseListener {
     // Through the updater rather than here, because this is not the only time it happens: a run
     // that fills its card and carries on onto another leaves the panel behind on the full one, and
     // the updater is what puts it back — see FeishuCardUpdater#insertPanel().
-    if (!updater.insertPanel()) {
-      // Worth doing anyway: the answer the subagent produces still reaches the run that waits for
-      // it, and the reader loses the account of how it got there rather than the work itself.
-      log.warn(
-          "No panel on card {} for subagent {}, which will run unreported", card.cardId(), runId);
-      return;
-    }
+    updater.insertPanel();
     registry.addResponseListener(updater);
     registry.addToolContext(FeishuCardUpdater.TOOL_CONTEXT_KEY.key(), updater);
   }

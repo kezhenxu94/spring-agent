@@ -79,10 +79,13 @@ import org.springframework.web.client.RestTemplate;
  * the parent's call to write into the card they share.
  *
  * <p>What a caller cannot then have is the answer: a queued write has not been made yet, so it
- * cannot say whether it landed. The few writes whose caller has to know — putting an element on the
- * card before anything can be streamed into it, and finishing the card — say so by waiting, and pay
- * a round trip for it. One round trip, and not the batch's: such a write is sent first, so what it
- * costs does not grow with how much the run and its subagents have queued. See {@link #await}.
+ * cannot say whether it landed. Putting an element on the card does not need one, since the queue
+ * is sent in order and a write into an element never goes ahead of the insert putting it there; a
+ * writer that wants to know is told afterwards, on the worker, and acts on it on its next write.
+ * The one write a caller still waits on is a question's form, whose caller has to say whether the
+ * question was asked at all — and pays one round trip for it, not the batch's: such a write is sent
+ * first, so what it costs does not grow with how much the run and its subagents have queued. See
+ * {@link #await}.
  *
  * <p><b>A card has a size, and a turn does not.</b> Feishu refuses a write that would take a card
  * over 30KB or over 200 elements, and neither is a limit a run can be asked to stay within — how
@@ -409,6 +412,43 @@ public class FeishuCard {
   }
 
   /**
+   * The same, queued rather than waited on, for a writer that goes on as though the elements had
+   * landed: one of the run's own elements put on the card as the run first has something to put in
+   * it. Waited on, that insert held the thread that asked for it — the one consuming the model's
+   * stream, or a tool's — for a round trip, and sent everything queued with it whatever the
+   * interval said. Queued, it goes out in order with the writes into what it puts on the card,
+   * which is all "nothing can be streamed into an element the card does not have" ever required:
+   * one worker sends the queue in order, and nothing written into {@code creates} is sent ahead of
+   * it.
+   *
+   * <p>A refusal reaches the writer through {@code outcome}, on the worker, and is acted on by the
+   * writer's next write — see {@code FeishuCardUpdater#stillOnCard}.
+   *
+   * @param creates the element this puts on the card, which is what keeps the writes into it behind
+   *     it in the queue
+   * @param outcome told on the worker whether the elements landed. It must not wait on anything a
+   *     writer holds: the writer may be blocked on a later write of the same batch
+   */
+  public void insertBefore(
+      final String targetElementId,
+      final String elementsJson,
+      final String uuid,
+      final String creates,
+      final Consumer<Boolean> outcome) {
+    enqueue(
+        new Insert(
+            targetElementId,
+            elementsJson,
+            uuid,
+            CreateCardElementTypeEnum.INSERT_BEFORE,
+            true,
+            creates,
+            null,
+            outcome,
+            0));
+  }
+
+  /**
    * Adds elements at the end of what {@code parentElementId} holds, rather than beside it on the
    * card: the one way a container already on the card can be added to without being rewritten,
    * which is what keeps a reader's chevron where they left it — see {@code
@@ -446,7 +486,9 @@ public class FeishuCard {
             CreateCardElementTypeEnum.APPEND,
             false,
             null,
-            outcome));
+            null,
+            outcome,
+            0));
   }
 
   /**
@@ -529,22 +571,21 @@ public class FeishuCard {
   }
 
   /**
-   * The same, for the one caller that goes on to write into what the replacement brought with it
-   * and so has to know that it is there — see {@code FeishuCardUpdater#spendOnCard}.
+   * Takes the stop button off the card and closes streaming mode, once the run is over, after
+   * everything queued before it. Not waited on: nothing the run does next depends on it, and
+   * waiting cost every run the drain of what it had queued plus two round trips of its own before
+   * it could be reported over. The answer is there for whoever does want it.
    */
-  public boolean replaceNow(final String elementId, final String elementJson, final String uuid) {
-    return await(new Replace(elementId, elementJson, uuid, true, new CompletableFuture<>()));
-  }
-
-  /** Takes the stop button off the card and closes streaming mode, once the run is over. */
-  public void finish() {
+  public CompletableFuture<Boolean> finish() {
     log.info("Finalizing card: cardId={}", cardId);
     synchronized (this) {
       // Before the queue is drained, so that what is in it goes out while the card still accepts
       // it: streaming mode is closed by the very operation being queued here.
       finished = true;
     }
-    await(new Finish(new CompletableFuture<>()));
+    final var finish = new Finish(new CompletableFuture<>());
+    enqueue(finish);
+    return finish.landed();
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -630,6 +671,8 @@ public class FeishuCard {
    *     of what it holds
    * @param recover whether a target the card turns out not to have may be swapped for another; see
    *     {@link #appendInto}
+   * @param creates the element this puts on the card, where its writer named one: what a later
+   *     write to that element must not be sent ahead of — see {@link #names}
    * @param outcome told whether the elements landed, by a caller that does not wait to hear it; see
    *     {@link #appendInto}
    */
@@ -639,6 +682,7 @@ public class FeishuCard {
       String uuid,
       CreateCardElementTypeEnum type,
       boolean recover,
+      String creates,
       CompletableFuture<Boolean> landed,
       Consumer<Boolean> outcome,
       long generation)
@@ -651,18 +695,7 @@ public class FeishuCard {
         final CreateCardElementTypeEnum type,
         final boolean recover,
         final CompletableFuture<Boolean> landed) {
-      this(targetElementId, elementsJson, uuid, type, recover, landed, null);
-    }
-
-    Insert(
-        final String targetElementId,
-        final String elementsJson,
-        final String uuid,
-        final CreateCardElementTypeEnum type,
-        final boolean recover,
-        final CompletableFuture<Boolean> landed,
-        final Consumer<Boolean> outcome) {
-      this(targetElementId, elementsJson, uuid, type, recover, landed, outcome, 0);
+      this(targetElementId, elementsJson, uuid, type, recover, null, landed, null, 0);
     }
 
     @Override
@@ -673,13 +706,13 @@ public class FeishuCard {
     @Override
     public Op forCard(final long generation) {
       return new Insert(
-          targetElementId, elementsJson, uuid, type, recover, landed, outcome, generation);
+          targetElementId, elementsJson, uuid, type, recover, creates, landed, outcome, generation);
     }
 
     /** The same insert, carrying {@code elementsJson} instead. */
     Insert carrying(final String elementsJson) {
       return new Insert(
-          targetElementId, elementsJson, uuid, type, recover, landed, outcome, generation);
+          targetElementId, elementsJson, uuid, type, recover, creates, landed, outcome, generation);
     }
 
     /** Whether this is an append nobody is waiting on, which is what may be merged with another. */
@@ -703,6 +736,7 @@ public class FeishuCard {
           Hashing.sha256().hashString(uuid + "+" + later.uuid, UTF_8).toString(),
           type,
           recover,
+          null,
           null,
           outcomes,
           generation);
@@ -802,6 +836,11 @@ public class FeishuCard {
     }
     for (var i = queued.size() - 1; i >= 0; i--) {
       final var earlier = queued.get(i);
+      if (earlier instanceof Insert insert && op.elementId().equals(insert.creates())) {
+        // The element is being put on the card again, and a write queued before that names the
+        // element it is replacing: superseding it would send this ahead of the insert.
+        break;
+      }
       if (!earlier.elementId().equals(op.elementId())) {
         continue;
       }
@@ -993,7 +1032,7 @@ public class FeishuCard {
           && earlier.generation() == append.generation()) {
         return i;
       }
-      if (op instanceof Finish || op.elementId().equals(container)) {
+      if (op instanceof Finish || names(op, container)) {
         return -1;
       }
     }
@@ -1037,15 +1076,28 @@ public class FeishuCard {
       var earliest = 0;
       for (var i = 0; i < ordered.size(); i++) {
         final var ahead = ordered.get(i);
-        if (ahead.landed() != null
-            || ahead instanceof Finish
-            || ahead.elementId().equals(op.elementId())) {
+        if (ahead.landed() != null || ahead instanceof Finish || mustFollow(op, ahead)) {
           earliest = i + 1;
         }
       }
       ordered.add(earliest, op);
     }
     return ordered;
+  }
+
+  /**
+   * Whether {@code later} has to go out after {@code earlier}: it writes to what {@code earlier}
+   * writes to or puts on the card, or it is put above an element {@code earlier} puts there.
+   */
+  private static boolean mustFollow(final Op later, final Op earlier) {
+    return names(earlier, later.elementId())
+        || later instanceof Insert insert && names(earlier, insert.targetElementId());
+  }
+
+  /** Whether {@code op} writes to {@code elementId}, or puts it on the card. */
+  private static boolean names(final Op op, final String elementId) {
+    return op.elementId().equals(elementId)
+        || op instanceof Insert insert && elementId.equals(insert.creates());
   }
 
   private void schedulePump() {
@@ -1076,9 +1128,9 @@ public class FeishuCard {
    * and everything behind it names elements that were on the card left behind, since a new card is
    * created carrying the spend row and nothing else. Sent anyway, each of those is refused for want
    * of the element it names, which used to be the run's answer lost on every chunk until it next
-   * had something to say. So they are dropped here instead, and whoever was waiting is told they
-   * did not land — which is the answer that sends a writer round its {@code movedOn} path, to put
-   * its elements on the new card and write to them there.
+   * had something to say. So they are dropped here instead, and whoever asked to hear is told they
+   * did not land; the writer notices the new card by its generation, and puts its elements on it as
+   * it next writes to each.
    *
    * <p>Finishing is the exception, being about the card rather than about an element of it: the run
    * is over whichever card it ended on, and a card left in streaming mode goes on saying it is

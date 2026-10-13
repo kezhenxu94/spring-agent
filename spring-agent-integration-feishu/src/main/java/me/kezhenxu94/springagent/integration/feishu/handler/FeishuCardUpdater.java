@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
@@ -169,6 +170,13 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    * while this run's thread may hold that lock waiting on another write of the same batch.
    */
   private final AtomicInteger callsShown = new AtomicInteger();
+
+  /**
+   * The inserts the card refused, as {@link #refusal} writes them: an element this updater went on
+   * as though it had put on the card, and has to put on again. Written by the card's worker, which
+   * cannot take this updater's lock, and read under it — see {@link #putOnCard}.
+   */
+  private final Set<String> refused = ConcurrentHashMap.newKeySet();
 
   /**
    * The first call of the run whose pane is on the card being written to now, which is what the
@@ -827,18 +835,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     }
     final var array = om.createArrayNode();
     array.add(om.readTree(pane));
-    final var generationBefore = generation;
-    if (insertAbove(FeishuCardElements.TOOLS, array.toString(), "tools")) {
-      added.add(FeishuCardElements.TOOLS);
-      backOnCard(FeishuCardElements.TOOLS);
-      paneRebuilt(hidden);
-      return;
-    }
-    if (movedOn(generationBefore)) {
-      // Built again rather than sent again: the pane the run has just left holds the calls made so
-      // far, and the one being put on the card it moved to holds what it does from here.
-      showToolCalls(expanded);
-    }
+    putOnCard(FeishuCardElements.TOOLS, array.toString(), "tools");
+    paneRebuilt(hidden);
   }
 
   /**
@@ -1145,7 +1143,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     if (!added.contains(elementId)) {
       return false;
     }
-    if (!goneFromCard(elementId)) {
+    final var refusedHere = refused.remove(refusal(generation, elementId));
+    if (!refusedHere && !goneFromCard(elementId)) {
       return true;
     }
     log.info("Card {} no longer has {}, so it goes back on", card.cardId(), elementId);
@@ -1186,21 +1185,6 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   }
 
   /**
-   * Whether the card filled up and was replaced while a write was being made to it, which makes the
-   * failure that write reported one worth retrying: it failed against a card the run has left, and
-   * the anchor it named is on that card rather than on this one.
-   */
-  private boolean movedOn(final long generationBefore) {
-    return card.generation() != generationBefore;
-  }
-
-  /** Puts {@code arrayJson} in this element's place in the card's order, once. */
-  private synchronized boolean insertAbove(
-      final String elementId, final String arrayJson, final String suffix) {
-    return card.insertBefore(anchorOf(elementId), arrayJson, keyFor(elementId, suffix));
-  }
-
-  /**
    * The idempotency key for putting {@code elementId} on the card, which is what stops a write that
    * only looked like a failure from leaving two copies behind.
    *
@@ -1216,46 +1200,82 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
 
   /**
    * Puts one of the card's optional elements on the card, the first time this run has something to
-   * write into it. Nothing can be streamed into an element the card does not have yet, so every
-   * write to one goes through here first.
-   *
-   * <p>An insert that fails is not remembered, so the next write tries again — with the same
-   * idempotency key, which is what stops a retry that only looked like a failure from leaving two
-   * copies on the card. Returns whether the element is there to be written to.
-   *
-   * <p>The one failure retried at once is a card that filled up: the run is on a new card as of
-   * this call, that card has none of these elements, and the anchor just used was on the one it
-   * left. Working it out again and inserting into the new card is what makes the first thing a run
-   * says after a rollover appear rather than the one after it. It cannot go round more than twice —
-   * a card that has taken nothing is never continued, so the retry has no rollover of its own.
+   * write into it, and says whether it is there to be written to — which it is from here on, as far
+   * as this run can tell: see {@link #putOnCard}.
    */
   private synchronized boolean added(final String elementId) {
     sync();
     if (elements == null) {
       // A subagent: its panel came with every element it writes into, so what has to be on the
       // card is the panel and never this element.
-      return insertPanel();
+      insertPanel();
+      return true;
     }
     if (stillOnCard(elementId)) {
       return true;
     }
-    final var generationBefore = generation;
-    final var inserted = insertAbove(elementId, elements.forInsert(elementId, userId), elementId);
-    if (inserted) {
-      added.add(elementId);
-      backOnCard(elementId);
-      // The sources go in above the spend row, so from here on they are the top of the footer, and
-      // anything placed above the footer has to clear them too.
-      if (FeishuCardElements.REFERENCES.equals(elementId)) {
-        card.footerGrewTo(elementId);
-      }
-      return true;
+    putOnCard(elementId, elements.forInsert(elementId, userId), elementId);
+    // The sources go in above the spend row, so from here on they are the top of the footer, and
+    // anything placed above the footer has to clear them too.
+    if (FeishuCardElements.REFERENCES.equals(elementId)) {
+      card.footerGrewTo(elementId);
     }
-    if (movedOn(generationBefore)) {
-      return added(elementId);
+    return true;
+  }
+
+  /**
+   * Puts {@code arrayJson} on the card in {@code elementId}'s place, and goes on as though it were
+   * there.
+   *
+   * <p>Not waited on. This is the first write of an element on a card — the answer's first chunk,
+   * the thinking, the tool pane's first call, the task list — and waiting held the thread that
+   * asked, which is the one consuming the model's stream or a tool's own, for a round trip each,
+   * while sending everything queued at once whatever the interval said. Waiting bought nothing the
+   * queue does not already give: it is sent in order, and the card keeps every write into this
+   * element behind the insert putting it there.
+   *
+   * <p>A refusal is not lost for want of a caller to hear it. The worker writes it down in {@link
+   * #refused}, without this updater's lock, and the next write to the element finds it there and
+   * puts the element on again — see {@link #stillOnCard}. An insert that the card filling up
+   * dropped needs nothing at all: {@link #sync()} forgets every element on the card left behind.
+   */
+  private void putOnCard(final String elementId, final String arrayJson, final String suffix) {
+    putOnCard(elementId, anchorOf(elementId), arrayJson, keyFor(elementId, suffix));
+  }
+
+  private void putOnCard(
+      final String elementId, final String anchor, final String arrayJson, final String key) {
+    final var queuedFor = generation;
+    card.insertBefore(
+        anchor,
+        arrayJson,
+        key,
+        // What the writes into this element name, which is what has to stay behind the insert: a
+        // pane's body, or the report in a subagent's panel, rather than the element holding it.
+        writtenInto(elementId),
+        landed -> {
+          // On the card's worker, which may be sending a batch whose later writes this run's
+          // thread is blocked on while it holds this updater's lock — so nothing here takes it.
+          if (!landed) {
+            refused.add(refusal(queuedFor, elementId));
+          }
+        });
+    added.add(elementId);
+    backOnCard(elementId);
+  }
+
+  /** The element the run's writes into {@code elementId} name, once it is on the card. */
+  private String writtenInto(final String elementId) {
+    if (isSubagent()) {
+      return contentElementId;
     }
-    log.warn("No {} element on card {}, so there is nowhere to write it", elementId, card.cardId());
-    return false;
+    final var body = elements == null ? null : elements.bodyOf(elementId);
+    return body != null ? body : elementId;
+  }
+
+  /** How a refused insert is written down: per card, since one refused on a card left is moot. */
+  private static String refusal(final long generation, final String elementId) {
+    return generation + ":" + elementId;
   }
 
   /**
@@ -1265,36 +1285,26 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    *
    * <p>Where it lands is the parent's to say rather than this updater's: the panels have a place
    * among the run's own elements, above its tool calls, and only the parent knows which of those
-   * the card has reached. Which is also why it is told the panel landed — from then on the elements
-   * it adds go in above the subagents rather than among them.
+   * the card has reached. Which is also why it is told the panel is there — from then on the
+   * elements it adds go in above the subagents rather than among them.
    */
-  synchronized boolean insertPanel() {
+  synchronized void insertPanel() {
     sync();
     final var panelElementId = FeishuSubagentPanel.panelElementId(subagentId);
     if (stillOnCard(panelElementId)) {
-      return true;
+      return;
     }
     if (parent == null) {
       // Nobody to say where on the card it goes, so it is taken to be there already: a panel put
       // on a card by something other than a run — a test — is one this cannot place or replace.
-      return true;
+      return;
     }
-    final var generationBefore = generation;
-    final var inserted =
-        card.insertBefore(
-            parent.subagentPanelAnchor(),
-            panels.forInsert(subagentId, description, brief, null),
-            keyFor(panelElementId, subagentId));
-    if (inserted) {
-      added.add(panelElementId);
-      backOnCard(panelElementId);
-      parent.subagentPanelAdded(panelElementId);
-      return true;
-    }
-    if (movedOn(generationBefore)) {
-      return insertPanel();
-    }
-    return false;
+    putOnCard(
+        panelElementId,
+        parent.subagentPanelAnchor(),
+        panels.forInsert(subagentId, description, brief, null),
+        keyFor(panelElementId, subagentId));
+    parent.subagentPanelAdded(panelElementId);
   }
 
   /** The card this run is written to, which is the card a subagent of it gets a panel on. */
@@ -1326,8 +1336,8 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   }
 
   /**
-   * Says that a subagent's panel has landed on the card, so that the card's own elements go in
-   * above the subagents rather than among them from here on.
+   * Says that a subagent's panel is on the card, so that the card's own elements go in above the
+   * subagents rather than among them from here on.
    */
   synchronized void subagentPanelAdded(final String panelElementId) {
     sync();
@@ -1398,21 +1408,23 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    * FeishuCardElements#stopButtonRow()}. Growing a row means replacing it whole, and the
    * replacement is built with the line already in it, so a first report needs no write of its own.
    *
-   * <p>A replacement that fails is not remembered, so the next report tries again rather than
-   * leaving the card without a spend line for the rest of the run.
+   * <p>Queued, not waited on, like every other element the run puts on the card — see {@link
+   * #putOnCard}. A replacement that did not land shows up as the line's next write being refused
+   * for want of the line, which the card writes down and {@link #stillOnCard} reads, so the next
+   * report grows the row again rather than leaving the card without a spend line for the rest of
+   * the run.
    */
   private synchronized boolean spendOnCard(final String line) {
     if (elements == null || onCard(spendElementId)) {
       // A subagent's panel came with its own spend line in it.
       return true;
     }
-    if (card.replaceNow(
-        FeishuCardElements.USAGE,
-        elements.usageRow(line),
-        keyFor(spendElementId, spendElementId))) {
-      added.add(spendElementId);
-      backOnCard(spendElementId);
-    }
+    // Queued like the rest: the card sends it ahead of every write into the line it brings, and a
+    // card that fills up before it lands is one sync() forgets it on.
+    card.replace(
+        FeishuCardElements.USAGE, elements.usageRow(line), keyFor(spendElementId, spendElementId));
+    added.add(spendElementId);
+    backOnCard(spendElementId);
     return false;
   }
 
@@ -1659,9 +1671,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     }
     // The panel is what is being rewritten, so it has to be on the card the run is writing to now:
     // a run that filled a card while this subagent worked left the panel behind on it.
-    if (!insertPanel()) {
-      return;
-    }
+    insertPanel();
     card.replace(
         FeishuSubagentPanel.panelElementId(subagentId),
         panels.forUpdate(
@@ -1741,13 +1751,6 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     }
     final var array = om.createArrayNode();
     array.add(om.readTree(panel));
-    final var generationBefore = generation;
-    if (insertAbove(todoElementId, array.toString(), "todo")) {
-      added.add(todoElementId);
-      return;
-    }
-    if (movedOn(generationBefore)) {
-      handle(todos);
-    }
+    putOnCard(todoElementId, array.toString(), "todo");
   }
 }
