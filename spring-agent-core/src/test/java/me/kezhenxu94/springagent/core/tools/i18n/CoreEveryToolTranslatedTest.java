@@ -34,11 +34,10 @@ class CoreEveryToolTranslatedTest extends AbstractEveryToolTranslatedTest {
 
   /**
    * The library's tools that core actually offers, which is not the same list as the one the native
-   * hints register. Memory is not among them any more, and neither is TodoWrite: {@code
-   * core.memory.MemoryTools} and {@code core.tools.TodoWriteTool} are core's own classes, so the
-   * package scan finds them without being told. The hints' list: that list also carries {@code
-   * ShellTools}, whose three tools belong to the local shell backend and are translated in its own
-   * bundle.
+   * hints register. Memory is not among them any more: {@code core.memory.MemoryTools} is core's
+   * own class, so the package scan finds it without being told. The hints' list: that list also
+   * carries {@code ShellTools}, whose three tools belong to the local shell backend and are
+   * translated in its own bundle.
    *
    * <p>Brave's {@code WebSearch} is here because {@code WebSearchToolsConfiguration} publishes it,
    * and it is checked like any other even though it is off unless a deployment has a key: a tool
@@ -52,6 +51,7 @@ class CoreEveryToolTranslatedTest extends AbstractEveryToolTranslatedTest {
           org.springaicommunity.agent.tools.GlobTool.class,
           org.springaicommunity.agent.tools.GrepTool.class,
           org.springaicommunity.agent.tools.ListDirectoryTool.class,
+          org.springaicommunity.agent.tools.TodoWriteTool.class,
           org.springaicommunity.agent.tools.BraveWebSearchTool.class);
 
   @Override
