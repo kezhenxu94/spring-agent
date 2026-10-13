@@ -839,8 +839,9 @@ when a `KnowledgeBase` bean exists, so taking that module is what decides a depl
 all; `app.ai.rag.enabled` turns automatic retrieval back off.
 
 This is a different thing from `spring.ai.vectorstore.type`, which backs the **tool-search index**
-only. The two are deliberately independent: a deployment can run the tool index in the heap and the
-knowledge base in Milvus.
+only, and that only while `spring.ai.chat.client.tool-search-advisor.tool-index-type` is `vector`.
+Under `lucene` the index is BM25 on the heap and reads no store at all. The two are deliberately
+independent: a deployment can run the tool index in the heap and the knowledge base in Milvus.
 
 **Both Milvus collections are created at a fixed width, and your embedding model has to match it.**
 `app.ai.rag.milvus.embedding-dimension` and `spring.ai.vectorstore.milvus.embedding-dimension`

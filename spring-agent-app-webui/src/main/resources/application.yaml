@@ -135,7 +135,30 @@ spring:
         # is a single English sentence. Set it here to say something else.
         tool-search-advisor:
           enabled: true
-          tool-index-type: vector
+          # How `toolSearchTool` finds a tool, and the one choice here that decides what a search
+          # costs. Every search is a model round trip anyway; this is what is paid on top of it.
+          #
+          # `vector` embeds the query, so each search waits on a call to the embedding endpoint, and
+          # indexing a user's tool set embeds every description in it (see app.ai.embedding). In
+          # return it matches by meaning, which is the only kind of match that crosses languages:
+          # a Chinese query finds a tool that describes itself only in English.
+          #
+          # `lucene` ranks with BM25 in the heap: no call leaves the process, searches take a few
+          # milliseconds, and a few hundred tools index in well under a second. It matches words, so
+          # a query has to share some with the description, in the same language — Han text is
+          # split a character at a time, which ranks Chinese queries well against Chinese
+          # descriptions, and nothing ranks them against English ones. The index is rebuilt per user
+          # on their first request after a start, and no vector store is read. It is Spring AI's
+          # LuceneToolIndex; lucene-core arrives through spring-ai-starter-tool-search-advisor
+          # rather than anything declared here.
+          #
+          # `regex` is the third Spring AI ships, and is not worth choosing: it splits the query on
+          # whitespace only, so a Chinese query is one token that has to appear verbatim, and with
+          # no notion of how rare a word is, "list" ranks half the registry alike.
+          #
+          # Evaluated during AOT, like the switches in springagent.native.gradle: a native image
+          # keeps the index it was built with whatever this says when it runs.
+          tool-index-type: ${TOOL_INDEX_TYPE:vector}
           max-results: 5
     # MCP servers belonging to the application rather than to a user: connected once at startup and
     # offered to every run, whoever it belongs to. Contrast the servers a user registers at runtime,
@@ -635,6 +658,11 @@ logging:
   pattern:
     correlation: "%X{requestId:-} "
   level:
+    # Spring AI's BM25 tool index logs the score of every hit of every search at INFO, five lines a
+    # search, none of which a person reads unless they are tuning the index — when DEBUG here is
+    # what to set. Only read where spring.ai.chat.client.tool-search-advisor.tool-index-type is
+    # lucene.
+    org.springframework.ai.tool.toolsearch.index.lucene.LuceneToolIndex: WARN
     # The whole outgoing ChatClientRequest, once per model call: the rendered system prompt, the
     # replayed conversation and every tool result in it. That is the message array the endpoint
     # refused, and reading it is how a malformed history or an over-long context gets identified —

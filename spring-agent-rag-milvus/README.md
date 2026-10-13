@@ -14,7 +14,8 @@ base needs more of a store than any portable interface offers.
 Confusing the two is the easy mistake here.
 
 - **`spring.ai.vectorstore.type`** (`simple` in-heap, or `milvus`) backs the **tool-search index**
-  only — embeddings of tool descriptions, so a run is offered the few tools it needs.
+  only — embeddings of tool descriptions, so a run is offered the few tools it needs — and only
+  while `spring.ai.chat.client.tool-search-advisor.tool-index-type` is `vector`.
 - **This module** is retrieval over **user data**, in its own Milvus collection with its own
   connection under `app.ai.rag.milvus.*`. It deliberately does not read `spring.ai.vectorstore.type`,
   so a deployment can run the tool index in the heap and the knowledge base in Milvus. That is exactly
