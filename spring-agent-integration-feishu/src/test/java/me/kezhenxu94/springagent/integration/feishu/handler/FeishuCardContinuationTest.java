@@ -273,7 +273,7 @@ class FeishuCardContinuationTest {
     final var subagent =
         FeishuCardUpdater.forSubagent(
             card, new JsonMapper(), null, messages, panels, run, "sub_1", "Reading", "Read it");
-    assertThat(subagent.insertPanel()).isTrue();
+    subagent.insertPanel();
 
     run.onContent("the run says something");
     full.add("card-1");

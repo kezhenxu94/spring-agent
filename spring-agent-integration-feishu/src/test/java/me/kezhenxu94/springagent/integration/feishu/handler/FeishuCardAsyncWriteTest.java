@@ -266,36 +266,26 @@ class FeishuCardAsyncWriteTest {
   }
 
   @Test
-  @DisplayName("a write waited on does not jump ahead of an earlier write to the same element")
-  void oneElementKeepsItsOrder() throws Exception {
-    final var replaced = new UpdateCardElementResp();
-    replaced.setCode(0);
-    lenient()
-        .when(feishu.cardkit().v1().cardElement().update(any(UpdateCardElementReq.class)))
-        .thenAnswer(
-            invocation -> {
-              final UpdateCardElementReq request = invocation.getArgument(0);
-              calls.add("update:" + request.getUpdateCardElementReqBody().getElement());
-              sequences.add(request.getUpdateCardElementReqBody().getSequence());
-              return replaced;
-            });
+  @DisplayName("a write waited on does not jump ahead of the insert putting its anchor on the card")
+  void aWaitedInsertStaysBehindItsAnchor() throws Exception {
+    recordInserts();
     holdStreaming = true;
     final var card = card(Duration.ZERO);
-    // Held so that the two replacements below are certainly queued together: what is under test is
-    // the order the queue is drained in.
+    // Held so that the two inserts below are certainly queued together: what is under test is the
+    // order the queue is drained in.
     card.stream("message", "the run is working");
     assertThat(streamingEntered.await(10, TimeUnit.SECONDS)).isTrue();
 
-    card.replace("usage", "{\"spend\":\"one call\"}", "usage:1");
+    card.insertBefore(
+        "usage", "[{\"element_id\":\"references\"}]", "references", "references", null);
     releaseStreaming.countDown();
 
-    // Two writes to one element are the same content twice over, so the newer has to land last
-    // however much its caller is waiting: hoisting this one would leave the card showing the
-    // older of the two.
-    assertThat(card.replaceNow("usage", "{\"spend\":\"two calls\"}", "usage:2")).isTrue();
+    // A question's form is put above the footer, which is the sources panel once a turn has
+    // retrieved anything: hoisted ahead of the insert putting that panel on, it would name an
+    // element the card does not have yet.
+    assertThat(card.insertBefore("references", "[{\"element_id\":\"form\"}]", "form")).isTrue();
 
-    assertThat(operations())
-        .containsSubsequence("update:{\"spend\":\"one call\"}", "update:{\"spend\":\"two calls\"}");
+    assertThat(operations()).containsSubsequence("insert:usage", "insert:references");
   }
 
   @Test
@@ -352,7 +342,7 @@ class FeishuCardAsyncWriteTest {
    * this card by then, and Mockito is not something to be stubbed and invoked at once.
    */
   private void finish(final FeishuCard card) {
-    card.finish();
+    card.finish().join();
   }
 
   private Thread writer(final CountDownLatch start, final java.util.function.IntConsumer write) {

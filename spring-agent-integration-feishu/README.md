@@ -54,6 +54,14 @@ partway, and the stop button is always on the one still being written. `FeishuCa
 that bound is counted; `FEISHU_CARD_ELEMENTS`, `FEISHU_CARD_STREAM_CHARACTERS` and
 `FEISHU_CARD_STREAM_INTERVAL` tune it.
 
+**Nothing a run writes to its card is waited on, except a question's form.** Every write goes into
+`FeishuCard`'s queue, which one worker sends in order at the pace `FEISHU_CARD_STREAM_INTERVAL` sets.
+That includes the insert putting an element on the card, and finishing the card. The order is what
+"nothing can be streamed into an element the card does not have" needs: the queue never sends a
+write into an element ahead of the insert putting it there. A refused insert is reported back on
+the worker, and the run's next write to that element puts it on again. The form is the exception
+because its caller has to know whether the question was asked at all.
+
 The card JSON itself lives in template files (`FEISHU_REPLY_CARD`, `FEISHU_WELCOME_CARD`,
 `FEISHU_UPDATE_CARD`), so a deployment restyles a card without touching Java.
 

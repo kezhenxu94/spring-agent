@@ -104,7 +104,7 @@ class FeishuCardStreamThrottleTest {
 
     assertThat(written).containsExactly("The");
 
-    card.finish();
+    card.finish().join();
 
     assertThat(written).containsExactly("The", "The quick brown");
   }

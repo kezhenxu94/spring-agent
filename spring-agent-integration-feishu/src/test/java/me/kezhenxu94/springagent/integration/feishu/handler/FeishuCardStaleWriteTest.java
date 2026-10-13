@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.integration.feishu.handler;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -217,7 +218,7 @@ class FeishuCardStaleWriteTest {
   void doesNotWriteAQueuedChangeToTheCardItWasNotQueuedFor() {
     // An interval, so that writes pile up into a batch rather than each going out as it is made:
     // a batch is what can outlive the card it was queued for.
-    final var card = card(Duration.ofMinutes(1));
+    final var card = card(BATCHED);
     final var run = FeishuCardUpdater.forRun(card, om, null, messages, elements(), null);
 
     run.onContent("one");
@@ -225,7 +226,7 @@ class FeishuCardStaleWriteTest {
     full.add("card-1");
     run.onReasoning("and it thought about it");
 
-    assertThat(card.cardId()).isEqualTo("card-2");
+    movesOnto(card, "card-2");
     // Nothing behind the write that filled the card was sent to the card the run moved onto, which
     // carries the spend row and nothing else: every one of them would have been refused.
     assertThat(refused).isEmpty();
@@ -244,7 +245,7 @@ class FeishuCardStaleWriteTest {
   @DisplayName(
       "the card the run moved onto gets one tool pane, not the stale one and one of its own")
   void putsOneToolPaneOnTheCardItMovedOnto() {
-    final var card = card(Duration.ofMinutes(1));
+    final var card = card(BATCHED);
     final var run = FeishuCardUpdater.forRun(card, om, null, messages, elements(), null);
 
     run.onContent("one");
@@ -256,7 +257,7 @@ class FeishuCardStaleWriteTest {
     run.setToolStatus("Read", "{\"path\":\"/etc/hosts\"}", null);
     full.add("card-1");
     run.onReasoning("and it thought about it");
-    assertThat(card.cardId()).isEqualTo("card-2");
+    movesOnto(card, "card-2");
 
     // A call made since the run moved on, which is what the pane on this card is for: the ones
     // before it are on the card above and are counted rather than shown twice.
@@ -284,6 +285,20 @@ class FeishuCardStaleWriteTest {
   }
 
   // -----------------------------------------------------------------------------------------------
+
+  /**
+   * An interval short enough to wait out and long enough that what a test queues in a row is sent
+   * as one batch. Nothing a run writes is waited on any more, so it is the interval running out
+   * that sends what the run queued — and fills the card up, in the tests that need it to.
+   */
+  private static final Duration BATCHED = Duration.ofMillis(200);
+
+  /** Waits for the queued batch to go out and fill the card up. */
+  private static void movesOnto(final FeishuCard card, final String cardId) {
+    await()
+        .atMost(Duration.ofSeconds(10))
+        .untilAsserted(() -> assertThat(card.cardId()).isEqualTo(cardId));
+  }
 
   private FeishuCard card(final Duration interval) {
     final var card =
