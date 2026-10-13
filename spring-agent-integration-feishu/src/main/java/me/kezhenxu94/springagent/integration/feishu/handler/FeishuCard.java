@@ -1,6 +1,9 @@
 package me.kezhenxu94.springagent.integration.feishu.handler;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 import com.google.common.base.Strings;
+import com.google.common.hash.Hashing;
 import com.lark.oapi.Client;
 import com.lark.oapi.service.cardkit.v1.enums.CreateCardElementTypeEnum;
 import com.lark.oapi.service.cardkit.v1.model.ContentCardElementReq;
@@ -39,6 +42,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.Getter;
@@ -406,9 +410,17 @@ public class FeishuCard {
 
   /**
    * Adds elements at the end of what {@code parentElementId} holds, rather than beside it on the
-   * card, and returns whether they landed: the one way a container already on the card can be added
-   * to without being rewritten, which is what keeps a reader's chevron where they left it — see
-   * {@code FeishuCardUpdater#addToolCall}.
+   * card: the one way a container already on the card can be added to without being rewritten,
+   * which is what keeps a reader's chevron where they left it — see {@code
+   * FeishuCardUpdater#addToolCall}.
+   *
+   * <p>Queued like a streaming write rather than waited on, because its caller is a tool call: an
+   * insert waited on is sent at once, skipping the interval and taking everything queued with it,
+   * and the tool does not run until it is back — a round trip to Feishu in front of every call the
+   * model makes, and the card written to as often as the model calls tools rather than as often as
+   * the interval allows. Queued, a call that comes back before this is sent is folded into it (see
+   * {@link #replaceQueued}), and the calls of one round go out as one insert (see {@link
+   * #appendsMerged}).
    *
    * <p>Nothing is recovered elsewhere when the container turns out to be gone. An element that
    * belongs inside a pane has no business on the card beside it — the run's calls would come to
@@ -416,18 +428,45 @@ public class FeishuCard {
    * written down as missing instead and its writer, which is what knows how to build one, puts it
    * back whole on its next write.
    *
-   * @param uuid an idempotency key, so a retry cannot leave the container holding two copies
+   * @param uuid an idempotency key, so a retry cannot leave the container holding two copies, and
+   *     what {@link #replaceQueued} finds this by
+   * @param outcome told on the worker whether the elements landed, or null. It must not wait on
+   *     anything a writer holds: the writer may be blocked on a later write of the same batch
    */
-  public boolean appendInto(
-      final String parentElementId, final String elementsJson, final String uuid) {
-    return await(
+  public void appendInto(
+      final String parentElementId,
+      final String elementsJson,
+      final String uuid,
+      final Consumer<Boolean> outcome) {
+    enqueue(
         new Insert(
             parentElementId,
             elementsJson,
             uuid,
             CreateCardElementTypeEnum.APPEND,
             false,
-            new CompletableFuture<>()));
+            null,
+            outcome));
+  }
+
+  /**
+   * Swaps what a queued {@link #appendInto} carries for {@code elementsJson}, and returns whether
+   * it could: false once the append has been taken off the queue to be sent, when what it carried
+   * is the card's and changing it means writing to the card again.
+   *
+   * <p>What makes a tool call that comes back inside the interval one write rather than two: the
+   * pane it was announced with has not gone out yet, so it goes out already saying what came back.
+   */
+  public synchronized boolean replaceQueued(final String uuid, final String elementsJson) {
+    for (var i = 0; i < queued.size(); i++) {
+      if (queued.get(i) instanceof Insert insert
+          && insert.landed() == null
+          && insert.uuid().equals(uuid)) {
+        queued.set(i, insert.carrying(elementsJson));
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -591,6 +630,8 @@ public class FeishuCard {
    *     of what it holds
    * @param recover whether a target the card turns out not to have may be swapped for another; see
    *     {@link #appendInto}
+   * @param outcome told whether the elements landed, by a caller that does not wait to hear it; see
+   *     {@link #appendInto}
    */
   private record Insert(
       String targetElementId,
@@ -599,6 +640,7 @@ public class FeishuCard {
       CreateCardElementTypeEnum type,
       boolean recover,
       CompletableFuture<Boolean> landed,
+      Consumer<Boolean> outcome,
       long generation)
       implements Op {
 
@@ -609,7 +651,18 @@ public class FeishuCard {
         final CreateCardElementTypeEnum type,
         final boolean recover,
         final CompletableFuture<Boolean> landed) {
-      this(targetElementId, elementsJson, uuid, type, recover, landed, 0);
+      this(targetElementId, elementsJson, uuid, type, recover, landed, null);
+    }
+
+    Insert(
+        final String targetElementId,
+        final String elementsJson,
+        final String uuid,
+        final CreateCardElementTypeEnum type,
+        final boolean recover,
+        final CompletableFuture<Boolean> landed,
+        final Consumer<Boolean> outcome) {
+      this(targetElementId, elementsJson, uuid, type, recover, landed, outcome, 0);
     }
 
     @Override
@@ -619,7 +672,47 @@ public class FeishuCard {
 
     @Override
     public Op forCard(final long generation) {
-      return new Insert(targetElementId, elementsJson, uuid, type, recover, landed, generation);
+      return new Insert(
+          targetElementId, elementsJson, uuid, type, recover, landed, outcome, generation);
+    }
+
+    /** The same insert, carrying {@code elementsJson} instead. */
+    Insert carrying(final String elementsJson) {
+      return new Insert(
+          targetElementId, elementsJson, uuid, type, recover, landed, outcome, generation);
+    }
+
+    /** Whether this is an append nobody is waiting on, which is what may be merged with another. */
+    boolean mergeableAppend() {
+      return type == CreateCardElementTypeEnum.APPEND && landed == null;
+    }
+
+    /**
+     * This append and {@code later} as one: the elements of both, in order, under a key of their
+     * own, telling both callers what became of them. The key is hashed because Feishu takes 64
+     * characters of one, and two of ours side by side can be longer.
+     */
+    Insert followedBy(final Insert later) {
+      final var outcomes =
+          outcome == null
+              ? later.outcome
+              : later.outcome == null ? outcome : outcome.andThen(later.outcome);
+      return new Insert(
+          targetElementId,
+          concatenated(elementsJson, later.elementsJson),
+          Hashing.sha256().hashString(uuid + "+" + later.uuid, UTF_8).toString(),
+          type,
+          recover,
+          null,
+          outcomes,
+          generation);
+    }
+
+    /** Two JSON arrays as one, without a parser: both are built here, as {@code [...]}. */
+    private static String concatenated(final String first, final String second) {
+      final var head = first.strip();
+      final var tail = second.strip();
+      return head.substring(0, head.length() - 1) + "," + tail.substring(1);
     }
   }
 
@@ -861,7 +954,50 @@ public class FeishuCard {
       batch.add(op);
     }
     queued.clear();
-    return waitedOnFirst(batch);
+    return appendsMerged(waitedOnFirst(batch));
+  }
+
+  /**
+   * The same batch with every append nobody is waiting on folded into the earliest one into the
+   * same container, so the tool calls of one round reach the card as one insert rather than one
+   * each — a round of parallel calls is the commonest thing a turn queues several of at once.
+   *
+   * <p>Folding one forward moves it ahead of what was queued between the two, which is safe for the
+   * reason {@link #waitedOnFirst} gives, and stopped by what that stops at: a write naming the
+   * container itself — a pane rebuilt whole replaces everything appended before it — and finishing.
+   * Nor across cards: an append queued for a card the run has left is dropped rather than sent.
+   */
+  private static List<Op> appendsMerged(final List<Op> batch) {
+    final var merged = new ArrayList<Op>(batch.size());
+    for (final var op : batch) {
+      if (op instanceof Insert append && append.mergeableAppend()) {
+        final var into = earlierAppendInto(merged, append);
+        if (into >= 0) {
+          merged.set(into, ((Insert) merged.get(into)).followedBy(append));
+          continue;
+        }
+      }
+      merged.add(op);
+    }
+    return merged;
+  }
+
+  /** Where in {@code ahead} {@code append} may be folded into, or -1 where nowhere. */
+  private static int earlierAppendInto(final List<Op> ahead, final Insert append) {
+    final var container = append.targetElementId();
+    for (var i = ahead.size() - 1; i >= 0; i--) {
+      final var op = ahead.get(i);
+      if (op instanceof Insert earlier
+          && earlier.mergeableAppend()
+          && earlier.targetElementId().equals(container)
+          && earlier.generation() == append.generation()) {
+        return i;
+      }
+      if (op instanceof Finish || op.elementId().equals(container)) {
+        return -1;
+      }
+    }
+    return -1;
   }
 
   /**
@@ -871,11 +1007,10 @@ public class FeishuCard {
    * trip at a time from one thread — it has to be, since a card's writes have to arrive in
    * ascending sequence — and a caller is released as its own write is sent, so a write at the back
    * of the batch costs its caller every round trip in front of it. The writes callers wait on are
-   * the tool-call ones: putting a call's pane on the card, or a subagent's panel. So a turn's every
-   * tool call used to be delayed by however much the run and its subagents happened to have queued,
-   * which grows with the number of subagents streaming into the card — the run's own answer waiting
-   * on a card write is the thing this class exists to prevent, and it was reaching the tool loop by
-   * this route.
+   * made from inside the model's turn — the tool pane put on a card, a subagent's panel — so each
+   * would otherwise be delayed by however much the run and its subagents happened to have queued,
+   * which grows with the number of subagents streaming into the card: the run's own answer waiting
+   * on a card write is the thing this class exists to prevent.
    *
    * <p>Safe because a sequence is drawn where the call is made rather than where it was queued, so
    * the order the queue is drained in is ours to choose. Two orderings are not, and are what stops
@@ -926,9 +1061,7 @@ public class FeishuCard {
   private synchronized void abandonQueued() {
     pumping = false;
     for (final var op : queued) {
-      if (op.landed() != null) {
-        op.landed().complete(false);
-      }
+      report(op, false);
     }
     queued.clear();
   }
@@ -957,9 +1090,7 @@ public class FeishuCard {
           "Dropping a write of {} queued for a card the run has left: cardId={}",
           op.elementId(),
           cardId);
-      if (op.landed() != null) {
-        op.landed().complete(false);
-      }
+      report(op, false);
       return;
     }
     var landed = false;
@@ -975,9 +1106,17 @@ public class FeishuCard {
     } catch (Exception e) {
       log.warn("Failed to write {} to card {}", op.elementId(), cardId, e);
     } finally {
-      if (op.landed() != null) {
-        op.landed().complete(landed);
-      }
+      report(op, landed);
+    }
+  }
+
+  /** Tells whoever asked to hear about {@code op} whether it landed: a waiting caller, or not. */
+  private static void report(final Op op, final boolean landed) {
+    if (op.landed() != null) {
+      op.landed().complete(landed);
+    }
+    if (op instanceof Insert insert && insert.outcome() != null) {
+      insert.outcome().accept(landed);
     }
   }
 

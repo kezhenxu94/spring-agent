@@ -134,6 +134,10 @@ class FeishuCardMissingElementTest {
     // pane in between — so the append is what finds out.
     missing.add("tools");
     updater.setToolStatus("Read", "{\"path\":\"/etc/hosts\"}", null);
+    // The append is queued and nobody waits to hear it was refused, so it is the run's next write
+    // to the pane — the call coming back — that finds the pane gone.
+    assertThat(insertTargets()).containsExactly("usage", "tools");
+    updater.clearToolStatus("Read", "{\"path\":\"/etc/hosts\"}", "127.0.0.1 localhost");
 
     // The append is refused and, unlike an insert against the card's own order, is not put
     // somewhere else: a call's pane belongs inside the tool pane and nowhere else, and the footer

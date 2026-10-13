@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -157,6 +158,17 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
 
   /** The same for the tool calls: how many of them the pane on an earlier card is showing. */
   private int callsOnEarlierCards;
+
+  /**
+   * How many of the run's calls, counted from its first, have a pane on a card: set as a pane is
+   * rebuilt and as a call's append is reported landed. What {@link #sync()} takes as the calls left
+   * on the card the run moved off, which is not every call made so far — an append is queued, and
+   * one queued for a card that filled up never reached it and is dropped rather than sent.
+   *
+   * <p>Atomic rather than guarded by this updater's lock, since the card's worker reports a landing
+   * while this run's thread may hold that lock waiting on another write of the same batch.
+   */
+  private final AtomicInteger callsShown = new AtomicInteger();
 
   /**
    * The first call of the run whose pane is on the card being written to now, which is what the
@@ -645,6 +657,12 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    * snapping shut under them, on a card that is being written to several times a minute. Appending
    * touches one place: the panes already there are not sent, so nothing about them changes.
    *
+   * <p>Queued rather than waited on, since this is on the tool's own thread and the tool does not
+   * run until it returns — see {@code FeishuCard#appendInto}. What waiting used to answer is
+   * answered later instead: a container found gone is written down by the card and rebuilt on this
+   * run's next write to the pane, and a card that filled up under it leaves the call out of {@link
+   * #callsShown}, so the pane on the next card starts with it.
+   *
    * <p>Whole-pane rebuilds are what is left when there is nothing to keep — a card with no pane on
    * it yet, a pane a write found gone. Each of those is once per card or once per turn rather than
    * once per call.
@@ -665,34 +683,29 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       return;
     }
     final var index = toolCalls.size() - 1;
-    final var generationBefore = generation;
-    final var appended =
-        card.appendInto(
-            FeishuCardElements.TOOLS,
-            "[" + elements.toolCallPane(paneFor(index)) + "]",
-            keyFor(FeishuCardElements.TOOLS, "call:" + index));
-    if (appended) {
-      log.debug("Tool call {} appended to the pane on card {}", index, card.cardId());
-      return;
-    }
-    // Either the run has moved onto a card whose pane holds nothing yet, or the pane is not what
-    // this updater last saw. Both are answered by building it again: it is the one thing here that
-    // does not depend on what the card already holds.
-    log.info(
-        "The pane on card {} would not take call {}, so it is built again", card.cardId(), index);
-    if (movedOn(generationBefore) || !toolPaneIntact()) {
-      showToolCalls(true);
-    }
+    card.appendInto(
+        FeishuCardElements.TOOLS,
+        "[" + elements.toolCallPane(paneFor(index)) + "]",
+        appendKeyFor(index),
+        landed -> {
+          // On the card's worker, which may be sending a batch whose later writes this run's
+          // thread is blocked on while it holds this updater's lock — so nothing here takes it.
+          if (landed) {
+            callsShown.accumulateAndGet(index + 1, Math::max);
+          }
+        });
   }
 
   /**
    * One call's pane rewritten where it stands, now that the call has come back: what it returned
    * under what it was given, and how long it took beside the tool that took it.
    *
-   * <p>The one element sent is that call's own, so a reader who has another call open keeps it
-   * open. The call being rewritten is the exception and cannot be helped — its title has to change,
-   * and a title is not something that can be written into — but it closes only itself, once, at the
-   * moment it stops being the call the run is waiting on.
+   * <p>Into the pane's queued append where that has yet to go out, which is a call that came back
+   * inside the card's interval costing one write rather than two. Otherwise the one element sent is
+   * that call's own, so a reader who has another call open keeps it open. The call being rewritten
+   * is the exception and cannot be helped — its title has to change, and a title is not something
+   * that can be written into — but it closes only itself, once, at the moment it stops being the
+   * call the run is waiting on.
    */
   private synchronized void updateToolCall(final int index) {
     if (elements == null) {
@@ -707,10 +720,19 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       // Its pane is on the card the run left, and there is nothing here to rewrite.
       return;
     }
+    final var pane = elements.toolCallPane(paneFor(index));
+    if (card.replaceQueued(appendKeyFor(index), "[" + pane + "]")) {
+      return;
+    }
     card.replaceNested(
         FeishuCardElements.toolCallElementId(index),
-        elements.toolCallPane(paneFor(index)),
+        pane,
         card.cardId() + ":call:" + index + ":" + (++toolCallRevision));
+  }
+
+  /** The idempotency key the pane of call {@code index} is appended under on this card. */
+  private String appendKeyFor(final int index) {
+    return keyFor(FeishuCardElements.TOOLS, "call:" + index);
   }
 
   /**
@@ -826,6 +848,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    */
   private void paneRebuilt(final int hidden) {
     shownFrom = hidden;
+    callsShown.accumulateAndGet(toolCalls.size(), Math::max);
     for (var index = hidden; index < toolCalls.size(); index++) {
       card.found(FeishuCardElements.toolCallElementId(index));
     }
@@ -1091,10 +1114,10 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     added.clear();
     putBacks.clear();
     firstSubagentPanelId = null;
-    callsOnEarlierCards = toolCalls.size();
-    // Nothing of the trail is on the card the run has moved onto, so the first call it makes there
-    // is the first one that card shows.
-    shownFrom = toolCalls.size();
+    // The calls whose panes reached the card left behind stay there; any queued for it and dropped
+    // are the first the pane on this card shows, once the run next writes to it.
+    callsOnEarlierCards = Math.min(callsShown.get(), toolCalls.size());
+    shownFrom = callsOnEarlierCards;
   }
 
   /** Whether {@code elementId} is on the card the run is writing to now. */
