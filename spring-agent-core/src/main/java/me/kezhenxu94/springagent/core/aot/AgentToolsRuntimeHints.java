@@ -2,7 +2,6 @@ package me.kezhenxu94.springagent.core.aot;
 
 import java.util.List;
 import me.kezhenxu94.springagent.core.tools.SkillsTool;
-import me.kezhenxu94.springagent.core.tools.TodoWriteTool;
 import org.springaicommunity.agent.tools.AskUserQuestionTool;
 import org.springaicommunity.agent.tools.BraveWebSearchTool;
 import org.springaicommunity.agent.tools.FileSystemTools;
@@ -10,6 +9,7 @@ import org.springaicommunity.agent.tools.GlobTool;
 import org.springaicommunity.agent.tools.GrepTool;
 import org.springaicommunity.agent.tools.ListDirectoryTool;
 import org.springaicommunity.agent.tools.ShellTools;
+import org.springaicommunity.agent.tools.TodoWriteTool;
 import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
@@ -23,17 +23,16 @@ import org.springframework.aot.hint.RuntimeHintsRegistrar;
  *
  * <p>In core rather than in an integration because core composes these, so every integration built
  * as a native image needs the same set. A tool this project declares as a bean is found through
- * {@code @AgentTool} and already gets hints from Spring's own AOT processing — which is why {@code
- * TodoWriteTool} is in this list despite being core's own class: nothing declares it a bean, {@code
- * AgentToolsProvider} builds one per run, so AOT never sees it.
+ * {@code @AgentTool} and already gets hints from Spring's own AOT processing; the library's tools
+ * are built per run by {@code AgentToolsProvider}, so AOT never sees them.
  */
 public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
 
   /**
-   * Every tool type spring-ai-agent-utils can hand to a run, plus core's two forks of ones it ships
-   * — {@code TodoWriteTool} and {@code SkillsTool}. The library's web fetch tool is left out:
-   * nothing here constructs it. Brave is on the list because {@code WebSearchToolsConfiguration}
-   * does construct it, on a deployment that has given it a key.
+   * Every tool type spring-ai-agent-utils can hand to a run, plus core's fork of one it ships —
+   * {@code SkillsTool}. The library's web fetch tool is left out: nothing here constructs it. Brave
+   * is on the list because {@code WebSearchToolsConfiguration} does construct it, on a deployment
+   * that has given it a key.
    *
    * <p>Public because it is this module's one statement of which tools it takes from that library,
    * and the test that no translation names a tool that no longer exists reads the same list. Adding
