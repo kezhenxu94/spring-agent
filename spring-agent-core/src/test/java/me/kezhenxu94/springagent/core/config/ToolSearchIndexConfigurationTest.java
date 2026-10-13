@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.advisor.toolsearch.autoconfigure.ToolSearchAdvisorAutoConfiguration;
 import org.springframework.ai.tool.toolsearch.ToolIndex;
+import org.springframework.ai.tool.toolsearch.index.lucene.LuceneToolIndex;
 import org.springframework.ai.tool.toolsearch.index.regex.RegexToolIndex;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -65,6 +66,22 @@ class ToolSearchIndexConfigurationTest {
                 assertThat(context.getBeansOfType(ToolIndex.class).values())
                     .singleElement()
                     .isInstanceOf(RegexToolIndex.class));
+  }
+
+  @Test
+  @DisplayName("lucene gets Spring AI's BM25 index")
+  void luceneIsAvailable() {
+    // Nothing of ours declares lucene-core: it arrives through the tool-search starter, and
+    // upstream registers this index @ConditionalOnClass. Were the starter to stop carrying it,
+    // TOOL_INDEX_TYPE=lucene would leave no index at all and every search would find nothing, with
+    // nothing logged — this is what would notice.
+    runner
+        .withPropertyValues("spring.ai.chat.client.tool-search-advisor.tool-index-type=lucene")
+        .run(
+            context ->
+                assertThat(context.getBeansOfType(ToolIndex.class).values())
+                    .singleElement()
+                    .isInstanceOf(LuceneToolIndex.class));
   }
 
   @Test
