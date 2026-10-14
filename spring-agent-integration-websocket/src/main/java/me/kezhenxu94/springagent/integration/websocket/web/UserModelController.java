@@ -104,6 +104,7 @@ public class UserModelController {
     final var provider = body == null ? null : body.provider();
     final var reasoningEffort = body == null ? null : body.reasoningEffort();
     final var temperature = body == null ? null : body.temperature();
+    final var strictTools = body != null && Boolean.TRUE.equals(body.strictTools());
     final var headers = body == null ? null : body.headers();
 
     if (name.isEmpty()) {
@@ -159,7 +160,8 @@ public class UserModelController {
     final var effort = ReasoningEfforts.normalize(reasoningEffort);
     final var resolvedBaseUrl = baseUrl.isEmpty() ? null : baseUrl;
     final var failure =
-        probe.check(provider, resolvedBaseUrl, model, apiToken, effort, temperature, headers);
+        probe.check(
+            provider, resolvedBaseUrl, model, apiToken, effort, temperature, strictTools, headers);
     if (failure != null) {
       throw new ResponseStatusException(
           HttpStatus.BAD_GATEWAY, messages.get("model-unreachable", name, failure));
@@ -175,6 +177,7 @@ public class UserModelController {
             apiToken,
             effort,
             temperature,
+            strictTools,
             headers);
     log.info("{} registered the chat model {}", user.id(), name);
     final var active = registry.active(user.id()).map(UserModelConfig::name).orElse(null);
@@ -227,6 +230,7 @@ public class UserModelController {
         config.model(),
         config.reasoningEffort(),
         config.temperature(),
+        Boolean.TRUE.equals(config.strictTools()),
         config.name().equals(activeName),
         config.headerCiphers() == null
             ? List.of()
@@ -254,6 +258,7 @@ public class UserModelController {
       String apiToken,
       String reasoningEffort,
       Double temperature,
+      Boolean strictTools,
       Map<String, String> headers) {}
 
   /**
@@ -270,6 +275,7 @@ public class UserModelController {
       String model,
       String reasoningEffort,
       Double temperature,
+      boolean strictTools,
       boolean activated,
       List<String> headerNames,
       String updatedAt) {}

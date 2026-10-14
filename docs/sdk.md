@@ -799,8 +799,8 @@ for refuses everything.
 ## Bring your own model
 
 `app.ai.user-models.encryption-key` turns on per-user endpoints: a person registers a base URL, a
-credential, a model name, an optional reasoning effort, an optional temperature, optional extra
-HTTP headers, and — where the deployment serves more than one — **which protocol the endpoint
+credential, a model name, an optional reasoning effort, an optional temperature, whether tools
+are offered in OpenAI's strict mode, optional extra HTTP headers, and — where the deployment serves more than one — **which protocol the endpoint
 speaks**. The headers are sealed value by value exactly as the credential is, because a
 gateway's routing or tenant header is a credential too.
 
@@ -1172,7 +1172,8 @@ their own runs into the same ones:
   behaving unlike every other run on the same deployment. `OpenAiUserChatClients` starts from the
   application's own resolved options — see `ApplicationEndpoint` for why the model bean's own are
   not enough — and overrides only what makes the endpoint different: base URL, key, model, and the
-  reasoning effort and temperature the user chose.
+  reasoning effort, temperature and strict tools the user chose. Strict tools is only ever switched
+  on there, never off, so a deployment that configured strict mode for its own model keeps it.
 - A `ToolCallingManager` does two jobs and only one of them has moved to the advisor. Tool calls are
   *executed* by the `ToolCallingAdvisor` `SpringAgent` registers on the prompt, so interception,
   file references and the call limits come along whatever client a run goes through — but the

@@ -95,6 +95,11 @@ public class SlackConfigForm {
   static final String MODEL_BLOCK = "sa_cfg_model";
   static final String EFFORT_BLOCK = "sa_cfg_effort";
   static final String TEMPERATURE_BLOCK = "sa_cfg_temperature";
+  static final String STRICT_TOOLS_BLOCK = "sa_cfg_strict_tools";
+
+  /** The strict-tools option that turns it on; anything else is off. */
+  static final String STRICT_TOOLS_ON = "on";
+
   static final String TOKEN_BLOCK = "sa_cfg_token";
 
   private static final String ACTION_SUFFIX = "_a";
@@ -196,6 +201,7 @@ public class SlackConfigForm {
             "config-temperature-label",
             "config-temperature-placeholder",
             false));
+    blocks.add(strictToolsInput());
     blocks.add(input(TOKEN_BLOCK, "config-token-label", "config-token-placeholder", inMessage));
 
     if (inMessage) {
@@ -276,6 +282,27 @@ public class SlackConfigForm {
                 .placeholder(label(messages.get("config-provider-hint")))
                 .options(options)
                 .initialOption(initial)
+                .build())
+        .build();
+  }
+
+  /**
+   * Whether tools are offered in strict mode — see {@code UserModelConfig#strictTools}.
+   * Registration only, like the temperature, and starting on off, which is what a row that never
+   * chose means.
+   */
+  private InputBlock strictToolsInput() {
+    final var off = option(messages.get("config-strict-tools-off"), "off");
+    return InputBlock.builder()
+        .blockId(STRICT_TOOLS_BLOCK)
+        .optional(true)
+        .label(label(messages.get("config-strict-tools-label")))
+        .element(
+            StaticSelectElement.builder()
+                .actionId(STRICT_TOOLS_BLOCK + ACTION_SUFFIX)
+                .options(
+                    List.of(off, option(messages.get("config-strict-tools-on"), STRICT_TOOLS_ON)))
+                .initialOption(off)
                 .build())
         .build();
   }
@@ -428,6 +455,7 @@ public class SlackConfigForm {
         value(state, MODEL_BLOCK),
         value(state, EFFORT_BLOCK),
         value(state, TEMPERATURE_BLOCK),
+        value(state, STRICT_TOOLS_BLOCK),
         value(state, TOKEN_BLOCK));
   }
 
@@ -467,7 +495,13 @@ public class SlackConfigForm {
       String model,
       String effort,
       String temperature,
+      String strictTools,
       String token) {
+
+    /** Whether tools are to be offered in strict mode — see {@code UserModelConfig#strictTools}. */
+    public boolean strict() {
+      return SlackConfigForm.STRICT_TOOLS_ON.equals(strictTools);
+    }
 
     /**
      * The provider as it should be stored: null both for an untouched select and for the option

@@ -124,6 +124,21 @@ public class UserModelConfig {
   private Double temperature;
 
   /**
+   * Whether tools are offered to this endpoint in OpenAI's strict mode, with every schema rewritten
+   * to list each property as required and the optional ones as nullable. Null, which every row
+   * stored before this existed holds, means off.
+   *
+   * <p>A row's own switch rather than the deployment's, because strict mode costs something on an
+   * endpoint that does not ask for it: an optional argument the model would have left out arrives
+   * as an explicit null, which an MCP server's own validation may refuse. It exists for the
+   * endpoint that enforces strict mode while being told {@code "strict": false} — a gateway in
+   * front of a model that only takes strict tools — where every run otherwise fails on the first
+   * tool whose schema has an optional argument. Read by the OpenAI provider only; the others have
+   * no such mode and ignore it.
+   */
+  private Boolean strictTools;
+
+  /**
    * Whether this is the endpoint the owner's runs go to. At most one row per owner has it, and none
    * having it means the application's own model — see the class javadoc for why that is the failure
    * mode worth having.

@@ -220,6 +220,8 @@ public class UserModelRegistry {
    *     application's own setting in place
    * @param temperature as {@link Temperatures} accepts it, or null to leave the application's own
    *     setting in place
+   * @param strictTools whether tools are offered in strict mode — see {@link
+   *     UserModelConfig#strictTools}
    * @param headers extra headers to send with every request, plaintext in and sealed one value at a
    *     time before storage: null keeps whatever is already stored, {@code Map.of()} clears them,
    *     and anything else replaces the set wholesale — the same tri-state a re-registered token
@@ -235,6 +237,7 @@ public class UserModelRegistry {
       final String token,
       final String reasoningEffort,
       final Double temperature,
+      final boolean strictTools,
       final Map<String, String> headers) {
     final var existing = repo.findByOwnerIdAndName(userId, name);
     final var wasActive = existing.map(UserModelConfig::activated);
@@ -250,6 +253,7 @@ public class UserModelRegistry {
             .headerCiphers(sealHeaders(headers, existing.map(UserModelConfig::headerCiphers)))
             .reasoningEffort(ReasoningEfforts.normalize(reasoningEffort))
             .temperature(temperature)
+            .strictTools(strictTools)
             .activated(wasActive.orElse(false))
             .updatedAt(Instant.now())
             .build());

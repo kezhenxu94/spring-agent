@@ -246,6 +246,7 @@ public class FeishuConfigHandler {
             submission.token(),
             effort,
             temperature,
+            submission.strict(),
             submission.headers());
     if (failure != null) {
       sendText(chatId, messages.get("config-add-failed", submission.name(), failure));
@@ -260,6 +261,7 @@ public class FeishuConfigHandler {
         submission.token(),
         effort,
         temperature,
+        submission.strict(),
         submission.headers());
     registry.activate(userId, submission.name());
     sendText(chatId, messages.get("config-added", submission.name()));

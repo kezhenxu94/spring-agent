@@ -305,6 +305,7 @@ public class SlackConfigHandler {
             submission.token(),
             effort,
             temperature,
+            submission.strict(),
             null);
     if (failure != null) {
       say(channelId, messages.get("config-add-failed", submission.name(), failure));
@@ -319,6 +320,7 @@ public class SlackConfigHandler {
         submission.token(),
         effort,
         temperature,
+        submission.strict(),
         null);
     registry.activate(userId, submission.name());
     say(channelId, messages.get("config-added", submission.name()));

@@ -45,6 +45,7 @@ export function renderModelList(host, models, open, actionsFor) {
     if (model.provider) facts.append(fact(model.provider));
     if (model.reasoningEffort) facts.append(fact(t('model.thinking', model.reasoningEffort)));
     if (model.temperature != null) facts.append(fact(t('model.temperature', model.temperature)));
+    if (model.strictTools) facts.append(fact(t('model.stricttools')));
     if (model.headerNames && model.headerNames.length) {
       // That it sends extra headers, never their values.
       facts.append(fact(t('model.headers.set', model.headerNames.join(', '))));

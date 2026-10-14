@@ -57,6 +57,9 @@ public class UserModelProbe {
    * @param reasoningEffort as {@link ReasoningEfforts} spells it, or null for the application's own
    *     setting
    * @param temperature as {@link Temperatures} accepts it, or null for the application's own
+   * @param strictTools whether tools are offered in strict mode. The probe offers none, so this
+   *     tests nothing about them; it is passed so that the client built here is the one the stored
+   *     row's runs are served by
    * @return null when the endpoint answered, otherwise why it did not, in words fit to show a user
    */
   public String check(
@@ -66,6 +69,7 @@ public class UserModelProbe {
       final String token,
       final String reasoningEffort,
       final Double temperature,
+      final boolean strictTools,
       final Map<String, String> headers) {
     final var config =
         UserModelConfig.builder()
@@ -78,6 +82,7 @@ public class UserModelProbe {
             .model(model)
             .reasoningEffort(ReasoningEfforts.normalize(reasoningEffort))
             .temperature(temperature)
+            .strictTools(strictTools)
             .build();
     // A thread of its own with a deadline, because the configured request timeout is measured in
     // minutes — right for a reasoning turn, far too long to leave somebody waiting to be told they

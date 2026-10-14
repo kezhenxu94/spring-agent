@@ -186,11 +186,14 @@ class SlackConfigFormTest {
                 SlackConfigForm.BASE_URL_BLOCK,
                     typed(SlackConfigForm.BASE_URL_BLOCK, "https://kimi/v1"),
                 SlackConfigForm.MODEL_BLOCK, typed(SlackConfigForm.MODEL_BLOCK, "kimi-k2"),
-                SlackConfigForm.TOKEN_BLOCK, typed(SlackConfigForm.TOKEN_BLOCK, "sk-x")));
+                SlackConfigForm.TOKEN_BLOCK, typed(SlackConfigForm.TOKEN_BLOCK, "sk-x"),
+                SlackConfigForm.STRICT_TOOLS_BLOCK,
+                    selected(SlackConfigForm.STRICT_TOOLS_BLOCK, SlackConfigForm.STRICT_TOOLS_ON)));
 
     assertThat(submission.complete()).isTrue();
     assertThat(submission.builtinByName()).isFalse();
     assertThat(submission.baseUrl()).isEqualTo("https://kimi/v1");
+    assertThat(submission.strict()).isTrue();
   }
 
   @Test
@@ -202,6 +205,7 @@ class SlackConfigFormTest {
 
     assertThat(submission.active()).isEqualTo("kimi");
     assertThat(submission.adding()).isFalse();
+    assertThat(submission.strict()).isFalse();
   }
 
   @Test

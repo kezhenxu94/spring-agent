@@ -198,6 +198,18 @@
       "content": "{temperaturePlaceholder}"
     }
   },
+  "strictToolsSelect": {
+    "tag": "select_static",
+    "name": "cfg_strict_tools",
+    "type": "default",
+    "width": "fill",
+    "required": false,
+    "placeholder": {
+      "tag": "plain_text",
+      "content": "{strictToolsHint}"
+    },
+    "options": []
+  },
   "tokenInput": {
     "tag": "input",
     "name": "cfg_token",

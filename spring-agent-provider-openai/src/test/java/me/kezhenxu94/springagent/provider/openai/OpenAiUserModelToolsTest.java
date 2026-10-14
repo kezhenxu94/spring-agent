@@ -23,7 +23,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.context.support.ResourceBundleMessageSource;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * What a run on a user's own endpoint actually offers the model, read off the wire.
@@ -88,6 +90,41 @@ class OpenAiUserModelToolsTest {
   }
 
   @Test
+  @DisplayName("a row asking for strict tools sends a schema strict mode accepts")
+  void strictToolsRewriteTheSchema() throws Exception {
+    // The endpoint this exists for enforces strict mode whatever "strict" says, so the flag alone
+    // is not the point: the optional argument has to be listed as required and accept null, or it
+    // refuses the tool exactly as it did with the flag off.
+    final var function =
+        JsonMapper.builder()
+            .build()
+            .readTree(requestFor(clientsWith(runtimeManager()), true))
+            .path("tools")
+            .path(0)
+            .path("function");
+
+    assertThat(function.path("strict").asBoolean()).isTrue();
+    assertThat(function.path("parameters").path("required").toString()).contains("\"days\"");
+    assertThat(function.path("parameters").path("properties").path("days").path("type").toString())
+        .contains("\"null\"");
+  }
+
+  @Test
+  @DisplayName("and a row that did not ask leaves the optional argument optional")
+  void lenientByDefault() throws Exception {
+    final var function =
+        JsonMapper.builder()
+            .build()
+            .readTree(requestFor(clientsWith(runtimeManager())))
+            .path("tools")
+            .path(0)
+            .path("function");
+
+    assertThat(function.path("strict").asBoolean()).isFalse();
+    assertThat(function.path("parameters").path("required").toString()).doesNotContain("\"days\"");
+  }
+
+  @Test
   @DisplayName("a row's extra headers reach the endpoint on every request")
   void extraHeadersReachTheWire() throws Exception {
     this.server.enqueue(
@@ -114,6 +151,11 @@ class OpenAiUserModelToolsTest {
 
   /** The body of the chat completion a run through {@code clients} sent to the endpoint. */
   private String requestFor(final OpenAiUserChatClients clients) throws Exception {
+    return requestFor(clients, false);
+  }
+
+  private String requestFor(final OpenAiUserChatClients clients, final boolean strictTools)
+      throws Exception {
     this.server.enqueue(
         new MockResponse()
             .setResponseCode(200)
@@ -128,6 +170,7 @@ class OpenAiUserModelToolsTest {
                 .name("mine")
                 .baseUrl(this.server.url("/v1").toString())
                 .model("own-model")
+                .strictTools(strictTools)
                 .build(),
             "own-token",
             java.util.Map.of());
@@ -169,7 +212,9 @@ class OpenAiUserModelToolsTest {
   static class Forecast {
 
     @Tool(description = "The forecast for a city")
-    String forecast(final String city) {
+    String forecast(
+        final String city,
+        @ToolParam(required = false, description = "How many days ahead") final Integer days) {
       return "sunny in " + city;
     }
   }

@@ -74,6 +74,7 @@ export function renderModelDetail(host, view) {
     { mono: true, hint: t('model.field.temperature.hint'), type: 'number' },
   );
   Object.assign(temperature, { min: '0', max: '2', step: '0.1' });
+  const strictTools = strictToolsField(form, existing && model.strictTools === true);
   const headers = headersField(form, existing ? model.headerNames || [] : []);
 
   const status = document.createElement('p');
@@ -103,6 +104,7 @@ export function renderModelDetail(host, view) {
       apiToken: token.value.trim(),
       reasoningEffort: effort.value || null,
       temperature: temperature.value === '' ? null : Number(temperature.value),
+      strictTools: strictTools.checked,
       headers: headers.value(),
     })
       .then((saved) => {
@@ -147,6 +149,32 @@ function effortField(form, current) {
   box.append(line);
   form.append(label(t('model.field.effort')), box);
   return select;
+}
+
+/**
+ * Whether tools are offered in strict mode. A checkbox in the `detail-check` shape the schedule's
+ * editor draws, since off and on are the only two states a row has.
+ */
+function strictToolsField(form, current) {
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = current;
+  const said = document.createElement('label');
+  said.className = 'detail-check';
+  said.append(box, document.createTextNode(t('model.field.stricttools.on')));
+
+  const hint = document.createElement('p');
+  hint.className = 'detail-hint';
+  hint.textContent = t('model.field.stricttools.hint');
+
+  const line = document.createElement('div');
+  line.className = 'detail-field-row';
+  line.append(said);
+  const holder = document.createElement('div');
+  holder.className = 'detail-field';
+  holder.append(line, hint);
+  form.append(label(t('model.field.stricttools')), holder);
+  return box;
 }
 
 /**
