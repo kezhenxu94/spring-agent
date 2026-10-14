@@ -94,6 +94,7 @@ public class SlackConfigForm {
   static final String PROVIDER_BLOCK = "sa_cfg_provider";
   static final String MODEL_BLOCK = "sa_cfg_model";
   static final String EFFORT_BLOCK = "sa_cfg_effort";
+  static final String TEMPERATURE_BLOCK = "sa_cfg_temperature";
   static final String TOKEN_BLOCK = "sa_cfg_token";
 
   private static final String ACTION_SUFFIX = "_a";
@@ -187,6 +188,14 @@ public class SlackConfigForm {
     }
     blocks.add(input(MODEL_BLOCK, "config-model-label", "config-model-placeholder", false));
     blocks.add(effortInput(active == null ? null : active.reasoningEffort()));
+    // Registration only, unlike the effort above: it is set when a model is added and has no form
+    // of its own to change it afterwards.
+    blocks.add(
+        input(
+            TEMPERATURE_BLOCK,
+            "config-temperature-label",
+            "config-temperature-placeholder",
+            false));
     blocks.add(input(TOKEN_BLOCK, "config-token-label", "config-token-placeholder", inMessage));
 
     if (inMessage) {
@@ -418,6 +427,7 @@ public class SlackConfigForm {
         value(state, BASE_URL_BLOCK),
         value(state, MODEL_BLOCK),
         value(state, EFFORT_BLOCK),
+        value(state, TEMPERATURE_BLOCK),
         value(state, TOKEN_BLOCK));
   }
 
@@ -456,6 +466,7 @@ public class SlackConfigForm {
       String baseUrl,
       String model,
       String effort,
+      String temperature,
       String token) {
 
     /**
@@ -477,7 +488,11 @@ public class SlackConfigForm {
      * incomplete attempt to register one.
      */
     public boolean adding() {
-      return name != null || baseUrl != null || model != null || token != null;
+      return name != null
+          || baseUrl != null
+          || model != null
+          || token != null
+          || temperature != null;
     }
 
     /**

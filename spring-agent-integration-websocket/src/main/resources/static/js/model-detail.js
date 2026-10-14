@@ -67,6 +67,13 @@ export function renderModelDetail(host, view) {
     type: 'password',
   });
   const effort = effortField(form, existing ? model.reasoningEffort || '' : '');
+  const temperature = field(
+    form,
+    t('model.field.temperature'),
+    existing && model.temperature != null ? String(model.temperature) : '',
+    { mono: true, hint: t('model.field.temperature.hint'), type: 'number' },
+  );
+  Object.assign(temperature, { min: '0', max: '2', step: '0.1' });
   const headers = headersField(form, existing ? model.headerNames || [] : []);
 
   const status = document.createElement('p');
@@ -95,6 +102,7 @@ export function renderModelDetail(host, view) {
       model: modelName.value.trim(),
       apiToken: token.value.trim(),
       reasoningEffort: effort.value || null,
+      temperature: temperature.value === '' ? null : Number(temperature.value),
       headers: headers.value(),
     })
       .then((saved) => {

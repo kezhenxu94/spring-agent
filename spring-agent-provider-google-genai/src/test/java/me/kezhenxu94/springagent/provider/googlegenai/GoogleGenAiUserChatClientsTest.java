@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import java.util.Base64;
+import java.util.Map;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import me.kezhenxu94.springagent.core.dao.repo.UserModelConfigRepo;
 import me.kezhenxu94.springagent.core.security.AesGcmSealer;
@@ -105,5 +106,27 @@ class GoogleGenAiUserChatClientsTest {
 
     assertThat(endpoint.apiKey()).isEqualTo("AIza-the-deployments");
     assertThat(endpoint.model()).isEqualTo("gemini-2.5-flash");
+  }
+
+  @Test
+  @DisplayName("a row's own temperature replaces the deployment's, and none keeps it")
+  void temperature() {
+    final var deployment =
+        GoogleGenAiChatOptions.builder().model("gemini-2.5-flash").temperature(0.0).build();
+
+    assertThat(
+            GoogleGenAiUserChatClients.optionsFor(
+                    deployment,
+                    new GoogleGenAiUserChatClients.Endpoint(
+                        null, "k", "gemini-2.5-pro", null, 1.0, Map.of()))
+                .getTemperature())
+        .isEqualTo(1.0);
+    assertThat(
+            GoogleGenAiUserChatClients.optionsFor(
+                    deployment,
+                    new GoogleGenAiUserChatClients.Endpoint(
+                        null, "k", "gemini-2.5-pro", null, null, Map.of()))
+                .getTemperature())
+        .isEqualTo(0.0);
   }
 }

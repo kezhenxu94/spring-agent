@@ -99,6 +99,8 @@ public class FeishuMessages {
         .replace("{providerHint}", jsonEscaped(get("config-provider-hint")))
         .replace("{effortLabel}", jsonEscaped(get("config-effort-label")))
         .replace("{effortHint}", jsonEscaped(get("config-effort-hint")))
+        .replace("{temperatureLabel}", jsonEscaped(get("config-temperature-label")))
+        .replace("{temperaturePlaceholder}", jsonEscaped(get("config-temperature-placeholder")))
         .replace("{tokenLabel}", jsonEscaped(get("config-token-label")))
         .replace("{tokenPlaceholder}", jsonEscaped(get("config-token-placeholder")))
         .replace("{headersLabel}", jsonEscaped(get("config-headers-label")))

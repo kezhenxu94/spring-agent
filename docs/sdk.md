@@ -799,10 +799,10 @@ for refuses everything.
 ## Bring your own model
 
 `app.ai.user-models.encryption-key` turns on per-user endpoints: a person registers a base URL, a
-credential, a model name, an optional reasoning effort, optional extra HTTP headers, and — where the
-deployment serves more than one — **which protocol the endpoint speaks**. The headers are sealed
-value by value exactly as the credential is, because a gateway's routing or tenant header is a
-credential too.
+credential, a model name, an optional reasoning effort, an optional temperature, optional extra
+HTTP headers, and — where the deployment serves more than one — **which protocol the endpoint
+speaks**. The headers are sealed value by value exactly as the credential is, because a
+gateway's routing or tenant header is a credential too.
 
 Two contracts, and the split matters:
 
@@ -1172,7 +1172,7 @@ their own runs into the same ones:
   behaving unlike every other run on the same deployment. `OpenAiUserChatClients` starts from the
   application's own resolved options — see `ApplicationEndpoint` for why the model bean's own are
   not enough — and overrides only what makes the endpoint different: base URL, key, model, and the
-  reasoning effort the user chose.
+  reasoning effort and temperature the user chose.
 - A `ToolCallingManager` does two jobs and only one of them has moved to the advisor. Tool calls are
   *executed* by the `ToolCallingAdvisor` `SpringAgent` registers on the prompt, so interception,
   file references and the call limits come along whatever client a run goes through — but the
@@ -1195,7 +1195,7 @@ The pieces a consumer would extend or reuse:
 | --- | --- |
 | `UserModelRegistry` | The rows, and the one place a token — or a header value — is sealed or opened. `save` takes the extra headers as a tri-state, made explicit because headers are optional where a token is not: null keeps what is stored, an empty map clears them, anything else replaces the set. `headersOf` opens them for a provider building a client; `headerNames` is the static that answers what a listing may show, which is names and never values. `activate` clears every other row of that owner *before* setting the new one, so an interrupted switch leaves none activated rather than two — and none means the application's own model. `setEffort` rewrites one row's reasoning effort and nothing else, keeping the sealed token, which is the only way to change it: the token is never readable again. `setActiveEffort` applies one to whichever model the user is on, creating `DEFAULT_ROW` where that is the application's own. |
 | `UserChatClients` (interface) | Choosing a provider per row and resolving the client — **core implements it**; a provider implements `ProviderChatClients`. Never throws: an endpoint that cannot be read is a fallback and a log line, because failing here would fail the run the user needs to fix it. `effortInForce` answers what a run for one user will actually be made with, which is what a surface must label its thinking panel from rather than the deployment's property. |
-| `UserModelProbe` | The pre-save connection test — one tiny completion, since that exercises URL, token, model name, reasoning effort **and** the extra headers together where `GET /models` does not. The headers arrive plaintext here, there being nothing sealed to open before a row exists. |
+| `UserModelProbe` | The pre-save connection test — one tiny completion, since that exercises URL, token, model name, reasoning effort, temperature **and** the extra headers together where `GET /models` does not. The headers arrive plaintext here, there being nothing sealed to open before a row exists. |
 | `BuiltinModels` (interface) | What the application's own endpoint reports it can serve — **a provider module implements it**; cached and best-effort, and an empty list is an ordinary answer. |
 | `ProviderRejection` (`core/agent/`, interface) | The third and last thing a provider writes itself: reading what an endpoint said when it refused, so `SpringAgent` can log it beside the id of the run it refused. Nothing else can — an advisor rewraps the failure, and the SDK renders a non-JSON error body as the words `400: Unknown`. Asked about every failure of every run, so returning empty must be cheap and must never throw. |
 | `ReasoningEfforts` | The efforts a user may choose, stated in core rather than typed per call — Spring AI takes `reasoning_effort` as a bare string, so a typo is an endpoint that fails on every message. The list is core's, since three dropdowns are drawn from it; that it still matches the OpenAI SDK's is asserted in `spring-agent-provider-openai`, which is where that SDK exists. Three states: absent leaves the deployment's setting, a value sends it, `NOT_SENT` stops it being sent at all. |

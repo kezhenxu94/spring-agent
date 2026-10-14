@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import me.kezhenxu94.springagent.core.usermodels.BuiltinModels;
+import me.kezhenxu94.springagent.core.usermodels.Temperatures;
 import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import me.kezhenxu94.springagent.core.usermodels.UserModelProbe;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
@@ -173,6 +174,9 @@ public class SlackConfigHandler {
     if (!submission.complete()) {
       return messages.get("config-incomplete");
     }
+    if (!Temperatures.valid(submission.temperature())) {
+      return messages.get("config-bad-temperature", submission.temperature(), Temperatures.MAX);
+    }
     // Off this thread: the probe can take seconds and both callers are on a clock.
     taskExecutor.execute(() -> add(userId, userId, submission));
     return messages.get("config-testing", submission.name());
@@ -292,9 +296,16 @@ public class SlackConfigHandler {
     }
     final var effort = submission.storedEffort();
     final var provider = submission.storedProvider();
+    final var temperature = Temperatures.parse(submission.temperature());
     final var failure =
         probe.check(
-            provider, submission.baseUrl(), submission.model(), submission.token(), effort, null);
+            provider,
+            submission.baseUrl(),
+            submission.model(),
+            submission.token(),
+            effort,
+            temperature,
+            null);
     if (failure != null) {
       say(channelId, messages.get("config-add-failed", submission.name(), failure));
       return;
@@ -307,6 +318,7 @@ public class SlackConfigHandler {
         submission.model(),
         submission.token(),
         effort,
+        temperature,
         null);
     registry.activate(userId, submission.name());
     say(channelId, messages.get("config-added", submission.name()));

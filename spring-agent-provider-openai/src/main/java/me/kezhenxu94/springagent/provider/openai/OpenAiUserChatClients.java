@@ -122,6 +122,7 @@ public class OpenAiUserChatClients implements ProviderChatClients {
             // the deployment is configured with.
             Strings.isNullOrEmpty(config.model()) ? defaults.getModel() : config.model(),
             config.reasoningEffort(),
+            config.temperature(),
             registry.headersOf(config)));
   }
 
@@ -157,6 +158,7 @@ public class OpenAiUserChatClients implements ProviderChatClients {
             token,
             config.model(),
             config.reasoningEffort(),
+            config.temperature(),
             headers == null ? Map.of() : headers));
   }
 
@@ -235,7 +237,7 @@ public class OpenAiUserChatClients implements ProviderChatClients {
   }
 
   /**
-   * The application's resolved options with the endpoint's own four fields over the top.
+   * The application's resolved options with the endpoint's own five fields over the top.
    *
    * <p>A method of its own so that the three states of a reasoning effort can be asserted: they are
    * the part of this class most easily broken by a change that looks harmless, and the difference
@@ -256,21 +258,27 @@ public class OpenAiUserChatClients implements ProviderChatClients {
     } else if (endpoint.reasoningEffort() != null) {
       builder.reasoningEffort(endpoint.reasoningEffort());
     }
+    // Left alone where the user chose nothing, the same as the effort: the application's own
+    // temperature survives the copy.
+    if (endpoint.temperature() != null) {
+      builder.temperature(endpoint.temperature());
+    }
     return builder.build();
   }
 
   /**
    * What makes two clients the same client. The token is part of it because rotating it has to
    * produce a new client rather than keep authenticating with the old one, and the reasoning effort
-   * is because it lives in the options a client is built with: Spring AI takes supplied per-request
-   * options whole rather than merging them, so sending it per request would mean building a set
-   * from scratch and losing everything else the application configured.
+   * and the temperature are because they live in the options a client is built with: Spring AI
+   * takes supplied per-request options whole rather than merging them, so sending it per request
+   * would mean building a set from scratch and losing everything else the application configured.
    */
   record Endpoint(
       String baseUrl,
       String apiKey,
       String model,
       String reasoningEffort,
+      Double temperature,
       Map<String, String> headers) {
     Endpoint {
       headers = headers == null ? Map.of() : Map.copyOf(headers);

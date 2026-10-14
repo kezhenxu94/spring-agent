@@ -118,6 +118,12 @@ public class UserModelConfig {
   private String reasoningEffort;
 
   /**
+   * The sampling temperature to send, or null to send whatever the application configured — see
+   * {@code Temperatures} for why a row needs its own.
+   */
+  private Double temperature;
+
+  /**
    * Whether this is the endpoint the owner's runs go to. At most one row per owner has it, and none
    * having it means the application's own model — see the class javadoc for why that is the failure
    * mode worth having.

@@ -182,6 +182,22 @@
     },
     "options": []
   },
+  "temperatureInput": {
+    "tag": "input",
+    "name": "cfg_temperature",
+    "required": false,
+    "width": "fill",
+    "max_length": 10,
+    "label": {
+      "tag": "plain_text",
+      "content": "{temperatureLabel}"
+    },
+    "label_position": "top",
+    "placeholder": {
+      "tag": "plain_text",
+      "content": "{temperaturePlaceholder}"
+    }
+  },
   "tokenInput": {
     "tag": "input",
     "name": "cfg_token",

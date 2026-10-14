@@ -52,7 +52,7 @@ class UserModelControllerTest {
     controller = new UserModelController(registry, probe, chatClients, messages());
     when(chatClients.providers()).thenReturn(List.of("openai"));
     when(chatClients.requiresBaseUrl(any())).thenReturn(true);
-    when(probe.check(any(), any(), any(), any(), any(), any())).thenReturn(null);
+    when(probe.check(any(), any(), any(), any(), any(), any(), any())).thenReturn(null);
     // A real repo saves and hands back the row it was given; the mock needs telling.
     when(repo.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
   }
@@ -86,6 +86,7 @@ class UserModelControllerTest {
             "kimi-k2",
             "sk-secret",
             null,
+            null,
             Map.of("X-Routing-Key", "abc")));
 
     final var saved = repo.findByOwnerIdAndName(ME, "kimi");
@@ -100,6 +101,20 @@ class UserModelControllerTest {
   }
 
   @Test
+  @DisplayName("a temperature out of range is refused before anything is probed")
+  void refusesABadTemperature() {
+    assertThat(
+            statusOf(
+                () ->
+                    controller.add(
+                        principal(ME, TENANT),
+                        new UserModelController.NewModel(
+                            "kimi", null, "https://x/v1", "m", "t", null, 2.5, null))))
+        .isEqualTo(HttpStatus.BAD_REQUEST);
+    verify(repo, org.mockito.Mockito.never()).save(any());
+  }
+
+  @Test
   @DisplayName("a name, a model or a token left out is refused before anything is probed")
   void refusesIncompleteFields() {
     assertThat(
@@ -108,7 +123,7 @@ class UserModelControllerTest {
                     controller.add(
                         principal(ME, TENANT),
                         new UserModelController.NewModel(
-                            " ", null, "https://x/v1", "m", "t", null, null))))
+                            " ", null, "https://x/v1", "m", "t", null, null, null))))
         .isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(
             statusOf(
@@ -116,7 +131,7 @@ class UserModelControllerTest {
                     controller.add(
                         principal(ME, TENANT),
                         new UserModelController.NewModel(
-                            "kimi", null, "https://x/v1", "", "t", null, null))))
+                            "kimi", null, "https://x/v1", "", "t", null, null, null))))
         .isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(
             statusOf(
@@ -124,14 +139,15 @@ class UserModelControllerTest {
                     controller.add(
                         principal(ME, TENANT),
                         new UserModelController.NewModel(
-                            "kimi", null, "https://x/v1", "m", "", null, null))))
+                            "kimi", null, "https://x/v1", "m", "", null, null, null))))
         .isEqualTo(HttpStatus.BAD_REQUEST);
   }
 
   @Test
   @DisplayName("an unreachable endpoint is refused as a bad gateway, and nothing is stored")
   void refusesUnreachable() {
-    when(probe.check(any(), any(), any(), any(), any(), any())).thenReturn("connection refused");
+    when(probe.check(any(), any(), any(), any(), any(), any(), any()))
+        .thenReturn("connection refused");
 
     assertThat(
             statusOf(
@@ -139,7 +155,7 @@ class UserModelControllerTest {
                     controller.add(
                         principal(ME, TENANT),
                         new UserModelController.NewModel(
-                            "kimi", null, "https://x/v1", "m", "t", null, null))))
+                            "kimi", null, "https://x/v1", "m", "t", null, null, null))))
         .isEqualTo(HttpStatus.BAD_GATEWAY);
     verify(repo, org.mockito.Mockito.never()).save(any());
   }
