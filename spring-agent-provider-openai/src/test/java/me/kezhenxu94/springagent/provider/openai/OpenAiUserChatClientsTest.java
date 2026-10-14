@@ -74,6 +74,21 @@ class OpenAiUserChatClientsTest {
   }
 
   @Test
+  @DisplayName("a row's own temperature replaces the application's")
+  void temperature() {
+    // GPT-5 and the o-series refuse every temperature but 1, so the application's 0.3 must give
+    // way.
+    final var options =
+        OpenAiUserChatClients.optionsFor(
+            appOptions,
+            new OpenAiUserChatClients.Endpoint(
+                "https://own/v1", "own-key", "gpt-5", null, 1.0, Map.of()));
+
+    assertThat(options.getTemperature()).isEqualTo(1.0);
+    assertThat(options.getReasoningEffort()).isEqualTo("medium");
+  }
+
+  @Test
   @DisplayName("two efforts on one endpoint are two clients, one effort is one")
   void cachedPerEffort() {
     final var high = clients.clientFor(builtin("app-model", "high"));
@@ -97,7 +112,7 @@ class OpenAiUserChatClientsTest {
     return OpenAiUserChatClients.optionsFor(
         appOptions,
         new OpenAiUserChatClients.Endpoint(
-            "https://own/v1", "own-key", "own-model", effort, Map.of()));
+            "https://own/v1", "own-key", "own-model", effort, null, Map.of()));
   }
 
   private static UserModelConfig builtin(final String model, final String effort) {

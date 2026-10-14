@@ -126,7 +126,8 @@ class AnthropicUserChatClientsTest {
     final var options =
         AnthropicUserChatClients.optionsFor(
             AnthropicChatOptions.builder().model("claude-haiku-4-5").build(),
-            new AnthropicUserChatClients.Endpoint(null, null, "claude-haiku-4-5", "low", Map.of()));
+            new AnthropicUserChatClients.Endpoint(
+                null, null, "claude-haiku-4-5", "low", null, Map.of()));
 
     assertThat(options.getApiKey()).isNull();
     assertThat(options.getBaseUrl()).isNull();
@@ -157,7 +158,12 @@ class AnthropicUserChatClientsTest {
         AnthropicUserChatClients.optionsFor(
             null,
             new AnthropicUserChatClients.Endpoint(
-                "https://gw.example.com", "sk-ant-x", "claude-sonnet-4-5", "medium", Map.of()));
+                "https://gw.example.com",
+                "sk-ant-x",
+                "claude-sonnet-4-5",
+                "medium",
+                null,
+                Map.of()));
 
     assertThat(options.getApiKey()).isEqualTo("sk-ant-x");
     assertThat(options.getBaseUrl()).isEqualTo("https://gw.example.com");
@@ -177,9 +183,31 @@ class AnthropicUserChatClientsTest {
         AnthropicUserChatClients.optionsFor(
             deployment,
             new AnthropicUserChatClients.Endpoint(
-                null, "sk-ant-x", "claude-sonnet-4-5", null, Map.of()));
+                null, "sk-ant-x", "claude-sonnet-4-5", null, null, Map.of()));
 
     assertThat(options.getMaxTokens()).isEqualTo(12345);
     assertThat(options.getModel()).isEqualTo("claude-sonnet-4-5");
+  }
+
+  @Test
+  @DisplayName("a row's own temperature replaces the deployment's, and none keeps it")
+  void temperature() {
+    final var deployment =
+        AnthropicChatOptions.builder().model("claude-haiku-4-5").temperature(0.0).build();
+
+    assertThat(
+            AnthropicUserChatClients.optionsFor(
+                    deployment,
+                    new AnthropicUserChatClients.Endpoint(
+                        null, "sk-ant-x", "claude-sonnet-4-5", null, 1.0, Map.of()))
+                .getTemperature())
+        .isEqualTo(1.0);
+    assertThat(
+            AnthropicUserChatClients.optionsFor(
+                    deployment,
+                    new AnthropicUserChatClients.Endpoint(
+                        null, "sk-ant-x", "claude-sonnet-4-5", null, null, Map.of()))
+                .getTemperature())
+        .isEqualTo(0.0);
   }
 }

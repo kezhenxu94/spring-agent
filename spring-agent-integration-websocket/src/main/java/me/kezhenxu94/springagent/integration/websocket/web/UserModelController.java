@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import me.kezhenxu94.springagent.core.usermodels.ReasoningEfforts;
+import me.kezhenxu94.springagent.core.usermodels.Temperatures;
 import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import me.kezhenxu94.springagent.core.usermodels.UserModelProbe;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
@@ -102,6 +103,7 @@ public class UserModelController {
     final var baseUrl = trimmed(body == null ? null : body.baseUrl());
     final var provider = body == null ? null : body.provider();
     final var reasoningEffort = body == null ? null : body.reasoningEffort();
+    final var temperature = body == null ? null : body.temperature();
     final var headers = body == null ? null : body.headers();
 
     if (name.isEmpty()) {
@@ -130,6 +132,11 @@ public class UserModelController {
           HttpStatus.BAD_REQUEST,
           messages.get("model-bad-effort", reasoningEffort, ReasoningEfforts.listed()));
     }
+    if (!Temperatures.valid(temperature)) {
+      throw new ResponseStatusException(
+          HttpStatus.BAD_REQUEST,
+          messages.get("model-bad-temperature", temperature, Temperatures.MAX));
+    }
     if (!UserModelRegistry.validName(name)) {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST, messages.get("model-bad-name", name));
@@ -151,14 +158,24 @@ public class UserModelController {
 
     final var effort = ReasoningEfforts.normalize(reasoningEffort);
     final var resolvedBaseUrl = baseUrl.isEmpty() ? null : baseUrl;
-    final var failure = probe.check(provider, resolvedBaseUrl, model, apiToken, effort, headers);
+    final var failure =
+        probe.check(provider, resolvedBaseUrl, model, apiToken, effort, temperature, headers);
     if (failure != null) {
       throw new ResponseStatusException(
           HttpStatus.BAD_GATEWAY, messages.get("model-unreachable", name, failure));
     }
 
     final var saved =
-        registry.save(user.id(), name, provider, resolvedBaseUrl, model, apiToken, effort, headers);
+        registry.save(
+            user.id(),
+            name,
+            provider,
+            resolvedBaseUrl,
+            model,
+            apiToken,
+            effort,
+            temperature,
+            headers);
     log.info("{} registered the chat model {}", user.id(), name);
     final var active = registry.active(user.id()).map(UserModelConfig::name).orElse(null);
     return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("model", asOwned(saved, active)));
@@ -209,6 +226,7 @@ public class UserModelController {
         config.baseUrl(),
         config.model(),
         config.reasoningEffort(),
+        config.temperature(),
         config.name().equals(activeName),
         config.headerCiphers() == null
             ? List.of()
@@ -235,6 +253,7 @@ public class UserModelController {
       String model,
       String apiToken,
       String reasoningEffort,
+      Double temperature,
       Map<String, String> headers) {}
 
   /**
@@ -250,6 +269,7 @@ public class UserModelController {
       String baseUrl,
       String model,
       String reasoningEffort,
+      Double temperature,
       boolean activated,
       List<String> headerNames,
       String updatedAt) {}

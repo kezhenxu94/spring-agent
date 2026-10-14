@@ -267,6 +267,13 @@ the deployment's.
 An effort is part of what gets connection-tested when an endpoint is registered, so a gateway that
 refuses one says so before anything is stored.
 
+### Temperature
+
+A model of your own may also carry a **temperature**, set when it is registered. Left empty, it gets
+the deployment's (`spring.ai.openai.chat.temperature`, `0` as shipped). That suits the deployment's
+model, but reasoning models such as GPT-5 and the o-series refuse any value but `1`, so registering
+one of those without setting `1` fails the connection test.
+
 The **embedding** model is deliberately not configurable this way. The knowledge base is shared
 between users and its collections are built with one embedding model, so letting one person change
 theirs would invalidate vectors that are not theirs.

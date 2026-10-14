@@ -218,6 +218,8 @@ public class UserModelRegistry {
    *     {@link me.kezhenxu94.springagent.core.dao.models.UserModelConfig#provider}
    * @param reasoningEffort as {@link ReasoningEfforts} spells it, or null to leave the
    *     application's own setting in place
+   * @param temperature as {@link Temperatures} accepts it, or null to leave the application's own
+   *     setting in place
    * @param headers extra headers to send with every request, plaintext in and sealed one value at a
    *     time before storage: null keeps whatever is already stored, {@code Map.of()} clears them,
    *     and anything else replaces the set wholesale — the same tri-state a re-registered token
@@ -232,6 +234,7 @@ public class UserModelRegistry {
       final String model,
       final String token,
       final String reasoningEffort,
+      final Double temperature,
       final Map<String, String> headers) {
     final var existing = repo.findByOwnerIdAndName(userId, name);
     final var wasActive = existing.map(UserModelConfig::activated);
@@ -246,6 +249,7 @@ public class UserModelRegistry {
             .apiKeyCipher(sealer.seal(token))
             .headerCiphers(sealHeaders(headers, existing.map(UserModelConfig::headerCiphers)))
             .reasoningEffort(ReasoningEfforts.normalize(reasoningEffort))
+            .temperature(temperature)
             .activated(wasActive.orElse(false))
             .updatedAt(Instant.now())
             .build());

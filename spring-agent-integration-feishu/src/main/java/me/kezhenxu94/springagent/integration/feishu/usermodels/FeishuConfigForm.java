@@ -79,6 +79,7 @@ public class FeishuConfigForm {
   static final String PROVIDER = "cfg_provider";
   static final String MODEL = "cfg_model";
   static final String EFFORT = "cfg_effort";
+  static final String TEMPERATURE = "cfg_temperature";
   static final String TOKEN = "cfg_token";
   static final String HEADERS = "cfg_headers";
 
@@ -143,6 +144,9 @@ public class FeishuConfigForm {
     formElements.add(root.path("modelInput").deepCopy());
     formElements.add(root.path("effortLabel").deepCopy());
     formElements.add(effortSelect(root, active == null ? null : active.reasoningEffort()));
+    // Registration only, beside the endpoint it belongs to, unlike the effort above: it is set
+    // when a model is added and has no form of its own to change it afterwards.
+    formElements.add(root.path("temperatureInput").deepCopy());
     formElements.add(root.path("tokenInput").deepCopy());
     formElements.add(root.path("headersInput").deepCopy());
     formElements.add(root.path("submit").deepCopy());
@@ -398,6 +402,7 @@ public class FeishuConfigForm {
         text(formValue, BASE_URL),
         text(formValue, MODEL),
         text(formValue, EFFORT),
+        text(formValue, TEMPERATURE),
         text(formValue, TOKEN),
         parseHeaders(text(formValue, HEADERS)));
   }
@@ -456,6 +461,7 @@ public class FeishuConfigForm {
       String baseUrl,
       String model,
       String effort,
+      String temperature,
       String token,
       Map<String, String> headers) {
 
@@ -478,7 +484,11 @@ public class FeishuConfigForm {
      * attempt to register one.
      */
     public boolean adding() {
-      return name != null || baseUrl != null || model != null || token != null;
+      return name != null
+          || baseUrl != null
+          || model != null
+          || token != null
+          || temperature != null;
     }
 
     /**

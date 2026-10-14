@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import me.kezhenxu94.springagent.core.usermodels.BuiltinModels;
+import me.kezhenxu94.springagent.core.usermodels.Temperatures;
 import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import me.kezhenxu94.springagent.core.usermodels.UserModelProbe;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
@@ -115,6 +116,12 @@ public class FeishuConfigHandler {
       }
       if (!submission.complete()) {
         return respond(userId, "warning", messages.get("config-incomplete"));
+      }
+      if (!Temperatures.valid(submission.temperature())) {
+        return respond(
+            userId,
+            "warning",
+            messages.get("config-bad-temperature", submission.temperature(), Temperatures.MAX));
       }
       taskExecutor.execute(() -> add(chatId, userId, submission));
       return respond(userId, "info", messages.get("config-testing", submission.name()));
@@ -230,6 +237,7 @@ public class FeishuConfigHandler {
     }
     final var effort = submission.storedEffort();
     final var provider = submission.storedProvider();
+    final var temperature = Temperatures.parse(submission.temperature());
     final var failure =
         probe.check(
             provider,
@@ -237,6 +245,7 @@ public class FeishuConfigHandler {
             submission.model(),
             submission.token(),
             effort,
+            temperature,
             submission.headers());
     if (failure != null) {
       sendText(chatId, messages.get("config-add-failed", submission.name(), failure));
@@ -250,6 +259,7 @@ public class FeishuConfigHandler {
         submission.model(),
         submission.token(),
         effort,
+        temperature,
         submission.headers());
     registry.activate(userId, submission.name());
     sendText(chatId, messages.get("config-added", submission.name()));

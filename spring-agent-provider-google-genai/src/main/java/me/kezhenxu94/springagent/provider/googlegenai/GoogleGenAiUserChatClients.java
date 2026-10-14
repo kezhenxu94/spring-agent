@@ -143,6 +143,7 @@ public class GoogleGenAiUserChatClients implements ProviderChatClients {
             ? (defaults == null ? null : defaults.getModel())
             : config.model(),
         config.reasoningEffort(),
+        config.temperature(),
         registry.headersOf(config));
   }
 
@@ -170,6 +171,7 @@ public class GoogleGenAiUserChatClients implements ProviderChatClients {
             token,
             Strings.isNullOrEmpty(config.model()) ? defaults.getModel() : config.model(),
             config.reasoningEffort(),
+            config.temperature(),
             headers == null ? Map.of() : headers));
   }
 
@@ -219,8 +221,8 @@ public class GoogleGenAiUserChatClients implements ProviderChatClients {
   }
 
   /**
-   * The application's resolved options with the endpoint's model and thinking configuration over
-   * the top.
+   * The application's resolved options with the endpoint's model, thinking configuration and
+   * temperature over the top.
    *
    * <p>A copy rather than a fresh object, and that is not tidiness: Spring AI does not merge
    * runtime options with a model's defaults, it takes the supplied ones whole, so options built
@@ -235,6 +237,10 @@ public class GoogleGenAiUserChatClients implements ProviderChatClients {
       final GoogleGenAiChatOptions defaults, final Endpoint endpoint) {
     final var builder = defaults.mutate().model(endpoint.model());
     GoogleGenAiThinking.apply(builder, endpoint.reasoningEffort());
+    // Left alone where the user chose nothing, so the application's own survives the copy.
+    if (endpoint.temperature() != null) {
+      builder.temperature(endpoint.temperature());
+    }
     return builder.build();
   }
 
@@ -242,16 +248,17 @@ public class GoogleGenAiUserChatClients implements ProviderChatClients {
    * What makes two clients the same client.
    *
    * <p>The token is part of it because rotating one has to produce a new client rather than keep
-   * authenticating with the old one, and the thinking configuration is because it lives in the
-   * options a client is built with — Spring AI takes per-request options whole rather than merging
-   * them, so sending it per request would mean building a set from scratch and losing everything
-   * else the deployment configured.
+   * authenticating with the old one, and the thinking configuration and the temperature are because
+   * they live in the options a client is built with — Spring AI takes per-request options whole
+   * rather than merging them, so sending it per request would mean building a set from scratch and
+   * losing everything else the deployment configured.
    */
   record Endpoint(
       String baseUrl,
       String apiKey,
       String model,
       String reasoningEffort,
+      Double temperature,
       Map<String, String> headers) {
     Endpoint {
       headers = headers == null ? Map.of() : Map.copyOf(headers);

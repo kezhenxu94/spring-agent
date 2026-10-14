@@ -54,6 +54,9 @@ How hard the model should think is optional and must be one of the listed values
 whatever the application is configured with. Changing it later, without the token, is done on the
 /config form or by typing /config <name> <effort>.
 
+The temperature is optional too; leave it out to use the application's. Reasoning models such as GPT-5
+and the o-series refuse any value but 1, so pass 1 if registering one fails over the temperature.
+
 Extra HTTP headers the endpoint needs (a second auth header, a routing header) are optional. Omit to
 send none; giving a map replaces whatever was stored for this name.
 
@@ -88,6 +91,11 @@ who set them.
       @ToolParam(
               required = false,
               description =
+                  "Sampling temperature, 0 to 2. Omit to use the application's own setting")
+          final Double temperature,
+      @ToolParam(
+              required = false,
+              description =
                   "Extra HTTP headers this endpoint needs, header name to value. Omit for none; a"
                       + " map replaces whatever headers were stored for this name")
           final Map<String, String> headers,
@@ -108,6 +116,9 @@ who set them.
     // user it had set something it had not.
     if (!isBlank(reasoningEffort) && !ReasoningEfforts.valid(reasoningEffort)) {
       return messages.get("user-model-bad-effort", reasoningEffort, ReasoningEfforts.listed());
+    }
+    if (!Temperatures.valid(temperature)) {
+      return messages.get("user-model-bad-temperature", temperature, Temperatures.MAX);
     }
     final var modelName = name.trim();
     if (!UserModelRegistry.validName(modelName)) {
@@ -132,6 +143,7 @@ who set them.
             model.trim(),
             apiToken.trim(),
             effort,
+            temperature,
             headers);
     if (failure != null) {
       return messages.get("user-model-unreachable", modelName, failure);
@@ -145,6 +157,7 @@ who set them.
         model.trim(),
         apiToken.trim(),
         effort,
+        temperature,
         headers);
     return messages.get("user-model-added", modelName, model.trim());
   }
@@ -172,7 +185,7 @@ API tokens are never included. A user with none registered is using the applicat
                         config.name(),
                         config.model(),
                         config.baseUrl(),
-                        effortOf(config) + headersOf(config)))
+                        effortOf(config) + temperatureOf(config) + headersOf(config)))
             .collect(Collectors.joining("\n"));
     return active == null
         ? messages.get("user-model-list-on-default", lines)
@@ -271,6 +284,12 @@ conversations go back to the application's own model.
     return config.reasoningEffort() == null
         ? ""
         : messages.get("user-model-line-effort", config.reasoningEffort());
+  }
+
+  private String temperatureOf(final UserModelConfig config) {
+    return config.temperature() == null
+        ? ""
+        : messages.get("user-model-line-temperature", config.temperature());
   }
 
   /** Names only, never values — see {@link UserModelRegistry#headerNames}. */

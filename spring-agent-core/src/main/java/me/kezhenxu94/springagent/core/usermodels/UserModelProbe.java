@@ -51,8 +51,12 @@ public class UserModelProbe {
    * rejects {@code reasoning_effort} outright rejects it on the very first call, so probing without
    * it would store an endpoint that then fails on every real message.
    *
+   * <p>So is the temperature, for the same reason: a reasoning model refuses any but its default on
+   * the first call.
+   *
    * @param reasoningEffort as {@link ReasoningEfforts} spells it, or null for the application's own
    *     setting
+   * @param temperature as {@link Temperatures} accepts it, or null for the application's own
    * @return null when the endpoint answered, otherwise why it did not, in words fit to show a user
    */
   public String check(
@@ -61,6 +65,7 @@ public class UserModelProbe {
       final String model,
       final String token,
       final String reasoningEffort,
+      final Double temperature,
       final Map<String, String> headers) {
     final var config =
         UserModelConfig.builder()
@@ -72,6 +77,7 @@ public class UserModelProbe {
             .baseUrl(baseUrl)
             .model(model)
             .reasoningEffort(ReasoningEfforts.normalize(reasoningEffort))
+            .temperature(temperature)
             .build();
     // A thread of its own with a deadline, because the configured request timeout is measured in
     // minutes — right for a reasoning turn, far too long to leave somebody waiting to be told they
