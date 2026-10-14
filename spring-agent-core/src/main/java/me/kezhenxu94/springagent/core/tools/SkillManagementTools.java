@@ -87,11 +87,12 @@ public class SkillManagementTools {
 """
 List all available skills across all skill directories.
 
-A skill is a folder containing a SKILL.md file. Returns the folder path and skill name for each installed skill.
+A skill is a folder containing a SKILL.md file. Returns, for each installed skill, the tool that
+runs it, its description and its folder path.
 
 Usage:
 - Call with no arguments.
-- Returns a list of skill folder paths and their names.
+- To use a skill, call the tool listed for it, not the filesystem tools.
 - Skills from the current user's personal skills directory, the current group's shared skills
   directory (when the request has one), and the tenant's company-wide shared skills directory
   (when the request has one) are all included.
@@ -110,7 +111,15 @@ Usage:
     if (found.isEmpty()) return messages.get("skill-none");
     final var result = new StringBuilder();
     for (final var skill : found) {
-      result.append(skill.directory().toAbsolutePath()).append("\n");
+      final var toolName = SkillsTool.toolName(skill.declaredName());
+      result
+          .append(
+              toolName == null
+                  ? messages.get("skill-row-uncallable", skill.name())
+                  : messages.get("skill-row", toolName, skill.description()))
+          .append("\n  ")
+          .append(skill.directory().toAbsolutePath())
+          .append("\n");
     }
     return messages.get("skill-found", found.size(), result);
   }

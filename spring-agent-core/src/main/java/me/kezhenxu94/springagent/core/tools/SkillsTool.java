@@ -231,20 +231,34 @@ public class SkillsTool {
       return null;
     }
 
-    final var toolName = TOOL_NAME_PREFIX + ILLEGAL_TOOL_NAME_CHARS.matcher(name).replaceAll("_");
-    if (toolName.length() > MAX_TOOL_NAME_LENGTH) {
+    final var toolName = toolName(name);
+    if (toolName == null) {
       log.warn(
           "Skipping skill '{}' in '{}': a skill name becomes the tool name '{}' and must be at most"
               + " {} characters, {} of them spent on the prefix.",
           name,
           skill.basePath(),
-          toolName,
+          TOOL_NAME_PREFIX + ILLEGAL_TOOL_NAME_CHARS.matcher(name).replaceAll("_"),
           MAX_TOOL_NAME_LENGTH,
           TOOL_NAME_PREFIX.length());
       return null;
     }
 
     return toolName;
+  }
+
+  /**
+   * The tool a skill declaring {@code skillName} in its front matter is offered as, or null where
+   * that name cannot be one — so that whatever lists a skill names the tool it is called by, and
+   * names it the way this class does rather than a second time.
+   */
+  public static String toolName(final String skillName) {
+    if (skillName == null || skillName.isBlank()) {
+      return null;
+    }
+    final var toolName =
+        TOOL_NAME_PREFIX + ILLEGAL_TOOL_NAME_CHARS.matcher(skillName).replaceAll("_");
+    return toolName.length() > MAX_TOOL_NAME_LENGTH ? null : toolName;
   }
 
   /**
