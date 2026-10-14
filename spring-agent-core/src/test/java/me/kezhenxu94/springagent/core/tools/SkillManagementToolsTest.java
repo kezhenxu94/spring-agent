@@ -194,4 +194,20 @@ class SkillManagementToolsTest {
         .contains(location.resolve("groups/oc_1/skills/shared").toString())
         .doesNotContain(location.resolve("tenant/t_1/skills/company").toString());
   }
+
+  @Test
+  @DisplayName("each listed skill names the tool that runs it, or says it has none")
+  void listsTheToolEachSkillIsCalledBy() throws Exception {
+    Files.createDirectories(location.resolve("ou_1/skills/ad-report"));
+    Files.writeString(
+        location.resolve("ou_1/skills/ad-report/SKILL.md"),
+        "---\nname: generate-ad-report\ndescription: Daily ad report\n---\nsteps");
+    Files.createDirectories(location.resolve("ou_1/skills/nameless"));
+    Files.writeString(location.resolve("ou_1/skills/nameless/SKILL.md"), "no front matter");
+
+    assertThat(tools.listSkills(CONTEXT))
+        .contains("skill_generate-ad-report: Daily ad report")
+        .contains(location.resolve("ou_1/skills/ad-report").toString())
+        .contains("(not callable: the SKILL.md in \"nameless\"");
+  }
 }
