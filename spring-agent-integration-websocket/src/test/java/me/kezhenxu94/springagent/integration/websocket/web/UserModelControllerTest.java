@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.integration.websocket.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -52,7 +53,8 @@ class UserModelControllerTest {
     controller = new UserModelController(registry, probe, chatClients, messages());
     when(chatClients.providers()).thenReturn(List.of("openai"));
     when(chatClients.requiresBaseUrl(any())).thenReturn(true);
-    when(probe.check(any(), any(), any(), any(), any(), any(), any())).thenReturn(null);
+    when(probe.check(any(), any(), any(), any(), any(), any(), anyBoolean(), any()))
+        .thenReturn(null);
     // A real repo saves and hands back the row it was given; the mock needs telling.
     when(repo.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
   }
@@ -75,6 +77,21 @@ class UserModelControllerTest {
   // ─────────────────────────────────────── registering ────────────────────────────────────────
 
   @Test
+  @DisplayName("strict tools asked for on registration is stored on the row and listed")
+  void strictToolsIsStored() {
+    final var response =
+        controller.add(
+            principal(ME, TENANT),
+            new UserModelController.NewModel(
+                "luna", null, "https://gw/v1", "luna", "t", null, null, true, null));
+
+    final var captor = ArgumentCaptor.forClass(UserModelConfig.class);
+    verify(repo).save(captor.capture());
+    assertThat(captor.getValue().strictTools()).isTrue();
+    assertThat(response.getBody().get("model")).hasFieldOrPropertyWithValue("strictTools", true);
+  }
+
+  @Test
   @DisplayName("headers given on registration are sealed, and only their names ever come back")
   void headersAreSealedOnAdd() {
     controller.add(
@@ -85,6 +102,7 @@ class UserModelControllerTest {
             "https://kimi/v1",
             "kimi-k2",
             "sk-secret",
+            null,
             null,
             null,
             Map.of("X-Routing-Key", "abc")));
@@ -109,7 +127,7 @@ class UserModelControllerTest {
                     controller.add(
                         principal(ME, TENANT),
                         new UserModelController.NewModel(
-                            "kimi", null, "https://x/v1", "m", "t", null, 2.5, null))))
+                            "kimi", null, "https://x/v1", "m", "t", null, 2.5, null, null))))
         .isEqualTo(HttpStatus.BAD_REQUEST);
     verify(repo, org.mockito.Mockito.never()).save(any());
   }
@@ -123,7 +141,7 @@ class UserModelControllerTest {
                     controller.add(
                         principal(ME, TENANT),
                         new UserModelController.NewModel(
-                            " ", null, "https://x/v1", "m", "t", null, null, null))))
+                            " ", null, "https://x/v1", "m", "t", null, null, null, null))))
         .isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(
             statusOf(
@@ -131,7 +149,7 @@ class UserModelControllerTest {
                     controller.add(
                         principal(ME, TENANT),
                         new UserModelController.NewModel(
-                            "kimi", null, "https://x/v1", "", "t", null, null, null))))
+                            "kimi", null, "https://x/v1", "", "t", null, null, null, null))))
         .isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(
             statusOf(
@@ -139,14 +157,14 @@ class UserModelControllerTest {
                     controller.add(
                         principal(ME, TENANT),
                         new UserModelController.NewModel(
-                            "kimi", null, "https://x/v1", "m", "", null, null, null))))
+                            "kimi", null, "https://x/v1", "m", "", null, null, null, null))))
         .isEqualTo(HttpStatus.BAD_REQUEST);
   }
 
   @Test
   @DisplayName("an unreachable endpoint is refused as a bad gateway, and nothing is stored")
   void refusesUnreachable() {
-    when(probe.check(any(), any(), any(), any(), any(), any(), any()))
+    when(probe.check(any(), any(), any(), any(), any(), any(), anyBoolean(), any()))
         .thenReturn("connection refused");
 
     assertThat(
@@ -155,7 +173,7 @@ class UserModelControllerTest {
                     controller.add(
                         principal(ME, TENANT),
                         new UserModelController.NewModel(
-                            "kimi", null, "https://x/v1", "m", "t", null, null, null))))
+                            "kimi", null, "https://x/v1", "m", "t", null, null, null, null))))
         .isEqualTo(HttpStatus.BAD_GATEWAY);
     verify(repo, org.mockito.Mockito.never()).save(any());
   }

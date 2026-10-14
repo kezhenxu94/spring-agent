@@ -80,6 +80,13 @@ public class FeishuConfigForm {
   static final String MODEL = "cfg_model";
   static final String EFFORT = "cfg_effort";
   static final String TEMPERATURE = "cfg_temperature";
+  static final String STRICT_TOOLS = "cfg_strict_tools";
+
+  /**
+   * The strict-tools option that turns it on; anything else, the select untouched included, is off.
+   */
+  static final String STRICT_TOOLS_ON = "on";
+
   static final String TOKEN = "cfg_token";
   static final String HEADERS = "cfg_headers";
 
@@ -147,6 +154,7 @@ public class FeishuConfigForm {
     // Registration only, beside the endpoint it belongs to, unlike the effort above: it is set
     // when a model is added and has no form of its own to change it afterwards.
     formElements.add(root.path("temperatureInput").deepCopy());
+    formElements.add(strictToolsSelect(root));
     formElements.add(root.path("tokenInput").deepCopy());
     formElements.add(root.path("headersInput").deepCopy());
     formElements.add(root.path("submit").deepCopy());
@@ -286,6 +294,19 @@ public class FeishuConfigForm {
     return select;
   }
 
+  /**
+   * Whether tools are offered in strict mode, as a select because a card form has no checkbox whose
+   * value it reports. Registration only, like the temperature, and left unselected so the
+   * placeholder says what untouched means.
+   */
+  private ObjectNode strictToolsSelect(final ObjectNode root) {
+    final var select = (ObjectNode) root.path("strictToolsSelect").deepCopy();
+    final var options = (ArrayNode) select.path("options");
+    options.add(option(root, messages.get("config-strict-tools-off"), "off"));
+    options.add(option(root, messages.get("config-strict-tools-on"), STRICT_TOOLS_ON));
+    return select;
+  }
+
   private ObjectNode effortSelect(final ObjectNode root, final String current) {
     final var select = (ObjectNode) root.path("effortSelect").deepCopy();
     final var options = (ArrayNode) select.path("options");
@@ -403,6 +424,7 @@ public class FeishuConfigForm {
         text(formValue, MODEL),
         text(formValue, EFFORT),
         text(formValue, TEMPERATURE),
+        text(formValue, STRICT_TOOLS),
         text(formValue, TOKEN),
         parseHeaders(text(formValue, HEADERS)));
   }
@@ -462,8 +484,14 @@ public class FeishuConfigForm {
       String model,
       String effort,
       String temperature,
+      String strictTools,
       String token,
       Map<String, String> headers) {
+
+    /** Whether tools are to be offered in strict mode — see {@code UserModelConfig#strictTools}. */
+    public boolean strict() {
+      return FeishuConfigForm.STRICT_TOOLS_ON.equals(strictTools);
+    }
 
     /**
      * The provider as it should be stored: null both for an untouched select and for the option

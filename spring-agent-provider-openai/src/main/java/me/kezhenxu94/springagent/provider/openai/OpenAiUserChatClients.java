@@ -123,6 +123,7 @@ public class OpenAiUserChatClients implements ProviderChatClients {
             Strings.isNullOrEmpty(config.model()) ? defaults.getModel() : config.model(),
             config.reasoningEffort(),
             config.temperature(),
+            Boolean.TRUE.equals(config.strictTools()),
             registry.headersOf(config)));
   }
 
@@ -159,6 +160,7 @@ public class OpenAiUserChatClients implements ProviderChatClients {
             config.model(),
             config.reasoningEffort(),
             config.temperature(),
+            Boolean.TRUE.equals(config.strictTools()),
             headers == null ? Map.of() : headers));
   }
 
@@ -237,7 +239,7 @@ public class OpenAiUserChatClients implements ProviderChatClients {
   }
 
   /**
-   * The application's resolved options with the endpoint's own five fields over the top.
+   * The application's resolved options with the endpoint's own six fields over the top.
    *
    * <p>A method of its own so that the three states of a reasoning effort can be asserted: they are
    * the part of this class most easily broken by a change that looks harmless, and the difference
@@ -263,15 +265,23 @@ public class OpenAiUserChatClients implements ProviderChatClients {
     if (endpoint.temperature() != null) {
       builder.temperature(endpoint.temperature());
     }
+    // Only ever switched on, never off: off is what Spring AI sends by default, and a deployment
+    // that turned strict mode on for its own model should not lose it on a row that said nothing.
+    // On, OpenAiChatModel both sends "strict": true and rewrites every tool schema to what strict
+    // mode demands, which is the half that matters to an endpoint enforcing it regardless.
+    if (endpoint.strictTools()) {
+      builder.strict(true);
+    }
     return builder.build();
   }
 
   /**
    * What makes two clients the same client. The token is part of it because rotating it has to
-   * produce a new client rather than keep authenticating with the old one, and the reasoning effort
-   * and the temperature are because they live in the options a client is built with: Spring AI
-   * takes supplied per-request options whole rather than merging them, so sending it per request
-   * would mean building a set from scratch and losing everything else the application configured.
+   * produce a new client rather than keep authenticating with the old one, and the reasoning
+   * effort, the temperature and strict tools are because they live in the options a client is built
+   * with: Spring AI takes supplied per-request options whole rather than merging them, so sending
+   * it per request would mean building a set from scratch and losing everything else the
+   * application configured.
    */
   record Endpoint(
       String baseUrl,
@@ -279,6 +289,7 @@ public class OpenAiUserChatClients implements ProviderChatClients {
       String model,
       String reasoningEffort,
       Double temperature,
+      boolean strictTools,
       Map<String, String> headers) {
     Endpoint {
       headers = headers == null ? Map.of() : Map.copyOf(headers);

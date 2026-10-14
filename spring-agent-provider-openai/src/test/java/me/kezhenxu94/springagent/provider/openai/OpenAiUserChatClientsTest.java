@@ -82,10 +82,24 @@ class OpenAiUserChatClientsTest {
         OpenAiUserChatClients.optionsFor(
             appOptions,
             new OpenAiUserChatClients.Endpoint(
-                "https://own/v1", "own-key", "gpt-5", null, 1.0, Map.of()));
+                "https://own/v1", "own-key", "gpt-5", null, 1.0, false, Map.of()));
 
     assertThat(options.getTemperature()).isEqualTo(1.0);
     assertThat(options.getReasoningEffort()).isEqualTo("medium");
+  }
+
+  @Test
+  @DisplayName("strict tools is switched on by a row that asks, and left as configured otherwise")
+  void strictTools() {
+    final var strict =
+        OpenAiUserChatClients.optionsFor(
+            appOptions,
+            new OpenAiUserChatClients.Endpoint(
+                "https://own/v1", "own-key", "luna", null, null, true, Map.of()));
+
+    assertThat(strict.getStrict()).isTrue();
+    assertThat(strict.getTemperature()).isEqualTo(0.3);
+    assertThat(optionsFor(null).getStrict()).isNull();
   }
 
   @Test
@@ -112,7 +126,7 @@ class OpenAiUserChatClientsTest {
     return OpenAiUserChatClients.optionsFor(
         appOptions,
         new OpenAiUserChatClients.Endpoint(
-            "https://own/v1", "own-key", "own-model", effort, null, Map.of()));
+            "https://own/v1", "own-key", "own-model", effort, null, false, Map.of()));
   }
 
   private static UserModelConfig builtin(final String model, final String effort) {

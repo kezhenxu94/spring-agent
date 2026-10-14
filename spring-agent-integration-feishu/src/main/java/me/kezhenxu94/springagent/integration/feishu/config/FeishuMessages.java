@@ -101,6 +101,7 @@ public class FeishuMessages {
         .replace("{effortHint}", jsonEscaped(get("config-effort-hint")))
         .replace("{temperatureLabel}", jsonEscaped(get("config-temperature-label")))
         .replace("{temperaturePlaceholder}", jsonEscaped(get("config-temperature-placeholder")))
+        .replace("{strictToolsHint}", jsonEscaped(get("config-strict-tools-hint")))
         .replace("{tokenLabel}", jsonEscaped(get("config-token-label")))
         .replace("{tokenPlaceholder}", jsonEscaped(get("config-token-placeholder")))
         .replace("{headersLabel}", jsonEscaped(get("config-headers-label")))

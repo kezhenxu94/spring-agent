@@ -274,6 +274,16 @@ the deployment's (`spring.ai.openai.chat.temperature`, `0` as shipped). That sui
 model, but reasoning models such as GPT-5 and the o-series refuse any value but `1`, so registering
 one of those without setting `1` fails the connection test.
 
+### Strict tools
+
+An OpenAI-compatible model of your own may also be registered with **strict tools** on. Leave it off
+unless runs on that model fail with `'required' is required to be supplied and to be an array
+including every key in properties`: that is an endpoint enforcing OpenAI's strict mode on tools even
+though the request says `"strict": false`. Turned on, every tool is offered in strict mode, with its
+optional arguments listed as required and accepting `null`. The cost is that an MCP server may refuse
+an explicit `null` it would have accepted as an omitted argument. The connection test sends no tools,
+so it cannot catch this, and the setting is only read on the OpenAI protocol.
+
 The **embedding** model is deliberately not configurable this way. The knowledge base is shared
 between users and its collections are built with one embedding model, so letting one person change
 theirs would invalidate vectors that are not theirs.
