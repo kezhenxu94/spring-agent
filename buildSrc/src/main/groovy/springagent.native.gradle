@@ -71,9 +71,10 @@ pluginManager.withPlugin('org.graalvm.buildtools.native') {
       enabled = true
 
       // The shared reachability repository keys on the exact coordinate version. Spring AI is
-      // pinned to a 2.0.1-SNAPSHOT that matches nothing, and victools resolves 5.0.0 while the
-      // repository stops at 4.38.0, so both are pointed at the newest metadata that exists. If a
-      // missing-reflection failure traces back to one of these, the override is the first suspect.
+      // pinned to 2.0.1, which the repository has no metadata for, and victools resolves 5.0.0
+      // while the repository stops at 4.38.0, so both are pointed at the newest metadata that
+      // exists. If a missing-reflection failure traces back to one of these, the override is the
+      // first suspect.
       moduleToConfigVersion.put('org.springframework.ai:spring-ai-model', '2.0.0')
       moduleToConfigVersion.put('org.springframework.ai:spring-ai-commons', '2.0.0')
       moduleToConfigVersion.put('org.springframework.ai:spring-ai-client-chat', '2.0.0')

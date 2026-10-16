@@ -957,6 +957,7 @@ class SpringAgentTest {
             .toolCallbackResolver(
                 new InterceptingToolCallbackResolver(
                     toolName -> null, List.of(), noFileRefs(), TestI18n.english()))
+            .resolutionFallbackEnabled(true)
             .build(),
         List.of(),
         noFileRefs(),
