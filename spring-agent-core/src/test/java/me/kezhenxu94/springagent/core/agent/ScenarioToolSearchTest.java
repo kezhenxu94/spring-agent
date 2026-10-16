@@ -14,6 +14,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import me.kezhenxu94.springagent.core.advisors.toolsearch.ToolSearchToolCallingAdvisor;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
@@ -29,7 +30,6 @@ import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.toolsearch.ToolSearchToolCallingAdvisor;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -134,7 +134,8 @@ class ScenarioToolSearchTest {
             providerOf((AgentResponseListener) null),
             providerOf((PromptVariablesContributor) null),
             providerOf((AskedQuestionsRecorder) null),
-            // The searching builder, exactly as ToolSearchAdvisorAutoConfiguration registers it.
+            // The searching builder, exactly as SpringAgentToolSearchAdvisorConfiguration registers
+            // it in place of Spring AI's own.
             providerOf(
                 ToolSearchToolCallingAdvisor.builder()
                     .toolIndex(toolIndex)

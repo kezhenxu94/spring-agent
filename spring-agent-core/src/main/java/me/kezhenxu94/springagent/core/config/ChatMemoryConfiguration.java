@@ -56,11 +56,11 @@ public class ChatMemoryConfiguration {
    * How many messages of a conversation are kept, and so replayed, unless a deployment says
    * otherwise.
    *
-   * <p>Ten times Spring AI's twenty, because a message here is not a turn: the memory advisor sits
-   * inside the tool-calling loop, so one question answered by reading three files is already eight
-   * or nine messages — the question, the answer, and a call and a result for each tool. A window of
-   * twenty is then two exchanges, and an agent that has forgotten what it was asked two questions
-   * ago reads as broken rather than as configured low.
+   * <p>Ten times Spring AI's twenty, because a message here is not a turn: a turn is kept with its
+   * tool calls — see {@code MemoryToolCallingAdvisor} — so one question answered by reading three
+   * files is already eight or nine messages — the question, the answer, and a call and a result for
+   * each tool. A window of twenty is then two exchanges, and an agent that has forgotten what it
+   * was asked two questions ago reads as broken rather than as configured low.
    *
    * <p>What a larger window costs is paid twice, which is why this is a number and not simply a
    * large one. The window is replayed into every request, so it is tokens on each turn; and {@link

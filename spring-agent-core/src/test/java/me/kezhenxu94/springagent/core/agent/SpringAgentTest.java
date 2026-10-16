@@ -1087,9 +1087,12 @@ class SpringAgentTest {
         return value;
       }
 
+      // As Spring's own does: nothing is handed over when there is nothing to hand.
       @Override
       public void ifAvailable(final Consumer<T> action) {
-        action.accept(value);
+        if (value != null) {
+          action.accept(value);
+        }
       }
     };
   }

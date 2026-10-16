@@ -24,6 +24,7 @@ import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.advisors.MemoryToolCallingAdvisor;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
@@ -40,7 +41,6 @@ import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.QuestionHandler;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
@@ -1160,35 +1160,17 @@ public class SpringAgent {
     // The tools the composition delivers as advisors rather than as callbacks, auto-memory among
     // them. What follows is the run's own wiring, which is nothing to do with tools.
     final var advisors = new ArrayList<Advisor>(composition.advisors());
-    if (request.scenario().conversationMemory()) {
-      // Ordered after the tool advisor, so it sits inside the tool-calling loop and sees each
-      // iteration: the assistant message carrying the tool calls, and the tool responses that
-      // answer them. That is what puts a turn's tool calls into chat memory at all.
-      advisors.add(
-          MessageChatMemoryAdvisor.builder(chatMemory)
-              .order(ToolCallingAdvisor.DEFAULT_ORDER + 100)
-              .build());
-    }
     // The tool advisor is registered here rather than left to ChatClient for two reasons.
     //
-    // One, to keep its own conversation history on. ChatClient registers it for us only when we
-    // have not, and turns that history off whenever a memory advisor sits downstream — on the
-    // assumption that chat memory will carry the loop's messages instead. No repository keeps tool
-    // messages (JdbcChatMemoryRepository refuses them outright, logging a warning as it drops
-    // them), so on that assumption the loop loses its own working messages between iterations: it
-    // forwards only the system message and the last one, and reads back a history with every tool
-    // call and result missing. Enough survives to answer with a single tool, never enough to carry
-    // one tool's result into the next call — a run that repeats tools instead of finishing. Keeping
-    // the history on makes the loop carry its own messages, whatever the store keeps.
+    // One, it is what keeps the conversation's memory — see MemoryToolCallingAdvisor for why that
+    // is the loop's job rather than a memory advisor's beside it — and ChatClient would register
+    // one that keeps none.
     //
-    // Two, so that every run shares one advisor instance and therefore one tool index — see
-    // toolCallingAdvisor. ChatClient builds a new one from the builder for every prompt, which is
-    // exactly what has to stop, so this registration covers the runs without conversation memory
-    // as well: ChatClient skips its own registration once a tool advisor is in the list.
-    final var toolAdvisor = toolCallingAdvisor(request.scenario());
-    if (toolAdvisor != null) {
-      advisors.add(toolAdvisor);
-    }
+    // Two, so that every run taking the tool search shares one advisor instance and therefore one
+    // tool index — see toolCallingAdvisor. ChatClient builds a new one from the builder for every
+    // prompt, which is exactly what has to stop. ChatClient skips its own registration once a tool
+    // advisor is in the list.
+    advisors.add(toolCallingAdvisor(request.scenario()));
     advisors.add(SimpleLoggerAdvisor.builder().build());
 
     return clientFor(request)
@@ -1201,6 +1183,16 @@ public class SpringAgent {
         .tools(composition.tools())
         .toolContext(toolContext)
         .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, request.conversationId()))
+        .advisors(
+            a -> {
+              if (request.scenario().conversationMemory()
+                  && !Strings.isNullOrEmpty(request.conversationId())) {
+                a.param(
+                    MemoryToolCallingAdvisor.CONVERSATION,
+                    new MemoryToolCallingAdvisor.Conversation(
+                        chatMemory, request.conversationId()));
+              }
+            })
         .advisors(a -> a.param(TOOL_INDEX_KEY, toolIndexKeyFor(request)))
         .advisors(advisors.toArray(new Advisor[0]))
         .stream()
@@ -1222,21 +1214,23 @@ public class SpringAgent {
   }
 
   /**
-   * The tool advisor this run belongs on, or null for a run taking the tool search where no tool
-   * advisor builder is configured.
+   * The tool advisor this run belongs on.
    *
-   * <p>A scenario that declines the tool search is given a plain {@link ToolCallingAdvisor} on the
-   * same {@link #toolCallingManager} instead, because the tool-search advisor has no per-request
-   * switch: it indexes and rewrites the options on every request it sees. Built per run, since a
-   * plain advisor holds nothing worth sharing — the index and its fingerprints are the searching
-   * one's alone.
+   * <p>The configured one for a scenario taking the tool search, where it keeps memory — the
+   * tool-search advisor is a {@link MemoryToolCallingAdvisor}. Otherwise a plain {@link
+   * MemoryToolCallingAdvisor} on the same {@link #toolCallingManager}: for a scenario declining the
+   * search, because the tool-search advisor has no per-request switch and indexes and rewrites the
+   * options on every request it sees; and for a deployment whose configured builder is Spring AI's
+   * own, whose advisor would keep no memory. Built per run, since a plain advisor holds nothing
+   * worth sharing — the index and its fingerprints are the searching one's alone.
    */
   private Advisor toolCallingAdvisor(final AgentScenario scenario) {
-    if (scenario.toolSearch()) {
-      return toolCallingAdvisor.get();
+    if (scenario.toolSearch()
+        && toolCallingAdvisor.get() instanceof MemoryToolCallingAdvisor shared) {
+      return shared;
     }
     final var plain =
-        ToolCallingAdvisor.builder()
+        MemoryToolCallingAdvisor.builder()
             .toolCallingManager(toolCallingManager)
             .conversationHistoryEnabled(true);
     toolExecutionEligibilityChecker.ifAvailable(plain::toolExecutionEligibilityChecker);
