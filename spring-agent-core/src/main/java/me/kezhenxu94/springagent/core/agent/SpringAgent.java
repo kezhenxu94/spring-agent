@@ -57,6 +57,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+import org.springframework.util.function.SingletonSupplier;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
@@ -174,7 +175,7 @@ public class SpringAgent {
   final List<ProviderRejection> providerRejections;
 
   /**
-   * The one tool advisor every run shares, built on first use.
+   * The tool advisor every run that takes the tool search shares, built on first use.
    *
    * <p>Load-bearing that it is one instance and not one per run. The tool-search advisor keeps the
    * fingerprint of the tool set it last indexed per index key, and skips re-indexing while that
@@ -184,24 +185,10 @@ public class SpringAgent {
    * before the model is even asked anything.
    *
    * <p>Resolved lazily rather than in the constructor, so that the builder bean is not required to
-   * exist before this one and a deployment with no tool advisor configured still starts.
+   * exist before this one, and null where a deployment has no tool advisor configured.
    */
-  private final AtomicReference<Advisor> toolCallingAdvisor = new AtomicReference<>();
-
-  /**
-   * The advisor for a run whose scenario declines the tool search, built on first use and shared
-   * for the same reason as the one above.
-   *
-   * <p>A second instance rather than a flag, because the tool-search advisor has no flag: it
-   * indexes and rewrites the options on every request it sees, and nothing on a request turns that
-   * off. So declining it means being given a different advisor — a plain {@link ToolCallingAdvisor}
-   * on the same {@link #toolCallingManager}, which is the one this runtime would have had before a
-   * tool search was configured.
-   *
-   * <p>Stays unset where a deployment has no tool search at all: the configured advisor is plain
-   * already, so every run takes that one and this is never built.
-   */
-  private final AtomicReference<Advisor> plainToolCallingAdvisor = new AtomicReference<>();
+  private final SingletonSupplier<Advisor> toolCallingAdvisor =
+      SingletonSupplier.of(this::buildToolCallingAdvisor);
 
   /**
    * The runs in flight, by request id. Four things read it: a cancel, which is the only reason it
@@ -1235,75 +1222,30 @@ public class SpringAgent {
   }
 
   /**
-   * The shared tool advisor this run belongs on, or null where no tool advisor builder is
-   * configured.
+   * The tool advisor this run belongs on, or null for a run taking the tool search where no tool
+   * advisor builder is configured.
    *
-   * <p>Two of them, because {@link AgentScenario#toolSearch()} cannot be answered by a parameter:
-   * the tool-search advisor holds no per-request switch, and declining it is therefore a matter of
-   * being handed the other one. Where the configured builder is already plain — no tool search in
-   * this deployment — both answers are the same advisor and the second is never built.
+   * <p>A scenario that declines the tool search is given a plain {@link ToolCallingAdvisor} on the
+   * same {@link #toolCallingManager} instead, because the tool-search advisor has no per-request
+   * switch: it indexes and rewrites the options on every request it sees. Built per run, since a
+   * plain advisor holds nothing worth sharing — the index and its fingerprints are the searching
+   * one's alone.
    */
   private Advisor toolCallingAdvisor(final AgentScenario scenario) {
-    final var configured = toolCallingAdvisor();
-    // The last clause asks whether the configured advisor is already the plain base class, not
-    // whether it is the tool-search subtype. Those differ for any other subtype a deployment might
-    // register, and this is the question actually being asked: a scenario declines the search, and
-    // where the configured advisor has none there is nothing to decline — so it is used as it is,
-    // keeping whatever order and manager the deployment configured, and no redundant twin is built.
-    // Naming the searching class here would compile (core carries that module) and would be one
-    // more place to keep in step with a class core otherwise never mentions.
-    if (configured == null
-        || scenario.toolSearch()
-        || configured.getClass() == ToolCallingAdvisor.class) {
-      return configured;
+    if (scenario.toolSearch()) {
+      return toolCallingAdvisor.get();
     }
-    return plainToolCallingAdvisor();
-  }
-
-  /** The shared tool advisor, or null where no tool advisor builder is configured. */
-  private Advisor toolCallingAdvisor() {
-    final var existing = toolCallingAdvisor.get();
-    if (existing != null) {
-      return existing;
-    }
-    final var builder = toolCallingAdvisorBuilder.getIfAvailable();
-    if (builder == null) {
-      return null;
-    }
-    // Racing callers may each build one; only the first is kept, and the losers are discarded
-    // before they have indexed anything.
-    final var built = builder.copy().conversationHistoryEnabled(true).build();
-    return toolCallingAdvisor.compareAndSet(null, built) ? built : toolCallingAdvisor.get();
-  }
-
-  /**
-   * The tool advisor without the search, for a scenario that declined it.
-   *
-   * <p>Built from {@link ToolCallingAdvisor}'s own builder rather than from the injected one, whose
-   * {@code copy()} preserves its subtype and so can only ever produce another searching advisor.
-   * What has to be carried across by hand is therefore the manager and the eligibility checker —
-   * everything else upstream sets is the tool search's own.
-   *
-   * <p>The order is {@link ToolCallingAdvisor#DEFAULT_ORDER}, which is what the chat-memory and
-   * knowledge-retrieval advisors above are already placed relative to. A deployment that moves the
-   * tool-search advisor with {@code spring.ai.chat.client.tool-search-advisor.advisor-order} moves
-   * it away from those two as well, so this does not follow it there.
-   */
-  private Advisor plainToolCallingAdvisor() {
-    final var existing = plainToolCallingAdvisor.get();
-    if (existing != null) {
-      return existing;
-    }
-    final var builder =
+    final var plain =
         ToolCallingAdvisor.builder()
             .toolCallingManager(toolCallingManager)
-            .advisorOrder(ToolCallingAdvisor.DEFAULT_ORDER)
             .conversationHistoryEnabled(true);
-    toolExecutionEligibilityChecker.ifAvailable(builder::toolExecutionEligibilityChecker);
-    final var built = builder.build();
-    return plainToolCallingAdvisor.compareAndSet(null, built)
-        ? built
-        : plainToolCallingAdvisor.get();
+    toolExecutionEligibilityChecker.ifAvailable(plain::toolExecutionEligibilityChecker);
+    return plain.build();
+  }
+
+  private Advisor buildToolCallingAdvisor() {
+    final var builder = toolCallingAdvisorBuilder.getIfAvailable();
+    return builder == null ? null : builder.copy().conversationHistoryEnabled(true).build();
   }
 
   /**
