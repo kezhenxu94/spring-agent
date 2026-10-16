@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import me.kezhenxu94.springagent.core.advisors.MemoryToolCallingAdvisor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
@@ -85,8 +86,13 @@ import org.springframework.util.StringUtils;
  * {@code SpringAgentToolSearchAdvisorConfiguration} builds this exactly where {@code
  * ToolSearchAdvisorAutoConfiguration} would have built the original, from the same {@code
  * ToolSearchAdvisorProperties}.
+ *
+ * <p>The one other difference is the class it extends: {@link MemoryToolCallingAdvisor} rather than
+ * {@link ToolCallingAdvisor}, so that a run taking the tool search keeps its conversation's memory
+ * the way every other run does. That class only adds to the loop around hooks this one does not
+ * override, and a run that names no conversation is the upstream loop unchanged.
  */
-public class ToolSearchToolCallingAdvisor extends ToolCallingAdvisor {
+public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
 
   private static final JsonHelper jsonHelper = new JsonHelper();
 
@@ -446,7 +452,7 @@ public class ToolSearchToolCallingAdvisor extends ToolCallingAdvisor {
    * @param <T> the builder type, used for self-referential generics to support method chaining in
    *     subclasses
    */
-  public static class Builder<T extends Builder<T>> extends ToolCallingAdvisor.Builder<T> {
+  public static class Builder<T extends Builder<T>> extends MemoryToolCallingAdvisor.Builder<T> {
 
     @Nullable private ToolIndex toolIndex;
 

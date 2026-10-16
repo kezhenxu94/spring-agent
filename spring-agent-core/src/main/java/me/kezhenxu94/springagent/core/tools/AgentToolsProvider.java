@@ -457,15 +457,16 @@ public class AgentToolsProvider {
                                     LocalizedPrompt.resource(
                                         KNOWLEDGE_RETRIEVAL_PROMPT, appConfiguration.locale())))
                             .build())
-                    // After the chat memory advisor, and this is the constraint that decides the
-                    // number — not tidiness.
+                    // After the tool advisor, inside its loop, and this is the constraint that
+                    // decides the number — not tidiness.
                     //
                     // Augmentation rewrites the user message to carry the retrieved passages, and
-                    // MessageChatMemoryAdvisor.before() writes the request's user message into the
-                    // conversation history. Order this ahead of memory and the augmented message is
-                    // what gets persisted: the passages become a permanent part of the history,
-                    // replayed on every later turn whether or not they are relevant, and no change
-                    // of threshold or scope can dislodge them afterwards.
+                    // MemoryToolCallingAdvisor writes the turn into the conversation history from
+                    // the loop's own copy of it. Order this ahead of the loop and the augmented
+                    // message is what that copy holds and so what gets persisted: the passages
+                    // become a permanent part of the history, replayed on every later turn whether
+                    // or not they are relevant, and no change of threshold or scope can dislodge
+                    // them afterwards.
                     //
                     // The cost of sitting here instead is that ToolCallingAdvisor re-invokes
                     // everything ordered after it once per tool round, so a turn with several tool

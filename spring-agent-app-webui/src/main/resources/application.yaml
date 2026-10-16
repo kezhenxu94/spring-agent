@@ -1002,9 +1002,9 @@ app:
     non-admin-tenant-writes: ${NON_ADMIN_TENANT_WRITES:false}
     memory:
       # How many messages of a conversation are kept, and so replayed into the next turn. Counted
-      # in messages rather than in turns, and a turn here is several: the memory advisor sits
-      # inside the tool-calling loop, so one question answered by reading three files is the
-      # question, the answer, and a call and a result for each tool. Spring AI's own default of 20
+      # in messages rather than in turns, and a turn here is several: it is kept with its tool
+      # calls, so one question answered by reading three files is the question, the answer,
+      # and a call and a result for each tool. Spring AI's own default of 20
       # is therefore about two exchanges, which is why this is set rather than left alone — an
       # agent that has forgotten what it was asked two questions ago reads as broken.
       #
