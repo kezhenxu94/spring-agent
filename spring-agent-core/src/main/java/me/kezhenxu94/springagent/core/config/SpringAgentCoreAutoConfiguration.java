@@ -16,6 +16,7 @@ import me.kezhenxu94.springagent.core.tools.i18n.ModuleToolTexts;
 import me.kezhenxu94.springagent.core.tools.i18n.ToolTexts;
 import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallbackResolver;
 import me.kezhenxu94.springagent.core.tools.interceptors.InterceptingToolCallingManager;
+import me.kezhenxu94.springagent.core.tools.interceptors.ReportingToolExecutionExceptionProcessor;
 import me.kezhenxu94.springagent.core.tools.interceptors.ToolCallInterceptor;
 import me.kezhenxu94.springagent.core.tools.interceptors.ToolInputFileRefs;
 import me.kezhenxu94.springagent.core.tools.mcp.McpProperties;
@@ -26,7 +27,10 @@ import org.springframework.ai.embedding.BatchingStrategy;
 import org.springframework.ai.model.tool.DefaultToolCallingManager;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.autoconfigure.ToolCallingProperties;
+import org.springframework.ai.tool.execution.DefaultToolExecutionExceptionProcessor;
+import org.springframework.ai.tool.execution.ToolExecutionExceptionProcessor;
 import org.springframework.ai.tool.resolution.ToolCallbackResolver;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -163,7 +167,9 @@ public class SpringAgentCoreAutoConfiguration {
    * and this class sorts first — so anything upstream reads out of those properties and into its
    * builder is read nowhere unless it is read here. Leaving them unread would have made every one
    * of them a setting that binds, documents itself and does nothing, {@link ToolCallingDefaults}
-   * included.
+   * included. The exception processor is the same story: upstream's bean is taken, so the rethrow
+   * list it was configured with still applies, and wrapped in {@link
+   * ReportingToolExecutionExceptionProcessor} so that a tool timing out does not end the run.
    */
   @Bean
   @ConditionalOnMissingBean
@@ -173,12 +179,19 @@ public class SpringAgentCoreAutoConfiguration {
       final ToolInputFileRefs fileRefs,
       final List<ToolTexts> toolTexts,
       final ToolCallingProperties toolCallingProperties,
+      final ObjectProvider<ToolExecutionExceptionProcessor> exceptionProcessor,
       final CoreMessages messages) {
     final var builder =
         DefaultToolCallingManager.builder()
             .toolCallbackResolver(
                 new InterceptingToolCallbackResolver(
-                    toolCallbackResolver, interceptors, fileRefs, messages));
+                    toolCallbackResolver, interceptors, fileRefs, messages))
+            .toolExecutionExceptionProcessor(
+                new ReportingToolExecutionExceptionProcessor(
+                    exceptionProcessor.getIfAvailable(
+                        () -> DefaultToolExecutionExceptionProcessor.builder().build()),
+                    toolCallingProperties.isThrowExceptionOnError(),
+                    messages));
     applyLimits(builder, toolCallingProperties.getLimits());
     final var defaultManager = builder.build();
     final var localizing = new LocalizingToolCallingManager(defaultManager, toolTexts);
