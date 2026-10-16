@@ -66,6 +66,9 @@ class FeishuCardMissingElementTest {
   /** The elements this card claims not to have, whichever write names one of them. */
   private final Set<String> missing = new java.util.HashSet<>();
 
+  /** The elements this card refuses to be given again, as already having them. */
+  private final Set<String> alreadyThere = new java.util.HashSet<>();
+
   @BeforeEach
   void setUp() throws Exception {
     final var streamed = new ContentCardElementResp();
@@ -77,6 +80,16 @@ class FeishuCardMissingElementTest {
             call -> {
               final var body =
                   call.<CreateCardElementReq>getArgument(0).getCreateCardElementReqBody();
+              final var inserting = om.readTree(body.getElements()).path(0).path("element_id");
+              if (alreadyThere.contains(inserting.asString())) {
+                final var response = new CreateCardElementResp();
+                response.setCode(300315);
+                response.setMsg(
+                    "ErrMsg: msg: [ElementID "
+                        + inserting.asString()
+                        + ": Code 1001: Duplicate ID], code: 300301; ");
+                return response;
+              }
               return resp(new CreateCardElementResp(), body.getTargetElementId());
             });
     updater =
@@ -177,6 +190,29 @@ class FeishuCardMissingElementTest {
     assertThat(insertTargets()).containsExactly("usage", "tools");
     assertThat(callIdsIn(lastUpdateOf("tools")))
         .containsExactly("tool_call_0", "tool_call_1", "tool_call_2");
+  }
+
+  @Test
+  @DisplayName("an element put back on a card that still has it is taken to be there")
+  void aDuplicateIsNotAMissingAnchor() throws Exception {
+    updater.setToolStatus("Bash", "{\"command\":\"ls -la\"}", null);
+    // A write that says the pane has gone, on a card that in fact still has it: the pane is put
+    // back, and the card refuses it as a duplicate under the same code it says "not found" with.
+    missing.add("tools");
+    updater.setToolStatus("Read", "{\"path\":\"/etc/hosts\"}", null);
+    missing.remove("tools");
+    alreadyThere.add("tools");
+    updater.clearToolStatus("Read", "{\"path\":\"/etc/hosts\"}", "127.0.0.1 localhost");
+    assertThat(insertTargets()).containsExactly("usage", "tools", "usage");
+
+    // Refused as being there already is not refused for want of its anchor: no second attempt
+    // elsewhere, no anchor written down as gone, and the next call goes into the pane rather than
+    // putting it back yet again.
+    updater.onContent("the answer");
+    updater.setToolStatus("Kubectl", "{\"n\":1}", null);
+    assertThat(insertTargets()).containsExactly("usage", "tools", "usage", "tools", "tools");
+    assertThat(insertedIds())
+        .containsExactly("tools", "tool_call_1", "tools", "message", "tool_call_2");
   }
 
   @Test

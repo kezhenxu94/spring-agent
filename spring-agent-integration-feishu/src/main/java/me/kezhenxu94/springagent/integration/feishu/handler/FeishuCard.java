@@ -116,7 +116,8 @@ public class FeishuCard {
 
   /**
    * What Feishu says when the element a write names is not on the card: the anchor an insert was to
-   * land above, or the element a replacement was to stand in for.
+   * land above, or the element a replacement was to stand in for. Among other things — see {@link
+   * #NOT_FOUND}, which is what tells this case from the others.
    *
    * <p>It happens although a writer only ever names an element it put there itself and watched
    * land. The card is Feishu's state and not ours, and an element can go from under a run — a card
@@ -132,6 +133,21 @@ public class FeishuCard {
    * for the rest of the turn.
    */
   private static final int CODE_NO_SUCH_ELEMENT = 300315;
+
+  /**
+   * Which elements a {@link #CODE_NO_SUCH_ELEMENT} names as not on the card. The code alone does
+   * not say that: it is what Feishu answers to any write it refused element by element, and the
+   * reason for each element is in the message — {@code [not find elementID : message]} for one that
+   * is gone, {@code [ElementID tools: Code 1001: Duplicate ID; ...]} for one already there. Read as
+   * "gone" whatever the message said, a duplicate had the card write its anchors down as missing,
+   * and every writer then put its element back — each of those refused as a duplicate in turn,
+   * which wrote down more anchors, for the rest of the turn.
+   */
+  private static final Pattern NOT_FOUND =
+      Pattern.compile("not find elementID\\s*:\\s*([^\\s;\\]]+)");
+
+  /** What the same code carries for an element the card already has. */
+  private static final String DUPLICATE_ID = "Duplicate ID";
 
   /**
    * The same thing said by the streaming write, which answers with a code of its own: {@code
@@ -1387,7 +1403,16 @@ public class FeishuCard {
         continueOnNewCard();
         return false;
       }
-      if (response.getCode() == CODE_NO_SUCH_ELEMENT) {
+      if (response.getCode() == CODE_NO_SUCH_ELEMENT
+          && Strings.nullToEmpty(response.getMsg()).contains(DUPLICATE_ID)) {
+        // The card already has these: an earlier insert landed although its writer was told it had
+        // not, and putting them back again under a new key is what was refused. They are there to
+        // be written into, which is everything a writer asked an insert to find out — and nothing
+        // here is missing, so nothing is written down as such.
+        log.info("Card {} already has the elements inserted {} {}", cardId, insert.type(), target);
+        return true;
+      }
+      if (notFound(response.getCode(), response.getMsg(), target)) {
         // Written down whether or not there is somewhere else to put these: the anchor is the
         // element that has gone, and it is its own writer that has to put it back.
         synchronized (this) {
@@ -1437,7 +1462,7 @@ public class FeishuCard {
         continueOnNewCard();
         return false;
       }
-      if (response.getCode() == CODE_NO_SUCH_ELEMENT) {
+      if (notFound(response.getCode(), response.getMsg(), change.elementId())) {
         // A replacement carries the whole element, so one that is not on the card can be put back
         // rather than only reported — and it is the tool pane and the task list that are replaced,
         // both of which are rewritten on every change and would otherwise stop at the change that
@@ -1469,6 +1494,20 @@ public class FeishuCard {
     }
     wrote();
     return true;
+  }
+
+  /** Whether Feishu refused a write because {@code elementId} is not on the card. */
+  private static boolean notFound(final int code, final String msg, final String elementId) {
+    if (code != CODE_NO_SUCH_ELEMENT || msg == null) {
+      return false;
+    }
+    final var matcher = NOT_FOUND.matcher(msg);
+    while (matcher.find()) {
+      if (matcher.group(1).equals(elementId)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @SneakyThrows
