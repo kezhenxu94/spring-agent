@@ -209,6 +209,7 @@ class FeishuCardUpdaterReasoningTest {
             3);
     final var openai =
         new OpenAiUserChatClients(
+            OpenAiUserChatClients.Api.CHAT_COMPLETIONS,
             registry,
             appOptions,
             org.springframework.ai.model.tool.ToolCallingManager.builder().build(),

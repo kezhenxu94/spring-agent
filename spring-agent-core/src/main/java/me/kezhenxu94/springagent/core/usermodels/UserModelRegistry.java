@@ -304,6 +304,28 @@ public class UserModelRegistry {
   }
 
   /**
+   * Changes which protocol one endpoint is spoken to in, and nothing else about it.
+   *
+   * <p>A write of its own for the reason {@link #setEffort} is: the token is sealed and never shown
+   * again, so re-registering to change the protocol would mean retyping a credential. Unlike the
+   * effort, a wrong protocol fails every run on the row, so a caller is expected to have probed the
+   * endpoint in the new protocol first — see {@link UserModelProbe}.
+   *
+   * @param provider as {@link ProviderChatClients#provider()} spells it, or null for whatever the
+   *     deployment speaks
+   * @return whether the user has an endpoint by that name
+   */
+  public boolean setProvider(final String userId, final String name, final String provider) {
+    final var target = repo.findByOwnerIdAndName(userId, name);
+    if (target.isEmpty()) {
+      return false;
+    }
+    repo.save(
+        target.get().toBuilder().provider(blankToNull(provider)).updatedAt(Instant.now()).build());
+    return true;
+  }
+
+  /**
    * Changes how hard the model the user is actually on should think, whatever kind of model that
    * is, and hands back the row it was applied to.
    *

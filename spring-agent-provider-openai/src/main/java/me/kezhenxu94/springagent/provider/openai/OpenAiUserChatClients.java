@@ -17,6 +17,8 @@ import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.http.okhttp.OpenAiHttpClientBuilderCustomizer;
+import org.springframework.ai.openai.responses.OpenAiResponsesChatModel;
+import org.springframework.ai.openai.responses.OpenAiResponsesChatOptions;
 
 /**
  * {@link ProviderChatClients} over an OpenAI-compatible endpoint.
@@ -37,6 +39,11 @@ import org.springframework.ai.openai.http.okhttp.OpenAiHttpClientBuilderCustomiz
  * OpenAiChatModel} does not expose the client it built, and OkHttp retires idle connections and its
  * dispatcher threads on its own once nothing references the pool.
  *
+ * <p><b>One instance per {@link Api}</b>, each a provider of its own, so that a row chooses between
+ * {@code /chat/completions} and {@code /responses} with the provider select every surface already
+ * draws rather than with a field of its own. They are two protocols, and choosing one is exactly
+ * what a row's provider says.
+ *
  * <p>Editing a model needs no invalidation: the key contains the base URL, token, model name and
  * reasoning effort, so an edited endpoint is simply a key that is not in the cache, and the entry
  * it replaces ages out.
@@ -46,6 +53,37 @@ public class OpenAiUserChatClients implements ProviderChatClients {
 
   /** As Spring AI spells it under {@code spring.ai.model.*}, so there is one vocabulary. */
   public static final String PROVIDER = "openai";
+
+  /**
+   * The Responses API, which Spring AI selects with {@code spring.ai.openai.chat.api=responses}
+   * under the {@code openai} provider. A row has no second field to say that in, so the protocol is
+   * named as a provider of its own.
+   */
+  public static final String RESPONSES_PROVIDER = "openai-responses";
+
+  /** Which of OpenAI's two chat endpoints a client built here speaks. */
+  public enum Api {
+    /**
+     * {@code /chat/completions}, which every OpenAI-compatible gateway serves. The default, and the
+     * only one most gateways implement.
+     */
+    CHAT_COMPLETIONS(PROVIDER),
+    /**
+     * {@code /responses}, the only endpoint on which OpenAI's GPT-5.4 and later models accept
+     * function tools together with a reasoning effort — {@code /chat/completions} refuses the pair
+     * with a 400 and asks for the effort to be {@code none}. Spoken statelessly: every call sends
+     * the whole prompt, so chat memory and the tool advisor work as they do on the other.
+     */
+    RESPONSES(RESPONSES_PROVIDER);
+
+    private final String provider;
+
+    Api(final String provider) {
+      this.provider = provider;
+    }
+  }
+
+  private final Api api;
 
   /**
    * How long an endpoint nobody has used is kept. Long enough that a user's own model is not
@@ -73,11 +111,13 @@ public class OpenAiUserChatClients implements ProviderChatClients {
   private final Cache<Endpoint, ChatClient> clients;
 
   public OpenAiUserChatClients(
+      final Api api,
       final UserModelRegistry registry,
       final OpenAiChatOptions defaults,
       final ToolCallingManager toolCallingManager,
       final List<OpenAiHttpClientBuilderCustomizer> httpClientCustomizers,
       final int cacheSize) {
+    this.api = api;
     this.registry = registry;
     this.defaults = defaults;
     this.toolCallingManager = toolCallingManager;
@@ -96,7 +136,7 @@ public class OpenAiUserChatClients implements ProviderChatClients {
    */
   @Override
   public String provider() {
-    return PROVIDER;
+    return api.provider;
   }
 
   @Override
@@ -205,13 +245,24 @@ public class OpenAiUserChatClients implements ProviderChatClients {
    */
   @SuppressWarnings("removal")
   private ChatClient build(final Endpoint endpoint) {
-    log.info("Building a chat client for {} at {}", endpoint.model(), endpoint.baseUrl());
+    log.info("Building a {} chat client for {} at {}", api, endpoint.model(), endpoint.baseUrl());
     final var chatModel =
-        OpenAiChatModel.builder()
-            .options(optionsFor(defaults, endpoint))
-            .toolCallingManager(toolCallingManager)
-            .httpClientBuilderCustomizers(customizersFor(endpoint))
-            .build();
+        switch (api) {
+          case CHAT_COMPLETIONS ->
+              OpenAiChatModel.builder()
+                  .options(optionsFor(defaults, endpoint))
+                  .toolCallingManager(toolCallingManager)
+                  .httpClientBuilderCustomizers(customizersFor(endpoint))
+                  .build();
+          // The same manager for the same reason: OpenAiResponsesChatModel builds the request's
+          // tools array from it too, and substitutes a plain one for a manager nobody set.
+          case RESPONSES ->
+              OpenAiResponsesChatModel.builder()
+                  .options(responsesOptionsFor(optionsFor(defaults, endpoint)))
+                  .toolCallingManager(toolCallingManager)
+                  .httpClientBuilderCustomizers(customizersFor(endpoint))
+                  .build();
+        };
     return ChatClient.builder(chatModel).build();
   }
 
@@ -273,6 +324,44 @@ public class OpenAiUserChatClients implements ProviderChatClients {
       builder.strict(true);
     }
     return builder.build();
+  }
+
+  /**
+   * {@code options}, already resolved for one endpoint by {@link #optionsFor}, said in the
+   * Responses API's options type, so that both APIs start from the same copy of the application's
+   * settings and differ only in the endpoint they reach.
+   *
+   * <p>Copied field by field rather than through {@code combineWith}, which carries only the
+   * portable options across the two types and drops the reasoning effort — the one setting this API
+   * is chosen for. What is not copied has no counterpart on {@code /responses}: {@code n}, stop
+   * sequences, penalties, {@code seed} and {@code logit_bias}, which Spring AI would otherwise drop
+   * with a warning on every build.
+   */
+  static OpenAiResponsesChatOptions responsesOptionsFor(final OpenAiChatOptions options) {
+    final var maxOutputTokens =
+        options.getMaxCompletionTokens() != null
+            ? options.getMaxCompletionTokens()
+            : options.getMaxTokens();
+    return OpenAiResponsesChatOptions.builder()
+        .baseUrl(options.getBaseUrl())
+        .apiKey(options.getApiKey())
+        .credential(options.getCredential())
+        .organizationId(options.getOrganizationId())
+        .deploymentName(options.getMicrosoftDeploymentName())
+        .microsoftFoundryServiceVersion(options.getMicrosoftFoundryServiceVersion())
+        .microsoftFoundry(options.isMicrosoftFoundry())
+        .timeout(options.getTimeout())
+        .maxRetries(options.getMaxRetries())
+        .proxy(options.getProxy())
+        .customHeaders(options.getCustomHeaders())
+        .model(options.getModel())
+        .temperature(options.getTemperature())
+        .topP(options.getTopP())
+        .maxOutputTokens(maxOutputTokens)
+        .reasoningEffort(options.getReasoningEffort())
+        .strict(options.getStrict())
+        .parallelToolCalls(options.getParallelToolCalls())
+        .build();
   }
 
   /**

@@ -26,7 +26,7 @@ spring-ai-agent-utils = "0.13.0"
 # A released version, never a -SNAPSHOT: Maven Central rejects a deployment whose POM manages or
 # depends on one, and this BOM is imported into the POM of every published module (see
 # springagent.java-library-conventions). The whole release fails validation on that one line.
-spring-ai = "2.0.2-SNAPSHOT"
+spring-ai = "2.1.0-M1"
 # Not BOM-managed: spring-boot-dependencies does not manage Spring Shell at all. 4.x is the line
 # built against Spring Boot 4, and it is where the terminal UI moved to
 # org.springframework.shell.jline.tui — spring-agent-app-cli renders the agent's questions with it.
@@ -57,7 +57,7 @@ okhttp = "4.12.0"
 # spring-ai-anthropic resolves to. Check with
 # `./gradlew :spring-agent-provider-anthropic:dependencies --configuration runtimeClasspath`
 # before bumping either side; a mismatch fails at run time, not at compile time.
-anthropic-sdk = "2.52.0"
+anthropic-sdk = "2.64.0"
 sqlite-jdbc = "3.53.2.1"
 testcontainers = "2.0.3"
 

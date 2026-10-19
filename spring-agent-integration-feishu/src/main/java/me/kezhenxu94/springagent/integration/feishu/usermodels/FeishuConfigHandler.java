@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.integration.feishu.usermodels;
 
+import com.google.common.base.Strings;
 import com.lark.oapi.Client;
 import com.lark.oapi.event.cardcallback.model.CallBackCard;
 import com.lark.oapi.event.cardcallback.model.P2CardActionTrigger;
@@ -127,16 +128,77 @@ public class FeishuConfigHandler {
       return respond(userId, "info", messages.get("config-testing", submission.name()));
     }
 
-    // Nothing to register, so this is a switch, a change of effort, or both — and the effort is
-    // applied after the switch so that it lands on the model the press leaves the user on.
+    // Nothing to register, so this is a switch, a change of effort or of protocol, or several —
+    // and the last two are applied after the switch so that they land on the model the press
+    // leaves the user on.
+    final var before = registry.active(userId).map(UserModelConfig::name).orElse(null);
     final var switched = submission.active() == null ? null : switchTo(userId, submission.active());
     final var efforted = effortFor(userId, submission);
-    return respond(
-        userId,
-        "success",
-        switched == null && efforted == null
-            ? messages.get("config-nothing")
-            : join(switched, efforted));
+    final var reprotocoled = protocolFor(chatId, userId, before, submission);
+    final var said = join(join(switched, efforted), reprotocoled);
+    return respond(userId, "success", said == null ? messages.get("config-nothing") : said);
+  }
+
+  /**
+   * Moves the endpoint in use to the protocol chosen on this press, if a different one was — after
+   * probing it there, since a protocol the endpoint does not serve fails every run on it, which an
+   * effort it dislikes does not. The probe runs off the callback thread for the reason {@link #add}
+   * does, and its outcome arrives as a message of its own.
+   *
+   * <p>Ignored on a press that also switched model: the select was preselected with the protocol of
+   * the model the user was on, so left untouched it would carry that row's protocol onto the one
+   * switched to.
+   *
+   * @return what happened so far, or null if there is nothing to change
+   */
+  private String protocolFor(
+      final String chatId,
+      final String userId,
+      final String before,
+      final FeishuConfigForm.Submission submission) {
+    if (submission.provider() == null) {
+      return null;
+    }
+    final var active = registry.active(userId).orElse(null);
+    final var provider = submission.storedProvider();
+    if (active == null
+        || !Objects.equals(before, active.name())
+        || Objects.equals(provider, active.provider())) {
+      return null;
+    }
+    final var name = active.name();
+    if (Strings.isNullOrEmpty(active.baseUrl())) {
+      // One of the deployment's own models, reached with the deployment's own credential: there is
+      // no endpoint of the user's to move, and nothing of theirs to probe it with.
+      return messages.get(
+          "config-provider-builtin",
+          Optional.ofNullable(UserModelRegistry.displayName(active))
+              .orElse(messages.get("config-default-option")));
+    }
+    final var spoken = provider == null ? chatClients.defaultProvider() : provider;
+    taskExecutor.execute(
+        () -> {
+          final var failure =
+              probe.check(
+                  provider,
+                  active.baseUrl(),
+                  active.model(),
+                  registry.tokenOf(active),
+                  active.reasoningEffort(),
+                  active.temperature(),
+                  Boolean.TRUE.equals(active.strictTools()),
+                  registry.headersOf(active));
+          if (failure != null) {
+            final var current =
+                active.provider() == null ? chatClients.defaultProvider() : active.provider();
+            sendText(
+                chatId, messages.get("config-provider-failed", name, spoken, current, failure));
+            return;
+          }
+          registry.setProvider(userId, name, provider);
+          sendText(chatId, messages.get("config-provider-set", name, spoken));
+        });
+    return messages.get("config-provider-testing", name, spoken);
   }
 
   /**

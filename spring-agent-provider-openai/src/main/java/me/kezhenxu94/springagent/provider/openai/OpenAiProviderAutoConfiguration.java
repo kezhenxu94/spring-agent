@@ -264,10 +264,39 @@ public class OpenAiProviderAutoConfiguration {
       final List<OpenAiHttpClientBuilderCustomizer> httpClientCustomizers,
       final UserModelsProperties properties) {
     return new OpenAiUserChatClients(
+        OpenAiUserChatClients.Api.CHAT_COMPLETIONS,
         registry,
         applicationDefaults(chatModel, commonProperties, chatProperties),
         // The context's own manager, so a client built here offers the endpoint the same tool
         // definitions every other run does — see OpenAiUserChatClients#build.
+        toolCallingManager,
+        httpClientCustomizers,
+        properties.cacheSize());
+  }
+
+  /**
+   * The same, spoken over OpenAI's Responses API — see {@link OpenAiUserChatClients.Api#RESPONSES}
+   * for the models that need it.
+   *
+   * <p>A provider of its own rather than a setting of the one above, so the choice reaches every
+   * surface through the provider select they already draw. Published beside the other rather than
+   * behind a property, since nothing is sent to {@code /responses} unless a row names it.
+   */
+  @Bean
+  @ConditionalOnUserModels
+  @ConditionalOnMissingBean(name = "openAiResponsesProviderChatClients")
+  ProviderChatClients openAiResponsesProviderChatClients(
+      final ObjectProvider<OpenAiChatModel> chatModel,
+      final ObjectProvider<OpenAiCommonProperties> commonProperties,
+      final ObjectProvider<OpenAiChatProperties> chatProperties,
+      final UserModelRegistry registry,
+      final ToolCallingManager toolCallingManager,
+      final List<OpenAiHttpClientBuilderCustomizer> httpClientCustomizers,
+      final UserModelsProperties properties) {
+    return new OpenAiUserChatClients(
+        OpenAiUserChatClients.Api.RESPONSES,
+        registry,
+        applicationDefaults(chatModel, commonProperties, chatProperties),
         toolCallingManager,
         httpClientCustomizers,
         properties.cacheSize());
