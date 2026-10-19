@@ -74,12 +74,15 @@ class ChatMemoryMongoTest extends AbstractIntegrationTest {
         .containsExactly(
             MessageType.USER, MessageType.ASSISTANT, MessageType.TOOL, MessageType.ASSISTANT);
 
-    // Null content is kept null rather than coerced to "", which is the usual shape of a message
-    // that only asks for a tool: a provider reading back an empty string sees a different message.
+    // The text reads back as Spring AI itself reports it for a message that only asks for a tool,
+    // rather than as a value of this backend's choosing: a provider reading back something else
+    // sees a different message from the one the turn produced. Compared with the original rather
+    // than spelled out, because which value that is belongs to Spring AI — null while a message
+    // held its text directly, "" since it is joined from the message's parts.
     assertThat((AssistantMessage) read.get(1))
         .satisfies(
             it -> {
-              assertThat(it.getText()).isNull();
+              assertThat(it.getText()).isEqualTo(asking.getText());
               assertThat(it.getToolCalls()).containsExactly(call);
             });
     assertThat(((ToolResponseMessage) read.get(2)).getResponses())
