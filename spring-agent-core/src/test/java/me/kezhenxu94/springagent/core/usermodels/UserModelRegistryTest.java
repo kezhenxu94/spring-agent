@@ -234,6 +234,41 @@ class UserModelRegistryTest {
   }
 
   @Test
+  @DisplayName("changing the protocol keeps the token, the effort and whether the model is in use")
+  void setProviderKeepsEverythingElse() {
+    registry.save(
+        "u1",
+        "luna",
+        "openai",
+        "https://gw/v1",
+        "gpt-5.6-luna",
+        "sk-secret",
+        "high",
+        null,
+        false,
+        null);
+    registry.activate("u1", "luna");
+
+    assertThat(registry.setProvider("u1", "luna", "openai-responses")).isTrue();
+
+    final var row = registry.find("u1", "luna").orElseThrow();
+    assertThat(row.provider()).isEqualTo("openai-responses");
+    assertThat(row.reasoningEffort()).isEqualTo("high");
+    assertThat(row.activated()).isTrue();
+    // Re-registering is what this spares: the token cannot be read back to type it in again.
+    assertThat(registry.tokenOf(row)).isEqualTo("sk-secret");
+  }
+
+  @Test
+  @DisplayName("a protocol cannot be set on a model somebody else owns")
+  void setProviderScoped() {
+    registry.save("u1", "luna", null, "https://gw/v1", "luna", "t", null, null, false, null);
+
+    assertThat(registry.setProvider("u2", "luna", "openai-responses")).isFalse();
+    assertThat(registry.find("u1", "luna")).map(UserModelConfig::provider).isEmpty();
+  }
+
+  @Test
   @DisplayName("clearing the effort goes back to the application's setting")
   void setEffortClears() {
     registry.save("u1", "kimi", null, "https://kimi/v1", "kimi-k2", "t", "high", null, false, null);

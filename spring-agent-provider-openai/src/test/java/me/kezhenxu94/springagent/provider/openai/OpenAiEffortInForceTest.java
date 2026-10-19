@@ -79,7 +79,12 @@ class OpenAiEffortInForceTest {
     }
     final var openai =
         new OpenAiUserChatClients(
-            registry, appOptions(), ToolCallingManager.builder().build(), List.of(), 3);
+            OpenAiUserChatClients.Api.CHAT_COMPLETIONS,
+            registry,
+            appOptions(),
+            ToolCallingManager.builder().build(),
+            List.of(),
+            3);
     final var dispatching =
         new DispatchingUserChatClients(
             ChatClient.builder(OpenAiChatModel.builder().options(appOptions()).build()).build(),

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import java.util.Base64;
+import java.util.List;
 import me.kezhenxu94.springagent.core.config.UserModelsProperties;
 import me.kezhenxu94.springagent.core.dao.repo.UserModelConfigRepo;
 import me.kezhenxu94.springagent.core.security.AesGcmSealer;
@@ -20,6 +21,7 @@ import org.springframework.ai.model.tool.autoconfigure.ToolCallingAutoConfigurat
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -89,7 +91,9 @@ class OpenAiUserModelsBackOffTest {
             context -> {
               assertThat(context).hasNotFailed();
               assertThat(context).hasSingleBean(OpenAiChatModel.class);
-              assertThat(context).hasSingleBean(ProviderChatClients.class);
+              assertThat(providers(context))
+                  .containsExactly(
+                      OpenAiUserChatClients.PROVIDER, OpenAiUserChatClients.RESPONSES_PROVIDER);
               assertThat(context).hasSingleBean(BuiltinModels.class);
               assertThat(context).hasSingleBean(ReasoningEffortInForce.class);
             });
@@ -108,9 +112,9 @@ class OpenAiUserModelsBackOffTest {
               // Still published: a user may register an OpenAI endpoint here even though the
               // deployment's own chat model is somebody else's. This is the bean that makes the
               // provider select in /config more than decoration.
-              assertThat(context).hasSingleBean(ProviderChatClients.class);
-              assertThat(context.getBean(ProviderChatClients.class).provider())
-                  .isEqualTo(OpenAiUserChatClients.PROVIDER);
+              assertThat(providers(context))
+                  .containsExactly(
+                      OpenAiUserChatClients.PROVIDER, OpenAiUserChatClients.RESPONSES_PROVIDER);
               // These two speak for the deployment's own model, which this module did not build.
               assertThat(context).doesNotHaveBean(BuiltinModels.class);
               assertThat(context).doesNotHaveBean(ReasoningEffortInForce.class);
@@ -134,5 +138,16 @@ class OpenAiUserModelsBackOffTest {
               // choose still has one, and a surface should not have to know the difference.
               assertThat(context).hasSingleBean(ReasoningEffortInForce.class);
             });
+  }
+
+  /**
+   * What each published {@link ProviderChatClients} answers to, in the order they were published.
+   */
+  private static List<String> providers(final ApplicationContext context) {
+    return context
+        .getBeanProvider(ProviderChatClients.class)
+        .orderedStream()
+        .map(ProviderChatClients::provider)
+        .toList();
   }
 }

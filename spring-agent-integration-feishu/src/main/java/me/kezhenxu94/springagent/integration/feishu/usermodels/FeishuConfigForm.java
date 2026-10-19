@@ -145,7 +145,7 @@ public class FeishuConfigForm {
     // suggests the others exist somewhere. Most deployments carry one, so most cards show none of
     // this, which is the point of asking UserChatClients rather than listing providers by hand.
     if (providers != null && providers.size() > 1) {
-      formElements.add(root.path("providerLabel").deepCopy());
+      formElements.add(providerLabel(root, providers));
       formElements.add(providerSelect(root, providers, defaultProvider, active));
     }
     formElements.add(root.path("modelInput").deepCopy());
@@ -267,6 +267,30 @@ public class FeishuConfigForm {
    * leaving it blank, because "the default" tells a person nothing about what their key will be
    * sent as.
    */
+  /**
+   * The select's label, followed by a line for each offered protocol that has something to say
+   * about when to pick it — {@code config-provider-guide.<provider>}, skipped where no bundle has
+   * one.
+   *
+   * <p>Here rather than in the options' own text because a card's select draws one line per option
+   * and cuts it short, and the choice it guides is one a person cannot see the consequence of until
+   * a run fails: OpenAI's GPT-5.4 and later refuse tools beside a reasoning effort on Chat
+   * Completions, while most gateways serve nothing but Chat Completions.
+   */
+  private ObjectNode providerLabel(final ObjectNode root, final List<String> providers) {
+    final var label = (ObjectNode) root.path("providerLabel").deepCopy();
+    final var content = new StringBuilder(label.path("content").asString());
+    for (final var provider : providers) {
+      final var key = "config-provider-guide." + provider;
+      final var guide = messages.get(key);
+      if (!key.equals(guide)) {
+        content.append("\n<font color='grey'>").append(guide).append("</font>");
+      }
+    }
+    label.put("content", content.toString());
+    return label;
+  }
+
   private ObjectNode providerSelect(
       final ObjectNode root,
       final List<String> providers,

@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.integration.slack.usermodels;
 
+import com.google.common.base.Strings;
 import com.slack.api.bolt.context.builtin.ActionContext;
 import com.slack.api.bolt.context.builtin.SlashCommandContext;
 import com.slack.api.bolt.context.builtin.ViewSubmissionContext;
@@ -148,17 +149,18 @@ public class SlackConfigHandler {
    * <p>Shared by the modal and the in-message form so the two cannot drift into meaning different
    * things — the only difference between them is how the form got on screen.
    */
-  private String apply(final String userId, final SlackConfigForm.Submission submission) {
+  String apply(final String userId, final SlackConfigForm.Submission submission) {
     if (!submission.adding()) {
-      // Nothing to register, so this is a switch, a change of effort, or both — and the effort is
-      // applied after the switch so that it lands on the model the submission leaves the user on.
+      // Nothing to register, so this is a switch, a change of effort or of protocol, or several —
+      // and the last two are applied after the switch so that they land on the model the
+      // submission leaves the user on.
+      final var before = registry.active(userId).map(UserModelConfig::name).orElse(null);
       final var switched =
           submission.active() == null ? null : switchTo(userId, submission.active());
       final var efforted = effortFor(userId, submission);
-      if (switched == null && efforted == null) {
-        return messages.get("config-nothing");
-      }
-      return join(switched, efforted);
+      final var reprotocoled = protocolFor(userId, before, submission);
+      final var said = join(join(switched, efforted), reprotocoled);
+      return said == null ? messages.get("config-nothing") : said;
     }
     // A model on its own, with no endpoint and no token, is one of the application's own named
     // directly — the way to reach a model the dropdown was too small to list. Nothing to probe: it
@@ -209,6 +211,64 @@ public class SlackConfigHandler {
     return effort == null
         ? messages.get("config-effort-inherited", name)
         : messages.get("config-effort-set", name, effort);
+  }
+
+  /**
+   * Moves the endpoint in use to the protocol chosen on this submission, if a different one was —
+   * after probing it there, since a protocol the endpoint does not serve fails every run on it,
+   * which an effort it dislikes does not. The probe runs off this thread for the reason {@link
+   * #add} does, and its outcome arrives as a direct message of its own.
+   *
+   * <p>Ignored on a submission that also switched model: the select was preselected with the
+   * protocol of the model the user was on, so left untouched it would carry that row's protocol
+   * onto the one switched to.
+   *
+   * @return what happened so far, or null if there is nothing to change
+   */
+  private String protocolFor(
+      final String userId, final String before, final SlackConfigForm.Submission submission) {
+    if (submission.provider() == null) {
+      return null;
+    }
+    final var active = registry.active(userId).orElse(null);
+    final var provider = submission.storedProvider();
+    if (active == null
+        || !Objects.equals(before, active.name())
+        || Objects.equals(provider, active.provider())) {
+      return null;
+    }
+    final var name = active.name();
+    if (Strings.isNullOrEmpty(active.baseUrl())) {
+      // One of the deployment's own models, reached with the deployment's own credential: there is
+      // no endpoint of the user's to move, and nothing of theirs to probe it with.
+      return messages.get(
+          "config-provider-builtin",
+          Optional.ofNullable(UserModelRegistry.displayName(active))
+              .orElse(messages.get("config-default-option")));
+    }
+    final var spoken = provider == null ? chatClients.defaultProvider() : provider;
+    taskExecutor.execute(
+        () -> {
+          final var failure =
+              probe.check(
+                  provider,
+                  active.baseUrl(),
+                  active.model(),
+                  registry.tokenOf(active),
+                  active.reasoningEffort(),
+                  active.temperature(),
+                  Boolean.TRUE.equals(active.strictTools()),
+                  registry.headersOf(active));
+          if (failure != null) {
+            final var current =
+                active.provider() == null ? chatClients.defaultProvider() : active.provider();
+            say(userId, messages.get("config-provider-failed", name, spoken, current, failure));
+            return;
+          }
+          registry.setProvider(userId, name, provider);
+          say(userId, messages.get("config-provider-set", name, spoken));
+        });
+    return messages.get("config-provider-testing", name, spoken);
   }
 
   /** Two sentences about one submission, or whichever of them there is. */

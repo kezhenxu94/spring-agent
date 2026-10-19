@@ -71,6 +71,28 @@ class FeishuConfigFormTest {
   }
 
   @Test
+  @DisplayName("the protocol label says which models want which OpenAI API")
+  void guidesTheChoiceOfOpenAiApi() throws Exception {
+    final var card =
+        form.card(
+            List.of(), null, List.of(), "gpt-4o", List.of("openai", "openai-responses"), "openai");
+
+    // A person cannot tell from the two names that a GPT-5.4 or later model with tools fails on
+    // one and a gateway fails on the other; the label is the only place the card says so.
+    assertThat(card).contains("`openai`: Chat Completions").contains("`openai-responses`:");
+  }
+
+  @Test
+  @DisplayName("and says nothing for a protocol with no guide of its own")
+  void noGuideForOtherProtocols() throws Exception {
+    final var card =
+        form.card(
+            List.of(), null, List.of(), "gpt-4o", List.of("openai", "google-genai"), "openai");
+
+    assertThat(card).doesNotContain("config-provider-guide").doesNotContain("`google-genai`");
+  }
+
+  @Test
   @DisplayName("the token field is masked")
   void tokenIsMasked() throws Exception {
     final var card =

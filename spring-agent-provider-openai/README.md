@@ -48,6 +48,10 @@ Four things, each because Spring AI has no way to know it:
   localized descriptions. `OpenAiUserModelToolsTest` reads that off the wire. A row carrying extra
   headers gets one more customizer appended, an OkHttp interceptor that sets them — the only hook
   the builder exposes, since neither its options nor a raw `OpenAiApi` builder takes a header map.
+  `OpenAiUserChatClients` is published twice, as the providers `openai` (`/chat/completions`) and
+  `openai-responses` (`/responses`), so a row picks the API with the provider select every surface
+  already draws. The second exists because OpenAI's GPT-5.4 and later refuse function tools beside
+  a reasoning effort on `/chat/completions`; most gateways serve only the first.
   That customizer is built per endpoint rather than shared, or two rows with different headers would
   send each other's.
 - **`OpenAiErrorBodyLoggingInterceptor`** — the only place a rejected request's body still exists.

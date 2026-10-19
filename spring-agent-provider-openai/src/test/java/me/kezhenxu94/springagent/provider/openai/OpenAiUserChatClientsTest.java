@@ -41,6 +41,7 @@ class OpenAiUserChatClientsTest {
 
   private final ProviderChatClients clients =
       new OpenAiUserChatClients(
+          OpenAiUserChatClients.Api.CHAT_COMPLETIONS,
           new UserModelRegistry(mock(UserModelConfigRepo.class), new AesGcmSealer(KEY, "t"), 3),
           appOptions,
           // Not what these tests are about; OpenAiUserModelToolsTest is where the manager a client

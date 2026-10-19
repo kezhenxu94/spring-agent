@@ -49,6 +49,22 @@ class OpenAiUserModelToolsTest {
       "finish_reason":"stop"}]}\
       """;
 
+  /**
+   * The same, from {@code /responses}. Usage is filled in because Spring AI's mapper fails on a
+   * response without it, which is not what these tests are about.
+   */
+  private static final String RESPONSES_ANSWER =
+      """
+      {"id":"resp_1","object":"response","created_at":1,"model":"own-model",\
+      "status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant",\
+      "status":"completed","content":[{"type":"output_text","text":"hi","annotations":[]}]}],\
+      "parallel_tool_calls":true,"tool_choice":"auto","tools":[],"metadata":{},\
+      "error":null,"incomplete_details":null,"instructions":null,"temperature":1,"top_p":1,\
+      "usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2,\
+      "input_tokens_details":{"cached_tokens":0},\
+      "output_tokens_details":{"reasoning_tokens":0}}}\
+      """;
+
   private MockWebServer server;
 
   @BeforeEach
@@ -149,6 +165,43 @@ class OpenAiUserModelToolsTest {
     assertThat(this.server.takeRequest().getHeader("X-Tenant")).isEqualTo("acme");
   }
 
+  @Test
+  @DisplayName("a row on the Responses API sends tools and its reasoning effort to /responses")
+  void responsesCarryToolsWithReasoning() throws Exception {
+    // What the Responses provider exists for: GPT-5.4 and later refuse function tools beside a
+    // reasoning effort on /chat/completions, so both have to reach /responses in one request, with
+    // the runtime's rewrites of the tool list intact like on the other API.
+    this.server.enqueue(
+        new MockResponse()
+            .setResponseCode(200)
+            .setHeader("Content-Type", "application/json")
+            .setBody(RESPONSES_ANSWER));
+
+    final var client =
+        clientsWith(OpenAiUserChatClients.Api.RESPONSES, runtimeManager())
+            .probeClient(
+                UserModelConfig.builder()
+                    .name("mine")
+                    .baseUrl(this.server.url("/v1").toString())
+                    .model("own-model")
+                    .reasoningEffort("high")
+                    .build(),
+                "own-token",
+                java.util.Map.of("X-Tenant", "acme"));
+
+    client.prompt().user("what is the weather").tools(new Forecast()).call().content();
+
+    final var recorded = this.server.takeRequest();
+    final var body = JsonMapper.builder().build().readTree(recorded.getBody().readUtf8());
+    assertThat(recorded.getPath()).isEqualTo("/v1/responses");
+    assertThat(recorded.getHeader("X-Tenant")).isEqualTo("acme");
+    assertThat(body.path("model").asString()).isEqualTo("own-model");
+    assertThat(body.path("reasoning").path("effort").asString()).isEqualTo("high");
+    assertThat(body.path("tools").toString())
+        .contains("\"name\":\"forecast\"")
+        .contains(DisplayDescription.FIELD);
+  }
+
   /** The body of the chat completion a run through {@code clients} sent to the endpoint. */
   private String requestFor(final OpenAiUserChatClients clients) throws Exception {
     return requestFor(clients, false);
@@ -181,6 +234,11 @@ class OpenAiUserModelToolsTest {
   }
 
   private OpenAiUserChatClients clientsWith(final ToolCallingManager manager) {
+    return clientsWith(OpenAiUserChatClients.Api.CHAT_COMPLETIONS, manager);
+  }
+
+  private OpenAiUserChatClients clientsWith(
+      final OpenAiUserChatClients.Api api, final ToolCallingManager manager) {
     final var appOptions =
         OpenAiChatOptions.builder()
             .baseUrl("https://app/v1")
@@ -191,6 +249,7 @@ class OpenAiUserModelToolsTest {
             .maxRetries(0)
             .build();
     return new OpenAiUserChatClients(
+        api,
         new UserModelRegistry(mock(UserModelConfigRepo.class), new AesGcmSealer(KEY, "t"), 3),
         appOptions,
         manager,
