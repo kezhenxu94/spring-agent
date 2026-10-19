@@ -495,19 +495,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    */
   private Double approxCost(String model, Usage usage) {
     final var pricing = modelPricing.get(model);
-    if (pricing == null
-        || usage == null
-        || usage.getPromptTokens() == null
-        || usage.getCompletionTokens() == null) {
-      return null;
-    }
-    final var inputPrice =
-        isThinkingMode(usage)
-            ? pricing.thinkingInputPerMillion()
-            : pricing.nonThinkingInputPerMillion();
-    return (usage.getPromptTokens() * inputPrice
-            + usage.getCompletionTokens() * pricing.outputPerMillion())
-        / 1_000_000.0;
+    return pricing == null ? null : pricing.cost(usage, isThinkingMode(usage));
   }
 
   private static String formatElapsed(Duration elapsed) {

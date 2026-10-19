@@ -83,7 +83,7 @@ class FeishuCardUpdaterUsageTest {
             card,
             new JsonMapper(),
             // A tenth of a cent per thousand tokens each way, so the arithmetic is checkable.
-            Map.of("the-model", new ModelPricing(1.0, 1.0, 1.0, Currency.USD)),
+            Map.of("the-model", new ModelPricing(1.0, 1.0, null, 1.0, Currency.USD)),
             messages,
             cardElements(messages),
             null);
@@ -231,7 +231,7 @@ class FeishuCardUpdaterUsageTest {
     return FeishuCardUpdater.forSubagent(
         card,
         new JsonMapper(),
-        Map.of("the-model", new ModelPricing(1.0, 1.0, 1.0, Currency.USD)),
+        Map.of("the-model", new ModelPricing(1.0, 1.0, null, 1.0, Currency.USD)),
         messages,
         panels,
         null,

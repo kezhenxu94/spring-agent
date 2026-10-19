@@ -1365,6 +1365,10 @@ app:
         # Keep this narrow — every entry is reachable by any user who registers an MCP server.
         trusted-hosts:
           - monitoring-mcp.monitoring
+    # cached-input-per-million is optional: the price of a prompt token the provider served from
+    # its cache. Unset, cache hits are charged at the full input price. Leave it off a Claude model:
+    # Anthropic counts cache reads outside the prompt tokens, so they would be subtracted twice — see
+    # SpringAgentProperties.Ai.ModelPricing#cost.
     model-pricing:
       '[qwen3.7-plus]':
         non-thinking-input-per-million: 2.0
@@ -1387,9 +1391,10 @@ app:
         output-per-million: 2.7
         currency: CNY
       '[gpt-5.6-luna]':
-        non-thinking-input-per-million: 1.0
-        thinking-input-per-million: 1.0
-        output-per-million: 6.0
+        non-thinking-input-per-million: 0.2
+        thinking-input-per-million: 0.2
+        cached-input-per-million: 0.02
+        output-per-million: 1.2
         currency: USD
   events:
     # Watching what other systems do, and deciding for itself whether to say anything about it.
