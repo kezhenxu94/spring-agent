@@ -62,7 +62,10 @@ class ToolCallingManagerTest {
 
     final var last = manager.executeToolCalls(prompt, response).conversationHistory().getLast();
 
-    assertThat(asked).containsExactly("hiddenBySearch");
+    // Asked at least once, and only about the call: Spring AI resolves every call of a batch twice,
+    // once to read its metadata for the confirmation policy before anything runs and again to run
+    // it, so the count says nothing about whether resolution by name is on.
+    assertThat(asked).isNotEmpty().containsOnly("hiddenBySearch");
     assertThat(((ToolResponseMessage) last).getResponses())
         .singleElement()
         .satisfies(answer -> assertThat(answer.responseData()).contains("hiddenBySearch"));
