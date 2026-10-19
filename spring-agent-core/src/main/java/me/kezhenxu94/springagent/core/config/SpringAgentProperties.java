@@ -9,6 +9,7 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.Accessors;
 import me.kezhenxu94.springagent.core.advisors.AutoSkillToolsAdvisor;
+import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -514,12 +515,47 @@ public record SpringAgentProperties(
       }
     }
 
-    /** Per-model token pricing used to estimate the approximate cost of a chat completion. */
+    /**
+     * Per-model token pricing used to estimate the approximate cost of a chat completion.
+     *
+     * <p>{@code cachedInputPerMillion} is optional and a boxed {@code Double} for that reason: a
+     * primitive would read an absent price as zero and make every cache hit free. Unset, cache hits
+     * are charged at the input price, which overstates the cost but never invents a discount.
+     */
     public record ModelPricing(
         double nonThinkingInputPerMillion,
         double thinkingInputPerMillion,
+        Double cachedInputPerMillion,
         double outputPerMillion,
         Currency currency) {
+
+      /**
+       * What one model call cost, or null where the usage carries no token counts.
+       *
+       * <p>Cache reads are taken out of the prompt tokens before the input price is applied, which
+       * is right where the provider counts them inside the prompt — OpenAI's Chat Completions and
+       * Responses, DashScope's compatible mode and Gemini all do. Spring AI's Anthropic model does
+       * not: its prompt tokens are Anthropic's {@code input_tokens}, which already exclude cache
+       * reads, so a Claude model given a cached price would have its cache reads subtracted twice.
+       * The difference is clamped at zero, so a mismatch underprices but is never negative.
+       */
+      public Double cost(Usage usage, boolean thinking) {
+        if (usage == null
+            || usage.getPromptTokens() == null
+            || usage.getCompletionTokens() == null) {
+          return null;
+        }
+        final var inputPrice = thinking ? thinkingInputPerMillion : nonThinkingInputPerMillion;
+        final var cached =
+            cachedInputPerMillion == null || usage.getCacheReadInputTokens() == null
+                ? 0L
+                : usage.getCacheReadInputTokens();
+        final var uncached = Math.max(0L, usage.getPromptTokens() - cached);
+        return (uncached * inputPrice
+                + (cached == 0L ? 0d : cached * cachedInputPerMillion)
+                + usage.getCompletionTokens() * outputPerMillion)
+            / 1_000_000.0;
+      }
 
       @Getter
       @Accessors(fluent = true)
