@@ -148,6 +148,19 @@ class PublishFileToolTest {
     assertThat(resource.entryFilename()).isNull();
   }
 
+  @Test
+  @DisplayName("publishes a file a tool wrote into the user's artifacts directory")
+  void publishesFileFromArtifacts() throws IOException {
+    final var file =
+        userWorkspaceFactory.forOwner(USER_ID).artifacts().resolve("generated-image.png");
+    Files.writeString(file, "png");
+
+    final var result = tool.publishFile(file.toString(), "public", null, contextFor(USER_ID));
+
+    assertThat(result).startsWith("Published at");
+    assertThat(repoBackingStore).hasSize(1);
+  }
+
   // -------------------- workspace containment / traversal --------------------
 
   @Test
@@ -160,7 +173,7 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(file.toString(), "public", null, contextFor(USER_ID));
 
-    assertThat(result).contains("inside the current user's workspace");
+    assertThat(result).contains("can be published");
     assertThat(repoBackingStore).isEmpty();
   }
 
@@ -172,7 +185,7 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(file.toString(), "public", null, contextFor(USER_ID));
 
-    assertThat(result).contains("inside the current user's workspace");
+    assertThat(result).contains("can be published");
   }
 
   @Test
@@ -183,7 +196,7 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(file.toString(), "public", null, contextFor(USER_ID));
 
-    assertThat(result).contains("inside the current user's workspace");
+    assertThat(result).contains("can be published");
   }
 
   @Test
@@ -197,7 +210,7 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(traversalPath, "public", null, contextFor(USER_ID));
 
-    assertThat(result).contains("inside the current user's workspace");
+    assertThat(result).contains("can be published");
   }
 
   @Test
@@ -210,7 +223,7 @@ class PublishFileToolTest {
 
     final var result = tool.publishFile(link.toString(), "public", null, contextFor(USER_ID));
 
-    assertThat(result).contains("inside the current user's workspace");
+    assertThat(result).contains("can be published");
     assertThat(repoBackingStore).isEmpty();
   }
 
@@ -606,7 +619,7 @@ class PublishFileToolTest {
     final var result =
         tool.updatePublishedFile(token, outsideFile.toString(), null, null, contextFor(USER_ID));
 
-    assertThat(result).contains("inside the current user's workspace");
+    assertThat(result).contains("can be published");
   }
 
   @Test

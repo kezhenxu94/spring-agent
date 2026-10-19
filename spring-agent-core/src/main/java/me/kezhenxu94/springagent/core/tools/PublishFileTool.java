@@ -35,6 +35,15 @@ public class PublishFileTool {
   private static final Duration PUBLIC_DEFAULT_TTL = Duration.ofDays(1);
   private static final String INDEX_FILENAME = "index.html";
 
+  /**
+   * Where publishable content lives: what the shell and tools produce, in workspace/, and what
+   * tools write on their own, in artifacts/ — a generated image, a tool result too large to return.
+   * Not memories/ or skills/: those hold what a person told the agent to remember and the
+   * instructions it acts on, and a link to either is a leak rather than a deliverable.
+   */
+  private static final List<HomeDir.Folder> PUBLISHABLE =
+      List.of(HomeDir.Folder.WORKSPACE, HomeDir.Folder.ARTIFACTS);
+
   private final StorageService storageService;
   private final UserWorkspaceFactory userWorkspaceFactory;
   private final PublishedResourceRepo publishedResourceRepo;
@@ -66,9 +75,9 @@ public class PublishFileTool {
               optional and means the link never expires when omitted.
           visibility=public: reachable by anyone holding the link, no sign-in. ttl is optional and
               defaults to 1d, at most 30d.
-          Only files and directories inside the current user's workspace, the current group's
-          shared workspace, or the tenant's company-wide shared workspace can be published, which
-          means whatever this or another tool produced there earlier.
+          Only files and directories inside the workspace/ or artifacts/ directory of the current
+          user, the current group, or the tenant can be published, which means whatever this or
+          another tool produced there earlier.
           A directory is published whole, keeping its structure, and a browser opens its index.html
           if it has one.
           """)
@@ -158,7 +167,7 @@ public class PublishFileTool {
               which is a fresh publish that keeps the old link.
           Pass a new ttl to restart the expiry from now; omit it to leave the expiry as it is.
           The new content, too, has to come from inside the current user's, group's, or tenant's
-          workspace.
+          workspace/ or artifacts/ directory.
           """)
   public String updatePublishedFile(
       @ToolParam(
@@ -366,8 +375,10 @@ public class PublishFileTool {
     try {
       realSourcePath = sourcePath.toRealPath();
       final var roots = new ArrayList<Path>();
-      for (final var root : home.dirs(HomeDir.Folder.WORKSPACE)) {
-        roots.add(root.toRealPath());
+      for (final var folder : PUBLISHABLE) {
+        for (final var root : home.dirs(folder)) {
+          roots.add(root.toRealPath());
+        }
       }
       realWorkspaceRoots = roots;
     } catch (IOException e) {
@@ -375,9 +386,7 @@ public class PublishFileTool {
     }
     if (realWorkspaceRoots.stream()
         .noneMatch(r -> realSourcePath.equals(r) || realSourcePath.startsWith(r))) {
-      throw new IllegalArgumentException(
-          "Only files and directories inside the current user's workspace, the current group's"
-              + " shared workspace, or the company-shared workspace can be published.");
+      throw new IllegalArgumentException(messages.get("publish-outside-workspace"));
     }
     return sourcePath;
   }
