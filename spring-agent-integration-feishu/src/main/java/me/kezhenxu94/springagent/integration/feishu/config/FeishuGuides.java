@@ -5,9 +5,9 @@ import lombok.Getter;
 import me.kezhenxu94.springagent.core.config.LocalizedPrompt;
 
 /**
- * The reference pages three of the Feishu tools hand back as their whole result — a field-type
- * table, a filter grammar, a document-block grammar, a table of cell formats — in the workspace's
- * language.
+ * The reference pages the Feishu tools hand back as their whole result — a field-type table, a
+ * filter grammar, a document-block grammar, a table of cell formats, the message and card formats —
+ * in the workspace's language.
  *
  * <p>Files rather than string constants, for the reason core's prompts are files: these run to
  * sixty lines apiece and four hundred together, and a page of grammar folded into a Java literal is
@@ -39,6 +39,7 @@ public class FeishuGuides {
   private final String docBlockGuide;
   private final String docBlockContentReference;
   private final String sheetDataFormats;
+  private final String messageFormatReference;
 
   /**
    * @param locale which language to read, the host's when {@code null}
@@ -50,5 +51,7 @@ public class FeishuGuides {
     this.docBlockContentReference =
         LocalizedPrompt.text(LOCATION, "doc-block-content-reference", locale);
     this.sheetDataFormats = LocalizedPrompt.text(LOCATION, "sheet-data-formats", locale);
+    this.messageFormatReference =
+        LocalizedPrompt.text(LOCATION, "message-format-reference", locale);
   }
 }

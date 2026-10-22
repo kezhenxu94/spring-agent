@@ -17,6 +17,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.Builder;
@@ -25,9 +26,13 @@ import lombok.SneakyThrows;
 import lombok.extern.jackson.Jacksonized;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.AgentTool;
+import me.kezhenxu94.springagent.core.tools.HomeDir;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
+import me.kezhenxu94.springagent.integration.feishu.FeishuApiErrors;
+import me.kezhenxu94.springagent.integration.feishu.FeishuImages;
 import me.kezhenxu94.springagent.integration.feishu.FeishuMessageCard;
+import me.kezhenxu94.springagent.integration.feishu.config.FeishuGuides;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
 import me.kezhenxu94.springagent.integration.feishu.drive.FeishuDriveService;
@@ -35,7 +40,11 @@ import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 @Slf4j
 @AgentTool
@@ -53,6 +62,31 @@ public class FeishuTools {
   final FeishuPermissionTools feishuPermissionTools;
   final FeishuProperties feishuProperties;
   final FeishuUserFolders userFolders;
+  final FeishuImages images;
+  final FeishuGuides guides;
+
+  /** What FeishuSendRichMessage sends; files, audio and video go through FeishuSendFile. */
+  static final List<String> RICH_MESSAGE_TYPES =
+      List.of("interactive", "post", "text", "image", "share_chat", "share_user");
+
+  /**
+   * Components that report back to this application by being used at all — a selection, a date,
+   * typed text, a tick. A card the model writes may carry none of them: see {@link
+   * #callbackIn(JsonNode, String)}.
+   */
+  static final Set<String> CALLBACK_COMPONENTS =
+      Set.of(
+          "form",
+          "input",
+          "select_static",
+          "multi_select_static",
+          "select_person",
+          "multi_select_person",
+          "select_img",
+          "date_picker",
+          "picker_time",
+          "picker_datetime",
+          "checker");
 
   @Builder
   @Jacksonized
@@ -221,7 +255,11 @@ public class FeishuTools {
   @SneakyThrows
   @Tool(
       name = "FeishuSendMessage",
-      description = "Send a markdown message to a Feishu user or group.")
+      description =
+          "Send a simple markdown message to a Feishu user or group, in the same card the agent"
+              + " answers in. Use it for prose, lists, links, code and small tables. For a card"
+              + " with a header, columns, a table, a chart, images laid out, link buttons, or for"
+              + " rich text, a contact or a group card, use FeishuSendRichMessage instead.")
   public String sendMessage(
       @ToolParam(
               description =
@@ -238,8 +276,108 @@ public class FeishuTools {
 
     requireMemberOfTarget(toolContext, receiveId, receiveIdType);
 
-    final var cardContent = messageCard.render(content);
+    final String cardContent;
+    try {
+      cardContent =
+          messageCard.render(
+              images.inMarkdown(content, userWorkspaceFactory.forRequest(toolContext)));
+    } catch (IllegalArgumentException e) {
+      return e.getMessage();
+    } catch (IllegalStateException e) {
+      return messages.get("tool-send-failed", e.getMessage());
+    }
+    return send(receiveId, receiveIdType, "interactive", cardContent);
+  }
 
+  @Tool(
+      name = "FeishuSendRichMessage",
+      description =
+          "Send a Feishu message in any of its formats: a card (msgType interactive) with a"
+              + " header, columns, tables, charts, images, people, collapsible panels and link"
+              + " buttons; rich text (post); plain text; an image; a group card (share_chat) or a"
+              + " contact card (share_user). Read FeishuMessageFormatReference before writing one."
+              + " For plain markdown, FeishuSendMessage is simpler.\n"
+              + "Images: put the absolute path of a workspace file wherever an img_key or"
+              + " image_key goes and it is uploaded. Cards may only open links: forms, inputs,"
+              + " selects and anything else that calls back are refused. When Feishu rejects the"
+              + " content the result carries its code, message and the fields it objected to; fix"
+              + " them and send again.")
+  @SneakyThrows
+  public String sendRichMessage(
+      @ToolParam(
+              description =
+                  "Who receives it: an open_id, user_id, union_id, email or chat_id, according to"
+                      + " receiveIdType")
+          final String receiveId,
+      @ToolParam(
+              description =
+                  "What kind of id receiveId is: open_id, user_id, union_id, email or chat_id")
+          final String receiveIdType,
+      @ToolParam(
+              description =
+                  "The message type: interactive, post, text, image, share_chat or share_user")
+          final String msgType,
+      @ToolParam(
+              description =
+                  "The message's content object as JSON, in the shape msgType takes — for"
+                      + " interactive, the card JSON with schema 2.0. May be @file:<path> to read"
+                      + " it from a file")
+          final String contentJson,
+      final ToolContext toolContext) {
+
+    requireMemberOfTarget(toolContext, receiveId, receiveIdType);
+
+    if (!RICH_MESSAGE_TYPES.contains(msgType)) {
+      return messages.get(
+          "tool-rich-unsupported-type", String.join(", ", RICH_MESSAGE_TYPES), msgType);
+    }
+    final JsonNode content;
+    try {
+      content = objectMapper.readTree(contentJson);
+    } catch (JacksonException e) {
+      return messages.get("tool-rich-invalid-json", e.getOriginalMessage() + locationOf(e));
+    }
+    if (!(content instanceof ObjectNode)) {
+      return messages.get("tool-rich-invalid-json", "not a JSON object");
+    }
+    if ("interactive".equals(msgType)) {
+      if (content.has("data")
+          && ("template".equals(content.path("type").asString())
+              || "card".equals(content.path("type").asString()))) {
+        return messages.get("tool-rich-template-refused");
+      }
+      final var callback = callbackIn(content, "$");
+      if (callback != null) {
+        return messages.get("tool-rich-interaction-refused", callback);
+      }
+    }
+    try {
+      resolveImages(content, userWorkspaceFactory.forRequest(toolContext));
+    } catch (IllegalArgumentException e) {
+      return e.getMessage();
+    } catch (IllegalStateException e) {
+      return messages.get("tool-send-failed", e.getMessage());
+    }
+    return send(receiveId, receiveIdType, msgType, objectMapper.writeValueAsString(content));
+  }
+
+  @Tool(
+      name = "FeishuMessageFormatReference",
+      description =
+          "How to write FeishuSendRichMessage's contentJson: the shape of each message type, the"
+              + " rich-text nodes, and the JSON 2.0 card with its header, layout and display"
+              + " components, with a complete example, the limits, and what is refused. Read it"
+              + " before sending a rich message.")
+  public String messageFormatReference() {
+    return guides.messageFormatReference();
+  }
+
+  @SneakyThrows
+  private String send(
+      final String receiveId,
+      final String receiveIdType,
+      final String msgType,
+      final String content) {
     final var resp =
         feishu
             .im()
@@ -251,18 +389,121 @@ public class FeishuTools {
                     .createMessageReqBody(
                         CreateMessageReqBody.newBuilder()
                             .receiveId(receiveId)
-                            .msgType("interactive")
-                            .content(cardContent)
+                            .msgType(msgType)
+                            .content(content)
                             .build())
                     .build());
 
     if (resp.getCode() != 0) {
+      final var reason = FeishuApiErrors.describe(resp);
       log.error(
-          "Failed to send Feishu message to {} ({}): {}", receiveId, receiveIdType, resp.getMsg());
-      return messages.get("tool-send-failed", resp.getMsg());
+          "Failed to send Feishu {} message to {} ({}): {}",
+          msgType,
+          receiveId,
+          receiveIdType,
+          reason);
+      return messages.get("tool-send-failed", reason);
     }
-    log.info("Sent Feishu message to {} ({})", receiveId, receiveIdType);
+    log.info("Sent Feishu {} message to {} ({})", msgType, receiveId, receiveIdType);
     return messages.get("tool-message-sent", receiveId);
+  }
+
+  private static String locationOf(final JacksonException e) {
+    final var location = e.getLocation();
+    return location == null
+        ? ""
+        : " (line " + location.getLineNr() + ", column " + location.getColumnNr() + ")";
+  }
+
+  /**
+   * Where in {@code node} something would call back to this application, or {@code null}.
+   *
+   * <p>A callback from any card the bot sent arrives at {@code FeishuEventHandler}, which tells the
+   * stop button, the question form, the suggestions and the config form apart by the {@code button}
+   * key of the pressed element's value. A card the model writes could carry exactly that key, and
+   * the content it is shaped by may be somebody else's words — a document it read, an event it is
+   * triaging. A suggestion pressed starts a run as whoever pressed it, so a card offering "see the
+   * results" could run a prompt of a stranger's choosing with the presser's files and credentials.
+   * Nothing would answer a callback the model meant for itself anyway, so the rule is not "no
+   * forged keys" but "no callbacks": a link is the only thing a card sent this way may do.
+   */
+  static String callbackIn(final JsonNode node, final String path) {
+    if (node instanceof ArrayNode array) {
+      for (var i = 0; i < array.size(); i++) {
+        final var found = callbackIn(array.get(i), path + "[" + i + "]");
+        if (found != null) {
+          return found;
+        }
+      }
+      return null;
+    }
+    if (!(node instanceof ObjectNode object)) {
+      return null;
+    }
+    final var tag = object.path("tag").asString();
+    if (CALLBACK_COMPONENTS.contains(tag)) {
+      return path + " (" + tag + ")";
+    }
+    // On a button, or an overflow's option, a value is what is posted back when it is pressed. Only
+    // there: a chart's data and a table's rows are full of fields called value, too.
+    if ("button".equals(tag) && object.has("value")) {
+      return path + ".value";
+    }
+    if ("overflow".equals(tag) && object.get("options") instanceof ArrayNode options) {
+      for (var i = 0; i < options.size(); i++) {
+        if (options.get(i).has("value")) {
+          return path + ".options[" + i + "].value";
+        }
+      }
+    }
+    final var behaviors = object.get("behaviors");
+    if (behaviors instanceof ArrayNode list) {
+      for (var i = 0; i < list.size(); i++) {
+        if (!"open_url".equals(list.get(i).path("type").asString())) {
+          return path + ".behaviors[" + i + "]";
+        }
+      }
+    }
+    for (final var field : object.properties()) {
+      final var found = callbackIn(field.getValue(), path + "." + field.getKey());
+      if (found != null) {
+        return found;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Points every image a message names at a key, in place: the {@code img_key} and {@code
+   * image_key} fields wherever they are, and markdown images in the text of a card's markdown
+   * element or a post's md node.
+   */
+  void resolveImages(final JsonNode node, final HomeDir home) {
+    if (node instanceof ArrayNode array) {
+      array.forEach(child -> resolveImages(child, home));
+      return;
+    }
+    if (!(node instanceof ObjectNode object)) {
+      return;
+    }
+    final var tag = object.path("tag").asString();
+    for (final var field : List.copyOf(object.properties())) {
+      final var name = field.getKey();
+      final var value = field.getValue();
+      if (value.isString()
+          && ("img_key".equals(name)
+              || "image_key".equals(name)
+              || "markdown".equals(tag) && "content".equals(name)
+              || "md".equals(tag) && "text".equals(name))) {
+        object.put(
+            name,
+            "img_key".equals(name) || "image_key".equals(name)
+                ? images.keyFor(value.asString(), home)
+                : images.inMarkdown(value.asString(), home));
+      } else {
+        resolveImages(value, home);
+      }
+    }
   }
 
   @Tool(

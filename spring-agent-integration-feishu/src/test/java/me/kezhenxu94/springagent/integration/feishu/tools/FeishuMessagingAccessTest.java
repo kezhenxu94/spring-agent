@@ -29,6 +29,7 @@ import java.util.Map;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.core.tools.UserWorkspaceFactory;
+import me.kezhenxu94.springagent.integration.feishu.FeishuImages;
 import me.kezhenxu94.springagent.integration.feishu.FeishuMessageCard;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuProperties;
@@ -90,6 +91,10 @@ class FeishuMessagingAccessTest {
         new ToolContext(
             Map.of(ToolContexts.KEY_USER_ID, "ou_asker", ToolContexts.KEY_CHAT_ID, OWN_CHAT));
 
+    final var messages =
+        new FeishuMessages(
+            new FeishuProperties(
+                null, null, null, null, null, null, null, Locale.ENGLISH, null, null, null));
     tools =
         new FeishuTools(
             feishu,
@@ -97,13 +102,13 @@ class FeishuMessagingAccessTest {
             new UserWorkspaceFactory(
                 FileSystemStorageProperties.builder().location(storage.toString()).build()),
             new JsonMapper(),
-            new FeishuMessages(
-                new FeishuProperties(
-                    null, null, null, null, null, null, null, Locale.ENGLISH, null, null, null)),
+            messages,
             messageCard,
             new FeishuDriveService(feishu, new JsonMapper()),
             null,
             null,
+            null,
+            new FeishuImages(feishu, messages),
             null);
   }
 
