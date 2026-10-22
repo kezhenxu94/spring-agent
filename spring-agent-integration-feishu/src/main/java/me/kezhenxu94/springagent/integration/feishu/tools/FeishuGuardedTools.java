@@ -179,6 +179,8 @@ final class FeishuGuardedTools {
           "FeishuIsInChat",
           "FeishuRecallMessage",
           "FeishuSendMessage",
+          "FeishuSendRichMessage",
+          "FeishuMessageFormatReference",
           "FeishuSendFile",
           "FeishuDownloadFile",
           "FeishuReadMessage",

@@ -16,15 +16,11 @@ import com.lark.oapi.service.cardkit.v1.model.SettingsCardReq;
 import com.lark.oapi.service.cardkit.v1.model.SettingsCardReqBody;
 import com.lark.oapi.service.cardkit.v1.model.UpdateCardElementReq;
 import com.lark.oapi.service.cardkit.v1.model.UpdateCardElementReqBody;
-import com.lark.oapi.service.im.v1.model.CreateImageReq;
-import com.lark.oapi.service.im.v1.model.CreateImageReqBody;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
-import java.net.URI;
 import java.net.URLConnection;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -49,6 +45,7 @@ import lombok.Getter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.tools.HomeDir;
+import me.kezhenxu94.springagent.integration.feishu.FeishuImages;
 import me.kezhenxu94.springagent.integration.feishu.config.FeishuMessages;
 import org.springframework.web.client.RestTemplate;
 
@@ -160,10 +157,6 @@ public class FeishuCard {
    * {@link #missing}) and the writer puts it back the next time it has something to say into it.
    */
   private static final int CODE_NO_SUCH_ELEMENT_STREAMING = 300313;
-
-  private static final Pattern IMAGE_PATTERN = Pattern.compile("!\\[(.*?)\\]\\(([^)\\s]+)\\)");
-
-  private static final String FILE_SCHEME = "file:";
 
   private final Client feishu;
 
@@ -1659,12 +1652,12 @@ public class FeishuCard {
     if (Strings.isNullOrEmpty(content)) {
       return content;
     }
-    final var matcher = IMAGE_PATTERN.matcher(content);
+    final var matcher = FeishuImages.MARKDOWN_IMAGE.matcher(content);
     final var out = new StringBuilder();
     while (matcher.find()) {
       final var imageName = matcher.group(1);
       final var source = matcher.group(2);
-      if (!isRemote(source) && !isLocal(source)) {
+      if (!FeishuImages.isRemote(source) && !FeishuImages.isLocal(source)) {
         matcher.appendReplacement(out, Matcher.quoteReplacement(matcher.group()));
         continue;
       }
@@ -1682,27 +1675,12 @@ public class FeishuCard {
     return out.toString();
   }
 
-  private static boolean isRemote(final String source) {
-    return source.startsWith("http://") || source.startsWith("https://");
-  }
-
-  /** A {@code file://} URL, as {@code GenerateImage} returns, or a plain absolute path. */
-  private static boolean isLocal(final String source) {
-    return source.startsWith(FILE_SCHEME) || source.startsWith("/");
-  }
-
-  private static Path pathOf(final String source) {
-    return (source.startsWith(FILE_SCHEME) ? Path.of(URI.create(source)) : Path.of(source))
-        .toAbsolutePath()
-        .normalize();
-  }
-
   /**
    * Uploads the image at {@code source} to Feishu, returning its key, or {@code null} if it fails.
    */
   private String uploadImage(final String source) {
     try {
-      if (isRemote(source)) {
+      if (FeishuImages.isRemote(source)) {
         final var imageBytes = restTemplate.getForObject(source, byte[].class);
         if (imageBytes == null) {
           log.warn("Nothing to download at image URL: {}", source);
@@ -1711,41 +1689,23 @@ public class FeishuCard {
         final var tempFile = File.createTempFile("image-", "." + extensionOf(imageBytes));
         try {
           Files.write(tempFile.toPath(), imageBytes);
-          return upload(tempFile, source);
+          return FeishuImages.upload(feishu, tempFile);
         } finally {
           tempFile.delete();
         }
       }
-      final var path = pathOf(source);
+      final var path = FeishuImages.pathOf(source);
       // The same containment check VisionTools makes: a run may only show files belonging to the
       // user it is answering, never an arbitrary path the model wrote into its answer.
       if (!home.contains(path) || !Files.isRegularFile(path)) {
         log.warn("Rejected image path outside the user's home or missing: {}", source);
         return null;
       }
-      return upload(path.toFile(), source);
+      return FeishuImages.upload(feishu, path.toFile());
     } catch (Exception e) {
       log.error("Failed to upload image: {}", source, e);
       return null;
     }
-  }
-
-  private String upload(final File file, final String source) throws Exception {
-    final var response =
-        feishu
-            .im()
-            .v1()
-            .image()
-            .create(
-                CreateImageReq.newBuilder()
-                    .createImageReqBody(
-                        CreateImageReqBody.newBuilder().imageType("message").image(file).build())
-                    .build());
-    if (!response.success()) {
-      log.warn("Failed to upload image: {}, {}, {}", source, response.getCode(), response.getMsg());
-      return null;
-    }
-    return response.getData().getImageKey();
   }
 
   private static String extensionOf(final byte[] imageBytes) throws IOException {

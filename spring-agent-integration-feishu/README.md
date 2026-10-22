@@ -138,6 +138,13 @@ else's: it reaches the chats the bot is in and the documents Feishu grants it, a
   composer would otherwise have the bot notify a whole Feishu group.
 - **Asking a question ends the turn.** The answer arrives later as a *new* `AgentRequest` on the same
   `conversationId`. Do not assume an answer is available in the same run.
+- **A card the model writes may only open links.** `FeishuSendRichMessage` refuses forms, inputs,
+  selects, pickers, checkers, any `behaviors` entry other than `open_url`, and a `value` on a button
+  or an overflow option, before sending. Every callback from a card the bot sent reaches
+  `FeishuEventHandler`, which tells the stop button, the question form, the suggestions and the
+  config form apart by `value.button` — so a model-written card could otherwise carry a suggestion
+  that starts a run as whoever presses it. Images in a message the model writes are uploaded from
+  the asker's workspace only; a URL is refused rather than fetched (`FeishuImages`).
 - **`"feishu-chat"` is duplicated** in `FeishuChatObservations` and in `EventsProperties`, because a
   compile dependency between the two modules is not allowed. Both sides say so; renaming one silently
   stops the other working.
