@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.integration.websocket.config;
 
 import me.kezhenxu94.springagent.integration.websocket.aot.WebRuntimeHints;
+import me.kezhenxu94.springagent.integration.websocket.web.UserModelController;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.ComponentScan;
@@ -43,11 +44,16 @@ import org.springframework.context.annotation.ImportRuntimeHints;
     beforeName = "org.springframework.boot.webmvc.autoconfigure.WebMvcAutoConfiguration")
 @ComponentScan(
     basePackages = "me.kezhenxu94.springagent.integration.websocket",
-    // Without this, the scan would also register this class, which is already imported.
+    // Without this, the scan would also register the auto-configurations, which are already
+    // imported, and the controller UserModelWebConfiguration registers only where its bean exists.
     excludeFilters =
         @ComponentScan.Filter(
             type = FilterType.ASSIGNABLE_TYPE,
-            classes = WebSocketAutoConfiguration.class))
+            classes = {
+              WebSocketAutoConfiguration.class,
+              UserModelWebConfiguration.class,
+              UserModelController.class
+            }))
 @EnableConfigurationProperties(WebProperties.class)
 @ImportRuntimeHints(WebRuntimeHints.class)
 public class WebSocketAutoConfiguration {}
