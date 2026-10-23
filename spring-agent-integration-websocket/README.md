@@ -284,7 +284,10 @@ Four things about it differ from the MCP tab, and each is a fact about what a ch
 
 - **The tab is not always there.** A row holds a token, so `UserModelRegistry` exists only where
   `app.ai.user-models.encryption-key` gave it somewhere sealed to keep one. The controller is
-  `@ConditionalOnBean(UserModelRegistry.class)`, `/api/me` reports `models.enabled`, and
+  registered by `UserModelWebConfiguration`, an auto-configuration of its own that is
+  `@ConditionalOnBean(UserModelRegistry.class)`. The condition cannot sit on the controller, because
+  the module's component scan evaluates it before core's registry is defined, so it always fails
+  there. `/api/me` reports `models.enabled`, and
   `customize.js`'s tab table gained an `enabled` predicate for it — the first tab there that has
   one. A tab drawn against a key nobody set would fail every save.
 - **There is no scope and no store.** A chat model is never shared and never configured by the

@@ -12,7 +12,6 @@ import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import me.kezhenxu94.springagent.core.usermodels.UserModelProbe;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import me.kezhenxu94.springagent.integration.websocket.config.WebMessages;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -50,14 +49,14 @@ import org.springframework.web.server.ResponseStatusException;
  * over chat.
  *
  * <p>Registered only where {@link UserModelRegistry} exists, which is only where {@code
- * app.ai.user-models.encryption-key} is set — see {@code UserModelsConfiguration}. Without a key
+ * app.ai.user-models.encryption-key} is set — see {@code UserModelsConfiguration} — and by {@code
+ * UserModelWebConfiguration}, which says why the condition is not on this class. Without a key
  * there is nowhere safe to put a token, and a page offering to register one would fail every save.
  */
 @Slf4j
 @RestController
 @RequestMapping("/api/models")
 @RequiredArgsConstructor
-@ConditionalOnBean(UserModelRegistry.class)
 public class UserModelController {
 
   /** The path segment meaning "switch back to the application's own model". */

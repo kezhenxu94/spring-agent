@@ -1363,6 +1363,11 @@ app:
         cached-input-per-million: 0.02
         output-per-million: 1.2
         currency: USD
+      '[deepseek-v4.1-flash-1017]':
+        non-thinking-input-per-million: 2.0
+        thinking-input-per-million: 2.0
+        output-per-million: 8.0
+        currency: CNY
   events:
     # Watching what other systems do, and deciding for itself whether to say anything about it.
     # Alerts and code-hosting webhooks arrive at /events/webhooks/<source>; group chat messages the
