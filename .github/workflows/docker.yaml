@@ -30,6 +30,7 @@ jobs:
         project:
           - spring-agent-app-feishu
           - spring-agent-app-slack
+          - spring-agent-app-telegram
           - spring-agent-app-webui
         # Both axes are declared as matrix keys, not left to `include`. An `include` entry cannot
         # multiply combinations - it only adds keys to the ones already there, and a later entry
@@ -48,6 +49,8 @@ jobs:
             image-suffix: ''
           - project: spring-agent-app-slack
             image-suffix: '-slack'
+          - project: spring-agent-app-telegram
+            image-suffix: '-telegram'
           # -web rather than -webui: the module was renamed when its surface became a published
           # library, and an image reference is what a deployment pulls, so renaming it would strand
           # one. See ext.imageBaseName in spring-agent-app-webui/build.gradle.
@@ -79,6 +82,8 @@ jobs:
             image-suffix: ''
           - project: spring-agent-app-slack
             image-suffix: '-slack'
+          - project: spring-agent-app-telegram
+            image-suffix: '-telegram'
           # -web rather than -webui: the module was renamed when its surface became a published
           # library, and an image reference is what a deployment pulls, so renaming it would strand
           # one. See ext.imageBaseName in spring-agent-app-webui/build.gradle.

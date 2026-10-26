@@ -119,6 +119,12 @@ Two things make that work, and neither needs configuring:
   retries, so `FeishuLongConnection` watches the connection itself and reopens it. Slack's own
   client already does this, so nothing here duplicates it.
 
+**Telegram is the exception: run one replica of it.** It delivers by long polling, and Telegram
+hands a bot's updates to one poller at a time — a second replica makes both log `409 Conflict` and
+take turns at the messages. A rolling update rides that out for the moment the two overlap: the
+replica leaving stops polling first, and leaves whatever it had not handled unconfirmed for the
+next. See [`spring-agent-app-telegram`](../spring-agent-app-telegram/README.md).
+
 Readiness is one signal for the whole process, so on `spring-agent-app-web-feishu` — the application
 carrying a chat *and* the browser — a lost Feishu connection takes the page out of rotation as well.
 That is the right default for a replica that is half deaf, but it is a choice: a deployment that

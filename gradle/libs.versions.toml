@@ -59,6 +59,12 @@ okhttp = "4.12.0"
 # before bumping either side; a mismatch fails at run time, not at compile time.
 anthropic-sdk = "2.72.0"
 sqlite-jdbc = "3.53.2.1"
+# Not BOM-managed. The Telegram integration parses what the model writes with it, to turn markdown
+# into Telegram's own text-plus-entities form. Already on every runtime classpath at this version,
+# under spring-ai-agent-utils' html2md converter, so this must equal what that resolves to: flexmark
+# ships every module off one version and they share internals. Check with
+# `./gradlew :spring-agent-integration-telegram:dependencies --configuration runtimeClasspath`.
+flexmark = "0.64.8"
 testcontainers = "2.0.3"
 
 [libraries]
@@ -84,6 +90,8 @@ slack-api-client = { module = "com.slack.api:slack-api-client", version.ref = "s
 slack-api-model = { module = "com.slack.api:slack-api-model", version.ref = "slack-sdk" }
 slack-bolt = { module = "com.slack.api:bolt", version.ref = "slack-sdk" }
 slack-bolt-socket-mode = { module = "com.slack.api:bolt-jakarta-socket-mode", version.ref = "slack-sdk" }
+flexmark = { module = "com.vladsch.flexmark:flexmark", version.ref = "flexmark" }
+flexmark-ext-gfm-strikethrough = { module = "com.vladsch.flexmark:flexmark-ext-gfm-strikethrough", version.ref = "flexmark" }
 tyrus-standalone-client = { module = "org.glassfish.tyrus.bundles:tyrus-standalone-client", version.ref = "tyrus" }
 testcontainers-core = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }

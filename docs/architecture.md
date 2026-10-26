@@ -29,6 +29,7 @@ flowchart LR
     subgraph SURFACES[Chat surfaces one per application]
         feishu[integration-feishu chats and cards]
         slack[integration-slack channels and Block Kit]
+        telegram[integration-telegram chats and groups]
         web[integration-websocket a browser]
         cli[app-cli a terminal]
     end
@@ -65,6 +66,7 @@ flowchart LR
 
     feishu --> request
     slack --> request
+    telegram --> request
     web --> request
     cli --> request
     request --> agent
@@ -104,10 +106,11 @@ how a surface follows a run — including one it did not start.
 answer for *every* run rather than for one surface's: a `@Bean AgentResponseListener`, the
 `PromptVariablesContributor`s merged with `putAll`, and the `Notifier` resolved with
 `getIfAvailable()`. Two surfaces means a Feishu card replied onto a Slack timestamp, and none of it
-fails at startup — which is why `spring-agent-app-feishu` and `spring-agent-app-slack` are separate
-applications. `spring-agent-integration-websocket` is the exception rather than a third entry: its
-listener claims a run only when the request's `chatType` is `web`, and it contributes no
-`{replyFormat}` and no `Notifier`, so a Feishu bot can add a browser to read its conversations in.
+fails at startup — which is why `spring-agent-app-feishu`, `spring-agent-app-slack` and
+`spring-agent-app-telegram` are separate applications. `spring-agent-integration-websocket` is the
+exception rather than another entry: its listener claims a run only when the request's `chatType` is
+`web`, and it contributes no `{replyFormat}` and no `Notifier`, so a Feishu bot can add a browser to
+read its conversations in.
 
 **`spring-agent-app-web-feishu` is what that exception is for**: one process carrying both the
 browser and Feishu, so a conversation can be handed between them. Both directions need the two in

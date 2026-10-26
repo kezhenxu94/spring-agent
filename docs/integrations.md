@@ -26,6 +26,7 @@ written for whoever **deploys** it, and links back down to the modules it carrie
 | --- | --- |
 | [`spring-agent-integration-feishu`](../spring-agent-integration-feishu/README.md) | Feishu/Lark chats, cards, documents and drive as a surface |
 | [`spring-agent-integration-slack`](../spring-agent-integration-slack/README.md) | Slack channels and Block Kit messages as a surface |
+| [`spring-agent-integration-telegram`](../spring-agent-integration-telegram/README.md) | Telegram private chats and groups as a surface, over long polling |
 | [`spring-agent-integration-websocket`](../spring-agent-integration-websocket/README.md) | A browser as a surface: the SPA, its REST endpoints, STOMP run streaming, the run journal |
 
 The command line is a surface too, but it is an application rather than a library —
@@ -89,6 +90,7 @@ serve either therefore names both, and both lines do something.
 | [`spring-agent-core`](../spring-agent-core/README.md) | The runtime and every SPI; backend-agnostic |
 | [`spring-agent-app-feishu`](../spring-agent-app-feishu/README.md) | Server, Feishu surface; carries every optional module |
 | [`spring-agent-app-slack`](../spring-agent-app-slack/README.md) | The same server with Slack instead |
+| [`spring-agent-app-telegram`](../spring-agent-app-telegram/README.md) | The same server with Telegram instead |
 | [`spring-agent-app-webui`](../spring-agent-app-webui/README.md) | The same runtime with a browser and no chat platform |
 | [`spring-agent-app-web-feishu`](../spring-agent-app-web-feishu/README.md) | Browser and Feishu in one process, so a conversation is handed between them |
 | [`spring-agent-app-cli`](../spring-agent-app-cli/README.md) | The laptop command line |
@@ -136,7 +138,8 @@ A module is an integration if it does all of this and nothing more:
 ## One chat surface per application
 
 This is a runtime constraint rather than a preference, and it is why there are separate
-`spring-agent-app-feishu` and `spring-agent-app-slack` rather than one server carrying both.
+`spring-agent-app-feishu`, `spring-agent-app-slack` and `spring-agent-app-telegram` rather than one
+server carrying all three.
 
 Three singletons in this runtime answer for *every* run rather than for one surface's runs: a
 `@Bean AgentResponseListener` claims every run; `PromptVariablesContributor`s are merged with
@@ -145,7 +148,8 @@ Three singletons in this runtime answer for *every* run rather than for one surf
 so a second chat surface on the classpath is a build that passes and a deployment that misbehaves — a
 Feishu card replied onto a Slack timestamp, a triage run aborted before it reaches the model. It
 holds for a test classpath too: an auto-configuration is still an auto-configuration there.
-`OneChatSurfaceTest` in `spring-agent-app-slack` is the check that notices.
+`OneChatSurfaceTest` in `spring-agent-app-slack` and `spring-agent-app-telegram` is the check that
+notices.
 
 `spring-agent-integration-websocket` is deliberately not a third entry in that count. It does register
 a `@Bean AgentResponseListener`, so that a scheduled task firing or a subagent starting is visible in

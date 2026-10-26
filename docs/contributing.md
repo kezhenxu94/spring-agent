@@ -62,6 +62,7 @@ Other tasks:
 ```sh
 ./gradlew :spring-agent-app-feishu:bootRun   # the Feishu server
 ./gradlew :spring-agent-app-slack:bootRun    # the Slack server
+./gradlew :spring-agent-app-telegram:bootRun # the Telegram server
 ./gradlew :spring-agent-app-cli:bootRun      # the command line (stdin/tty wired for JLine)
 ./gradlew :spring-agent-app-webui:bootRun    # the browser UI, on :8080
 ./gradlew :spring-agent-app-feishu:bootBuildImage   # container image (Paketo buildpack, no Dockerfile)
@@ -104,6 +105,7 @@ spring-agent-events                   observations -> situations -> a triage run
 spring-agent-integration-{github,gitlab,grafana}   webhook readers for spring-agent-events
 spring-agent-integration-feishu       Feishu/Lark chats and cards as a surface
 spring-agent-integration-slack        Slack channels and Block Kit messages as a surface
+spring-agent-integration-telegram     Telegram chats and groups as a surface, by long polling
 spring-agent-integration-email        a watched IMAP mailbox as observations; dials out, so app.email.enabled
 spring-agent-integration-websocket    a browser as a surface: the SPA, its REST endpoints, STOMP run streaming
 spring-agent-rag-milvus               the knowledge base; the only KnowledgeBase implementation
@@ -113,6 +115,7 @@ spring-agent-provider-google-genai    Gemini natively: thinking levels, its embe
 spring-agent-provider-anthropic       Claude, from Anthropic or from a Vertex AI project; chat only
 spring-agent-app-feishu               deployable server, Feishu surface; depends on every optional module
 spring-agent-app-slack                the same server, Slack surface
+spring-agent-app-telegram             the same server, Telegram surface
 spring-agent-app-cli                  laptop command line; jpa + local shell only
 spring-agent-app-webui                the same runtime with the browser surface and nothing else
 spring-agent-app-web-feishu           both surfaces in one process, so a conversation can be handed between them
@@ -161,8 +164,8 @@ Every new module looks the same from the build's point of view:
    not set up.
 6. Its own message bundle if it writes text a person reads, and its own `prompts/tools/` files if it
    ships tools whose descriptions should be translatable.
-7. A line in `spring-agent-app-feishu/build.gradle` and/or `spring-agent-app-slack/build.gradle` if
-   a server should carry it, with a comment saying what taking it does and does not decide.
+7. A line in the `build.gradle` of each server application (`spring-agent-app-feishu`, `-slack`,
+   `-telegram`) that should carry it, with a comment saying what taking it does and does not decide.
 8. A `README.md` in the module folder, written for the developer depending on it, and a row in
    [`docs/integrations.md`](integrations.md). See [Documentation](#documentation) for what belongs in
    each.
@@ -172,8 +175,10 @@ Every new module looks the same from the build's point of view:
 ### A chat surface
 
 A surface is anything that turns messages into `AgentRequest`s and shows the answer.
-`spring-agent-integration-feishu`, `spring-agent-integration-slack` and `spring-agent-app-cli` are the
-shipped examples. The first two are the same design against two products; the CLI sits at the other
+`spring-agent-integration-feishu`, `spring-agent-integration-slack`, `spring-agent-integration-telegram`
+and `spring-agent-app-cli` are the shipped examples. The first three are the same design against
+three products — Telegram's the one with no workspace around it, and so the one that has to decide
+who may use it at all; the CLI sits at the other
 end of the one axis that matters: whether the surface can answer a question within the run.
 
 **Exactly one chat surface may be on an application's classpath**, which is why there is a server

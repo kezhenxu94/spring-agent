@@ -1,0 +1,39 @@
+plugins {
+  id 'springagent.java-library-conventions'
+}
+
+description = 'Telegram integration for spring-agent-core: private chats and groups as an agent surface.'
+
+dependencies {
+  // The i18n checks every module makes of its own tools and messages — see the Slack module.
+  testImplementation testFixtures(project(':spring-agent-core'))
+  // A real HTTP server for TelegramBotApiTest: what is under test is how a body Telegram sends is
+  // read — snake case, an error explained in JSON under a 4xx — which a mocked client would skip.
+  testImplementation libs.okhttp.mockwebserver
+
+  implementation project(':spring-agent-core')
+
+  // No Telegram SDK. The Bot API is plain HTTPS and JSON, so RestClient and a handful of records
+  // are the whole client — TelegramBotApi. The Java SDKs that exist would bring OkHttp and Jackson 2
+  // next to Boot 4's Jackson 3, and every type they bind is a reflection hint a native image would need.
+  //
+  // Markdown, parsed rather than pattern-matched: the model writes CommonMark and Telegram takes
+  // plain text plus entity offsets, and only a real parser gets nesting, code spans and escapes
+  // right. See TelegramMarkdown for why entities rather than Telegram's HTML or MarkdownV2.
+  implementation libs.flexmark
+  implementation libs.flexmark.ext.gfm.strikethrough
+
+  // Core's domain models carry `@Enumerated(EnumType.STRING)` — see the Slack module.
+  compileOnly 'jakarta.persistence:jakarta.persistence-api'
+
+  implementation 'org.springframework.boot:spring-boot-starter'
+  implementation 'org.springframework.boot:spring-boot-starter-restclient'
+  // The message updater reads com.openai.models.completions.CompletionUsage to tell reasoning
+  // tokens from the rest, the same way SlackMessageUpdater does.
+  implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+  implementation libs.spring.ai.agent.utils
+  implementation libs.guava
+
+  // The update notes are markdown files with a YAML frontmatter block — see TelegramUpdates.
+  implementation 'org.yaml:snakeyaml'
+}
