@@ -80,9 +80,9 @@ servers. That is a decision about what a scenario cannot do rather than an overs
 gates tools, and it cannot withhold what comes with an identity. [docs/events.md](../docs/events.md)
 spells out what follows from that.
 
-## Two names shared across a module boundary
+## Three names shared across a module boundary
 
-`EventsProperties.FEISHU_CHAT` (`"feishu-chat"`) and `SLACK_CHAT` (`"slack-chat"`) are the source
-names the chat integrations report under, duplicated as strings here because a compile dependency
-from this module to a chat integration is not allowed. Both sides carry a comment saying so. Renaming
-one half silently stops the other working.
+`EventsProperties.FEISHU_CHAT` (`"feishu-chat"`), `SLACK_CHAT` (`"slack-chat"`) and `TELEGRAM_CHAT`
+(`"telegram-chat"`) are the source names the chat integrations report under, duplicated as strings
+here because a compile dependency from this module to a chat integration is not allowed. Both sides
+carry a comment saying so. Renaming one half silently stops the other working.

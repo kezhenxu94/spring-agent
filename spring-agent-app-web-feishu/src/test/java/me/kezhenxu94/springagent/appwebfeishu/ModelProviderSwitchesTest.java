@@ -21,8 +21,8 @@ import org.springframework.core.io.ClassPathResource;
  * trap {@code DockerShellDefaultsTest} exists for, which is why this reads the file through Boot's
  * own loader rather than trusting it.
  *
- * <p>One of four identical copies, one per server application, and that is the point rather than an
- * oversight: the four {@code application.yaml} files are derived from the Feishu server's and have
+ * <p>One of five identical copies, one per server application, and that is the point rather than an
+ * oversight: the five {@code application.yaml} files are derived from the Feishu server's and have
  * to stay in step, a setting meaning the same thing in each. Nothing in the build enforces that, so
  * a per-file assertion of the shared block is what notices when one drifts.
  *

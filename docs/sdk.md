@@ -1244,6 +1244,7 @@ binary breaks at runtime while the JVM build passes.
 | [`spring-agent-integration-email`](../spring-agent-integration-email/README.md) | A watched IMAP mailbox as observations. Not a webhook: it dials out and holds the connection, so it carries its own `app.email.enabled` on top of `app.events.enabled`. Reports every message it reads, with an `actor` only where DKIM vouched for the sender, so an intake of your own can hear about mail from a stranger; refuses to start without a `trusted-actors` list, which is what keeps such a message out of a triage run |
 | [`spring-agent-integration-feishu`](../spring-agent-integration-feishu/README.md) | Feishu/Lark chats and cards as an agent surface, plus its docs, sheets, base and wiki tools, and drive import/export |
 | [`spring-agent-integration-slack`](../spring-agent-integration-slack/README.md) | Slack channels and Block Kit messages as an agent surface: streaming replies, a stop button, an asynchronous question form, greetings, chat observation and the message/channel/file tools. Written against Bolt, the Slack SDK's own application framework, over a Socket Mode connection |
+| [`spring-agent-integration-telegram`](../spring-agent-integration-telegram/README.md) | Telegram private chats and groups as an agent surface: a reply edited as the run goes and continued across messages, a stop button, a button-based question form, `/start` greetings, `/config`, chat observation and the send-message/send-file/describe-group tools. No SDK — the Bot API over RestClient, by long polling — and an allow-list of who may use it, since a Telegram bot has no workspace around it |
 | [`spring-agent-rag-milvus`](../spring-agent-rag-milvus/README.md) | The knowledge base, and the only implementation of core's `KnowledgeBase` |
 | [`spring-agent-provider-openai`](../spring-agent-provider-openai/README.md) | Where the models come from, for any endpoint speaking the OpenAI wire protocol — which is nearly all of them. Chat, embeddings, transcription and images are Spring AI's own beans, bound to `spring.ai.openai.*`; on top of them this module implements core's `ProviderChatClients` and `BuiltinModels`, makes a rejected request's body readable, and narrows OpenAI's image API to what `GenerateImage` promises. **Core carries no provider, so an application needs one of these** |
 | [`spring-agent-provider-dashscope`](../spring-agent-provider-dashscope/README.md) | Alibaba Cloud DashScope, as one credential under `spring.ai.dashscope.*`: its own image API and its vision endpoint, with chat and embeddings contributed to `spring.ai.openai.*` since `compatible-mode` *is* that protocol. Builds on the module above rather than duplicating it |
@@ -1253,14 +1254,14 @@ binary breaks at runtime while the JVM build passes.
 | [`spring-agent-app-webui`](../spring-agent-app-webui/README.md) | The deployable that is nothing but the runtime and the module above; not published, it ships as an image |
 | [`spring-agent-app-web-feishu`](../spring-agent-app-web-feishu/README.md) | The same deployable with the Feishu surface as well, so a conversation can be handed between a chat and a browser; not published, it ships as an image |
 
-**Only one chat surface may be on a classpath at a time.** `spring-agent-integration-feishu` and
-`spring-agent-integration-slack` each register a `@Bean AgentResponseListener` that claims every
+**Only one chat surface may be on a classpath at a time.** `spring-agent-integration-feishu`,
+`spring-agent-integration-slack` and `spring-agent-integration-telegram` each register a `@Bean AgentResponseListener` that claims every
 run, a `PromptVariablesContributor` that fills `{replyFormat}` for every request, and a `Notifier`.
 Core merges contributors with `putAll` and `spring-agent-events` resolves the notifier with
 `getIfAvailable()`, so with both installed the listeners answer for each other's runs, the reply
 format is whichever registered last, and the notifier lookup throws. None of that fails at startup.
-Pick the surface your application has; if you need both, run two applications, which is what
-`spring-agent-app-feishu` and `spring-agent-app-slack` are.
+Pick the surface your application has; if you need two, run two applications, which is what
+`spring-agent-app-feishu`, `spring-agent-app-slack` and `spring-agent-app-telegram` are.
 
 `spring-agent-integration-websocket` is not a third entry in that list, and adding it to an
 application that already has a chat surface is not the mistake the rule is about. It does register a

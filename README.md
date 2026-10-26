@@ -9,7 +9,7 @@
 [![Java](https://img.shields.io/badge/Java-21%2B-orange)](#)
 
 A tool-using agent you can run as it is: one runtime behind a Feishu/Lark bot, a Slack bot, a
-browser, or a command line for your own machine. Each gives the agent a shell sandbox, MCP servers,
+Telegram bot, a browser, or a command line for your own machine. Each gives the agent a shell sandbox, MCP servers,
 skills, memories, credentials, scheduled tasks, subagents, a knowledge base and file publishing — and
 lets it pick up new abilities in conversation, without a redeploy.
 
@@ -33,6 +33,7 @@ flowchart LR
     subgraph TALK[Somebody talks to it]
         feishu[a Feishu or Lark chat]
         slack[a Slack channel]
+        telegram[a Telegram chat]
         browser[a browser]
         cli[a terminal]
     end
@@ -61,6 +62,7 @@ flowchart LR
 
     feishu --> agent
     slack --> agent
+    telegram --> agent
     browser --> agent
     cli --> agent
     hooks --> events
@@ -84,8 +86,8 @@ the model call, MCP lifecycle and cancellation all happen inside. Surfaces follo
 including runs they did not start, which is how a scheduled task can report back into a chat.
 
 One qualification the picture leaves out: **exactly one chat surface belongs on an application's
-classpath**, which is why Feishu and Slack are separate applications rather than one server with
-both. The browser is the exception, and is what
+classpath**, which is why Feishu, Slack and Telegram are separate applications rather than one
+server with all three. The browser is the exception, and is what
 [`spring-agent-app-web-feishu`](spring-agent-app-web-feishu/README.md) pairs with a chat. The
 reasoning, and four more diagrams — how a run starts, what it is offered, where state lives, which
 module may depend on which — are in [docs/architecture.md](docs/architecture.md).
@@ -142,7 +144,7 @@ has to be mentioned first, and it reads naturally at the end of a thought:
 what do we do when a deployment failed? /kb, tell me something
 ```
 
-It works on every surface: Feishu, Slack, the browser and the command line. A slash word the agent
+It works on every surface: Feishu, Slack, Telegram, the browser and the command line. A slash word the agent
 does not recognise is left alone and reaches the model as ordinary text.
 
 ## Every user gets their own agent
@@ -230,6 +232,7 @@ the LLM**:
 | --- | --- |
 | Feishu | Send `/config`. A card opens with a dropdown of what you could be on and fields for adding an endpoint. |
 | Slack | Type `/config`. A modal opens, private to you, so the API token never enters channel history. The command has to be declared on the Slack app — see below. If nobody did, send ` /config` with a leading space instead: Slack sends that verbatim rather than looking for a command, and the same form arrives as a message. |
+| Telegram | Send `/config` in a private chat with the bot. Buttons switch model, thinking effort and protocol; `/config add name=… url=… model=… token=…` registers an endpoint, and the message is deleted the moment it is read since it carries the token. |
 | Command line | `/config` lists your models, `/config <name>` switches, `/config default` returns to the built-in one, and `/config <name> <effort>` or `/config default <effort>` sets how hard it thinks. |
 | Browser | The **Model** tab under Customize, drawn only where the encryption key is set. It lists what you have registered, switches between them and back to the built-in one, and opens each as the form that registered it. |
 
@@ -333,13 +336,14 @@ source runs as, who it will listen to, and what any of that is worth against tex
 
 ## Run it
 
-Five applications, one runtime. Pick the surface you want; each has its own page with the setup steps,
+Six applications, one runtime. Pick the surface you want; each has its own page with the setup steps,
 its variables and what it carries.
 
 | | | |
 | --- | --- | --- |
 | [`spring-agent-app-feishu`](spring-agent-app-feishu/README.md) | A Feishu/Lark bot | The published image; carries every optional module |
 | [`spring-agent-app-slack`](spring-agent-app-slack/README.md) | A Slack bot | The same server, Slack instead |
+| [`spring-agent-app-telegram`](spring-agent-app-telegram/README.md) | A Telegram bot | The same server, Telegram instead; answers only an allow-list of people |
 | [`spring-agent-app-webui`](spring-agent-app-webui/README.md) | A browser | The runtime with everything a run does made visible, and no chat platform |
 | [`spring-agent-app-web-feishu`](spring-agent-app-web-feishu/README.md) | Both at once | So a conversation can be handed between a Feishu chat and the browser |
 | [`spring-agent-app-cli`](spring-agent-app-cli/README.md) | Your own terminal | SQLite under `~/.spring-agent`, and a shell on your own machine |

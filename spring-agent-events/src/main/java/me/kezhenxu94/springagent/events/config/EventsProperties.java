@@ -155,11 +155,19 @@ public record EventsProperties(
   public static final String SLACK_CHAT = "slack-chat";
 
   /**
+   * The source name the Telegram integration reports group messages under.
+   *
+   * <p>Textually coupled to {@code TelegramChatObservations.SOURCE} for the same reason {@link
+   * #FEISHU_CHAT} is, and with the same consequence for getting it wrong.
+   */
+  public static final String TELEGRAM_CHAT = "telegram-chat";
+
+  /**
    * What a chat source is worth waiting for, and how rarely it is worth speaking up in.
    *
-   * <p>Shared by {@link #FEISHU_CHAT} and {@link #SLACK_CHAT} because the question a watched room
-   * asks is the same one whichever product the room is in — these are numbers about how people talk
-   * to each other, not about a vendor's API.
+   * <p>Shared by {@link #FEISHU_CHAT}, {@link #SLACK_CHAT} and {@link #TELEGRAM_CHAT} because the
+   * question a watched room asks is the same one whichever product the room is in — these are
+   * numbers about how people talk to each other, not about a vendor's API.
    */
   private static Source chatDefaults() {
     return Source.builder()
@@ -192,7 +200,8 @@ public record EventsProperties(
    * per language by {@code TriagePrompts}, because it is prose rather than a value.
    */
   static final Map<String, Source> BUILT_IN =
-      Map.of(FEISHU_CHAT, chatDefaults(), SLACK_CHAT, chatDefaults());
+      Map.of(
+          FEISHU_CHAT, chatDefaults(), SLACK_CHAT, chatDefaults(), TELEGRAM_CHAT, chatDefaults());
 
   public EventsProperties {
     sweepInterval = sweepInterval == null ? DEFAULT_SWEEP_INTERVAL : sweepInterval;

@@ -54,7 +54,7 @@
 #
 #   ./gradlew bootBuildImage
 #
-# Model credentials and the chat surface's settings (Feishu or Slack) are read from .env, which is gitignored and yours to fill
+# Model credentials and the chat surface's settings (Feishu, Slack or Telegram) are read from .env, which is gitignored and yours to fill
 # in; see application.yaml for the full set. It is optional here, so `docker compose config` works
 # on a fresh clone, but the application will not start without at least OPENAI_BASE_URL,
 # OPENAI_API_KEY, OPENAI_MODEL and the EMBEDDING_* trio — or, on DashScope, DASHSCOPE_API_KEY plus

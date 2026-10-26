@@ -56,7 +56,7 @@ of that, and so is the chat integration reporting messages the bot was not addre
 | GitLab | [`spring-agent-integration-gitlab`](../spring-agent-integration-gitlab/README.md) | `POST /events/webhooks/gitlab`, `X-Gitlab-Token`, compared in constant time |
 | Grafana | [`spring-agent-integration-grafana`](../spring-agent-integration-grafana/README.md) | `POST /events/webhooks/grafana`, an `Authorization` header |
 | Mail | [`spring-agent-integration-email`](../spring-agent-integration-email/README.md) | An IMAP mailbox this application watches |
-| A group chat | [feishu](../spring-agent-integration-feishu/README.md) / [slack](../spring-agent-integration-slack/README.md) | Messages in a watched chat the bot was not addressed in |
+| A group chat | [feishu](../spring-agent-integration-feishu/README.md) / [slack](../spring-agent-integration-slack/README.md) / [telegram](../spring-agent-integration-telegram/README.md) | Messages in a watched chat the bot was not addressed in |
 
 Each webhook source authenticates its own deliveries, and **a source nobody configured a secret for
 refuses everything** — so the endpoint is safe to expose but useless until somebody sets it up. A
