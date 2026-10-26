@@ -463,12 +463,15 @@ class SubagentSchedulerStarvationTest {
 
       @Override
       public Stream<T> stream() {
-        return Stream.of(value);
+        return Stream.ofNullable(value);
       }
 
+      // As Spring's own does: nothing is handed over when there is nothing to hand.
       @Override
       public void ifAvailable(final Consumer<T> action) {
-        action.accept(value);
+        if (value != null) {
+          action.accept(value);
+        }
       }
     };
   }
