@@ -447,14 +447,13 @@ public class FeishuCardElements {
    * <p>Not what the run does on every call — appending one pane and rewriting one is, and this
    * rebuilds the lot, which closes every pane nested in it. It is for the three moments where there
    * is nothing to keep: putting the pane on a card that has none, putting it back after a write
-   * found it gone, and folding it away as the run ends. Which is why {@code expanded} is passed in:
-   * a replacement decides afresh whether the pane is open, so the run has to say each time what it
-   * was.
+   * found it gone, and retitling it as the run ends. Whether it is open is the template's, every
+   * time: it is born closed, and a replacement redraws it closed, since Feishu reports a chevron to
+   * nobody and there is no reader's choice to read back.
    */
   @SneakyThrows
-  public String toolsPane(final boolean expanded, final String title, final List<ToolCall> calls) {
+  public String toolsPane(final String title, final List<ToolCall> calls) {
     final var element = element(TOOLS);
-    element.put("expanded", expanded);
     fillTitle(element, title);
     final var elements = (ArrayNode) element.path("elements");
     for (final var call : calls) {

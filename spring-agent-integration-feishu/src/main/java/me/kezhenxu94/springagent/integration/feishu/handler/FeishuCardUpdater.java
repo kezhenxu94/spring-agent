@@ -776,15 +776,13 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
    *
    * <p>Not what happens on an ordinary call — see {@link #addToolCall()} — because it closes every
    * pane nested in it. It is for a card that has no pane yet, a pane a write found gone, and the
-   * end of the run, when the pane is folded away and every chevron under it is behind that one
-   * anyway.
+   * end of the run, when the title is rewritten.
    *
-   * <p>{@code expanded} carries both meanings, and they go together: the pane is open exactly while
-   * the run is working, and its title says which of the two it is. The count goes on at the end
-   * rather than as it grows, since saying it while the run works would mean rewriting the pane —
-   * and therefore closing what is inside it — on every call.
+   * <p>{@code running} decides only the title. The count goes on at the end rather than as it
+   * grows, since saying it while the run works would mean rewriting the pane — and therefore
+   * closing what is inside it — on every call.
    */
-  private synchronized void showToolCalls(final boolean expanded) {
+  private synchronized void showToolCalls(final boolean running) {
     if (elements == null || toolCalls.isEmpty()) {
       return;
     }
@@ -803,8 +801,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
     }
     final var pane =
         elements.toolsPane(
-            expanded,
-            expanded
+            running
                 // No tool is named: the title is written once, when the pane goes on the card, and
                 // naming the tool of the moment would mean rewriting the pane — and closing every
                 // call a reader had opened — on every call.
@@ -843,14 +840,11 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
   }
 
   /**
-   * Folds the pane away as the run ends, leaving the trail on the card for whoever wants it: while
-   * the run is calling tools the calls are the only thing happening, and once there is an answer
-   * above them they are an aside behind a chevron. This is the only time it is closed on purpose —
-   * Feishu reports a panel's chevron to nobody, so anything more often would be overruling a
-   * reader's own choice rather than setting a default. It is also the one time the title is
-   * rewritten, to say how many calls the turn made in the end.
+   * Retitles the pane as the run ends, to say how many calls the turn made in the end. Sending the
+   * title sends the pane, so it is drawn closed again — which is where it started, the trail being
+   * an aside behind a chevron under the answer.
    */
-  private void closeToolsPane() {
+  private void finishToolsPane() {
     showToolCalls(false);
   }
 
@@ -1652,7 +1646,7 @@ public class FeishuCardUpdater implements AgentResponseListener, TodoEventHandle
       // onto: the rest here is re-driven by the events that write it, and this one only by the
       // person sending another message.
       showQueued();
-      closeToolsPane();
+      finishToolsPane();
       countReferences();
       card.finish();
       return;
