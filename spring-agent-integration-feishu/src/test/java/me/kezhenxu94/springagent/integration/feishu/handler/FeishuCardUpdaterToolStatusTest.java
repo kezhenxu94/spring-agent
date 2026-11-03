@@ -173,8 +173,9 @@ class FeishuCardUpdaterToolStatusTest {
     assertThat(bodyOf(call(pane, 0))).isEqualTo("> command: ls -la");
     // And carries the id the run addresses it by from here on.
     assertThat(call(pane, 0).path("element_id").asString()).isEqualTo("tool_call_0");
-    // Open, because while a run is calling tools that is the only thing there is to watch.
-    assertThat(pane.path("expanded").asBoolean()).isTrue();
+    // Closed, like the thinking: the trail is how the answer was reached, and an open one pushes
+    // the answer down a phone's screen on every call.
+    assertThat(pane.path("expanded").asBoolean()).isFalse();
     // Each call closed: a turn can make dozens of them and a reader wants one.
     assertThat(call(pane, 0).path("expanded").asBoolean()).isFalse();
   }
@@ -371,8 +372,8 @@ class FeishuCardUpdaterToolStatusTest {
   // -----------------------------------------------------------------------------------------
 
   @Test
-  @DisplayName("the pane is folded away once the run has an answer to read instead")
-  void thePaneIsFoldedWhenTheRunEnds() {
+  @DisplayName("the pane stays closed when the run ends, retitled with how many calls it made")
+  void thePaneIsClosedWhenTheRunEnds() {
     updater.setToolStatus("Bash", "{\"description\":\"Listing files\"}", null);
 
     updater.onFinished(AgentOutcome.COMPLETED);
@@ -394,7 +395,7 @@ class FeishuCardUpdaterToolStatusTest {
     updater.onFinished(AgentOutcome.COMPLETED);
 
     // The one time the panel itself is rewritten, which is also the one time it can say a count:
-    // it is being folded away anyway, so there is no open pane left inside it to lose.
+    // the run is over, so closing a pane a reader had opened costs them the least it ever will.
     assertThat(title(updated("tools"))).isEqualTo("**Tool calls**(2)");
   }
 
