@@ -184,6 +184,7 @@ never has to infer it from the shape of an error.
 | `userMessage` | A `Consumer<ChatClient.PromptUserSpec>`, so text, media and options are yours to set |
 | `toolContext` | Extra tool-context entries; core's identity keys are filled in and win on conflict |
 | `listeners`, `todoEventHandlers` | Per-run observers, in addition to the bean-declared ones |
+| `toolCallbacks` | Tools the surface brings for this run alone, already built as `ToolCallback`s — a phone's own, say, which exist only while it is there to run them and so cannot be beans. Composed with the run's other callbacks: the scenario rules on each through `offers(ToolCallback)`, and a name another tool already has fails the run |
 
 A todo handler is the library's `org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler`,
 handed the library's `Todos` records.
@@ -445,7 +446,10 @@ Per-request identity reaches a tool through the tool context, under typed keys i
 - the callbacks of every `ToolCallbackProvider` bean, which is how application-wide MCP servers
   configured under `spring.ai.mcp.client.*` reach the model — Spring AI publishes them as such a
   bean but never wires it into a `ChatClient` itself. Those clients belong to the context and are
-  never closed by a run.
+  never closed by a run;
+- the request's own `toolCallbacks`, which a surface builds per run — the browser surface turns a
+  native app's declared device tools into these. They join the callbacks above before the scenario
+  rules on them and before the duplicate-name check, so they cannot shadow anything.
 
 The scenario rules on every one of those, through `offers(Object)` or `offers(ToolCallback)` as the
 item's type decides, so the list above is what a run may be offered rather than what it gets.

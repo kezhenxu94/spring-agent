@@ -1,6 +1,7 @@
 package me.kezhenxu94.springagent.appwebui;
 
 import lombok.RequiredArgsConstructor;
+import me.kezhenxu94.springagent.integration.websocket.security.NativeAuthSecurity;
 import me.kezhenxu94.springagent.integration.websocket.security.WebAuthoritiesMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -43,6 +44,7 @@ public class SecurityConfigurer {
   String loginProvider;
 
   private final WebAuthoritiesMapper authoritiesMapper;
+  private final NativeAuthSecurity nativeAuth;
 
   @Bean
   SecurityFilterChain filterChain(final HttpSecurity http) throws Exception {
@@ -60,6 +62,12 @@ public class SecurityConfigurer {
     // one line, and it belongs here because the arrangement it completes — a readable cookie the
     // page echoes back in a header — is configured here too.
     csrfHandler.setCsrfRequestAttributeName(null);
+
+    // The native app's way in: bearer tokens, and the endpoints that issue them. First, because its
+    // path rules have to precede anyRequest below, and inert unless a token secret is configured.
+    // It exempts from CSRF only a request a verified token authenticated — see NativeAuthSecurity
+    // for why that, and not the cookie session above, is a request with nothing to forge.
+    nativeAuth.configure(http);
 
     return http.csrf(
             it ->
@@ -125,7 +133,9 @@ public class SecurityConfigurer {
                 // rather than the Feishu one has no Feishu registration to redirect to. Left
                 // unset it stays feishu, which is what it has always been.
                 it.loginPage("/oauth2/authorization/" + loginProvider)
-                    .defaultSuccessUrl("/", true)
+                    // To the page, as always — except for a native app's sign-in, which has to come
+                    // back to the step that hands the app its code.
+                    .successHandler(nativeAuth.loginSuccessHandler())
                     .userInfoEndpoint(config -> config.userAuthoritiesMapper(authoritiesMapper)))
         .build();
   }

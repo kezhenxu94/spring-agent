@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.appwebfeishu;
 
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.integration.websocket.config.NativeAuthProperties;
 import me.kezhenxu94.springagent.integration.websocket.config.WebProperties;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
@@ -51,14 +52,17 @@ public class FeishuIdentityCheck {
 
   private final WebProperties web;
   private final ClientRegistrationRepository registrations;
+  private final NativeAuthProperties nativeAuth;
 
   public FeishuIdentityCheck(
       @Value("${app.feishu.appId:}") final String botAppId,
       final WebProperties web,
-      final ClientRegistrationRepository registrations) {
+      final ClientRegistrationRepository registrations,
+      final NativeAuthProperties nativeAuth) {
     this.botAppId = botAppId;
     this.web = web;
     this.registrations = registrations;
+    this.nativeAuth = nativeAuth;
   }
 
   @PostConstruct
@@ -107,6 +111,19 @@ public class FeishuIdentityCheck {
               + " mirrored to. Point spring.security.oauth2.client.registration."
               + provider
               + ".client-id and app.feishu.appId at one app — FEISHU_APP_ID sets both.");
+    }
+
+    if (!nativeAuth.appleClientIds().isEmpty()) {
+      // The same refusal as a non-Feishu provider above, reached by the native app's door rather
+      // than the browser's. An Apple account has no open_id, so its conversations could never be a
+      // Feishu chat's and its answers never mirrored to one — a person signed in that way would be
+      // using spring-agent-app-webui under this application's name. The browser path still works
+      // for the app: it signs in through Feishu like the page does.
+      throw new IllegalStateException(
+          "app.web.auth.native.apple-client-ids (WEB_AUTH_APPLE_CLIENT_IDS) is set, but this"
+              + " application matches a signed-in person to their Feishu chat by open_id, and an"
+              + " Apple account has none. Leave it empty here — the native app signs in through"
+              + " Feishu instead — or run spring-agent-app-webui, which accepts either.");
     }
 
     if (web.auth().tenantId().isEmpty()) {

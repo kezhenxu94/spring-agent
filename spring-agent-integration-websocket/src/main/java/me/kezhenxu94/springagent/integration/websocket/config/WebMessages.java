@@ -84,4 +84,20 @@ public class WebMessages {
   public String get(final Locale language, final String key, final Object... arguments) {
     return messageSource.getMessage(key, arguments, key, language);
   }
+
+  /**
+   * What this deployment calls itself, in every supported language at once, keyed by language:
+   * {@code app.web.title} where a deployment fixed one name, {@code app-title} from the bundles
+   * otherwise. One method because two responses report it — {@code /api/me} to the page and {@code
+   * /auth/native/config} to an app that has not signed in yet — and they must not disagree.
+   */
+  public java.util.Map<String, Object> titles() {
+    final var titles = new java.util.LinkedHashMap<String, Object>();
+    for (final var language : WebLocaleConfiguration.SUPPORTED) {
+      titles.put(
+          language.getLanguage(),
+          properties.title() == null ? get(language, TITLE) : properties.title());
+    }
+    return titles;
+  }
 }

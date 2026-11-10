@@ -28,6 +28,21 @@ public record RunEvent(long seq, String type, Map<String, Object> data) {
   public static final String FINISHED = "finished";
 
   /**
+   * A tool the run wants the person's device to run: {@code callId}, {@code name} and {@code
+   * input}, the arguments exactly as the model wrote them. Only a run whose message declared device
+   * tools emits one, which no browser does, so the page has no handler for it and drops it — see
+   * {@link DeviceTools} for the round trip a native app makes on reading it.
+   */
+  public static final String DEVICE_TOOL = "device-tool";
+
+  /**
+   * That a {@link #DEVICE_TOOL} call is over, and how: {@code callId} and an {@code outcome} of
+   * {@code answered}, {@code error}, {@code timeout} or {@code cancelled}. Journalled so that an
+   * app replaying the run knows which calls it must not try to claim any more.
+   */
+  public static final String DEVICE_TOOL_DONE = "device-tool-done";
+
+  /**
    * Sent to a subscriber before its backlog, carrying the last sequence number that already existed
    * as {@code through}, so the page can tell replay from live. Not a thing that happened in the run
    * — see {@code RunStreamSubscriptions} for why a subscriber has to be told rather than guess.

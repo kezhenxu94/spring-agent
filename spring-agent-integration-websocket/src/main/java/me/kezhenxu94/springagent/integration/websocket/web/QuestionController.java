@@ -48,6 +48,7 @@ public class QuestionController {
   private final PendingQuestionRepo pendingQuestionRepo;
   private final ChatSessions sessions;
   private final ChatMirrors mirrors;
+  private final DeviceToolDeclarations deviceToolDeclarations;
   private final WebMessages messages;
   private final JsonMapper om;
 
@@ -58,8 +59,14 @@ public class QuestionController {
    * sends it: answering a question is a turn like any other, and a conversation being followed on a
    * chat should not go quiet just because the last thing the person did was press submit rather
    * than type. Nothing is stored, so the page has to say so each time.
+   *
+   * <p>{@code deviceTools} for the same reason as on {@code ChatController.Send}: answering starts
+   * a new run, and a phone that answered expects its own tools to be there in it.
    */
-  public record Answers(List<WebQuestions.Submitted> answers, Boolean mirror) {}
+  public record Answers(
+      List<WebQuestions.Submitted> answers,
+      Boolean mirror,
+      List<me.kezhenxu94.springagent.integration.websocket.run.DeviceTools.Spec> deviceTools) {}
 
   @PostMapping("/{id}/answers")
   public Map<String, Object> answer(
@@ -97,10 +104,16 @@ public class QuestionController {
 
     // Marked answered before the run is fired, so a second submit racing this one loses rather than
     // starting a second run that argues with the first.
+    final var requestId = UUID.randomUUID().toString();
+    // Before the question is marked answered: a declaration refused here must leave the form open
+    // for the app to submit again, not spend it.
+    final var onDevice =
+        deviceToolDeclarations.callbacks(
+            requestId, user.id(), body == null ? null : body.deviceTools());
+
     pendingQuestionRepo.updateStatus(id, PendingQuestion.Status.ANSWERED);
 
     final var text = asMessage(answers);
-    final var requestId = UUID.randomUUID().toString();
     final var session = sessions.ownedBy(pending.conversationId(), user).orElse(null);
     final var builder =
         AgentRequest.builder()
@@ -118,6 +131,7 @@ public class QuestionController {
             .conversationId(pending.conversationId())
             .rootMessageId(pending.rootMessageId())
             .replyMessageId(requestId)
+            .toolCallbacks(onDevice)
             .userMessage(spec -> spec.text(text));
     if (Boolean.TRUE.equals(body == null ? null : body.mirror())) {
       final var mirror = mirrors.forRun(session, user, text);

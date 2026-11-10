@@ -9,6 +9,7 @@ import lombok.Singular;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeRetrieval;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.tool.ToolCallback;
 
 /**
  * Everything an integration has to say to run the agent once. Purely descriptive: {@link
@@ -54,6 +55,12 @@ import org.springframework.ai.chat.client.ChatClient;
  * @param toolContext extra tool-context entries; the {@link
  *     me.kezhenxu94.springagent.core.tools.ToolContexts} identity keys are filled in by core and
  *     win on conflict
+ * @param toolCallbacks tools the surface brings for this run alone, already built — a phone's own
+ *     tools, say, which only exist while that phone is connected and so cannot be beans. They are
+ *     composed like every other callback a run reaches: ruled on by {@link
+ *     AgentScenario#offers(org.springframework.ai.tool.ToolCallback)} and checked for a name
+ *     another tool already has, which fails the run rather than letting one of the two shadow the
+ *     other. Dropped with everything else where the scenario wants no tools at all
  */
 @Builder(toBuilder = true)
 public record AgentRequest(
@@ -76,7 +83,8 @@ public record AgentRequest(
     Consumer<ChatClient.PromptUserSpec> userMessage,
     Map<String, Object> toolContext,
     @Singular List<AgentResponseListener> listeners,
-    @Singular List<TodoEventHandler> todoEventHandlers) {
+    @Singular List<TodoEventHandler> todoEventHandlers,
+    @Singular List<ToolCallback> toolCallbacks) {
 
   private static final String DEFAULT_CHAT_TYPE = "p2p";
 

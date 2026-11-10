@@ -819,6 +819,31 @@ app:
       # A refusal is not silent: the log says which workspace was refused and which was expected,
       # and /api/me tells the person in the page rather than leaving them a wall of 403s.
       tenant-id: ${WEB_AUTH_TENANT_ID:${FEISHU_TENANT_ID:${SLACK_TEAM_ID:}}}
+      # A native client — a desktop or mobile app — signing in with a bearer token instead of a
+      # cookie. Off
+      # unless token-secret is set; with it unset /auth/native/** answers 404 and an Authorization
+      # header is ignored. Decided at runtime rather than by a condition, so a native image built
+      # without the variable still turns it on when a deployment sets it. See NativeAuthSecurity
+      # in spring-agent-integration-websocket for what a token is and why CSRF does not apply to it.
+      native:
+        # The HS256 key every token is signed with: base64 that decodes to at least 32 bytes
+        # (`openssl rand -base64 32`), or else at least 32 bytes of text. There is no token store,
+        # so changing this is how every native client is signed out at once — and the only way to.
+        token-secret: ${WEB_AUTH_TOKEN_SECRET:}
+        # The URL schemes a browser sign-in may be handed back to, e.g. myagent. The code in
+        # that redirect is half a credential, and an unlisted scheme would let any page collect it.
+        redirect-schemes: ${WEB_AUTH_REDIRECT_SCHEMES:}
+        # The bundle ids Sign in with Apple may have issued an identity token for. Empty turns
+        # Apple sign-in off.
+        apple-client-ids: ${WEB_AUTH_APPLE_CLIENT_IDS:}
+        # Whether a person arriving through Apple, with no tenant this deployment vouches for, is
+        # let in at all. Off for the reason tenant-id above has no permissive default: anybody
+        # can make an Apple Account. Checked on every request, so turning it off locks out
+        # tokens already issued.
+        open-registration: ${WEB_AUTH_OPEN_REGISTRATION:false}
+        # How long a token lasts. There is no refresh token; a client signs in again, which on the
+        # browser path is usually one tap while the identity provider still has a session.
+        token-ttl: ${WEB_AUTH_TOKEN_TTL:30d}
     journal:
       # How long a finished run's detail — its tool calls, its subagents, its thinking — is kept for
       # a browser that comes back to it. The case it exists for is a reload seconds after an answer
