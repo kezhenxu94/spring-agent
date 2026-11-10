@@ -266,7 +266,7 @@ class GitHubWebhookSourceTest {
 
   @Test
   void yieldsNothingForMalformedJsonWithoutThrowing() {
-    for (final var body : new String[] {"", "   ", "{", "not json at all", "[1,2", " "}) {
+    for (final var body : new String[] {"", "   ", "{", "not json at all", "[1,2", "\u0000"}) {
       final var delivery = delivery("issues", "a", body);
       assertThatCode(() -> source.observation(delivery)).doesNotThrowAnyException();
       assertThat(source.observation(delivery)).as(body).isEmpty();
