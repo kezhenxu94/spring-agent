@@ -13,6 +13,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.mongodb.MongoDBContainer;
@@ -38,7 +39,14 @@ public abstract class AbstractIntegrationTest {
    */
   @Container
   static final GenericContainer<?> redisContainer =
-      new GenericContainer<>(DockerImageName.parse("redis:8")).withExposedPorts(REDIS_PORT);
+      new GenericContainer<>(DockerImageName.parse("redis:8"))
+          .withExposedPorts(REDIS_PORT)
+          // Ready when Redis says so, as MongoDBContainer already waits on mongod's own log line.
+          // The default wait — the port open from outside *and* a `docker exec` probe inside —
+          // times out under load on Docker 29 (the ubuntu-26.04 runners): the exec comes back
+          // killed (137), the image has no nc to fall back on, and every fork's Redis waits out
+          // the full minute. Redis prints this line only once it accepts connections.
+          .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1));
 
   // The tool-search advisor runs with a vector tool index, so the context cannot refresh without a
   // vector store — but the default one is in-heap, so no container is needed for it here.
