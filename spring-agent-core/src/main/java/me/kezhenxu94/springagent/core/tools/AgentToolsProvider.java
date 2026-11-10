@@ -287,6 +287,11 @@ public class AgentToolsProvider {
       Collections.addAll(callbacks, mcpCallbacks);
     }
     callbacks.addAll(globalToolCallbacks());
+    // The surface's own, here with the other callbacks rather than appended to `tools` later, for
+    // the overload reason above and because they are the likeliest of all to collide: a client
+    // names them itself, and a name it chose that an MCP server also has must fail this run
+    // loudly rather than have the model call one while the person meant the other.
+    callbacks.addAll(request.toolCallbacks());
     // Filtered before the duplicate check, not after: two tools of one name that this run is not
     // offered are not this run's problem, and failing over a collision the model never sees would
     // cost somebody their answer over somebody else's configuration.

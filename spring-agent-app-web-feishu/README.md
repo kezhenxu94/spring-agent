@@ -61,6 +61,10 @@ runs on Feishu leaves nothing connected. `FeishuIdentityCheck` refuses to start 
 A deployment wanting Slack login runs `spring-agent-app-webui`, which takes no chat surface and works
 with either.
 
+A native client signs in here exactly as on `spring-agent-app-webui` (`WEB_AUTH_TOKEN_SECRET` and
+friends), but only through Feishu: `FeishuIdentityCheck` also refuses to start with
+`WEB_AUTH_APPLE_CLIENT_IDS` set, since an Apple account has no `open_id` to match to a Feishu chat.
+
 ## Its own two switches
 
 | Variable | Default | What it is |

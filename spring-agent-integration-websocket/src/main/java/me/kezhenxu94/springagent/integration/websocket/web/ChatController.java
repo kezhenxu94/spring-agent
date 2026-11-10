@@ -24,6 +24,7 @@ import me.kezhenxu94.springagent.integration.websocket.config.WebLocaleConfigura
 import me.kezhenxu94.springagent.integration.websocket.config.WebMessages;
 import me.kezhenxu94.springagent.integration.websocket.config.WebProperties;
 import me.kezhenxu94.springagent.integration.websocket.run.ChatMirrors;
+import me.kezhenxu94.springagent.integration.websocket.run.DeviceTools;
 import me.kezhenxu94.springagent.integration.websocket.run.RunJournals;
 import me.kezhenxu94.springagent.integration.websocket.run.WebRunListener;
 import me.kezhenxu94.springagent.integration.websocket.security.WebAuthoritiesMapper;
@@ -69,6 +70,8 @@ public class ChatController {
   private final PendingQuestionRepo pendingQuestionRepo;
   private final ChatReasoningRepo reasonings;
   private final ChatMirrors mirrors;
+  private final DeviceTools deviceTools;
+  private final DeviceToolDeclarations deviceToolDeclarations;
   private final ScenarioMemos memos;
   private final UserPreferences preferences;
   private final WebMessages messages;
@@ -106,15 +109,7 @@ public class ChatController {
     // fixed one name for every language, and otherwise app-title from the message bundle, which a
     // consumer overrides per language with a bundle of their own under app.web.messages. Keyed by
     // language rather than by tag, which is how the page's own tables are keyed.
-    final var titles = new LinkedHashMap<String, Object>();
-    for (final var language : WebLocaleConfiguration.SUPPORTED) {
-      titles.put(
-          language.getLanguage(),
-          properties.title() == null
-              ? messages.get(language, WebMessages.TITLE)
-              : properties.title());
-    }
-    out.put("title", titles);
+    out.put("title", messages.titles());
     // And what it looks like: the mark in the sidebar and the icon on the tab. Reported alongside
     // the name and for the same reason, but as one value rather than one per language — an image
     // is not something a message bundle can hold, so a deployment gets one either way.
@@ -346,8 +341,13 @@ public class ChatController {
    * and nothing decides for a later turn; the page remembers the setting for the conversation and
    * says so again each time. Boxed, so a client that has never heard of it sends no field and gets
    * the default rather than a rejection.
+   *
+   * <p>{@code deviceTools} are the tools the sending device can run for this turn — a native app's,
+   * never the page's. Per message for the same reason as the mirror: they exist while that device
+   * is there to run them, and a later turn sent from a browser must not be offered a phone's
+   * camera. See {@link DeviceTools}.
    */
-  public record Send(String text, Boolean mirror) {}
+  public record Send(String text, Boolean mirror, List<DeviceTools.Spec> deviceTools) {}
 
   /**
    * @param title what to call it, or blank/absent to let it name itself again
@@ -366,11 +366,15 @@ public class ChatController {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, messages.get("message-empty"));
     }
 
+    final var requestId = UUID.randomUUID().toString();
+    // Validated before anything about the run is decided, so a malformed declaration is a 400 the
+    // app can show rather than a run that fails at composition with nobody watching it.
+    final var onDevice = deviceToolDeclarations.callbacks(requestId, user.id(), body.deviceTools());
+
     // A typed message supersedes a form nobody got round to submitting, so the two cannot both be
     // outstanding — the model would otherwise be answered twice about the same fork.
     supersedePendingQuestions(session.id());
 
-    final var requestId = UUID.randomUUID().toString();
     // A memo in what was typed — /kb — chooses the kind of run this turn is, and is taken out of
     // the prompt on the way. Nothing else in this method reads `text` afterwards: the mirror below
     // and the queue both take the message the model will see, so the chat surface shows the same
@@ -395,6 +399,10 @@ public class ChatController {
             .conversationId(session.id())
             .rootMessageId(session.id())
             .replyMessageId(requestId)
+            // Dropped with the rest of this request where the message is queued into a run that is
+            // already going: that run was composed without them, and a tool cannot be added to a
+            // model call in flight.
+            .toolCallbacks(onDevice)
             .userMessage(spec -> spec.text(prompt));
     if (Boolean.TRUE.equals(body.mirror())) {
       final var mirror = mirrors.forRun(session, user, prompt);
@@ -463,6 +471,9 @@ public class ChatController {
             // not own exists is itself something they should not learn.
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     final var stopped = springAgent.cancel(journal.requestId());
+    // As well, and not instead: the run checks its cancel flag between chunks, and a run blocked in
+    // a device tool's wait produces none until the wait ends — up to five minutes later.
+    deviceTools.cancel(journal.requestId());
     log.info("Stop requested for run {} by {}: {}", requestId, user.id(), stopped);
     return Map.of("stopped", stopped);
   }

@@ -78,6 +78,24 @@ registration, because Spring Security refuses to start with a registration whose
 so the two cannot both sit there half-configured. The Slack app needs `openid`, `profile` and `email`
 user scopes and `http://localhost:8080/login/oauth2/code/slack` as a redirect URI.
 
+### Signing in from a native client
+
+Off unless `WEB_AUTH_TOKEN_SECRET` is set. A native client signs in through the same provider as the
+page (a browser sheet, handed back by PKCE) or, where configured, with Apple, and then carries a
+bearer token. See [the module README](../spring-agent-integration-websocket/README.md#native-clients-as-readers-of-the-same-surface)
+for how it works.
+
+| Variable | Default | What it is |
+| --- | --- | --- |
+| `WEB_AUTH_TOKEN_SECRET` | none (off) | The HS256 key tokens are signed with: base64 decoding to at least 32 bytes (`openssl rand -base64 32`), or at least 32 bytes of text. Changing it signs every native client out |
+| `WEB_AUTH_REDIRECT_SCHEMES` | none | Comma-separated URL schemes a sign-in may be handed back to, e.g. `myagent` |
+| `WEB_AUTH_APPLE_CLIENT_IDS` | none (Apple off) | Comma-separated bundle ids Sign in with Apple tokens must be issued to |
+| `WEB_AUTH_OPEN_REGISTRATION` | `false` | Whether an Apple account, which no tenant vouches for, is let in. Checked on every request, so turning it off locks out tokens already issued |
+| `WEB_AUTH_TOKEN_TTL` | `30d` | How long a token lasts; there is no refresh token |
+
+The handoff code is held in memory, so with several replicas the token exchange has to reach the one
+that issued it — session affinity, or one replica.
+
 ## What a person meets
 
 **A conversation reads as a conversation.** Both halves are drawn as markdown, so a message typed with

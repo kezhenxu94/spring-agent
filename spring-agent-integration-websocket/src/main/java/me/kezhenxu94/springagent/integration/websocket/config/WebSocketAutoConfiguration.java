@@ -54,6 +54,6 @@ import org.springframework.context.annotation.ImportRuntimeHints;
               UserModelWebConfiguration.class,
               UserModelController.class
             }))
-@EnableConfigurationProperties(WebProperties.class)
+@EnableConfigurationProperties({WebProperties.class, NativeAuthProperties.class})
 @ImportRuntimeHints(WebRuntimeHints.class)
 public class WebSocketAutoConfiguration {}

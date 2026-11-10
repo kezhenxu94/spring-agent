@@ -25,6 +25,49 @@ agent was given. `core/agent/ScenarioMemos` owns the rule — whole token, case-
 in the message, including at the end of it — and a slash word it does not know reaches the model
 untouched.
 
+## Native clients as readers of the same surface
+
+A native client — a desktop or mobile app — uses this module's endpoints and run stream unchanged,
+signed in with a bearer token instead of a session cookie. All of it is off unless `app.web.auth.native.token-secret` is set — the
+endpoints answer 404 and an `Authorization` header is ignored — and that is decided per request
+rather than by a condition, so a native image does not bake the answer in at build time.
+
+- **Getting a token.** `GET /auth/native/authorize` turns the *browser* session into a one-time code
+  bound to a PKCE S256 challenge (`NativeHandoffCodes`, in memory, five minutes, spent by the first
+  attempt) and redirects it to an allow-listed URL scheme; `POST /auth/native/token` trades the code
+  and its verifier for a token. `POST /auth/native/apple` verifies a Sign in with Apple identity
+  token against Apple's keys and the configured bundle ids, and issues one only while
+  `open-registration` is on — anybody can make an Apple Account, and one gets `apple:<sub>` as its
+  id and no tenant. `GET /auth/native/config` tells a client what to offer before it has signed in.
+  These live outside `/api/**` because `authorize` is opened in a browser sheet, and an anonymous
+  browser there must be sent through the identity provider and back rather than handed a bare 401.
+- **Using one.** `NativeTokens` signs an HS256 JWT and reads it back into exactly what a browser login
+  produces — an `OAuth2AuthenticationToken` over a `DefaultOAuth2User` with `open_id`, `name`,
+  `avatar_url` and `tenant_key` — so every controller's `@AuthenticationPrincipal OAuth2User` and the
+  STOMP principal of the websocket upgrade work without knowing the difference.
+- **Wiring it.** `NativeAuthSecurity` is what an application's `SecurityConfigurer` calls: `configure`
+  before its own rules, and `loginSuccessHandler()` in place of `defaultSuccessUrl("/", true)`, which
+  would otherwise swallow the return to `authorize`. Read its class comment before changing either —
+  a bad bearer token is a 401 and never a fall back to the session, and CSRF is skipped only for a
+  request a *verified* token authenticated, never for the header's mere presence.
+
+**Device tools** are tools the client's own device runs. A message posted with `deviceTools` (name `device_…`, a
+description, a JSON Schema) becomes `AgentRequest.toolCallbacks` for that run — dropped if the
+message is queued into a run already going. Answering a question accepts the same field, since the
+answer starts a run of its own; both endpoints go through `DeviceToolDeclarations`, which refuses a
+bad declaration before the question is spent or the open form superseded. When the model calls one, `DeviceTools` journals a
+`device-tool` event, waits a minute for a device to claim it and five for the result, and always
+journals `device-tool-done`; every ending reaches the model as a sentence it can relay. The claim is
+what keeps two devices, or one replaying the journal, from running a tool twice. A blocked tool call
+cannot see the run's cancel flag, so `ChatController.cancel` releases the wait itself. The page never
+declares device tools and has no handler for those two events, which `run-events.js` drops.
+
+**Preferences.** `PreferenceController` puts core's `UserPreferences` behind `/api/preferences` for
+a settings screen: `GET` reports the stored scenario memo and every selectable one, `PUT
+{"scenario"}` sets it (null or blank resets it), and an unknown memo is a 400 naming the choices.
+Memos travel with their slash (`/kb`) and are stored without one. Reading is lenient and writing
+strict, following `UserPreferences`.
+
 ## The run journal, and why a browser is only ever a reader
 
 `RunJournal` holds every event a run emitted, and an HTTP or websocket connection is only ever a

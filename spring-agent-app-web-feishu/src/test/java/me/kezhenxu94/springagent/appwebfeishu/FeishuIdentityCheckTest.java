@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import me.kezhenxu94.springagent.integration.websocket.config.NativeAuthProperties;
 import me.kezhenxu94.springagent.integration.websocket.config.WebProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -47,7 +48,8 @@ class FeishuIdentityCheckTest {
 
   private static FeishuIdentityCheck check(
       final String botAppId, final String loginAppId, final String provider, final String tenant) {
-    return new FeishuIdentityCheck(botAppId, web(provider, tenant), loginWith(loginAppId));
+    return new FeishuIdentityCheck(
+        botAppId, web(provider, tenant), loginWith(loginAppId), nativeAuth(List.of()));
   }
 
   @Test
@@ -89,7 +91,8 @@ class FeishuIdentityCheckTest {
   @Test
   @DisplayName("a registration nobody declared is named rather than dereferenced")
   void aMissingRegistrationRefusesToStart() {
-    final var noRegistrations = new FeishuIdentityCheck("cli_1", web("feishu", "t"), id -> null);
+    final var noRegistrations =
+        new FeishuIdentityCheck("cli_1", web("feishu", "t"), id -> null, nativeAuth(List.of()));
     assertThatThrownBy(noRegistrations::check)
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("No OAuth2 client registration");
@@ -103,5 +106,29 @@ class FeishuIdentityCheckTest {
     // class's to make.
     assertThatCode(() -> check("cli_1", "cli_1", "feishu", "").check()).doesNotThrowAnyException();
     assertThat(web("feishu", "").auth().tenantId()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("sign in with apple is refused at startup, since an apple account has no open_id")
+  void appleSignInRefusesToStart() {
+    final var withApple =
+        new FeishuIdentityCheck(
+            "cli_1",
+            web("feishu", "tenant-1"),
+            loginWith("cli_1"),
+            nativeAuth(List.of("com.example.app")));
+    assertThatThrownBy(withApple::check)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("apple-client-ids");
+  }
+
+  private static NativeAuthProperties nativeAuth(final List<String> appleClientIds) {
+    return new NativeAuthProperties(
+        "a passphrase that is long enough to be a key!",
+        List.of(),
+        appleClientIds,
+        false,
+        null,
+        null);
   }
 }
