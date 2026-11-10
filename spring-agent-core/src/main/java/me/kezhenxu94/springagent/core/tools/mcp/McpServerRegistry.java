@@ -1,7 +1,9 @@
 package me.kezhenxu94.springagent.core.tools.mcp;
 
 import io.modelcontextprotocol.client.McpSyncClient;
+import io.modelcontextprotocol.spec.McpSchema;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +59,12 @@ public class McpServerRegistry {
    */
   private final ObjectProvider<McpStreamableHttpClientProperties> streamableHttpProperties;
 
+  /**
+   * Spring AI's clients for those same connections, for what each server said about itself when it
+   * was connected. Through an {@link ObjectProvider} for the same reason as the properties.
+   */
+  private final ObjectProvider<List<McpSyncClient>> applicationClients;
+
   // ─────────────────────────────────────── reading ───────────────────────────────────────
 
   /** What this owner registered. */
@@ -94,9 +102,42 @@ public class McpServerRegistry {
     if (properties == null) {
       return List.of();
     }
+    final var serverInfo = serverInfoByConnection();
     return properties.getConnections().entrySet().stream()
-        .map(entry -> new McpConfiguredServer(entry.getKey(), connectionUrl(entry.getValue())))
+        .map(
+            entry -> {
+              final var info = serverInfo.get(entry.getKey());
+              return new McpConfiguredServer(
+                  entry.getKey(),
+                  connectionUrl(entry.getValue()),
+                  info == null ? null : blankToNull(info.title()),
+                  info == null ? null : blankToNull(info.description()));
+            })
         .toList();
+  }
+
+  /**
+   * What each configured server reported about itself in its initialize answer, by connection name.
+   *
+   * <p>Matched by the client's own title, which Spring AI sets to the connection's name when it
+   * builds the client — the client's name prefixes that with the application's, so the title is the
+   * one field that is the connection name and nothing else. A client that has not connected yet has
+   * no server info and is left out, which costs only its description.
+   */
+  private Map<String, McpSchema.Implementation> serverInfoByConnection() {
+    final var clients = applicationClients.getIfAvailable();
+    if (clients == null) {
+      return Map.of();
+    }
+    final var byConnection = new HashMap<String, McpSchema.Implementation>();
+    for (final var client : clients) {
+      final var clientInfo = client.getClientInfo();
+      final var serverInfo = client.getServerInfo();
+      if (clientInfo != null && clientInfo.title() != null && serverInfo != null) {
+        byConnection.putIfAbsent(clientInfo.title(), serverInfo);
+      }
+    }
+    return byConnection;
   }
 
   public boolean isApplicationConfigured(final String name) {

@@ -12,5 +12,9 @@ package me.kezhenxu94.springagent.core.tools.mcp;
  *
  * @param name what it is configured as, and what a mutation naming it is refused for
  * @param url where its requests actually go, endpoint path included
+ * @param title what the server calls itself when connected, or null when it said nothing or has not
+ *     been connected
+ * @param description what the server says it is for when connected, or null likewise. The
+ *     connection's configuration has no field for either, so the server's own word is the only one
  */
-public record McpConfiguredServer(String name, String url) {}
+public record McpConfiguredServer(String name, String url, String title, String description) {}

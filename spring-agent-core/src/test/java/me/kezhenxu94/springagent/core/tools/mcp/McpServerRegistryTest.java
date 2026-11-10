@@ -8,6 +8,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.modelcontextprotocol.client.McpSyncClient;
+import io.modelcontextprotocol.spec.McpSchema;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -72,7 +74,49 @@ class McpServerRegistryTest {
   void reportsConfiguredWithTheEndpoint() {
     assertThat(registry.applicationConfigured())
         .singleElement()
-        .isEqualTo(new McpConfiguredServer("company", "https://mcp.corp/mcp"));
+        .isEqualTo(new McpConfiguredServer("company", "https://mcp.corp/mcp", null, null));
+  }
+
+  @Test
+  @DisplayName("a configured server is described in its own words, found by its connection's name")
+  void describesConfiguredInTheServersWords() {
+    final var client = mock(McpSyncClient.class);
+    // Spring AI names the client "<application> - <connection>" and titles it with the connection.
+    when(client.getClientInfo())
+        .thenReturn(
+            McpSchema.Implementation.builder("spring-agent - company", "1")
+                .title("company")
+                .build());
+    when(client.getServerInfo())
+        .thenReturn(
+            McpSchema.Implementation.builder("wiki-server", "2")
+                .title("Company wiki")
+                .description("  Search and read the engineering wiki. ")
+                .build());
+
+    assertThat(registryWith(configuredCompany(), List.of(client)).applicationConfigured())
+        .singleElement()
+        .isEqualTo(
+            new McpConfiguredServer(
+                "company",
+                "https://mcp.corp/mcp",
+                "Company wiki",
+                "Search and read the engineering wiki."));
+  }
+
+  @Test
+  @DisplayName("a configured server not yet connected is listed without a description")
+  void listsAnUnconnectedOneWithoutDescription() {
+    final var client = mock(McpSyncClient.class);
+    when(client.getClientInfo())
+        .thenReturn(
+            McpSchema.Implementation.builder("spring-agent - company", "1")
+                .title("company")
+                .build());
+
+    assertThat(registryWith(configuredCompany(), List.of(client)).applicationConfigured())
+        .singleElement()
+        .isEqualTo(new McpConfiguredServer("company", "https://mcp.corp/mcp", null, null));
   }
 
   @Test
@@ -122,11 +166,18 @@ class McpServerRegistryTest {
         .isEqualTo(Reason.APPLICATION_CONFIGURED);
   }
 
-  @SuppressWarnings("unchecked")
   private McpServerRegistry registryWith(final McpStreamableHttpClientProperties configured) {
+    return registryWith(configured, null);
+  }
+
+  @SuppressWarnings("unchecked")
+  private McpServerRegistry registryWith(
+      final McpStreamableHttpClientProperties configured, final List<McpSyncClient> clients) {
     final ObjectProvider<McpStreamableHttpClientProperties> provider = mock(ObjectProvider.class);
     when(provider.getIfAvailable()).thenReturn(configured);
-    return new McpServerRegistry(repo, clientFactory, provider);
+    final ObjectProvider<List<McpSyncClient>> clientProvider = mock(ObjectProvider.class);
+    when(clientProvider.getIfAvailable()).thenReturn(clients);
+    return new McpServerRegistry(repo, clientFactory, provider, clientProvider);
   }
 
   private static McpStreamableHttpClientProperties configuredCompany() {

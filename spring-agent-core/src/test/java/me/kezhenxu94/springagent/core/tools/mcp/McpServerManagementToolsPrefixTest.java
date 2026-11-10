@@ -45,7 +45,8 @@ class McpServerManagementToolsPrefixTest {
     when(provider.getIfAvailable()).thenReturn(null);
     tools =
         new McpServerManagementTools(
-            new McpServerRegistry(repo, clientFactory, provider), TestI18n.english());
+            new McpServerRegistry(repo, clientFactory, provider, mock(ObjectProvider.class)),
+            TestI18n.english());
     when(repo.findByOwnerIdAndName(any(), any())).thenReturn(Optional.empty());
     when(repo.findAccessibleTo(any(), any())).thenReturn(List.of());
   }
