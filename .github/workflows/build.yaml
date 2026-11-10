@@ -64,10 +64,9 @@ jobs:
           sudo nft list ruleset 2>&1 | grep -iE 'docker|dnat' | head -20
           ps aux | grep -E '[d]ocker-proxy' | head -3
           docker rm -f "$cid" >/dev/null
-      - name: The failing module's tests, with Testcontainers' wait logs
-        run: |
-          set +e
-          nproc; free -g
-          ./gradlew :spring-agent-app-feishu:test --console=plain -i > tc.log 2>&1; echo "gradle exit: $?"
-          grep -aE "InternalCommandPortListeningCheck|HostPortWaitStrategy|Timed out|started in PT|ExecResult|tests completed|FAILED" tc.log | sort | uniq -c | sort -rn | head -60
-          grep -aE -A3 "Timed out waiting for container port" tc.log | head -40
+      - name: The failing module's tests
+        run: ./gradlew :spring-agent-app-feishu:test --console=plain || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-feishu-test-results
+          path: spring-agent-app-feishu/build/test-results/test/*.xml
