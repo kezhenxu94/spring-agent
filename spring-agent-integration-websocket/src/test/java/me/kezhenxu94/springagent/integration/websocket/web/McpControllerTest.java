@@ -120,7 +120,10 @@ class McpControllerTest {
   @DisplayName("what this deployment configures is listed, as something nobody owns")
   void listsApplicationConfigured() {
     when(registry.applicationConfigured())
-        .thenReturn(List.of(new McpConfiguredServer("company", "https://mcp.corp/mcp")));
+        .thenReturn(
+            List.of(
+                new McpConfiguredServer(
+                    "company", "https://mcp.corp/mcp", "Company wiki", "Search the wiki.")));
 
     assertThat(configured(controller.list(principal(ME, TENANT))))
         .singleElement()
@@ -128,6 +131,8 @@ class McpControllerTest {
             row -> {
               assertThat(row.name()).isEqualTo("company");
               assertThat(row.url()).isEqualTo("https://mcp.corp/mcp");
+              assertThat(row.title()).isEqualTo("Company wiki");
+              assertThat(row.description()).isEqualTo("Search the wiki.");
             });
   }
 

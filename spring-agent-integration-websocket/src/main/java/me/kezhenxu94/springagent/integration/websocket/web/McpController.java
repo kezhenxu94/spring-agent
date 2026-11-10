@@ -85,7 +85,9 @@ public class McpController {
                     new Configured(
                         server.name(),
                         server.url(),
-                        McpServerConfig.Transport.STREAMABLE_HTTP.name()))
+                        McpServerConfig.Transport.STREAMABLE_HTTP.name(),
+                        server.title(),
+                        server.description()))
             .toList();
     return Map.of("owned", owned, "shared", shared, "configured", configured);
   }
@@ -386,6 +388,10 @@ public class McpController {
   /** A server somebody else shared, on the wire. Its configuration is its owner's alone. */
   public record Shared(String name, String transport, String owner, boolean enabled) {}
 
-  /** A server this deployment configures for everyone, on the wire. Nobody owns it. */
-  public record Configured(String name, String url, String transport) {}
+  /**
+   * A server this deployment configures for everyone, on the wire. Nobody owns it. The title and
+   * description are the server's own, null when it gave none.
+   */
+  public record Configured(
+      String name, String url, String transport, String title, String description) {}
 }
