@@ -162,4 +162,46 @@ class RunStreamSubscriptionsTest {
     // The run carried on regardless, which is the point: a closed tab is not an instruction.
     assertThat(journal.size()).isEqualTo(1);
   }
+
+  /**
+   * The live stream is a run of deltas a client appends in the order they arrive, so frames of one
+   * subscription reaching the socket out of order is text written out of order — two words of a
+   * Chinese answer swapped, say, while the transcript read back later is right. The real client
+   * channel hands every frame to a pool thread of its own; the synchronous {@link Outbound} the
+   * other tests use cannot reorder anything, which is how this went unnoticed.
+   */
+  @Test
+  @DisplayName("frames reach a subscriber in the order the run appended them")
+  void framesArriveInOrderOverAPooledChannel() throws Exception {
+    final var executor = new org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor();
+    executor.setCorePoolSize(8);
+    executor.initialize();
+    final var channel =
+        new org.springframework.messaging.support.ExecutorSubscribableChannel(executor);
+    final var received = java.util.Collections.synchronizedList(new ArrayList<Long>());
+    final var count = 200;
+    final var done = new java.util.concurrent.CountDownLatch(count + 1);
+    channel.subscribe(
+        message -> {
+          // A socket write takes a moment, and not always the same one.
+          java.util.concurrent.locks.LockSupport.parkNanos(
+              java.util.concurrent.ThreadLocalRandom.current().nextLong(200_000));
+          final var event = om.readValue((byte[]) message.getPayload(), Map.class);
+          if (RunEvent.CONTENT.equals(event.get("type"))) {
+            received.add(((Number) event.get("seq")).longValue());
+          }
+          done.countDown();
+        });
+    final var pooled = new RunStreamSubscriptions(journals, om, channel);
+    final var journal = journals.open("run-1", "conversation-1", MINE);
+    pooled.watch("run-1", subscribe(MINE, "run-1", "0"));
+
+    for (int i = 0; i < count; i++) {
+      journal.append(RunEvent.of(RunEvent.CONTENT, Map.of("delta", "piece " + i)));
+    }
+
+    assertThat(done.await(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+    assertThat(received).hasSize(count).isSorted();
+    executor.shutdown();
+  }
 }
