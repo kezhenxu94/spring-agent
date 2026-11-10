@@ -64,5 +64,9 @@ jobs:
           sudo nft list ruleset 2>&1 | grep -iE 'docker|dnat' | head -20
           ps aux | grep -E '[d]ocker-proxy' | head -3
           docker rm -f "$cid" >/dev/null
-      - name: One integration test, with Testcontainers' own logging
-        run: ./gradlew :spring-agent-app-feishu:test --tests '*ChatMemoryRedisTest' --console=plain -Dorg.slf4j.simpleLogger.log.org.testcontainers=debug -i 2>&1 | grep -iE 'testcontainers|wait|port|docker|container|FAILED|Caused' | head -200
+      - name: The failing module's tests, with Testcontainers' wait logs
+        run: |
+          nproc; free -g
+          ./gradlew :spring-agent-app-feishu:test --console=plain -i > tc.log 2>&1; echo "gradle exit: $?"
+          grep -aE "InternalCommandPortListeningCheck|HostPortWaitStrategy|Timed out|started in PT|ExecResult|tests completed|FAILED" tc.log | sort | uniq -c | sort -rn | head -60
+          grep -aE -A3 "Timed out waiting for container port" tc.log | head -40
