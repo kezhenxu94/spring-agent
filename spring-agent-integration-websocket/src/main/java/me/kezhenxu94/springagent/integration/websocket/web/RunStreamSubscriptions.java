@@ -165,7 +165,7 @@ public class RunStreamSubscriptions {
 
   @EventListener
   public void onDisconnect(final SessionDisconnectEvent event) {
-    final var prefix = event.getSessionId() + ' ';
+    final var prefix = event.getSessionId() + '\u0000';
     attached.keySet().stream().filter(it -> it.startsWith(prefix)).toList().forEach(this::detach);
     orderedBySession.remove(event.getSessionId());
   }
@@ -191,7 +191,7 @@ public class RunStreamSubscriptions {
   }
 
   private static String key(final String sessionId, final String subscriptionId) {
-    return sessionId + ' ' + subscriptionId;
+    return sessionId + '\u0000' + subscriptionId;
   }
 
   private void detach(final String key) {
