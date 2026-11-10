@@ -40,5 +40,29 @@ jobs:
       #
       # CI is exported by GitHub Actions itself and springagent.java-common-conventions reads it to
       # turn on test retries — a container that loses a race to start is not a broken change.
-      - name: Build
-        run: ./gradlew build --console=plain
+      # Temporary, on this branch only: why Testcontainers' port check times out on ubuntu-26.04.
+      - name: Diagnose Docker port publishing
+        run: |
+          set +e
+          head -3 /etc/os-release
+          docker version
+          docker info 2>/dev/null | grep -iE 'Server Version|Firewall|Cgroup|Runtime|Driver|IPv6|userland|Security'
+          getent ahosts localhost
+          cat /etc/docker/daemon.json 2>/dev/null
+          cid=$(docker run -d -p 6379 redis:8)
+          sleep 5
+          docker port "$cid"
+          docker inspect "$cid" --format '{{json .NetworkSettings.Ports}}'
+          port=$(docker port "$cid" 6379/tcp | head -1 | awk -F: '{print $NF}')
+          for h in localhost 127.0.0.1 ::1; do
+            if timeout 3 bash -c "exec 3<>/dev/tcp/$h/$port" 2>/dev/null; then echo "host -> $h:$port OK"; else echo "host -> $h:$port FAIL"; fi
+          done
+          echo "--- inside the container (what Testcontainers' internal check runs)"
+          docker exec "$cid" sh -c 'command -v nc bash grep awk; cat /proc/net/tcp /proc/net/tcp6 2>/dev/null | head -5'
+          docker exec "$cid" /bin/sh -c "true && (cat /proc/net/tcp* | awk '{print \$2}' | grep -i ':18EB' || nc -vz -w 1 localhost 6379 || /bin/bash -c '</dev/tcp/localhost/6379')"; echo "internal check exit: $?"
+          sudo iptables -t nat -L DOCKER -n 2>&1 | head -10
+          sudo nft list ruleset 2>&1 | grep -iE 'docker|dnat' | head -20
+          ps aux | grep -E '[d]ocker-proxy' | head -3
+          docker rm -f "$cid" >/dev/null
+      - name: One integration test, with Testcontainers' own logging
+        run: ./gradlew :spring-agent-app-feishu:test --tests '*ChatMemoryRedisTest' --console=plain -Dorg.slf4j.simpleLogger.log.org.testcontainers=debug -i 2>&1 | grep -iE 'testcontainers|wait|port|docker|container|FAILED|Caused' | head -200
