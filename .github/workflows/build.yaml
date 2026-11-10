@@ -41,32 +41,18 @@ jobs:
       # CI is exported by GitHub Actions itself and springagent.java-common-conventions reads it to
       # turn on test retries — a container that loses a race to start is not a broken change.
       # Temporary, on this branch only: why Testcontainers' port check times out on ubuntu-26.04.
-      - name: Diagnose Docker port publishing
+      - name: Which mongo images start on this kernel
         run: |
           set +e
-          head -3 /etc/os-release
-          docker version
-          docker info 2>/dev/null | grep -iE 'Server Version|Firewall|Cgroup|Runtime|Driver|IPv6|userland|Security'
-          getent ahosts localhost
-          cat /etc/docker/daemon.json 2>/dev/null
-          cid=$(docker run -d -p 6379 redis:8)
-          sleep 5
-          docker port "$cid"
-          docker inspect "$cid" --format '{{json .NetworkSettings.Ports}}'
-          port=$(docker port "$cid" 6379/tcp | head -1 | awk -F: '{print $NF}')
-          for h in localhost 127.0.0.1 ::1; do
-            if timeout 3 bash -c "exec 3<>/dev/tcp/$h/$port" 2>/dev/null; then echo "host -> $h:$port OK"; else echo "host -> $h:$port FAIL"; fi
+          uname -r
+          for img in mongo:8 mongo:8.0 mongo:8.2 mongo:8.3 mongo:9.0 mongo:latest; do
+            cid=$(docker run -d "$img")
+            for i in $(seq 1 30); do
+              docker logs "$cid" 2>&1 | grep -q "Waiting for connections" && break
+              [ "$(docker inspect -f '{{.State.Running}}' "$cid")" = "false" ] && break
+              sleep 1
+            done
+            ver=$(docker exec "$cid" mongod --version 2>/dev/null | head -1)
+            if docker logs "$cid" 2>&1 | grep -q "Waiting for connections"; then echo "OK   $img $ver"; else echo "FAIL $img $(docker logs "$cid" 2>&1 | grep -o '"msg":"[^"]*"' | tail -1)"; fi
+            docker rm -f "$cid" >/dev/null
           done
-          echo "--- inside the container (what Testcontainers' internal check runs)"
-          docker exec "$cid" sh -c 'command -v nc bash grep awk; cat /proc/net/tcp /proc/net/tcp6 2>/dev/null | head -5'
-          docker exec "$cid" /bin/sh -c "true && (cat /proc/net/tcp* | awk '{print \$2}' | grep -i ':18EB' || nc -vz -w 1 localhost 6379 || /bin/bash -c '</dev/tcp/localhost/6379')"; echo "internal check exit: $?"
-          sudo iptables -t nat -L DOCKER -n 2>&1 | head -10
-          sudo nft list ruleset 2>&1 | grep -iE 'docker|dnat' | head -20
-          ps aux | grep -E '[d]ocker-proxy' | head -3
-          docker rm -f "$cid" >/dev/null
-      - name: The failing module's tests
-        run: ./gradlew :spring-agent-app-feishu:test --console=plain || true
-      - uses: actions/upload-artifact@v4
-        with:
-          name: app-feishu-test-results
-          path: spring-agent-app-feishu/build/test-results/test/*.xml
