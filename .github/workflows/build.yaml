@@ -66,6 +66,7 @@ jobs:
           docker rm -f "$cid" >/dev/null
       - name: The failing module's tests, with Testcontainers' wait logs
         run: |
+          set +e
           nproc; free -g
           ./gradlew :spring-agent-app-feishu:test --console=plain -i > tc.log 2>&1; echo "gradle exit: $?"
           grep -aE "InternalCommandPortListeningCheck|HostPortWaitStrategy|Timed out|started in PT|ExecResult|tests completed|FAILED" tc.log | sort | uniq -c | sort -rn | head -60
