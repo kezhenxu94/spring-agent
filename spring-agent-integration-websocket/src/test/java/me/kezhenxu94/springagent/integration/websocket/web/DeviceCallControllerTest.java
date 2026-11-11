@@ -102,9 +102,10 @@ class DeviceCallControllerTest {
     final var fired = ArgumentCaptor.forClass(AgentRequest.class);
     final var order = inOrder(calls, springAgent);
     order.verify(calls).updateStatus("call-1", PendingDeviceCall.Status.ANSWERED);
-    order.verify(springAgent).fire(fired.capture());
+    order.verify(springAgent).fireOrQueue(fired.capture(), any(), any());
     final var request = fired.getValue();
     assertThat(response).containsEntry("requestId", request.requestId());
+    assertThat(response).containsEntry("queued", false);
     assertThat(request.userId()).isEqualTo(ME);
     assertThat(request.conversationId()).isEqualTo("conv-1");
     assertThat(request.chatId()).isEqualTo("conv-1");
@@ -113,6 +114,16 @@ class DeviceCallControllerTest {
         .extracting(ToolCallback::getToolDefinition)
         .extracting(it -> it.name())
         .containsExactly("device_camera");
+  }
+
+  @Test
+  @DisplayName("a second result while the first one's run is going joins that run")
+  void aResultJoinsARunGoing() {
+    pending(PendingDeviceCall.Status.PENDING, Instant.now().plusSeconds(60));
+    when(springAgent.fireOrQueue(any(), any(), any())).thenReturn(true);
+    final var response = controller.result(principal(ME), "call-1", result(null));
+    assertThat(response).containsEntry("queued", true);
+    verify(springAgent, never()).fire(any());
   }
 
   @Test
@@ -145,7 +156,7 @@ class DeviceCallControllerTest {
         .hasMessageContaining("404");
     assertThatThrownBy(() -> controller.result(principal(ME), "call-2", result(null)))
         .hasMessageContaining("404");
-    verify(springAgent, never()).fire(any());
+    verify(springAgent, never()).fireOrQueue(any(), any(), any());
   }
 
   @Test
@@ -162,7 +173,7 @@ class DeviceCallControllerTest {
         .hasMessageContaining("409")
         .hasMessageContaining("expired");
     verify(calls).updateStatus("call-1", PendingDeviceCall.Status.EXPIRED);
-    verify(springAgent, never()).fire(any());
+    verify(springAgent, never()).fireOrQueue(any(), any(), any());
   }
 
   @Test
@@ -179,6 +190,6 @@ class DeviceCallControllerTest {
         .isInstanceOf(ResponseStatusException.class)
         .hasMessageContaining("400");
     verify(calls, never()).updateStatus(anyString(), any());
-    verify(springAgent, never()).fire(any());
+    verify(springAgent, never()).fireOrQueue(any(), any(), any());
   }
 }

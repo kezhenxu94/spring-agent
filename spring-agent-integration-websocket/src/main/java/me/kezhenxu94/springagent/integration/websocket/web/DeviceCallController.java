@@ -31,7 +31,9 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p>The run that made the call is over, so this is {@code QuestionController} for a device: a new
  * run in the same conversation, whose message is the result, with the same refusals for the same
- * reason — two phones, or a phone retrying, may post for one call.
+ * reason — two phones, or a phone retrying, may post for one call. Unless a run is already going
+ * there — the answer to another call the same turn left waiting — in which case the result joins
+ * it, as a typed message would, and the response says {@code queued}.
  *
  * <p>That message is exactly
  *
@@ -125,13 +127,20 @@ public class DeviceCallController {
         builder.listener(mirror);
       }
     }
-    springAgent.fire(builder.build());
+    // fireOrQueue rather than fire: a turn that left two calls waiting gets two answers, and the
+    // second must join the run the first started rather than run beside it in one conversation.
+    final var queued = springAgent.fireOrQueue(builder.build(), () -> text, text);
 
     if (session != null) {
       sessions.touch(session);
     }
-    log.info("Device call {} answered by {}, continuing as run {}", callId, user.id(), requestId);
-    return Map.of("requestId", requestId);
+    log.info(
+        "Device call {} answered by {}, {} run {}",
+        callId,
+        user.id(),
+        queued ? "queued onto the" : "continuing as",
+        requestId);
+    return Map.of("requestId", requestId, "queued", queued);
   }
 
   static String asMessage(final String toolName, final Result body) {
