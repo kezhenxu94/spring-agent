@@ -43,7 +43,8 @@ class FeishuIdentityCheckTest {
         null,
         null,
         false,
-        List.of());
+        List.of(),
+        null);
   }
 
   private static FeishuIdentityCheck check(

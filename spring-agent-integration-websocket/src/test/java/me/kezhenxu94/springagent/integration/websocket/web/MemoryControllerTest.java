@@ -427,7 +427,8 @@ class MemoryControllerTest {
 
   private static WebMessages messages() {
     return new WebMessages(
-        new WebProperties(null, null, null, Locale.ENGLISH, null, null, null, null, false, null));
+        new WebProperties(
+            null, null, null, Locale.ENGLISH, null, null, null, null, false, null, null));
   }
 
   private static OAuth2User principal(final String id, final String tenant) {

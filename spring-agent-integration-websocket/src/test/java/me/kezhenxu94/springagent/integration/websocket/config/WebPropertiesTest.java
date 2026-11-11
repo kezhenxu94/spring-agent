@@ -2,8 +2,12 @@ package me.kezhenxu94.springagent.integration.websocket.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
 
 /** What this record decides for a deployment that left something out. */
 class WebPropertiesTest {
@@ -33,7 +37,23 @@ class WebPropertiesTest {
     assertThat(web("/brand/acme.svg", null).favicon()).isEqualTo("/brand/acme.svg");
   }
 
+  @Test
+  @DisplayName(
+      "a device tool waits a minute for a claim and five for a result unless told otherwise")
+  void deviceToolWaits() {
+    assertThat(web(null, null).deviceTools())
+        .isEqualTo(new WebProperties.DeviceTools(Duration.ofSeconds(10), Duration.ofMinutes(2)));
+    final var bound =
+        new Binder(
+                new MapConfigurationPropertySource(
+                    Map.of("app.web.device-tools.claim-timeout", "5m")))
+            .bind("app.web", WebProperties.class)
+            .get();
+    assertThat(bound.deviceTools().claimTimeout()).isEqualTo(Duration.ofMinutes(5));
+    assertThat(bound.deviceTools().answerTimeout()).isEqualTo(Duration.ofMinutes(2));
+  }
+
   private static WebProperties web(final String logo, final String favicon) {
-    return new WebProperties(null, null, null, null, null, logo, favicon, null, false, null);
+    return new WebProperties(null, null, null, null, null, logo, favicon, null, false, null, null);
   }
 }

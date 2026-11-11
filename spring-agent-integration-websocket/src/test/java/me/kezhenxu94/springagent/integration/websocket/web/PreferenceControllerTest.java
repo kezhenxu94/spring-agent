@@ -44,7 +44,7 @@ class PreferenceControllerTest {
             new UserPreferences(repo, new ScenarioMemos(List.of())),
             new WebMessages(
                 new WebProperties(
-                    null, null, null, Locale.ENGLISH, null, null, null, null, false, null)));
+                    null, null, null, Locale.ENGLISH, null, null, null, null, false, null, null)));
   }
 
   private static DefaultOAuth2User user(final String id) {

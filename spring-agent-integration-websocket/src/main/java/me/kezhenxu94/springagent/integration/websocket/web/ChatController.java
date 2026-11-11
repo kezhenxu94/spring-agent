@@ -13,8 +13,10 @@ import me.kezhenxu94.springagent.core.agent.ScenarioMemos;
 import me.kezhenxu94.springagent.core.agent.SpringAgent;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.TenantWrites;
+import me.kezhenxu94.springagent.core.dao.models.PendingDeviceCall;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.ChatReasoningRepo;
+import me.kezhenxu94.springagent.core.dao.repo.PendingDeviceCallRepo;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.identity.SystemIdentityProvider;
 import me.kezhenxu94.springagent.core.knowledge.KnowledgeBase;
@@ -68,6 +70,7 @@ public class ChatController {
   private final ChatSessions sessions;
   private final RunJournals journals;
   private final PendingQuestionRepo pendingQuestionRepo;
+  private final PendingDeviceCallRepo pendingDeviceCallRepo;
   private final ChatReasoningRepo reasonings;
   private final ChatMirrors mirrors;
   private final DeviceTools deviceTools;
@@ -285,8 +288,10 @@ public class ChatController {
    *
    * <p>This is the reconnect: the browser has the transcript from chat memory, and asks here for
    * the two things the transcript cannot tell it — whether a run is going on right now that it
-   * should attach a stream to, and whether the agent is waiting on an answer. Both are true across
-   * a refresh; the second is true across a restart of the server as well.
+   * should attach a stream to, and whether the agent is waiting on an answer: to a question, or
+   * from the person's device ({@code pendingDeviceCalls}, which a native app runs and posts to
+   * {@code DeviceCallController}). Both are true across a refresh; the second is true across a
+   * restart of the server as well.
    */
   @GetMapping("/conversations/{id}/state")
   public Map<String, Object> state(
@@ -297,7 +302,28 @@ public class ChatController {
         "liveRequestId",
         journals.liveByConversationId(session.id()).map(it -> it.requestId()).orElse(null));
     out.put("pendingQuestion", pendingQuestion(session.id()));
+    out.put("pendingDeviceCalls", pendingDeviceCalls(session.id(), user(principal).id()));
     return out;
+  }
+
+  /** The caller's own only: a device answers for the person whose run asked, nobody else. */
+  private List<Map<String, Object>> pendingDeviceCalls(
+      final String conversationId, final String userId) {
+    final var now = java.time.Instant.now();
+    return pendingDeviceCallRepo
+        .findByConversationIdAndStatus(conversationId, PendingDeviceCall.Status.PENDING)
+        .stream()
+        .filter(it -> userId.equals(it.userId()))
+        .filter(it -> it.expiresAt() == null || it.expiresAt().isAfter(now))
+        .sorted(java.util.Comparator.comparing(PendingDeviceCall::createdAt))
+        .map(
+            it ->
+                Map.<String, Object>of(
+                    "callId", it.id(),
+                    "name", it.toolName(),
+                    "input", it.input(),
+                    "createdAt", it.createdAt()))
+        .toList();
   }
 
   private Map<String, Object> pendingQuestion(final String conversationId) {
@@ -372,8 +398,11 @@ public class ChatController {
     final var onDevice = deviceToolDeclarations.callbacks(requestId, user.id(), body.deviceTools());
 
     // A typed message supersedes a form nobody got round to submitting, so the two cannot both be
-    // outstanding — the model would otherwise be answered twice about the same fork.
+    // outstanding — the model would otherwise be answered twice about the same fork. A device call
+    // still waiting on the phone likewise: the person has moved on, and a result arriving later
+    // would start a run about something the conversation has left behind.
     supersedePendingQuestions(session.id());
+    supersedePendingDeviceCalls(session.id());
 
     // A memo in what was typed — /kb — chooses the kind of run this turn is, and is taken out of
     // the prompt on the way. Nothing else in this method reads `text` afterwards: the mirror below
@@ -426,6 +455,14 @@ public class ChatController {
         pendingQuestionRepo.findByConversationIdAndStatus(
             conversationId, PendingQuestion.Status.PENDING)) {
       pendingQuestionRepo.updateStatus(pending.id(), PendingQuestion.Status.SUPERSEDED);
+    }
+  }
+
+  private void supersedePendingDeviceCalls(final String conversationId) {
+    for (final var pending :
+        pendingDeviceCallRepo.findByConversationIdAndStatus(
+            conversationId, PendingDeviceCall.Status.PENDING)) {
+      pendingDeviceCallRepo.updateStatus(pending.id(), PendingDeviceCall.Status.SUPERSEDED);
     }
   }
 

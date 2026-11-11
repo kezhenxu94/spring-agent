@@ -11,6 +11,7 @@ import me.kezhenxu94.springagent.core.dao.models.ChatReasoning;
 import me.kezhenxu94.springagent.core.dao.models.ChatSession;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import me.kezhenxu94.springagent.core.dao.models.ObservedEvent;
+import me.kezhenxu94.springagent.core.dao.models.PendingDeviceCall;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.models.ScheduledTask;
 import me.kezhenxu94.springagent.core.dao.models.SeenUpdate;
@@ -20,6 +21,7 @@ import me.kezhenxu94.springagent.core.dao.repo.ChatReasoningRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ChatSessionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ObservedEventRepo;
+import me.kezhenxu94.springagent.core.dao.repo.PendingDeviceCallRepo;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ProcessedMessageRepo;
 import me.kezhenxu94.springagent.core.dao.repo.ScheduledTaskRepo;
@@ -53,6 +55,7 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
   @Autowired McpServerConfigRepo mcpServerConfigRepo;
   @Autowired ScheduledTaskRepo scheduledTaskRepo;
   @Autowired PendingQuestionRepo pendingQuestionRepo;
+  @Autowired PendingDeviceCallRepo pendingDeviceCallRepo;
   @Autowired ProcessedMessageRepo processedMessageRepo;
   @Autowired SituationRepo situationRepo;
   @Autowired ObservedEventRepo observedEventRepo;
@@ -345,6 +348,54 @@ abstract class AbstractPersistenceBackendTest extends AbstractIntegrationTest {
         .get()
         .extracting(ScheduledTask::nextFireAt)
         .isEqualTo(first);
+  }
+
+  @Test
+  @DisplayName(
+      "a pending device call round trips, and answering it takes it out of the conversation")
+  void pendingDeviceCallRoundTripsAndLeavesPending() {
+    final var conversation = owner() + "-device-conv";
+    final var id = owner() + "-call-1";
+    final var expiresAt = Instant.now().plus(Duration.ofHours(24)).truncatedTo(ChronoUnit.MILLIS);
+    final var input = "{\"title\":\"" + "x".repeat(10_000) + "\"}";
+
+    pendingDeviceCallRepo.save(
+        PendingDeviceCall.builder()
+            .id(id)
+            .userId(owner())
+            .chatId(conversation)
+            .conversationId(conversation)
+            .rootMessageId(conversation)
+            .toolName("device_calendar_add")
+            .input(input)
+            .status(PendingDeviceCall.Status.PENDING)
+            .createdAt(Instant.now().truncatedTo(ChronoUnit.MILLIS))
+            .expiresAt(expiresAt)
+            .build());
+
+    final var found =
+        pendingDeviceCallRepo.findByConversationIdAndStatus(
+            conversation, PendingDeviceCall.Status.PENDING);
+    assertThat(found).extracting(PendingDeviceCall::id).containsExactly(id);
+    // Longer than a default varchar: the arguments are the model's and can be long.
+    assertThat(found.getFirst().input()).isEqualTo(input);
+    assertThat(found.getFirst().toolName()).isEqualTo("device_calendar_add");
+    assertThat(found.getFirst().expiresAt()).isEqualTo(expiresAt);
+
+    pendingDeviceCallRepo.updateStatus(id, PendingDeviceCall.Status.ANSWERED);
+
+    // The index has to follow the partial update, or a second result could fire a second run.
+    assertThat(
+            pendingDeviceCallRepo.findByConversationIdAndStatus(
+                conversation, PendingDeviceCall.Status.PENDING))
+        .isEmpty();
+    assertThat(pendingDeviceCallRepo.findById(id))
+        .get()
+        .satisfies(
+            it -> {
+              assertThat(it.status()).isEqualTo(PendingDeviceCall.Status.ANSWERED);
+              assertThat(it.input()).isEqualTo(input);
+            });
   }
 
   @Test

@@ -6,9 +6,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.integration.websocket.config.WebProperties;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -28,20 +28,40 @@ import org.springframework.stereotype.Component;
  * <p>What falls out is not lost, it is only coarser: the conversation itself is in chat memory and
  * an unanswered question is in {@code PendingQuestion}, both of which outlive this process
  * entirely. What eviction costs is the fine grain — which tools ran, what the subagents did.
+ *
+ * <p>Every {@link RunJournalListener} bean hears of each journal as it opens. There may be none.
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class RunJournals {
 
   private final WebProperties properties;
+  private final List<RunJournalListener> listeners;
 
   private final ConcurrentMap<String, RunJournal> byRequestId = new ConcurrentHashMap<>();
+
+  /**
+   * @param listeners resolved at the first journal rather than now: a listener is likely to need
+   *     {@code DeviceTools}, which needs this class, and resolving them eagerly is a cycle that
+   *     stops the application starting. An empty list where there are none.
+   */
+  public RunJournals(
+      final WebProperties properties, @Lazy final List<RunJournalListener> listeners) {
+    this.properties = properties;
+    this.listeners = listeners;
+  }
 
   public RunJournal open(final String requestId, final String conversationId, final String userId) {
     final var journal = new RunJournal(requestId, conversationId, userId);
     byRequestId.put(requestId, journal);
     evictIfOverCapacity();
+    for (final var listener : listeners) {
+      try {
+        listener.onOpen(journal);
+      } catch (final Exception e) {
+        log.warn("{} failed on the journal of run {}", listener.getClass().getName(), requestId, e);
+      }
+    }
     return journal;
   }
 

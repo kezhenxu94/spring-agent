@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.integration.websocket.run;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -16,7 +17,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.dao.models.PendingDeviceCall;
+import me.kezhenxu94.springagent.core.dao.repo.PendingDeviceCallRepo;
+import me.kezhenxu94.springagent.core.tools.ToolContexts;
 import me.kezhenxu94.springagent.integration.websocket.config.WebMessages;
+import me.kezhenxu94.springagent.integration.websocket.config.WebProperties;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
@@ -41,12 +46,17 @@ import tools.jackson.databind.json.JsonMapper;
  *       tool's output.
  * </ol>
  *
- * <p><b>Two waits, because they answer two different questions.</b> A minute for a claim, since an
- * app that is open claims within a second and one that is not will not claim at all — a short wait
- * is what lets the model tell the person to open the app rather than sit there. Five minutes for a
- * result, since a device tool may well be asking the person something (a permission prompt, a photo
- * to take). Every way a call ends is told to the model as a sentence it can relay, never as an
- * exception, and journalled as {@link RunEvent#DEVICE_TOOL_DONE}.
+ * <p><b>Two short waits, then the call is pending.</b> Ten seconds for a claim, since an app that
+ * is open claims within a second; two minutes for a result, since a device tool may well be asking
+ * the person something (a permission prompt, a photo to take). Both are {@code
+ * app.web.device-tools.*}. Running out of either does not fail the call: it becomes a {@link
+ * PendingDeviceCall}, journalled as {@link RunEvent#DEVICE_TOOL_PENDING}, and the model is told to
+ * end its turn. The device's result arrives later at {@code DeviceCallController} and starts a new
+ * run in the conversation, the way an answer to a question does — the person may only see the
+ * request when they next pick up the phone, and no run should be held open for that.
+ *
+ * <p>Every way a call ends is told to the model as a sentence it can relay, never as an exception,
+ * and journalled as {@link RunEvent#DEVICE_TOOL_DONE}.
  *
  * <p><b>Blocking is the point, and it is on the run's own thread.</b> Spring AI calls a tool
  * synchronously, so the run is paused exactly as long as the device takes. Stopping the run cannot
@@ -88,25 +98,44 @@ public class DeviceTools {
   private final JsonMapper om;
   private final Duration claimTimeout;
   private final Duration answerTimeout;
+  private final PendingDeviceCallRepo pending;
+  private final Duration pendingTtl;
 
   private final ConcurrentMap<String, Call> calls = new ConcurrentHashMap<>();
 
   @Autowired
-  public DeviceTools(final RunJournals journals, final WebMessages messages, final JsonMapper om) {
-    this(journals, messages, om, Duration.ofSeconds(60), Duration.ofMinutes(5));
+  public DeviceTools(
+      final RunJournals journals,
+      final WebMessages messages,
+      final JsonMapper om,
+      final WebProperties properties,
+      final PendingDeviceCallRepo pending) {
+    // A pending call stays answerable as long as a question does: both wait on the person.
+    this(
+        journals,
+        messages,
+        om,
+        pending,
+        properties.deviceTools().claimTimeout(),
+        properties.deviceTools().answerTimeout(),
+        properties.question().ttl());
   }
 
   DeviceTools(
       final RunJournals journals,
       final WebMessages messages,
       final JsonMapper om,
+      final PendingDeviceCallRepo pending,
       final Duration claimTimeout,
-      final Duration answerTimeout) {
+      final Duration answerTimeout,
+      final Duration pendingTtl) {
     this.journals = journals;
     this.messages = messages;
     this.om = om;
+    this.pending = pending;
     this.claimTimeout = claimTimeout;
     this.answerTimeout = answerTimeout;
+    this.pendingTtl = pendingTtl;
   }
 
   /**
@@ -210,6 +239,7 @@ public class DeviceTools {
   static final String DONE_ERROR = "error";
   static final String DONE_TIMEOUT = "timeout";
   static final String DONE_CANCELLED = "cancelled";
+  static final String DONE_PENDING = "pending";
 
   /**
    * @param outcome one of the {@code DONE_*} values
@@ -284,11 +314,18 @@ public class DeviceTools {
 
     @Override
     public String call(final String toolInput, final ToolContext toolContext) {
-      return call(toolInput);
+      return call(
+          toolInput,
+          ToolContexts.get(toolContext, ToolContexts.CHAT_ID),
+          ToolContexts.get(toolContext, ToolContexts.ROOT_MESSAGE_ID));
     }
 
     @Override
     public String call(final String toolInput) {
+      return call(toolInput, null, null);
+    }
+
+    private String call(final String toolInput, final String chatId, final String rootMessageId) {
       final var name = definition.name();
       final var journal = journals.byRequestId(requestId).orElse(null);
       if (journal == null) {
@@ -297,20 +334,18 @@ public class DeviceTools {
         return messages.get(locale, "device-tool-unclaimed", name);
       }
       final var callId = UUID.randomUUID().toString();
+      final var input = toolInput == null ? "{}" : toolInput;
       final var call = new Call(requestId, userId);
       calls.put(callId, call);
       try {
         journal.append(
             RunEvent.of(
-                RunEvent.DEVICE_TOOL,
-                Map.of(
-                    "callId",
-                    callId,
-                    "name",
-                    name,
-                    "input",
-                    toolInput == null ? "{}" : toolInput)));
-        final var result = await(call);
+                RunEvent.DEVICE_TOOL, Map.of("callId", callId, "name", name, "input", input)));
+        var result = await(call);
+        if (DONE_TIMEOUT.equals(result.outcome())
+            && savePending(journal, callId, name, input, chatId, rootMessageId)) {
+          result = new Result(DONE_PENDING, null);
+        }
         journal.append(
             RunEvent.of(
                 RunEvent.DEVICE_TOOL_DONE, Map.of("callId", callId, "outcome", result.outcome())));
@@ -319,6 +354,15 @@ public class DeviceTools {
           case DONE_ANSWERED -> result.output();
           case DONE_ERROR -> messages.get(locale, "device-tool-failed", name, result.output());
           case DONE_CANCELLED -> messages.get(locale, "device-tool-cancelled", name);
+          case DONE_PENDING -> {
+            // After the done event, so a reader sees the live call end before the pending one
+            // begins and never treats the two as one call twice.
+            journal.append(
+                RunEvent.of(
+                    RunEvent.DEVICE_TOOL_PENDING,
+                    Map.of("callId", callId, "name", name, "input", input)));
+            yield messages.get(locale, "device-tool-pending", name);
+          }
           default ->
               messages.get(
                   locale,
@@ -329,6 +373,40 @@ public class DeviceTools {
         };
       } finally {
         calls.remove(callId);
+      }
+    }
+
+    /**
+     * Writes the call down for the device to answer later. False where it could not be, and then
+     * the call simply ends as timed out — a call nobody can answer must not be described to the
+     * model as one that will be.
+     */
+    private boolean savePending(
+        final RunJournal journal,
+        final String callId,
+        final String name,
+        final String input,
+        final String chatId,
+        final String rootMessageId) {
+      final var now = Instant.now();
+      try {
+        pending.save(
+            PendingDeviceCall.builder()
+                .id(callId)
+                .userId(userId)
+                .chatId(chatId == null ? journal.conversationId() : chatId)
+                .conversationId(journal.conversationId())
+                .rootMessageId(rootMessageId == null ? journal.conversationId() : rootMessageId)
+                .toolName(name)
+                .input(input)
+                .status(PendingDeviceCall.Status.PENDING)
+                .createdAt(now)
+                .expiresAt(now.plus(pendingTtl))
+                .build());
+        return true;
+      } catch (final RuntimeException e) {
+        log.warn("Could not keep device tool call {} pending in run {}", callId, requestId, e);
+        return false;
       }
     }
 
