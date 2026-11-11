@@ -15,6 +15,11 @@ dependencyResolutionManagement {
     maven { url = 'https://repo.spring.io/release' }
     maven { url = 'https://repo.spring.io/milestone' }
     maven { url = 'https://repo.spring.io/snapshot' }
+    // The MCP Java SDK publishes its snapshots here, and Spring AI's snapshot depends on one.
+    maven {
+      url = 'https://central.sonatype.com/repository/maven-snapshots/'
+      content { includeGroup 'io.modelcontextprotocol.sdk' }
+    }
   }
 }
 
