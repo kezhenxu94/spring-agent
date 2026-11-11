@@ -889,6 +889,15 @@ app:
       # so this is genuinely how long the user has: the run is over and only the form is waiting,
       # which is why it is hours rather than the seconds a held-open run would allow.
       ttl: ${WEB_QUESTION_TTL:24h}
+    device-tools:
+      # How long a tool the agent asked a native app to run on the person's phone waits for an open
+      # app to claim it. An open app claims within a second, so this is short; past it the call is
+      # kept pending (as long as question.ttl above), the model ends its turn, and the result the
+      # phone posts later to /api/device-calls/{callId}/result continues the conversation.
+      claim-timeout: ${WEB_DEVICE_TOOLS_CLAIM_TIMEOUT:10s}
+      # How long a claimed call waits for its result before it is kept pending the same way: the
+      # person may be answering a permission prompt or taking a photo.
+      answer-timeout: ${WEB_DEVICE_TOOLS_ANSWER_TIMEOUT:2m}
   shutdown:
     # How long a shutdown waits for the runs already going before giving up on them. A replica
     # taking SIGTERM answers what it has taken on rather than dropping half-written turns, and this

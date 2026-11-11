@@ -48,6 +48,7 @@ class ChatReasoningEndpointTest {
           new ChatSessions(sessionRepo, reasonings, null),
           null,
           null,
+          null,
           reasonings,
           null,
           null,

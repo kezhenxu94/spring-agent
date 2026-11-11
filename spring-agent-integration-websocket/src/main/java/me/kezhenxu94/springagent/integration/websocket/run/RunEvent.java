@@ -37,10 +37,19 @@ public record RunEvent(long seq, String type, Map<String, Object> data) {
 
   /**
    * That a {@link #DEVICE_TOOL} call is over, and how: {@code callId} and an {@code outcome} of
-   * {@code answered}, {@code error}, {@code timeout} or {@code cancelled}. Journalled so that an
-   * app replaying the run knows which calls it must not try to claim any more.
+   * {@code answered}, {@code error}, {@code timeout}, {@code cancelled} or {@code pending}.
+   * Journalled so that an app replaying the run knows which calls it must not try to claim any
+   * more.
    */
   public static final String DEVICE_TOOL_DONE = "device-tool-done";
+
+  /**
+   * That a {@link #DEVICE_TOOL} call nobody finished in time now waits on the person: {@code
+   * callId}, {@code name} and {@code input}, as in the call. It follows the call's {@link
+   * #DEVICE_TOOL_DONE} with outcome {@code pending}; the result goes to {@code POST
+   * /api/device-calls/{callId}/result}, and the conversation's state lists it until then.
+   */
+  public static final String DEVICE_TOOL_PENDING = "device-tool-pending";
 
   /**
    * Sent to a subscriber before its backlog, carrying the last sequence number that already existed

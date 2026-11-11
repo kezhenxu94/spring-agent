@@ -40,7 +40,8 @@ class QuestionDeviceToolsTest {
   private static final String ME = "ou_me";
 
   private final WebProperties properties =
-      new WebProperties(null, null, null, Locale.ENGLISH, null, null, null, null, false, null);
+      new WebProperties(
+          null, null, null, Locale.ENGLISH, null, null, null, null, false, null, null);
   private final WebMessages messages = new WebMessages(properties);
   private final JsonMapper om = JsonMapper.builder().build();
   private final SpringAgent springAgent = mock(SpringAgent.class);
@@ -54,7 +55,13 @@ class QuestionDeviceToolsTest {
           new ChatSessions(mock(ChatSessionRepo.class), mock(ChatReasoningRepo.class), null),
           null,
           new DeviceToolDeclarations(
-              new DeviceTools(new RunJournals(properties), messages, om), messages),
+              new DeviceTools(
+                  new RunJournals(properties, List.of()),
+                  messages,
+                  om,
+                  properties,
+                  mock(me.kezhenxu94.springagent.core.dao.repo.PendingDeviceCallRepo.class)),
+              messages),
           messages,
           om);
 

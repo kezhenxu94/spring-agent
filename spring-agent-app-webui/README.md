@@ -145,6 +145,8 @@ On top of everything [the Feishu server](../spring-agent-app-feishu/README.md) t
 | `WEB_JOURNAL_RETENTION` | `30m` | How long a finished run's detail is kept for a browser that comes back to it. Past this the conversation is still there; how it was reached is not |
 | `WEB_JOURNAL_MAX_RUNS` | `500` | How many runs are held in memory at all. Finished ones are dropped first; a live run never is |
 | `WEB_QUESTION_TTL` | `24h` | How long an unanswered question stays answerable |
+| `WEB_DEVICE_TOOLS_CLAIM_TIMEOUT` | `10s` | How long a tool the agent asked a phone to run waits for an open app to pick it up. Past it the call waits on the person (as long as `WEB_QUESTION_TTL`) and their result continues the conversation later |
+| `WEB_DEVICE_TOOLS_ANSWER_TIMEOUT` | `2m` | How long a picked-up device tool waits for its result before it waits on the person the same way |
 | `WEB_LOCALE` | `en` | The language for a reader whose browser asks for one nothing is written in. Theirs is detected from `Accept-Language`; the switcher in the page overrides both |
 
 `TOOLS_SHELL_TYPE` defaults to `none` here, as on every server. This surface is reachable by everyone

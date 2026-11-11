@@ -46,6 +46,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     because it claims only its own runs, and a deployment carrying no chat surface has nothing to
  *     follow. On, every chat run is held in memory for {@code app.web.journal.retention} whether or
  *     not anybody looks, which is a cost a deployment decides for itself
+ * @param deviceTools how long a run waits on the person's device for a tool it asked it to run
  */
 @ConfigurationProperties(prefix = "app.web")
 public record WebProperties(
@@ -58,12 +59,14 @@ public record WebProperties(
     String favicon,
     String baseUrl,
     boolean followChatRuns,
-    List<String> messages) {
+    List<String> messages,
+    DeviceTools deviceTools) {
 
   public WebProperties {
     journal = journal == null ? new Journal(null, null) : journal;
     question = question == null ? new Question(null) : question;
     auth = auth == null ? new Auth(null, null) : auth;
+    deviceTools = deviceTools == null ? new DeviceTools(null, null) : deviceTools;
     // Blank is null rather than a name: it means nobody renamed this deployment, which is what
     // sends the caller to the bundle for a name in the reader's own language.
     title = title == null || title.isBlank() ? null : title.trim();
@@ -127,6 +130,22 @@ public record WebProperties(
     public Auth {
       provider = provider == null || provider.isBlank() ? "feishu" : provider.trim();
       tenantId = tenantId == null ? "" : tenantId.trim();
+    }
+  }
+
+  /**
+   * The two waits of a device tool call while the run holds it — see {@code DeviceTools} for what
+   * happens when either runs out: the call is kept pending for the person rather than failed.
+   *
+   * @param claimTimeout how long a call waits for an open app to claim it. An app that is open
+   *     claims within a second, so this is short: a run should not stall on a phone in a pocket
+   * @param answerTimeout how long a claimed call waits for its result, which may be the person
+   *     answering a permission prompt or taking a photo
+   */
+  public record DeviceTools(Duration claimTimeout, Duration answerTimeout) {
+    public DeviceTools {
+      claimTimeout = claimTimeout == null ? Duration.ofSeconds(10) : claimTimeout;
+      answerTimeout = answerTimeout == null ? Duration.ofMinutes(2) : answerTimeout;
     }
   }
 }

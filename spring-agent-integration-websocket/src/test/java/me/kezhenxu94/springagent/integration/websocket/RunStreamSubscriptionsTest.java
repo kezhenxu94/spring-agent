@@ -59,7 +59,8 @@ class RunStreamSubscriptionsTest {
   private final Outbound outbound = new Outbound();
   private final RunJournals journals =
       new RunJournals(
-          new WebProperties(null, null, null, null, null, null, null, null, false, null));
+          new WebProperties(null, null, null, null, null, null, null, null, false, null, null),
+          List.of());
   private final RunStreamSubscriptions subscriptions =
       new RunStreamSubscriptions(journals, om, outbound);
 
