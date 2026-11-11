@@ -14,19 +14,19 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.mongodb.MongoDBContainer;
 import org.testcontainers.utility.DockerImageName;
 
-@Testcontainers
 public abstract class AbstractIntegrationTest {
 
   private static final int REDIS_PORT = 6379;
 
-  @Container @ServiceConnection
+  @ServiceConnection
   static final MongoDBContainer mongoDBContainer =
-      new MongoDBContainer(DockerImageName.parse("mongo:8"));
+      // 9.0 rather than 8: mongod 8.0 and 8.3 refuse to start on Linux 6.19 to 7.0.13 over a
+      // tcmalloc rseq bug (SERVER-121912) — which is what the ubuntu-26.04 runners boot — and
+      // the failure surfaces only as the port wait timing out.
+      new MongoDBContainer(DockerImageName.parse("mongo:9.0"));
 
   /**
    * Redis 8 rather than an earlier line: the chat memory repository stores messages as RedisJSON
@@ -37,9 +37,17 @@ public abstract class AbstractIntegrationTest {
    * spring.data.redis}, which serves the repositories, while Spring AI's chat memory builds its own
    * Jedis client from {@code spring.ai.chat.memory.repository.redis}. Both are wired below.
    */
-  @Container
   static final GenericContainer<?> redisContainer =
       new GenericContainer<>(DockerImageName.parse("redis:8")).withExposedPorts(REDIS_PORT);
+
+  // Started once per test JVM and never stopped by a test class — Ryuk removes them when the JVM
+  // exits. Not @Testcontainers/@Container: that stops static containers after every class while
+  // Spring keeps its cached context, so the next class sharing that context reaches a database that
+  // is gone ("Connection refused" on the old port), depending only on which classes share a fork.
+  static {
+    mongoDBContainer.start();
+    redisContainer.start();
+  }
 
   // The tool-search advisor runs with a vector tool index, so the context cannot refresh without a
   // vector store — but the default one is in-heap, so no container is needed for it here.
