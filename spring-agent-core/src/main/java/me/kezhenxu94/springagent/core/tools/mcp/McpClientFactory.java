@@ -231,8 +231,21 @@ public class McpClientFactory implements DisposableBean {
     }
   }
 
+  /**
+   * The transport resolves its endpoint (default {@code /mcp}) against the base URL, and an
+   * absolute endpoint replaces the base's path — so the registered URL is split here, or {@code
+   * https://host/api/mcp} would be called at {@code https://host/mcp}. A URL with no path keeps the
+   * SDK's default endpoint.
+   */
   McpClientTransport buildTransport(final McpServerConfig config) {
-    return HttpClientStreamableHttpTransport.builder(config.url())
+    final var uri = URI.create(config.url());
+    final var path = uri.getRawPath() == null ? "" : uri.getRawPath();
+    final var builder =
+        HttpClientStreamableHttpTransport.builder(uri.getScheme() + "://" + uri.getRawAuthority());
+    if (!path.isEmpty() && !"/".equals(path)) {
+      builder.endpoint(uri.getRawQuery() == null ? path : path + "?" + uri.getRawQuery());
+    }
+    return builder
         .clientBuilder(new SharedClient(httpClient))
         // The transport sets its own connect timeout on the builder it is given, so this is the
         // value that counts; the shared client was built with the same one.

@@ -4,11 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.sun.net.httpserver.HttpServer;
+import io.modelcontextprotocol.client.McpClient;
+import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import me.kezhenxu94.springagent.core.dao.models.McpServerConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class McpClientFactoryTest {
 
@@ -125,6 +132,42 @@ class McpClientFactoryTest {
     // A JDK HttpClient holds a selector thread until it is collected, and the transport never
     // closes the one it builds; one per server per run is what leaked them.
     assertThat(first).isSameAs(second);
+  }
+
+  @ParameterizedTest(name = "{0} is called at {1}")
+  @DisplayName("the transport calls the registered URL's own path, not the SDK's default /mcp")
+  @CsvSource({
+    "/api/mcp, /api/mcp",
+    "/api/mcp?team=a, /api/mcp?team=a",
+    "/mcp, /mcp",
+    "'', /mcp",
+    "/, /mcp"
+  })
+  void transportCallsTheRegisteredPath(final String registered, final String called)
+      throws Exception {
+    final var requested = new CopyOnWriteArrayList<String>();
+    final var http = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    http.createContext(
+        "/",
+        exchange -> {
+          requested.add(exchange.getRequestURI().toString());
+          exchange.sendResponseHeaders(400, -1);
+          exchange.close();
+        });
+    http.start();
+    final var config =
+        server("local").toBuilder()
+            .url("http://127.0.0.1:" + http.getAddress().getPort() + registered)
+            .build();
+    try (final var client =
+        McpClient.sync(factory.buildTransport(config))
+            .requestTimeout(Duration.ofSeconds(5))
+            .build()) {
+      assertThatThrownBy(client::initialize);
+    } finally {
+      http.stop(0);
+    }
+    assertThat(requested).first().isEqualTo(called);
   }
 
   private static HttpClient httpClientOf(final Object transport) throws Exception {
