@@ -8,7 +8,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.integration.websocket.config.WebProperties;
-import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -36,17 +37,24 @@ import org.springframework.stereotype.Component;
 public class RunJournals {
 
   private final WebProperties properties;
-  private final List<RunJournalListener> listeners;
+  private final Iterable<RunJournalListener> listeners;
 
   private final ConcurrentMap<String, RunJournal> byRequestId = new ConcurrentHashMap<>();
 
   /**
-   * @param listeners resolved at the first journal rather than now: a listener is likely to need
-   *     {@code DeviceTools}, which needs this class, and resolving them eagerly is a cycle that
-   *     stops the application starting. An empty list where there are none.
+   * @param listeners resolved at each journal rather than now: a listener is likely to need {@code
+   *     DeviceTools}, which needs this class, and resolving them eagerly is a cycle that stops the
+   *     application starting. An {@code ObjectProvider} and not a {@code @Lazy List}: the lazy
+   *     list's proxy throws {@code NoSuchBeanDefinitionException} on first use where no listener
+   *     exists, so every web run in an application declaring none would fail to open its journal.
    */
+  @Autowired
   public RunJournals(
-      final WebProperties properties, @Lazy final List<RunJournalListener> listeners) {
+      final WebProperties properties, final ObjectProvider<RunJournalListener> listeners) {
+    this(properties, () -> listeners.orderedStream().iterator());
+  }
+
+  public RunJournals(final WebProperties properties, final Iterable<RunJournalListener> listeners) {
     this.properties = properties;
     this.listeners = listeners;
   }
