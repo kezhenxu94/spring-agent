@@ -115,8 +115,17 @@
  *
  * The right padding is the action's corner, reserved so a long message wraps before the button
  * rather than under it. On every line rather than only the last, which is the ordinary way round:
- * the alternative is text that reflows when the button appears and disappears. */
+ * the alternative is text that reflows when the button appears and disappears.
+ *
+ * The min-height is the one line an empty field would otherwise not have. A block with no children
+ * has no line box, and the placeholder cannot supply one — it floats at zero height on purpose, see
+ * below — so a field holding nothing at all is only its padding tall, with the placeholder clipped
+ * by the scroller. That is exactly what composer.js leaves after a send (`replaceChildren()`), while
+ * a field emptied by hand usually keeps a <br> the browser left behind and so a line: which is why
+ * the box only collapsed sometimes. `1lh` is the field's own line, so it follows the leading set in
+ * the markup; the padding is added because the box is border-box. */
 .composer-field {
+  min-height: calc(1lh + 0.6rem);
   max-height: 13rem;
   overflow-y: auto;
   padding: 0.3rem 0.5rem;
