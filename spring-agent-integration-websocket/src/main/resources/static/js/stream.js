@@ -20,6 +20,7 @@ export function closeStream() {
     state.stream.deactivate();
     state.stream = null;
   }
+  state.runView?.working(null);
   setRunning(false);
 }
 
@@ -47,6 +48,7 @@ export function attachRun(requestId, from) {
   state.replayThrough = 0;
   state.requestId = requestId;
   state.runView = state.runView ?? new RunView($('transcript'));
+  state.runView.working('working');
   setRunning(true);
   setStatus('attached');
 
@@ -73,7 +75,10 @@ export function attachRun(requestId, from) {
 
   client.onConnect = () => {
     if (state.status === 'reattaching') toast(t('run.reattached'), 'settled', 2500);
-    if (state.running) setStatus('attached');
+    if (state.running) {
+      setStatus('attached');
+      state.runView?.working('working');
+    }
     client.subscribe(`/app/runs/${requestId}`, (frame) => {
       let event;
       try {
@@ -99,6 +104,7 @@ export function attachRun(requestId, from) {
     if (client.active) {
       state.replaying = true;
       setStatus('reattaching');
+      state.runView?.working('reconnecting');
     }
   };
 

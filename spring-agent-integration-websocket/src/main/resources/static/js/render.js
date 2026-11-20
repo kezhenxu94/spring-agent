@@ -133,7 +133,14 @@ export class RunView {
     this.root = el('div', 'run page-column');
 
     this.body = el('div', 'run-body');
-    this.root.append(this.body);
+    // A sibling after the body rather than a row in it, so every row the run appends lands above it
+    // and it stays the last thing in the run without being moved. Without it a run that is between
+    // two events — a long tool call, a slow first token — looks exactly like one that has ended.
+    this.pulse = el('div', 'run-pulse');
+    this.pulse.hidden = true;
+    this.pulseLabel = el('span', LABEL);
+    this.pulse.append(el('span', 'size-1.5 shrink-0 rounded-full bg-signal dot-live'), this.pulseLabel);
+    this.root.append(this.body, this.pulse);
     container.append(this.root);
 
     // Accumulated rather than appended as HTML: markdown is not a stream format, and re-parsing the
@@ -375,8 +382,22 @@ export class RunView {
       el('div', 'mt-1 text-[13px]', data.message || ''));
   }
 
+  /**
+   * Whether the run is still going, as far as this page can tell: `working`, `reconnecting` while
+   * the connection is down and the run's state is unknown, or null once nothing more is coming.
+   * The key goes in data-i18n so a language change relabels it with everything else.
+   */
+  working(kind) {
+    this.pulse.hidden = !kind;
+    if (!kind) return;
+    const key = `run.${kind}`;
+    this.pulseLabel.dataset.i18n = key;
+    this.pulseLabel.textContent = t(key);
+  }
+
   onFinished(data) {
     this.finished = true;
+    this.working(null);
     this.root.dataset.outcome = data.outcome;
     if (data.outcome === 'CANCELLED') {
       this.row('stopped', el('div', `${LABEL} text-mist`, t('run.stopped')));

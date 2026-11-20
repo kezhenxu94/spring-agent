@@ -67,6 +67,18 @@
   to   { opacity: 1; transform: none; }
 }
 
+/* Said at the foot of a run while it is going, and gone the moment it is not. The answer arriving is
+   no evidence of either: a run spends most of its time in a tool call or before its first token,
+   saying nothing. */
+.run-pulse {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-block: 0.6rem;
+  color: var(--mist);
+}
+.run-pulse[hidden] { display: none; }
+
 /* ─────────────────────────────────────── folds ─────────────────────────────────────── */
 
 .fold {
