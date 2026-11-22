@@ -49,7 +49,9 @@ rather than by a condition, so a native image does not bake the answer in at bui
   before its own rules, and `loginSuccessHandler()` in place of `defaultSuccessUrl("/", true)`, which
   would otherwise swallow the return to `authorize`. Read its class comment before changing either —
   a bad bearer token is a 401 and never a fall back to the session, and CSRF is skipped only for a
-  request a *verified* token authenticated, never for the header's mere presence.
+  request a *verified* token authenticated, never for the header's mere presence. Both hold on
+  `/api/**` and the run stream only; on any other path an `Authorization: Bearer` header belongs to
+  whoever serves that path and is not read.
 
 **Device tools** are tools the client's own device runs. A message posted with `deviceTools` (name `device_…`, a
 description, a JSON Schema) becomes `AgentRequest.toolCallbacks` for that run — dropped if the

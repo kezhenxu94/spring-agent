@@ -5,9 +5,11 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.integration.websocket.config.NativeAuthProperties;
+import me.kezhenxu94.springagent.integration.websocket.config.RunStreamBrokerConfiguration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -20,6 +22,8 @@ import org.springframework.security.web.authentication.SimpleUrlAuthenticationSu
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -35,6 +39,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * whatever the session held, and a bad one is a 401 there and then — never a fall back to the
  * session, which would let a phone holding an expired token act as whoever last signed in to the
  * same cookie jar, and would make a token that does not work indistinguishable from one that does.
+ *
+ * <p><b>That holds on {@link #BEARER_PATHS} and nowhere else.</b> Those are what a native app
+ * calls; any other path an application serves may have a bearer scheme of its own — a webhook
+ * receiver, an MCP endpoint — whose tokens this filter cannot read, and claiming every {@code
+ * Authorization: Bearer} header would answer those callers 401 before their own check ran. Off
+ * these paths the header is not looked at, so it authenticates nobody and exempts nothing from
+ * CSRF.
  *
  * <p><b>CSRF is skipped for a request a bearer token authenticated, and only for that.</b> The
  * protection exists because a cookie is sent by the browser on its own, so a page on another origin
@@ -56,6 +67,13 @@ public class NativeAuthSecurity {
   public static final String TOKEN_PATH = "/auth/native/token";
   public static final String APPLE_PATH = "/auth/native/apple";
 
+  /**
+   * Where a bearer token is this module's: the REST endpoints and the run stream's websocket
+   * handshake, which is everything a native app calls with one.
+   */
+  static final List<String> BEARER_PATHS =
+      List.of("/api/**", RunStreamBrokerConfiguration.ENDPOINT);
+
   /** Set on a request a valid bearer token authenticated. */
   static final String BEARER_AUTHENTICATED = NativeAuthSecurity.class.getName() + ".BEARER";
 
@@ -76,7 +94,9 @@ public class NativeAuthSecurity {
     final var paths = PathPatternRequestMatcher.withDefaults();
     // Before the CSRF filter, which is what makes the exemption below possible to decide: by the
     // time CsrfFilter asks, the token has been verified or the request has been refused.
-    http.addFilterBefore(new BearerFilter(), CsrfFilter.class)
+    final var bearerPaths =
+        new OrRequestMatcher(BEARER_PATHS.stream().<RequestMatcher>map(paths::matcher).toList());
+    http.addFilterBefore(new BearerFilter(bearerPaths), CsrfFilter.class)
         .csrf(
             it ->
                 it.ignoringRequestMatchers(
@@ -134,9 +154,12 @@ public class NativeAuthSecurity {
     }
   }
 
+  @RequiredArgsConstructor
   private final class BearerFilter extends OncePerRequestFilter {
 
     private static final String PREFIX = "Bearer ";
+
+    private final RequestMatcher paths;
 
     @Override
     protected void doFilterInternal(
@@ -147,6 +170,7 @@ public class NativeAuthSecurity {
       final var header = request.getHeader(HttpHeaders.AUTHORIZATION);
       if (!properties.enabled()
           || header == null
+          || !paths.matches(request)
           || !header.regionMatches(true, 0, PREFIX, 0, PREFIX.length())) {
         chain.doFilter(request, response);
         return;

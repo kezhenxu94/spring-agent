@@ -173,6 +173,20 @@ class NativeAuthTest {
   }
 
   @Test
+  @DisplayName("a bearer token off the native paths is somebody else's: not refused, not honoured")
+  void bearerOffNativePaths() throws Exception {
+    mvc.perform(get("/index.html").header(HttpHeaders.AUTHORIZATION, "Bearer not-a-token"))
+        .andExpect(status().isOk());
+    // And a valid one authenticates nobody there: the request is as anonymous as without it.
+    final var token = exchange(authorize("springagent://auth"), VERIFIER);
+    mvc.perform(
+            get("/files/something")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .accept(MediaType.TEXT_HTML))
+        .andExpect(status().isFound());
+  }
+
+  @Test
   @DisplayName("a POST with a bearer token needs no CSRF token; one with a session still does")
   void csrfOnlyForSessions() throws Exception {
     final var token = exchange(authorize("springagent://auth"), VERIFIER);
