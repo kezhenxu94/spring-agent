@@ -58,8 +58,10 @@ class AutoSkillToolsAdvisorTest {
     return turnWith(toolCalls, ToolCallingChatOptions.builder().build());
   }
 
-  private static String systemTextOf(final ChatClientRequest request) {
-    return request.prompt().getSystemMessage().getText();
+  /** The newest message's text, which is where the reminder goes. */
+  private static String latestTextOf(final ChatClientRequest request) {
+    final var messages = request.prompt().getInstructions();
+    return messages.get(messages.size() - 1).getText();
   }
 
   @Nested
@@ -74,14 +76,13 @@ class AutoSkillToolsAdvisorTest {
       final var advised = advisor(20).before(request, chain);
 
       assertThat(advised).isSameAs(request);
-      assertThat(systemTextOf(advised)).isEqualTo("You are an agent.");
     }
 
     @Test
     @DisplayName("a turn that has called nothing at all is left alone")
     void noToolCalls() {
       assertThat(advisor(20).before(turnWith(0), chain)).isNotNull();
-      assertThat(systemTextOf(advisor(20).before(turnWith(0), chain)))
+      assertThat(latestTextOf(advisor(20).before(turnWith(0), chain)))
           .doesNotContain("Offer a skill");
     }
   }
@@ -95,13 +96,13 @@ class AutoSkillToolsAdvisorTest {
     void atThreshold() {
       final var advised = advisor(20).before(turnWith(20), chain);
 
-      assertThat(systemTextOf(advised)).startsWith("You are an agent.").contains("Offer a skill");
+      assertThat(latestTextOf(advised)).contains("Offer a skill");
     }
 
     @Test
     @DisplayName("the appended text names how many calls the turn has actually made")
     void carriesTheCount() {
-      assertThat(systemTextOf(advisor(20).before(turnWith(34), chain))).contains("34 calls");
+      assertThat(latestTextOf(advisor(20).before(turnWith(34), chain))).contains("34 calls");
     }
 
     @Test
@@ -129,7 +130,7 @@ class AutoSkillToolsAdvisorTest {
               .prompt(new Prompt(messages, ToolCallingChatOptions.builder().build()))
               .build();
 
-      assertThat(systemTextOf(advisor(3).before(request, chain))).contains("3 calls");
+      assertThat(latestTextOf(advisor(3).before(request, chain))).contains("3 calls");
     }
 
     @Test
@@ -143,40 +144,41 @@ class AutoSkillToolsAdvisorTest {
                       ToolCallingChatOptions.builder().build()))
               .build();
 
-      assertThat(systemTextOf(advisor(1).before(request, chain))).doesNotContain("Offer a skill");
+      assertThat(latestTextOf(advisor(1).before(request, chain))).doesNotContain("Offer a skill");
     }
 
     @Test
     @DisplayName(
-        "with several system messages — one per configured system-prompt part — the reminder"
-            + " lands on the last one, not the first")
-    void appendsToTheLastOfSeveral() {
-      final List<Message> messages =
-          List.of(
-              new SystemMessage("Static house rules."),
-              new SystemMessage("You are an agent."),
-              new UserMessage("do something expensive"),
-              AssistantMessage.builder()
-                  .content("")
-                  .toolCalls(
-                      List.of(new AssistantMessage.ToolCall("a", "function", "ReadFile", "{}")))
-                  .build());
+        "the reminder follows the turn and every earlier message is left as it was, so the"
+            + " prefix a provider caches on is the one the previous round sent")
+    void appendsAfterTheTurn() {
+      final var request = turnWith(1);
+
+      final var before = request.prompt().getInstructions();
+      final var after = advisor(1).before(request, chain).prompt().getInstructions();
+
+      assertThat(after).hasSize(before.size() + 1);
+      assertThat(after.subList(0, before.size())).containsExactlyElementsOf(before);
+      assertThat(after.get(before.size()))
+          .isInstanceOfSatisfying(
+              UserMessage.class, user -> assertThat(user.getText()).contains("Offer a skill"));
+    }
+
+    @Test
+    @DisplayName("a user message already last is extended, never followed by a second one")
+    void mergesIntoATrailingUserMessage() {
+      final List<Message> messages = new ArrayList<>(turnWith(1).prompt().getInstructions());
+      messages.add(new UserMessage("arrived mid-run"));
       final var request =
           ChatClientRequest.builder()
               .prompt(new Prompt(messages, ToolCallingChatOptions.builder().build()))
               .build();
 
-      final var result = advisor(1).before(request, chain);
-      final var systemMessages =
-          result.prompt().getInstructions().stream()
-              .filter(SystemMessage.class::isInstance)
-              .toList();
+      final var after = advisor(1).before(request, chain).prompt().getInstructions();
 
-      assertThat(systemMessages).hasSize(2);
-      assertThat(((SystemMessage) systemMessages.get(0)).getText())
-          .isEqualTo("Static house rules.");
-      assertThat(((SystemMessage) systemMessages.get(1)).getText())
-          .startsWith("You are an agent.")
+      assertThat(after).hasSize(messages.size());
+      assertThat(after.get(after.size() - 1).getText())
+          .startsWith("arrived mid-run")
           .contains("Offer a skill");
     }
   }

@@ -10,7 +10,7 @@ import org.springframework.ai.chat.client.advisor.api.AdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.BaseAdvisor;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
-import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
@@ -22,7 +22,7 @@ import org.springframework.util.Assert;
  * offer the user a skill made out of what it just worked out.
  *
  * <p>Nothing here writes a skill, and nothing here asks the user anything. All it does is append a
- * paragraph to the system message; the offer is a sentence the model adds to the answer it was
+ * reminder after the turn so far; the offer is a sentence the model adds to the answer it was
  * already giving, and the skill is written on a later turn, with the tools the run already has,
  * only if the user says yes. That is the whole design: a run that was expensive is the only
  * evidence available that the same question will be expensive again, and the person who asked it is
@@ -94,38 +94,31 @@ public final class AutoSkillToolsAdvisor implements BaseAdvisor {
     // Rendered here rather than at build() because the count is what makes the offer concrete, and
     // only the iterations that actually fire pay for it.
     final var reminder = skillPrompt.render(Map.of("TOOL_CALL_COUNT", toolCalls));
-    // Not Prompt.augmentSystemMessage: it mutates the *first* SystemMessage it finds and stops
-    // there, which was harmless while a run ever carried exactly one — see SpringAgentProperties.Ai
-    // for how it can now carry several, one per configured system-prompt part. Appended to the last
-    // instead, so this reminder lands after whatever an operator put last regardless of how many
-    // pieces came before it.
-    final var augmented = appendToLastSystemMessage(chatClientRequest.prompt(), reminder);
+    // After the turn rather than in the system prompt. The count changes every round, and a system
+    // prompt that changes is a cache miss for the whole conversation behind it, on every provider;
+    // at the end, everything before it is what the previous round sent. Not remembered either: the
+    // loop keeps its history from the request it handed down, before this advisor saw it.
+    final var augmented = appendAsLatestUserText(chatClientRequest.prompt(), reminder);
     return chatClientRequest.mutate().prompt(augmented).build();
   }
 
   /**
-   * {@code text} appended to the last {@link SystemMessage} in {@code prompt}, or a new one at the
-   * front where the prompt carries none. See {@link #before} for why this is not {@link
-   * Prompt#augmentSystemMessage}.
+   * {@code prompt} with {@code text} as its newest user content: merged into the last message where
+   * that is already the user's — a message that arrived mid-run — since two user messages in a row
+   * is refused by some endpoints, DeepSeek's reasoner among them; a message of its own otherwise.
    */
-  private static Prompt appendToLastSystemMessage(final Prompt prompt, final String text) {
+  private static Prompt appendAsLatestUserText(final Prompt prompt, final String text) {
     final var messages = new ArrayList<>(prompt.getInstructions());
-    for (int i = messages.size() - 1; i >= 0; i--) {
-      if (messages.get(i) instanceof SystemMessage systemMessage) {
-        messages.set(
-            i,
-            systemMessage
-                .mutate()
-                .text(
-                    systemMessage.getText()
-                        + System.lineSeparator()
-                        + System.lineSeparator()
-                        + text)
-                .build());
-        return new Prompt(messages, prompt.getOptions());
-      }
+    final var last = messages.isEmpty() ? null : messages.get(messages.size() - 1);
+    if (last instanceof UserMessage user) {
+      messages.set(
+          messages.size() - 1,
+          user.mutate()
+              .text(user.getText() + System.lineSeparator() + System.lineSeparator() + text)
+              .build());
+    } else {
+      messages.add(new UserMessage(text));
     }
-    messages.add(0, SystemMessage.builder().text(text).build());
     return new Prompt(messages, prompt.getOptions());
   }
 

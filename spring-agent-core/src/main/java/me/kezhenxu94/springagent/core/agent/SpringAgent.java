@@ -1,10 +1,12 @@
 package me.kezhenxu94.springagent.core.agent;
 
 import com.google.common.base.Strings;
+import jakarta.annotation.PostConstruct;
 import java.io.InterruptedIOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -20,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -202,6 +205,38 @@ public class SpringAgent {
 
   private PromptTemplate loadTurnContext() {
     return new PromptTemplate(LocalizedPrompt.text("turn-context", appConfiguration.locale()));
+  }
+
+  /** What turn-context.md renders, and so what a system prompt has no need to name. */
+  private static final Pattern TURN_CONTEXT_VARIABLE =
+      Pattern.compile("\\{(userId|chatId|chatType|messageId|threadId|parentId|mentions|homeDirs)}");
+
+  /**
+   * Says so where a deployment's own system prompt still names what the turn context carries. It
+   * renders as it always did — this is not an error — but such a prompt differs from one message or
+   * one person to the next, and so neither it nor anything after it is ever served from a
+   * provider's prompt cache. Nothing else would tell anybody: the cost only shows on the bill.
+   */
+  @PostConstruct
+  void warnOfAnUncacheableSystemPrompt() {
+    final var ai = appConfiguration.ai();
+    final var parts =
+        ai.systemPromptParts().isEmpty() ? List.of(ai.systemPrompt()) : ai.systemPromptParts();
+    final var named = new LinkedHashSet<String>();
+    for (final var part : parts) {
+      final var matcher = TURN_CONTEXT_VARIABLE.matcher(part == null ? "" : part);
+      while (matcher.find()) {
+        named.add(matcher.group());
+      }
+    }
+    if (!named.isEmpty()) {
+      log.warn(
+          "app.ai.system-prompt names {}, which every user message already carries in its"
+              + " <system-reminder> block (core/prompts/turn-context.md). A system prompt naming"
+              + " them differs from one message to the next and is never served from a prompt"
+              + " cache, nor is anything after it; remove them to have it cached.",
+          String.join(" ", named));
+    }
   }
 
   /**

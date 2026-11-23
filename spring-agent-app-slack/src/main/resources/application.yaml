@@ -355,15 +355,19 @@ spring:
         # either: the turn simply stops, with stop_reason=max_tokens and nothing in the log. Named
         # here so the default is this project's rather than the SDK's.
         max-tokens: ${ANTHROPIC_MAX_TOKENS:8192}
-        # Anthropic's own prompt caching. The system prompt carries nothing that changes from one
-        # message to the next — what does travels at the top of the user's message instead, see
-        # TurnContextAdvisor — so a turn's system prompt is the previous turn's byte for byte, and
-        # `system-only` has something worth paying a cache write for once and reading back on every
-        # turn after. Where app.ai.system-prompt is a list, each piece is its own system block and
-        # cache_control lands on the second-to-last. Off by default costs nothing extra; on, a deployment pays one cache write per
-        # five-minute TTL window and reads back cheaper on every turn inside it.
+        # Anthropic's own prompt caching. Anthropic is the one provider that caches only where a
+        # request marks it to; OpenAI, DeepSeek, DashScope and Gemini reuse a repeated prefix on
+        # their own. Both kinds need the same thing, which is why the system prompt carries nothing
+        # that changes from one message to the next (see TurnContextAdvisor). `conversation-history`
+        # marks up to three places — the tools, the system prompt and the newest user message — so a
+        # round of the tool loop reads back everything the previous round sent and pays in full only
+        # for what it added. A write costs 1.25x the input price and a read 0.1x, for five minutes
+        # after the last use, so a conversation recovers the cost from its second request on.
+        # `system-only` caches the system prompt alone, and `none` turns it off. Where
+        # app.ai.system-prompt is a list, each piece is its own system block and the system mark
+        # lands on the second-to-last.
         cache-options:
-          strategy: ${ANTHROPIC_CACHE_STRATEGY:none}
+          strategy: ${ANTHROPIC_CACHE_STRATEGY:conversation-history}
           # Required alongside `strategy` above: Spring AI still joins every system message into one
           # string unless this is also true, whatever the strategy says.
           multi-block-system-caching: ${ANTHROPIC_CACHE_MULTI_BLOCK_SYSTEM:true}

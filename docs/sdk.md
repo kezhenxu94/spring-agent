@@ -929,7 +929,8 @@ message to the next, so core renders them into a `<system-reminder>` block at th
 message instead (`core/prompts/turn-context.md`, put there by `TurnContextAdvisor`). That keeps the
 system prompt, and every earlier turn after it, identical from one request to the next, which is what
 any provider's prompt cache — OpenAI's, DeepSeek's, Gemini's implicit one, Anthropic's explicit one —
-matches on. A system prompt naming `{messageId}` is different on every message and is never cached.
+matches on. A system prompt naming `{messageId}` is different on every message and is never cached;
+`SpringAgent` logs a warning at startup for one that names any of them.
 The block is remembered with the turn on purpose; `TurnContextAdvisor.strip` is what removes it before
 a remembered message is shown to a person.
 
