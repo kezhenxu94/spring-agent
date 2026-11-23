@@ -25,8 +25,10 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.advisors.MemoryToolCallingAdvisor;
+import me.kezhenxu94.springagent.core.advisors.TurnContextAdvisor;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
+import me.kezhenxu94.springagent.core.config.LocalizedPrompt;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.PendingQuestion;
 import me.kezhenxu94.springagent.core.dao.repo.PendingQuestionRepo;
@@ -48,6 +50,7 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionEligibilityChecker;
@@ -189,6 +192,17 @@ public class SpringAgent {
    */
   private final SingletonSupplier<Advisor> toolCallingAdvisor =
       SingletonSupplier.of(this::buildToolCallingAdvisor);
+
+  /**
+   * What is true of the message being answered, rendered per run and put at the top of the user's
+   * message by {@link TurnContextAdvisor} — see that class for why not in the system prompt.
+   */
+  private final SingletonSupplier<PromptTemplate> turnContext =
+      SingletonSupplier.of(this::loadTurnContext);
+
+  private PromptTemplate loadTurnContext() {
+    return new PromptTemplate(LocalizedPrompt.text("turn-context", appConfiguration.locale()));
+  }
 
   /**
    * The runs in flight, by request id. Four things read it: a cancel, which is the only reason it
@@ -1132,8 +1146,7 @@ public class SpringAgent {
    * carries this request's own identity — see that class for why joining them back into one string
    * would have thrown the seam away.
    */
-  private List<Message> systemMessagesFor(final AgentRequest request) {
-    final var variables = promptVariablesFor(request);
+  private List<Message> systemMessagesFor(final Map<String, Object> variables) {
     final var parts = appConfiguration.ai().systemPromptParts();
     if (parts.isEmpty()) {
       return List.of(
@@ -1155,11 +1168,13 @@ public class SpringAgent {
       final AgentRequest request,
       final AgentComposition composition,
       final Map<String, Object> toolContext) {
-    final var systemMessages = systemMessagesFor(request);
+    final var variables = promptVariablesFor(request);
+    final var systemMessages = systemMessagesFor(variables);
 
     // The tools the composition delivers as advisors rather than as callbacks, auto-memory among
     // them. What follows is the run's own wiring, which is nothing to do with tools.
     final var advisors = new ArrayList<Advisor>(composition.advisors());
+    advisors.add(new TurnContextAdvisor(turnContext.obtain().render(variables)));
     // The tool advisor is registered here rather than left to ChatClient for two reasons.
     //
     // One, it is what keeps the conversation's memory — see MemoryToolCallingAdvisor for why that

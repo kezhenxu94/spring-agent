@@ -49,9 +49,8 @@ public class HomeDirsPromptVariables implements PromptVariablesContributor {
    * directories are made when something is first written to them, so listing what exists now would
    * be a snapshot the model cannot act on.
    *
-   * <p>Through the bundle, because this lands inside the application's system prompt: a deployment
-   * that wrote that prompt in its own language would otherwise find three English sentences in the
-   * middle of it.
+   * <p>Through the bundle, because this lands in the context block at the top of every user
+   * message, read beside a system prompt the deployment may have written in its own language.
    *
    * @param audience the message key naming who else can see this home
    */

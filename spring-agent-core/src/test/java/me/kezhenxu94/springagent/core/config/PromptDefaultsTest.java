@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
 import org.springframework.boot.SpringApplication;
 import org.springframework.core.env.MapPropertySource;
@@ -149,5 +151,50 @@ class PromptDefaultsTest {
                           .as("%s in %s", property, locale)
                           .containsExactlyInAnyOrderElementsOf(expected);
                     }));
+  }
+
+  /**
+   * A provider's prompt cache matches on the prefix, so a system prompt naming anything that
+   * differs per message — {messageId} above all — is a cache miss for everything after it, the
+   * whole conversation included. Those values belong in core/prompts/turn-context.md.
+   */
+  @ParameterizedTest
+  @ValueSource(strings = {"en", "zh_CN"})
+  @DisplayName("the system prompt names nothing that changes from one message to the next")
+  void systemPromptIsTheSameForEveryMessage(final String locale) {
+    final var matcher =
+        Pattern.compile("\\{(\\w+)\\}")
+            .matcher(String.valueOf(promptsIn(locale).get("app.ai.system-prompt")));
+    final var named = new java.util.HashSet<String>();
+    while (matcher.find()) {
+      named.add(matcher.group(1));
+    }
+    assertThat(named).containsExactly("replyFormat");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"en", "zh_CN"})
+  @DisplayName("the turn context renders, and carries every per-message value")
+  void turnContextRenders(final String locale) {
+    final var variables = new HashMap<String, Object>();
+    VARIABLES.forEach(name -> variables.put(name, "<" + name + ">"));
+
+    final var rendered =
+        new PromptTemplate(
+                LocalizedPrompt.text(
+                    "turn-context",
+                    "en".equals(locale) ? Locale.ENGLISH : Locale.SIMPLIFIED_CHINESE))
+            .render(variables);
+
+    assertThat(rendered)
+        .contains(
+            "<userId>",
+            "<chatId>",
+            "<chatType>",
+            "<messageId>",
+            "<threadId>",
+            "<parentId>",
+            "<mentions>",
+            "<homeDirs>");
   }
 }

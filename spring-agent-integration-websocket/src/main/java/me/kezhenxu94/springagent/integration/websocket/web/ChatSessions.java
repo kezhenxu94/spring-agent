@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import me.kezhenxu94.springagent.core.advisors.TurnContextAdvisor;
 import me.kezhenxu94.springagent.core.dao.models.ChatReasoning;
 import me.kezhenxu94.springagent.core.dao.models.ChatSession;
 import me.kezhenxu94.springagent.core.dao.repo.ChatReasoningRepo;
@@ -134,7 +135,8 @@ public class ChatSessions {
         // A user message is the turn boundary, and the only one chat memory has: a run begins when
         // somebody says something and ends when the agent stops answering.
         userRow = turns.size();
-        turns.add(new Turn("user", message.getText(), List.of(), null));
+        // Without the context block the runtime opened it with, which is not what they said.
+        turns.add(new Turn("user", TurnContextAdvisor.strip(message.getText()), List.of(), null));
         toolsRow = -1;
         calls = new ArrayList<>();
         continue;
@@ -282,7 +284,7 @@ public class ChatSessions {
   private String derivedTitleOf(final ChatSession session) {
     return chatMemory.get(session.id()).stream()
         .filter(it -> it.getMessageType() == MessageType.USER)
-        .map(it -> it.getText() == null ? "" : it.getText().strip())
+        .map(it -> it.getText() == null ? "" : TurnContextAdvisor.strip(it.getText()).strip())
         .filter(it -> !it.isEmpty())
         .findFirst()
         .map(

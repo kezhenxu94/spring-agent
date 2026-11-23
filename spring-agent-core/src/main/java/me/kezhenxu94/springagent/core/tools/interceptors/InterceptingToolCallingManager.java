@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.advisors.TurnContextAdvisor;
 import me.kezhenxu94.springagent.core.agent.QueuedMessages;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
@@ -137,7 +138,8 @@ public class InterceptingToolCallingManager implements ToolCallingManager {
     final var history = new ArrayList<>(result.conversationHistory());
     // Already framed by QueuedMessages, which is the only party that knows whether a message came
     // from the person whose run this is or from an administrator speaking into it.
-    arrived.forEach(message -> history.add(new UserMessage(message)));
+    // Defused as the message that opened the turn was: only the runtime writes a system-reminder.
+    arrived.forEach(message -> history.add(new UserMessage(TurnContextAdvisor.defuse(message))));
     return ToolExecutionResult.builder()
         .conversationHistory(history)
         .returnDirect(result.returnDirect())

@@ -585,7 +585,7 @@ Every run carries a user id, and that id — not the process — owns the state.
 `artifacts/`, and the filesystem tools are confined to those roots, so one user's agent cannot read
 another's files. A request that names a `groupId` or a `tenantId` also reaches the group's and the
 tenant's homes, which is how a group chat has knowledge, skills and memories of its own;
-`{homeDirs}` in the system prompt is what tells the model which homes this run can see and who else
+`{homeDirs}`, in the context block at the top of each user message, is what tells the model which homes this run can see and who else
 can read what it writes there.
 
 The memory tools reach all three, addressed by a `scope` parameter — `own`, `group` or `tenant`,
@@ -921,8 +921,17 @@ module that answers.
 `core/prompts/system-prompt.md` and its per-locale siblings. Override the property to give the agent
 your own persona and house rules. It is rendered per request over a fixed variable set — `{userId}`
 `{chatId}` `{chatType}` `{messageId}` `{threadId}` `{parentId}` `{mentions}` `{replyFormat}`
-`{homeDirs}` — and naming a variable that is not supplied fails the render, so a replacement has to
-carry every one of them. `PromptVariablesContributor` is how a bean of yours adds more.
+`{homeDirs}` — and naming a variable that is not supplied fails the render.
+`PromptVariablesContributor` is how a bean of yours adds more.
+
+The shipped prompt names only `{replyFormat}`, and a replacement should too. The rest change from one
+message to the next, so core renders them into a `<system-reminder>` block at the top of the user's
+message instead (`core/prompts/turn-context.md`, put there by `TurnContextAdvisor`). That keeps the
+system prompt, and every earlier turn after it, identical from one request to the next, which is what
+any provider's prompt cache — OpenAI's, DeepSeek's, Gemini's implicit one, Anthropic's explicit one —
+matches on. A system prompt naming `{messageId}` is different on every message and is never cached.
+The block is remembered with the turn on purpose; `TurnContextAdvisor.strip` is what removes it before
+a remembered message is shown to a person.
 
 `{replyFormat}` is filled by whichever surface the answer lands on, with how it wants the answer
 written. Implement it for your own surface rather than putting formatting rules in the system prompt.

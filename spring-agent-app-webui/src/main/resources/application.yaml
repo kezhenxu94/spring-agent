@@ -385,14 +385,12 @@ spring:
         # either: the turn simply stops, with stop_reason=max_tokens and nothing in the log. Named
         # here so the default is this project's rather than the SDK's.
         max-tokens: ${ANTHROPIC_MAX_TOKENS:8192}
-        # Anthropic's own prompt caching, over the seam core's SpringAgent already builds for it:
-        # every run's system prompt reaches AnthropicChatModel as two SystemMessages, not one — the
-        # operator's fixed persona and house rules, then a second block carrying this request's own
-        # {userId}, {replyFormat} and the rest, split at the first template placeholder in
-        # app.ai.system-prompt. `system-only` is what makes Spring AI notice: with two system
-        # messages and this turned on it puts cache_control on the second-to-last block, which is
-        # the static one — the one worth paying a cache write for once and reading back on every
-        # turn after. Off by default costs nothing extra; on, a deployment pays one cache write per
+        # Anthropic's own prompt caching. The system prompt carries nothing that changes from one
+        # message to the next — what does travels at the top of the user's message instead, see
+        # TurnContextAdvisor — so a turn's system prompt is the previous turn's byte for byte, and
+        # `system-only` has something worth paying a cache write for once and reading back on every
+        # turn after. Where app.ai.system-prompt is a list, each piece is its own system block and
+        # cache_control lands on the second-to-last. Off by default costs nothing extra; on, a deployment pays one cache write per
         # five-minute TTL window and reads back cheaper on every turn inside it.
         cache-options:
           strategy: ${ANTHROPIC_CACHE_STRATEGY:none}
@@ -934,14 +932,14 @@ app:
     # single block of text the model reads — five and a half thousand characters, against a few
     # hundred for even the wordiest tool.
     #
-    # Rendered per request with these variables: {userId} {chatId} {chatType} {messageId} {threadId}
-    # {parentId} {mentions} {replyFormat} {homeDirs} — referencing any other name will fail the
-    # render, so a translation has to carry every one of them.
-    #
-    # {homeDirs} lists the homes this request reaches, one line each: the sender's own, the group
-    # chat's when the message came from one, and the tenant's. The tools are already allowed into all
-    # of them; this is what tells the model they exist, and who else can read what it puts there
-    # (HomeDirsPromptVariables, which localizes its own lines through CoreMessages).
+    # The shipped prompt names only {replyFormat}. What changes from one message to the next — the
+    # sender, chat, message, thread and parent ids, the mentions, and the homes the run reaches — is
+    # not in it: core/prompts/turn-context.md renders those into a <system-reminder> block at the
+    # top of each user message (TurnContextAdvisor), which is what keeps the system prompt, and so
+    # everything after it, servable from a provider's prompt cache. An override may still name
+    # {userId} {chatId} {chatType} {messageId} {threadId} {parentId} {mentions} {homeDirs}; it then
+    # differs on every message and nothing after the first one of them is ever cached. Referencing
+    # any other name fails the render.
     #
     # {replyFormat} is filled by whichever surface the answer lands on, with how it wants one written
     # — for Feishu, the card markdown and the difference between mentioning somebody and merely

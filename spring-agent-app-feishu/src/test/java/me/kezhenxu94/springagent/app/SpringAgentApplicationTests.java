@@ -93,8 +93,10 @@ class SpringAgentApplicationTests extends AbstractIntegrationTest {
                     // reaches.
                     "homeDirs", "- /data/ou_1 — yours alone, nobody else sees."));
 
-    assertThat(rendered).contains("ou_1", "oc_1").doesNotContain("{replyFormat}");
-    assertThat(rendered).contains("/data/ou_1").doesNotContain("{homeDirs}");
+    assertThat(rendered).doesNotContain("{replyFormat}");
+    // None of this message's own values: they travel in the user message's context block, and a
+    // system prompt carrying them would differ on every message and never be served from a cache.
+    assertThat(rendered).doesNotContain("ou_1", "oc_1", "om_1", "/data/ou_1");
     // The permission rules name the tool exactly as it is registered; a near miss reads fine to a
     // human and leaves the model calling something that does not exist.
     assertThat(rendered).contains("AskUserQuestionTool");

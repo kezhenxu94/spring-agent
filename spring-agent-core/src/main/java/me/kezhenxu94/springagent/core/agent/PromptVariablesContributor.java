@@ -3,7 +3,8 @@ package me.kezhenxu94.springagent.core.agent;
 import java.util.Map;
 
 /**
- * System-prompt variables a surface contributes to every run, whoever started it.
+ * Prompt variables a surface contributes to every run, whoever started it — rendered into the
+ * system prompt and into the context block at the top of the user's message alike.
  *
  * <p>The counterpart of {@link AgentRequest#promptVariables()} for what a surface knows before any
  * request exists — how its own client renders what the model writes, say. Declared as a
@@ -17,9 +18,9 @@ import java.util.Map;
 public interface PromptVariablesContributor {
 
   /**
-   * The variables for this run. The names have to be ones the configured system prompt knows —
-   * referencing a name the template does not declare is ignored, while a template slot nothing
-   * fills fails the render, which is why core defaults the optional ones itself.
+   * The variables for this run. The names have to be ones the prompts know — referencing a name the
+   * template does not declare is ignored, while a template slot nothing fills fails the render,
+   * which is why core defaults the optional ones itself.
    */
   Map<String, Object> variables(AgentRequest request);
 }

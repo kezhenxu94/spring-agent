@@ -32,6 +32,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import me.kezhenxu94.springagent.core.advisors.MemoryToolsAdvisor;
+import me.kezhenxu94.springagent.core.advisors.TurnContextAdvisor;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.LocalizedPrompt;
@@ -1444,7 +1445,9 @@ class SpringAgentTest {
                         assistant -> assertThat(assistant.hasToolCalls()).isTrue()));
     // And carried once: memory is prepended on every iteration beside the loop's own history, so a
     // turn appearing twice is the failure this arrangement could otherwise introduce.
-    assertThat(second.stream().filter(m -> "hi".equals(m.getText())).count()).isEqualTo(1);
+    assertThat(
+            second.stream().filter(m -> "hi".equals(TurnContextAdvisor.strip(m.getText()))).count())
+        .isEqualTo(1);
   }
 
   /** Keeps everything a JPA deployment's repository would, and drops everything it would not. */
@@ -1659,7 +1662,9 @@ class SpringAgentTest {
       // Named after the run it answers, so a listener can say which run the tokens came from.
       final var model =
           lastPrompt.getInstructions().stream()
-                  .anyMatch(message -> SUBAGENT_MESSAGE.equals(message.getText()))
+                  .anyMatch(
+                      message ->
+                          SUBAGENT_MESSAGE.equals(TurnContextAdvisor.strip(message.getText())))
               ? "child-model"
               : "parent-model";
       return ChatResponse.builder()

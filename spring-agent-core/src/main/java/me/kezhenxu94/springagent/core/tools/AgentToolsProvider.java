@@ -19,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.advisors.AutoSkillToolsAdvisor;
 import me.kezhenxu94.springagent.core.advisors.MemoryToolsAdvisor;
+import me.kezhenxu94.springagent.core.advisors.TurnContextAdvisor;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.config.Admins;
@@ -443,10 +444,20 @@ public class AgentToolsProvider {
             ? new KnowledgeScope(request.userId(), request.groupId(), request.tenantId())
             : stated.scope();
     final var extra = stated == null ? null : stated.filter();
+    // The user message opens with the turn's context block (TurnContextAdvisor), which is ids and
+    // paths: searched on, it would pull every passage towards whatever mentions them.
     final List<QueryTransformer> transformers =
         stated != null && stated.hasQuery()
             ? List.of(query -> query.mutate().text(stated.query()).build())
-            : List.of();
+            : List.of(query -> query.mutate().text(TurnContextAdvisor.strip(query.text())).build());
+    final var augmenter =
+        ContextualQueryAugmenter.builder()
+            .allowEmptyContext(true)
+            .promptTemplate(
+                new PromptTemplate(
+                    LocalizedPrompt.resource(
+                        KNOWLEDGE_RETRIEVAL_PROMPT, appConfiguration.locale())))
+            .build();
     return Optional.ofNullable(knowledgeBase.getIfAvailable())
         .map(
             base ->
@@ -454,14 +465,22 @@ public class AgentToolsProvider {
                     .documentRetriever(reporting(base.retrieverFor(scope, extra), knowledgeHandler))
                     .queryTransformers(transformers)
                     .taskExecutor(knowledgeRetrievalExecutor)
+                    // The block stays where every other turn has it, at the very top, rather than
+                    // under the retrieved passages as part of "Query:".
                     .queryAugmenter(
-                        ContextualQueryAugmenter.builder()
-                            .allowEmptyContext(true)
-                            .promptTemplate(
-                                new PromptTemplate(
-                                    LocalizedPrompt.resource(
-                                        KNOWLEDGE_RETRIEVAL_PROMPT, appConfiguration.locale())))
-                            .build())
+                        (query, documents) -> {
+                          final var block = TurnContextAdvisor.leading(query.text());
+                          final var augmented =
+                              augmenter.augment(
+                                  query
+                                      .mutate()
+                                      .text(TurnContextAdvisor.strip(query.text()))
+                                      .build(),
+                                  documents);
+                          return block.isEmpty()
+                              ? augmented
+                              : augmented.mutate().text(block + "\n\n" + augmented.text()).build();
+                        })
                     // After the tool advisor, inside its loop, and this is the constraint that
                     // decides the number — not tidiness.
                     //
