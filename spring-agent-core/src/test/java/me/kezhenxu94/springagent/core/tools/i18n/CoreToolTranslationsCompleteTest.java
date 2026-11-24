@@ -71,6 +71,9 @@ class CoreToolTranslationsCompleteTest {
   private static java.util.Map<String, ToolTextsInventory.English> english;
   private static ModuleToolTexts texts;
 
+  /** Core's own English for a tool whose declared English it replaces, as the model reads it. */
+  private static ModuleToolTexts englishOverrides;
+
   @BeforeAll
   static void inventory() throws Exception {
     english =
@@ -82,6 +85,11 @@ class CoreToolTranslationsCompleteTest {
             "core/tools",
             me.kezhenxu94.springagent.core.config.LocalizedPrompt.TOOLS_LOCATION,
             Locale.of("zh", "CN"));
+    englishOverrides =
+        new ModuleToolTexts(
+            "core/tools",
+            me.kezhenxu94.springagent.core.config.LocalizedPrompt.TOOLS_LOCATION,
+            Locale.ENGLISH);
   }
 
   @Test
@@ -131,19 +139,27 @@ class CoreToolTranslationsCompleteTest {
             english.forEach(
                 (tool, declared) -> {
                   final var translated = texts.description(tool);
-                  if (translated != null && declared.description().length() >= TOO_SHORT_TO_JUDGE) {
+                  // Against the English the model reads, which is core's own where it replaced
+                  // the declared text with a shorter one.
+                  final var overridden = englishOverrides.description(tool);
+                  final var reference = overridden != null ? overridden : declared.description();
+                  if (translated != null && reference.length() >= TOO_SHORT_TO_JUDGE) {
                     softly
-                        .assertThat((double) translated.length() / declared.description().length())
+                        .assertThat((double) translated.length() / reference.length())
                         .as(
                             "%s's description is %d characters against %d of English, which reads"
                                 + " as abandoned rather than translated",
-                            tool, translated.length(), declared.description().length())
+                            tool, translated.length(), reference.length())
                         .isGreaterThanOrEqualTo(SHORTEST_PLAUSIBLE);
                   }
                   declared
                       .parameters()
                       .forEach(
-                          (parameter, source) -> {
+                          (parameter, declaredSource) -> {
+                            final var overriddenParameter =
+                                englishOverrides.parameter(tool, parameter);
+                            final var source =
+                                overriddenParameter != null ? overriddenParameter : declaredSource;
                             final var value = texts.parameter(tool, parameter);
                             if (value != null && source.length() >= TOO_SHORT_TO_JUDGE) {
                               softly

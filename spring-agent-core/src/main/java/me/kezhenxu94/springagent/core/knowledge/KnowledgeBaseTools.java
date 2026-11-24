@@ -219,14 +219,8 @@ Usage:
       name = "SearchKnowledge",
       description =
 """
-Search the knowledge base for passages relevant to a question.
-
-The knowledge base is already consulted automatically on every message, so use this when that did
-not surface what you needed and you want to search again with different wording, or when you want
-to check what is stored about a topic before answering.
-
-Searches the current user's own knowledge base, the current group's when in a group chat, and the
-tenant-wide one, all at once.
+Search the knowledge base again, with your own wording: the user's own, this group's and the \
+company's, at once. Every message is already searched automatically.
 """)
   public String searchKnowledge(
       @ToolParam(description = "What to search for, in natural language") String query,

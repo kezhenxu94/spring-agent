@@ -74,7 +74,7 @@ class CoreToolsLocalizedEndToEndTest {
     // be
     // reworded by a later pass over the translation, and this test is about the wiring, not the
     // prose.
-    assertThat(definition.description()).contains("结构化的任务清单");
+    assertThat(definition.description()).contains("任务清单");
   }
 
   /**

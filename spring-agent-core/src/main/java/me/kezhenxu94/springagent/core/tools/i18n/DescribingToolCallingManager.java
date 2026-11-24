@@ -11,6 +11,9 @@ import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.definition.ToolDefinition;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Offers every tool the display parameter {@link DisplayDescription} describes, on its way out to
@@ -34,6 +37,8 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 @RequiredArgsConstructor
 public class DescribingToolCallingManager implements ToolCallingManager {
 
+  private static final JsonMapper MAPPER = JsonMapper.builder().build();
+
   /** What the parameter's own description is asked for under, in the workspace's language. */
   public static final String DESCRIPTION_KEY = "tool-display-description";
 
@@ -56,12 +61,33 @@ public class DescribingToolCallingManager implements ToolCallingManager {
   }
 
   /**
+   * {@code schema} without its {@code $schema} keyword, which names the draft it was written
+   * against. No provider reads it, and it is the same sixty characters on every tool of every
+   * request; a schema that will not parse is left as it is.
+   */
+  static String withoutSchemaKeyword(final String schema) {
+    if (schema == null || !schema.contains("\"$schema\"")) {
+      return schema;
+    }
+    try {
+      final var root = MAPPER.readTree(schema);
+      if (root instanceof ObjectNode object && object.remove("$schema") != null) {
+        return MAPPER.writeValueAsString(object);
+      }
+    } catch (JacksonException e) {
+      // Left as it came, as the display description does with a schema it cannot read.
+    }
+    return schema;
+  }
+
+  /**
    * The same definition with the parameter offered, or — where the tool asks for one of its own, or
    * has no parameters to add to — the very object that was passed in.
    */
   private static ToolDefinition describe(final ToolDefinition definition, final String described) {
     final var schema =
-        DisplayDescription.inject(definition.name(), definition.inputSchema(), described);
+        withoutSchemaKeyword(
+            DisplayDescription.inject(definition.name(), definition.inputSchema(), described));
     if (schema.equals(definition.inputSchema())) {
       return definition;
     }

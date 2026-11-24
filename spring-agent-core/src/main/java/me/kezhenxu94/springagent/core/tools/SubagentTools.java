@@ -133,20 +133,11 @@ public class SubagentTools implements AgentResponseListener {
       name = "StartSubagent",
       description =
 """
-Start a subagent: another run of yourself, with its own context window and the same tools, \
-working on one task you describe. Use it for work whose middle you do not need to see — \
-reading a long file or transcript to answer one question about it, sweeping several \
-repositories or clusters, or trying an approach that may take many steps — so that only the \
-answer lands in this conversation. Start several and they run at the same time.
-The subagent sees nothing of this conversation: not the user message, not what you have found \
-so far, not the files you have open. Everything it needs goes in the prompt, written as a \
-self-contained brief, and it should say what to report back.
-It cannot ask the user anything, so tell it what to assume. It cannot start subagents of its \
-own or schedule tasks. It writes to the same workspace you do, so a file it leaves behind is a \
-file you can read.
-This returns at once with an id. Collect the answer with WaitForSubagent before you finish your \
-turn — a subagent you never wait for still runs to the end and still costs its tokens, so if \
-you no longer want it, call CancelSubagent.
+Start a subagent: another run of yourself, with its own context and the same tools, on one task \
+whose middle you do not need to see. Several run at once. It sees nothing of this conversation, \
+so the prompt must be a self-contained brief saying what to report back; it cannot ask the user, \
+start subagents or schedule tasks, and shares your workspace. Returns an id at once: collect the \
+answer with WaitForSubagent before your turn ends, or call CancelSubagent.
 """)
   public String startSubagent(
       @ToolParam(
@@ -235,12 +226,8 @@ you no longer want it, call CancelSubagent.
       name = "WaitForSubagent",
       description =
 """
-Wait for a subagent to finish and read its answer. Wait for each subagent you started, one \
-after another, before you finish your turn.
-This blocks until the subagent finishes or until a while has passed, whichever comes first. If \
-it is still working you are told so and told for how long, and you call this again to go on \
-waiting — a subagent does not stop or lose anything because a wait for it came back. Keep \
-waiting for as long as the work is worth; if it no longer is, call CancelSubagent instead.
+Wait for a subagent to finish and read its answer. It returns after a while if the subagent is \
+still working, which stops nothing: call it again to keep waiting, or CancelSubagent.
 """)
   public String waitForSubagent(
       @ToolParam(description = "The id StartSubagent returned") final String subagentId,
@@ -313,9 +300,8 @@ waiting for as long as the work is worth; if it no longer is, call CancelSubagen
       name = "CancelSubagent",
       description =
 """
-Stop a subagent you no longer need the answer from, so it does not keep working and spending \
-tokens on it. What it had already done is lost; there is no answer to collect afterwards. A \
-subagent that has already finished is left alone.
+Stop a subagent whose answer you no longer need. What it did is lost; a finished one is left \
+alone.
 """)
   public String cancelSubagent(
       @ToolParam(description = "The id StartSubagent returned") final String subagentId,
