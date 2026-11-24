@@ -95,19 +95,14 @@ class MilvusKnowledgeBaseTest {
   }
 
   private static SpringAgentProperties agentProperties() {
+    // Defaults for everything: zero means unset, and the record fills them in.
+    return agentProperties(new SpringAgentProperties.Ai.Rag(true, 0, 0d, 0, 0));
+  }
+
+  private static SpringAgentProperties agentProperties(final SpringAgentProperties.Ai.Rag rag) {
     return new SpringAgentProperties(
         new SpringAgentProperties.Ai(
-            Set.of(),
-            null,
-            Map.of(),
-            null,
-            // Defaults for everything: zero means unset, and the record fills them in.
-            new SpringAgentProperties.Ai.Rag(true, 0, 0d, 0, 0),
-            null,
-            "you are an agent",
-            null,
-            null,
-            null),
+            Set.of(), null, Map.of(), null, rag, null, "you are an agent", null, null, null),
         Locale.ENGLISH,
         null,
         null);
@@ -130,6 +125,64 @@ class MilvusKnowledgeBaseTest {
         .distinct()
         .sorted()
         .toList();
+  }
+
+  @Nested
+  class FilteredRetrieval {
+
+    @Test
+    @DisplayName(
+        "a filtered retrieval returns every chunk of the matched documents, in document order,"
+            + " whatever top-k says")
+    void returnsWholeDocumentsInOrder() throws Exception {
+      final var owner = scope("playbook-owner", "", "");
+      final var long1 = numbered("alpha", 200);
+      final var long2 = numbered("beta", 200);
+      store(owner, ScopeTarget.OWN, "pb-b", long2);
+      store(owner, ScopeTarget.OWN, "pb-a", long1);
+      store(owner, ScopeTarget.OWN, "pb-other", numbered("gamma", 5));
+
+      // Top-k of one: a similarity search would return a single chunk of one playbook.
+      final var narrow =
+          new MilvusKnowledgeBase(
+              new MilvusKnowledgeProperties(
+                  MILVUS.getHost(), MILVUS.getMappedPort(19530), "knowledge_test", DIMENSION, true),
+              agentProperties(new SpringAgentProperties.Ai.Rag(true, 1, 0.99d, 0, 0)),
+              CONSTANT_EMBEDDING);
+      narrow.afterPropertiesSet();
+      try {
+        final var filter =
+            new org.springframework.ai.vectorstore.filter.FilterExpressionBuilder()
+                .in(KnowledgeMetadata.DOC_ID, "pb-a", "pb-b")
+                .build();
+        final var documents =
+            narrow
+                .retrieverFor(owner, filter)
+                .retrieve(org.springframework.ai.rag.Query.builder().text("anything").build());
+
+        final var ids =
+            documents.stream()
+                .map(d -> String.valueOf(d.getMetadata().get(KnowledgeMetadata.DOC_ID)))
+                .distinct()
+                .toList();
+        assertThat(ids).containsExactly("pb-a", "pb-b");
+        final var text =
+            documents.stream().map(Document::getText).reduce("", (a, b) -> a + "\n" + b);
+        assertThat(documents.size()).isGreaterThan(2);
+        assertThat(text.indexOf("alpha 0 ")).isLessThan(text.indexOf("alpha 199 "));
+        assertThat(text.indexOf("alpha 199 ")).isLessThan(text.indexOf("beta 0 "));
+        assertThat(text.indexOf("beta 0 ")).isLessThan(text.indexOf("beta 199 "));
+        assertThat(text).doesNotContain("gamma");
+      } finally {
+        narrow.destroy();
+      }
+    }
+
+    private static String numbered(final String word, final int count) {
+      return java.util.stream.IntStream.range(0, count)
+          .mapToObj(i -> word + " " + i + " of the playbook. ")
+          .reduce("", String::concat);
+    }
   }
 
   @Nested

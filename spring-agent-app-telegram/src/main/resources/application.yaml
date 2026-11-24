@@ -1028,9 +1028,9 @@ app:
       # asked; set it too high and a question the knowledge base plainly answers retrieves nothing.
       # The gap between those two is often narrower than it sounds.
       #
-      # Event triage's playbook retrieval ignores it: its documents are chosen by the source's
-      # playbook filter, and a fixed query scores low against a runbook written in another
-      # language, so raising this for chats must not drop them.
+      # Event triage's playbook retrieval ignores it, and top-k too: its documents are chosen by
+      # the source's playbook filter and handed over whole, in order, since a fixed query scores
+      # low against a runbook written in another language and top-k would cut a long one short.
       #
       # SearchKnowledge is the instrument. It ignores this threshold on purpose and prints the score
       # of every passage it returns, so it still shows evidence when this is set too high. Ask it

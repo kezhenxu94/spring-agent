@@ -898,8 +898,10 @@ events` uses to read a source's playbook: `AgentRequest.knowledgeRetrieval` name
 the filter and a fixed query, and `AgentToolsProvider` builds the run's `RetrievalAugmentationAdvisor`
 from them. The query steers retrieval only — what it found goes into the `<system-reminder>` block
 at the top of the *original* user message — so pinning it does not replace what the model is asked.
-A non-null filter also lifts `app.ai.rag.similarity-threshold`: the filter has chosen the documents,
-and a threshold tuned for chats would drop a runbook for scoring low against a fixed query.
+A non-null filter makes retrieval no similarity search at all: the filter has chosen the documents,
+so every chunk of each comes back in its own order, the documents ordered by id, and neither
+`app.ai.rag.similarity-threshold` nor `top-k` applies — tuned for chats, they would drop a runbook for
+scoring low against a fixed query, or cut it to its best-scoring chunks.
 
 Retrieval runs once per user message, before the tool loop, and the passages are saved with the turn
 inside that block. Replaying them on later turns is deliberate: a prefix cache only serves a request

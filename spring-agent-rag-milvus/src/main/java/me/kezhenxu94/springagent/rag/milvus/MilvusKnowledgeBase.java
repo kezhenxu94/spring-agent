@@ -340,18 +340,44 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
 
   @Override
   public DocumentRetriever retrieverFor(final KnowledgeScope scope, final Filter.Expression extra) {
+    if (extra != null) {
+      return filtered(KnowledgeScopeFilter.readableBy(scope, extra));
+    }
     final var rag = agentProperties.ai().rag();
     return VectorStoreDocumentRetriever.builder()
         .vectorStore(store)
-        .filterExpression(KnowledgeScopeFilter.readableBy(scope, extra))
-        // No threshold under a filter: the filter is the deployment choosing which documents answer
-        // — event triage naming its playbooks — and the threshold is tuned for a person's message
-        // against everything they may read. A fixed English query scores low against a runbook in
-        // another language, so a threshold raised to keep unrelated passages out of a chat would
-        // drop the very runbook the filter picked.
-        .similarityThreshold(extra == null ? rag.similarityThreshold() : 0d)
+        .filterExpression(KnowledgeScopeFilter.readableBy(scope))
+        .similarityThreshold(rag.similarityThreshold())
         .topK(rag.topK())
         .build();
+  }
+
+  /**
+   * Every chunk of the documents {@code filter} matches, each document whole and in its own order,
+   * the documents ordered by id — not a similarity search at all.
+   *
+   * <p>A filter is the deployment choosing which documents answer — event triage naming a source's
+   * playbooks — and both of a search's cut-offs are tuned for a person's message against everything
+   * they may read. The threshold dropped a runbook for scoring low against a fixed English query
+   * over Chinese text, and top-k cut a playbook longer than it to whichever of its chunks happened
+   * to score best, so the model was handed steps out of order with the rest missing. Ordered by id
+   * rather than by score so the same playbooks read the same on every run, which a prompt cache
+   * needs.
+   */
+  private DocumentRetriever filtered(final Filter.Expression filter) {
+    return query ->
+        chunksMatching(filter, "the filtered documents").stream()
+            .sorted(
+                Comparator.<StoredChunk, String>comparing(
+                        chunk -> string(chunk.metadata(), KnowledgeMetadata.DOC_ID))
+                    .thenComparingInt(chunk -> integer(chunk.metadata(), KnowledgeMetadata.CHUNK)))
+            .map(
+                chunk ->
+                    Document.builder()
+                        .text(chunk.text())
+                        .metadata(new LinkedHashMap<String, Object>(chunk.metadata()))
+                        .build())
+            .toList();
   }
 
   /**
@@ -399,12 +425,20 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
    * document from them would interleave two documents' paragraphs by their ordinals.
    */
   private List<StoredChunk> chunksOf(final KnowledgeScope owning, final String docId) {
+    return chunksMatching(KnowledgeScopeFilter.documentOwnedBy(owning, docId), "Document " + docId);
+  }
+
+  /**
+   * Every chunk {@code filter} matches, text and all, in no particular order. Refuses rather than
+   * truncates past {@link #MAX_CHUNKS_PER_DOCUMENT}: part of a document moved, or part of a
+   * playbook handed to the model, reads as the whole of it.
+   */
+  private List<StoredChunk> chunksMatching(final Filter.Expression filter, final String what) {
     final var response =
         client.query(
             QueryParam.newBuilder()
                 .withCollectionName(properties.collectionName())
-                .withExpr(
-                    toMilvus.convertExpression(KnowledgeScopeFilter.documentOwnedBy(owning, docId)))
+                .withExpr(toMilvus.convertExpression(filter))
                 .withOutFields(List.of(METADATA_FIELD, CONTENT_FIELD))
                 .withLimit((long) MAX_CHUNKS_PER_DOCUMENT)
                 // As in list(), and for the same reason: a document is commonly moved in the same
@@ -413,7 +447,7 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
                 .build());
     if (response.getData() == null) {
       throw new IllegalStateException(
-          "Milvus refused the document query: " + response.getMessage());
+          "Milvus refused the query for " + what + ": " + response.getMessage());
     }
 
     final List<?> metadata;
@@ -423,17 +457,14 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
       metadata = wrapper.getFieldWrapper(METADATA_FIELD).getFieldData();
       contents = wrapper.getFieldWrapper(CONTENT_FIELD).getFieldData();
     } catch (Exception e) {
-      throw new IllegalStateException("Could not read document " + docId + " from Milvus", e);
+      throw new IllegalStateException("Could not read " + what + " from Milvus", e);
     }
     if (metadata.size() >= MAX_CHUNKS_PER_DOCUMENT) {
-      // Refused rather than moved in part. Taking the first page would leave the tail behind in the
-      // scope being moved out of, and report success for it.
       throw new IllegalStateException(
-          "Document "
-              + docId
+          what
               + " has more than "
               + MAX_CHUNKS_PER_DOCUMENT
-              + " chunks, which is more than a move can rewrite at once.");
+              + " chunks, which is more than one query can read whole.");
     }
 
     final var chunks = new ArrayList<StoredChunk>(metadata.size());

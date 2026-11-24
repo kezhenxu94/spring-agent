@@ -70,7 +70,8 @@ class SpringAgentToolSearchAdvisorConfigurationTest {
             SpringAgentToolSearchAdvisorConfiguration.alwaysLoaded(
                 new org.springframework.mock.env.MockEnvironment()
                     .withProperty(
-                        "app.ai.tools.always-loaded", "FeishuReadMessage, FeishuReadMessageHistory")))
+                        "app.ai.tools.always-loaded",
+                        "FeishuReadMessage, FeishuReadMessageHistory")))
         .containsExactly("FeishuReadMessage", "FeishuReadMessageHistory");
     assertThat(
             SpringAgentToolSearchAdvisorConfiguration.alwaysLoaded(
