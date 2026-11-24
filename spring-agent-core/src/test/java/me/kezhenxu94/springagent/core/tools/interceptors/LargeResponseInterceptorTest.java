@@ -75,6 +75,34 @@ class LargeResponseInterceptorTest {
   }
 
   @Test
+  @DisplayName("a string result is saved as its text, not as a one-line JSON string literal")
+  void stringResultIsSavedAsText() throws Exception {
+    // What a tool returning a String produces: one quoted line with its newlines escaped, which
+    // Grep skips past its line-length limit and Read truncates.
+    final var text = "- [note](note.md) — a remembered note\n".repeat(100);
+    final var encoded = new tools.jackson.databind.json.JsonMapper().writeValueAsString(text);
+
+    final var result =
+        interceptor(20).afterCall("MemoryView", "{\"path\":\"/\"}", encoded, CONTEXT);
+
+    assertThat(spilled().get(0).getFileName().toString()).endsWith(".txt");
+    assertThat(Files.readString(spilled().get(0))).isEqualTo(text);
+    assertThat(result).contains("100 line(s)");
+  }
+
+  @Test
+  @DisplayName("a read of a memory index is never spilled, whatever its size")
+  void memoryIndexIsNeverSpilled() {
+    final var index = "\"" + "- [a](a.md)\\n".repeat(100) + "\"";
+
+    final var result =
+        interceptor(20).afterCall("MemoryView", "{\"path\":\"MEMORY.md\"}", index, CONTEXT);
+
+    assertThat(result).isEqualTo(index);
+    assertThat(spilled()).isEmpty();
+  }
+
+  @Test
   @DisplayName("two results saved in the same millisecond get files of their own")
   void namesDoNotCollide() {
     // A model emits tool calls in parallel and Spring AI runs them so. A name made of the tool and

@@ -59,7 +59,8 @@ public class LargeResponseInterceptor implements ToolCallInterceptor {
   public String afterCall(
       String toolName, String toolInput, String toolResult, ToolContext toolContext) {
     if (toolResult == null
-        || toolResult.length() <= appConfiguration.ai().tools().maxResultChars()) {
+        || toolResult.length() <= appConfiguration.ai().tools().maxResultChars()
+        || readsMemoryIndex(toolName, toolInput)) {
       return toolResult;
     }
 
@@ -85,6 +86,10 @@ public class LargeResponseInterceptor implements ToolCallInterceptor {
     Files.createDirectories(artifactsDir);
 
     final var json = parseOrNull(toolResult);
+    // A tool returning a String arrives encoded as a JSON string: one line, quoted, its newlines
+    // escaped. Written as it came, Grep skips the line once it passes its length limit and Read
+    // truncates it, so the text itself is what goes to disk.
+    final var text = json == null ? textOf(toolResult) : null;
 
     // In the artifacts directory rather than the system one: createTempFile puts the file in the
     // directory it is given, and only the workspace is a place the Read tool is allowed to look.
@@ -93,11 +98,38 @@ public class LargeResponseInterceptor implements ToolCallInterceptor {
     // one guide silently pointed at the other call's result.
     final var file =
         Files.createTempFile(artifactsDir, toolName + "-", json == null ? ".txt" : ".json");
-    Files.writeString(file, json == null ? toolResult : PRETTY.writeValueAsString(json));
+    Files.writeString(file, json == null ? text : PRETTY.writeValueAsString(json));
     log.info("Saved large tool result for '{}' to: {}", toolName, file.toAbsolutePath());
 
     return messages.get(
-        "tool-result-spilled", toolName, size, file.toAbsolutePath(), shapeOf(json, toolResult));
+        "tool-result-spilled", toolName, size, file.toAbsolutePath(), shapeOf(json, text));
+  }
+
+  /**
+   * Whether this call reads a memory index. Never spilled: the index is what tells the model which
+   * memory to open, and a pointer to a file in its place costs a round trip at best — at worst, as
+   * happened, a model that never finds the line it needed.
+   */
+  private static boolean readsMemoryIndex(final String toolName, final String toolInput) {
+    if (!"MemoryView".equals(toolName) || toolInput == null) {
+      return false;
+    }
+    try {
+      final var path = MAPPER.readTree(toolInput).path("path");
+      return path.isString() && path.stringValue().strip().endsWith("MEMORY.md");
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  /** {@code raw} decoded where it is a JSON string, and as it is otherwise. */
+  private static String textOf(final String raw) {
+    try {
+      final var node = MAPPER.readTree(raw);
+      return node != null && node.isString() ? node.stringValue() : raw;
+    } catch (Exception e) {
+      return raw;
+    }
   }
 
   private static JsonNode parseOrNull(final String candidate) {
