@@ -417,6 +417,56 @@ class InterceptingToolCallbackTest {
     assertThat(tool.received).isEqualTo("{\"expr\":\"up\",\"step\":\"1m\"}");
   }
 
+  @Test
+  @DisplayName(
+      "a tool offered directly gets its parameter though the model wrote it with an underscore,"
+          + " and the display description is left alone")
+  void underscoredParametersAreRenamed() {
+    final var tool = new QueryTool(EXPR_SCHEMA);
+    final var seen = new ArrayList<String>();
+
+    final var result =
+        new InterceptingToolCallback(tool, List.of(watching(seen)), refs(), messages())
+            .call(
+                "{\"_expr\":\"up\",\"" + DisplayDescription.FIELD + "\":\"Checking it\"}", CONTEXT);
+
+    assertThat(tool.received).isEqualTo("{\"expr\":\"up\"}");
+    assertThat(result).isEqualTo("\"ok\"");
+    assertThat(seen).allSatisfy(input -> assertThat(input).contains("Checking it"));
+  }
+
+  @Test
+  @DisplayName(
+      "a tool offered directly is not called without what its schema requires, and the model is"
+          + " given the schema")
+  void directCallsAreCheckedAgainstTheSchema() {
+    final var tool = new QueryTool(EXPR_SCHEMA);
+
+    final var result =
+        new InterceptingToolCallback(tool, List.of(), refs(), messages())
+            .call("{\"summary\":\"all fine\"}", CONTEXT);
+
+    assertThat(tool.received).isNull();
+    assertThat(result)
+        .contains("missing required \\\"expr\\\"")
+        .contains("unknown \\\"summary\\\"")
+        .contains("\\\"required\\\":[\\\"expr\\\"]");
+  }
+
+  @Test
+  @DisplayName("an underscored name the schema declares as it is, is left as it is")
+  void declaredUnderscoredNamesStay() {
+    final var tool =
+        new QueryTool(
+            "{\"type\":\"object\",\"properties\":{\"_id\":{\"type\":\"string\"},"
+                + "\"id\":{\"type\":\"string\"}}}");
+
+    new InterceptingToolCallback(tool, List.of(), refs(), messages())
+        .call("{\"_id\":\"a\"}", CONTEXT);
+
+    assertThat(tool.received).isEqualTo("{\"_id\":\"a\"}");
+  }
+
   private static ToolCallInterceptor watching(final List<String> seen) {
     return new ToolCallInterceptor() {
       @Override

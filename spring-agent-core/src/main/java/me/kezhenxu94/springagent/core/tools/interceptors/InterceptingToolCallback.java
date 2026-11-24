@@ -10,7 +10,9 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 @Slf4j
 public class InterceptingToolCallback implements ToolCallback {
@@ -102,6 +104,41 @@ public class InterceptingToolCallback implements ToolCallback {
     return applyAfter(input, invoke(input, toolContext), toolContext);
   }
 
+  /** The arguments as the tool will get them, or what the model is told instead of a call. */
+  private record Checked(String input, String refusal) {}
+
+  /**
+   * The arguments with the model's underscored parameter names corrected, and checked against the
+   * schema — see {@link ToolArguments}. A call they do not fit is not made: the model is told what
+   * is wrong and given the schema, so it can call again correctly in one step rather than reading a
+   * refusal from the tool that does not say why.
+   */
+  private Checked checked(final String input) {
+    final JsonNode tree;
+    try {
+      tree = MAPPER.readTree(input);
+    } catch (JacksonException e) {
+      return new Checked(input, null);
+    }
+    if (!(tree instanceof ObjectNode arguments)) {
+      return new Checked(input, null);
+    }
+    final var schema = ToolArguments.schemaOf(getToolDefinition().inputSchema());
+    final var renamed = ToolArguments.renameUnderscored(arguments, schema);
+    final var problems = ToolArguments.mismatches(arguments, schema);
+    if (!problems.isEmpty()) {
+      log.info("Tool '{}' was not called: {}", getToolDefinition().name(), problems);
+      return new Checked(
+          input,
+          messages.get(
+              "call-tool-arguments-mismatch",
+              getToolDefinition().name(),
+              String.join("; ", problems),
+              ToolArguments.compact(getToolDefinition().inputSchema())));
+    }
+    return new Checked(renamed ? MAPPER.writeValueAsString(arguments) : input, null);
+  }
+
   /**
    * The call itself, with the display description taken off the arguments and any {@code @file:}
    * reference among them resolved, on the way in.
@@ -134,7 +171,11 @@ public class InterceptingToolCallback implements ToolCallback {
       log.debug("Arguments of the answered call to '{}': {}", getToolDefinition().name(), input);
       return messages.get("tool-arguments-malformed", getToolDefinition().name(), unreadable);
     }
-    final var arguments = DisplayDescription.strip(input);
+    final var checked = checked(input);
+    if (checked.refusal() != null) {
+      return checked.refusal();
+    }
+    final var arguments = DisplayDescription.strip(checked.input());
     final String expanded;
     try {
       expanded = fileRefs.expand(getToolDefinition().name(), arguments, toolContext);

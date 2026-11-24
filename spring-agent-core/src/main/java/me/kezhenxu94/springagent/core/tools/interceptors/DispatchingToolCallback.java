@@ -1,6 +1,5 @@
 package me.kezhenxu94.springagent.core.tools.interceptors;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -108,26 +107,11 @@ public final class DispatchingToolCallback implements ToolCallback {
     return dispatch(candidates.getFirst(), argumentsOf(root), toolContext);
   }
 
-  /**
-   * The target, run with {@code arguments} as every call through here is: checked against its
-   * schema, then through the interceptors under its own name.
-   */
+  /** The target, run with {@code arguments} through the interceptors under its own name. */
   private String dispatch(
       final String targetName, final Arguments arguments, final ToolContext toolContext) {
     final var target = targets.get(targetName);
-    if (arguments.object() != null) {
-      final var schema = target.getToolDefinition().inputSchema();
-      final var problems = mismatches(arguments.object(), schema);
-      if (!problems.isEmpty()) {
-        log.info("CallTool refused '{}': {}", targetName, problems);
-        return ToolResultJson.asJson(
-            messages.get(
-                "call-tool-arguments-mismatch",
-                targetName,
-                String.join("; ", problems),
-                compact(schema)));
-      }
-    }
+    // Checked against the target's schema by the callback it runs in, as every call is.
     final var call = new InterceptingToolCallback(target, interceptors, fileRefs, messages);
     return toolContext == null
         ? call.call(arguments.json())
@@ -242,56 +226,6 @@ public final class DispatchingToolCallback implements ToolCallback {
       object.set(DisplayDescription.FIELD, described);
     }
     return new Arguments(object, MAPPER.writeValueAsString(object));
-  }
-
-  /**
-   * What is wrong with {@code arguments} for a tool of {@code schema}: each required property left
-   * out, and each one the schema does not have — unless it allows others. A model that has not seen
-   * the schema guesses at names, and a call made anyway reaches the tool with what it needs missing
-   * and the guess ignored: a refusal that does not say why, or, worse, an empty query answered as
-   * if it were one. The display description is the runtime's and never counts.
-   */
-  static List<String> mismatches(final ObjectNode arguments, final String schema) {
-    final JsonNode root;
-    try {
-      root = MAPPER.readTree(schema == null ? "{}" : schema);
-    } catch (JacksonException e) {
-      return List.of();
-    }
-    final var problems = new ArrayList<String>();
-    for (final var required : root.path("required")) {
-      final var property = required.asString("");
-      final var value = arguments.get(property);
-      if (!property.isEmpty()
-          && !DisplayDescription.FIELD.equals(property)
-          && (value == null || value.isNull())) {
-        problems.add("missing required \"" + property + "\"");
-      }
-    }
-    final var properties = root.get("properties");
-    final var additional = root.get("additionalProperties");
-    final var open = additional != null && (additional.isObject() || additional.asBoolean(false));
-    if (properties instanceof ObjectNode declared && !open) {
-      for (final var name : arguments.propertyNames()) {
-        if (!DisplayDescription.FIELD.equals(name) && !declared.has(name)) {
-          problems.add("unknown \"" + name + "\"");
-        }
-      }
-    }
-    return problems;
-  }
-
-  /** {@code schema} on one line and without its {@code $schema}, as the model is shown it. */
-  private static String compact(final String schema) {
-    try {
-      final var root = MAPPER.readTree(schema);
-      if (root instanceof ObjectNode object) {
-        object.remove("$schema");
-      }
-      return MAPPER.writeValueAsString(root);
-    } catch (JacksonException e) {
-      return schema;
-    }
   }
 
   /**
