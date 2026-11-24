@@ -94,7 +94,7 @@ public class SkillsTool {
    * <p>It also leaves the name a skill's <em>own</em> words are searched by intact, which is what
    * makes the tool search find it — the prefix is a namespace, not a rewrite.
    */
-  private static final String TOOL_NAME_PREFIX = "skill_";
+  public static final String TOOL_NAME_PREFIX = "skill_";
 
   /**
    * What surrounds a skill's own front matter in the tool's description, and the seam a deployment

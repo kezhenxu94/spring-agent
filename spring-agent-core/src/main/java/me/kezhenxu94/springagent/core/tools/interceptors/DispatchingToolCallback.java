@@ -94,17 +94,46 @@ public final class DispatchingToolCallback implements ToolCallback {
       return ToolResultJson.asJson(
           messages.get("tool-arguments-malformed", NAME, e.getOriginalMessage()));
     }
-    final var name = root.path("name").isString() ? root.path("name").stringValue() : "";
-    final var target = targets.get(name);
-    if (target == null) {
-      log.info("CallTool named '{}', which this run cannot call", name);
-      return ToolResultJson.asJson(messages.get("call-tool-unknown", name));
+    final var name = root.path("name").isString() ? root.path("name").stringValue().strip() : "";
+    final var candidates = resolve(name);
+    if (candidates.size() != 1) {
+      log.info("CallTool named '{}', which matches {} of this run's tools", name, candidates);
+      return ToolResultJson.asJson(
+          candidates.isEmpty()
+              ? messages.get("call-tool-unknown", name)
+              : messages.get("call-tool-ambiguous", name, String.join(", ", candidates)));
     }
+    final var target = targets.get(candidates.getFirst());
     final var call = new InterceptingToolCallback(target, interceptors, fileRefs, messages);
     return toolContext == null
         ? call.call(arguments(root))
         : call.call(arguments(root), toolContext);
   }
+
+  /**
+   * The tools {@code name} can mean, in every form the catalogue in the system prompt shows one:
+   * the whole name; a group's {@code prefix{short}} as written there; or a short name alone, where
+   * it ends exactly one tool's name after an underscore. A model copies what it reads, and the
+   * catalogue lists a group's tools by what follows their shared prefix.
+   */
+  private List<String> resolve(final String name) {
+    if (name.isEmpty()) {
+      return List.of();
+    }
+    if (targets.containsKey(name)) {
+      return List.of(name);
+    }
+    final var braces = BRACED.matcher(name);
+    if (braces.matches()) {
+      final var whole = braces.group(1) + braces.group(2).strip();
+      return targets.containsKey(whole) ? List.of(whole) : List.of();
+    }
+    return targets.keySet().stream().filter(tool -> tool.endsWith("_" + name)).sorted().toList();
+  }
+
+  /** {@code git_{search}}: a prefix, then one short name in braces. */
+  private static final java.util.regex.Pattern BRACED =
+      java.util.regex.Pattern.compile("([^{}]*)\\{([^{},]+)}");
 
   /**
    * The target's arguments as JSON. A model sometimes writes the object as a string, which is

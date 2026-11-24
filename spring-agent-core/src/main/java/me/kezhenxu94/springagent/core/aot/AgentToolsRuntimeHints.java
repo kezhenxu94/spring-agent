@@ -95,6 +95,15 @@ public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
     for (final var type : TOOL_TYPES) {
       register(hints, type);
     }
+
+    // The client behind an MCP tool, which Spring AI keeps in a private field and which says what
+    // server the tool came from — see AgentToolsProvider#toolGroups.
+    hints
+        .reflection()
+        .registerTypeIfPresent(
+            classLoader,
+            "org.springframework.ai.mcp.SyncMcpToolCallback",
+            MemberCategory.ACCESS_DECLARED_FIELDS);
   }
 
   /**

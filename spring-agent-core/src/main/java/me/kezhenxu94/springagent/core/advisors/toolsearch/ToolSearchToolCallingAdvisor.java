@@ -77,12 +77,11 @@ import tools.jackson.databind.node.ArrayNode;
  * DispatchingToolCallback}. Sorted because the composition's order is not stable from one turn to
  * the next — an MCP server's tools arrive when its handshake does.
  *
- * <p><b>The model is told what exists.</b> Every tool not in the array is listed by name with the
- * first line of its description at the end of the system prompt, after the suffix, so the model can
- * call one it recognizes without searching and knows what to search for otherwise. The list holds a
- * user's MCP servers and skills, so it is the last thing in the system prompt: everything before it
- * is the same for every user. It changes only when somebody adds or removes a tool, which costs one
- * cache miss rather than one per tool found.
+ * <p><b>The model is told what exists.</b> Every tool not in the array is listed by name, a group
+ * to a line, at the end of the system prompt, after the suffix — see {@link #catalogue}. The list
+ * holds a user's MCP servers and skills, so it is the last thing in the system prompt: everything
+ * before it is the same for every user. It changes only when somebody adds or removes a tool, which
+ * costs one cache miss rather than one per tool found.
  *
  * <p><b>The suffix goes on the last system message</b> rather than the first, which is what
  * upstream's {@link Prompt#augmentSystemMessage} does — with several {@code system-prompt} parts,
@@ -128,8 +127,11 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
           "WaitForSubagent",
           "Write");
 
-  /** How much of a tool's description its catalogue line keeps. */
-  private static final int SUMMARY_CHARS = 160;
+  /** The search tool's name, which is upstream's and which every run taking the search carries. */
+  public static final String SEARCH_TOOL_NAME = "toolSearchTool";
+
+  /** How much of a group's purpose its catalogue line keeps. */
+  private static final int PURPOSE_CHARS = 120;
 
   private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
@@ -326,7 +328,10 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
       offered.add(this.dispatcher.apply(targets));
       prompt =
           appendToLastSystemMessage(
-              prompt, this.systemMessageSuffix + System.lineSeparator() + catalogue(deferred));
+              prompt,
+              this.systemMessageSuffix
+                  + System.lineSeparator()
+                  + catalogue(deferred, groupsOf(chatClientRequest)));
     }
     offered.sort(Comparator.comparing(callback -> callback.getToolDefinition().name()));
 
@@ -336,33 +341,84 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
   }
 
   /**
-   * One line per tool: its name, and the first line of its description. A line rather than the
-   * whole description, since this is read on every request and a schema is a search away.
+   * Names only, a group to a line: each MCP server's tools, and the skills, as the group's name,
+   * the one line saying what it is for, and the tools' names after the prefix they share — {@code
+   * github_{get_issue, search_issues}} — and every other tool on one line of its own. A description
+   * per tool cost hundreds of characters a tool on every request, and every token in the context
+   * slows every token the model writes; what a tool does exactly is a search away.
+   *
+   * <p>Sorted throughout, groups by name and names within them, so the same tools make the same
+   * text on every request and the system prompt stays cacheable.
    */
-  static String catalogue(final List<ToolDefinition> definitions) {
-    final var lines = new StringBuilder();
+  public static String catalogue(
+      final List<ToolDefinition> definitions,
+      final Map<String, ToolGroupsAdvisor.ToolGroup> groups) {
+    final var grouped = new java.util.TreeMap<String, java.util.List<String>>();
+    final var byKey = new java.util.HashMap<String, ToolGroupsAdvisor.ToolGroup>();
+    final var loose = new java.util.TreeSet<String>();
     for (final var definition : definitions) {
-      lines.append("- ").append(definition.name());
-      final var summary = summary(definition.description());
-      if (!summary.isEmpty()) {
-        lines.append(": ").append(summary);
+      final var group = groups.get(definition.name());
+      if (group == null) {
+        loose.add(definition.name());
+        continue;
+      }
+      final var key = group.label() + "\u0000" + group.prefix();
+      byKey.put(key, group);
+      grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(definition.name());
+    }
+    final var lines = new StringBuilder();
+    for (final var entry : grouped.entrySet()) {
+      final var group = byKey.get(entry.getKey());
+      lines.append("- ").append(group.label());
+      final var purpose = oneLine(group.purpose());
+      if (!purpose.isEmpty()) {
+        lines.append(" — ").append(purpose);
+      }
+      lines.append(": ");
+      final var names = entry.getValue().stream().sorted().toList();
+      if (group.prefix().isEmpty()) {
+        lines.append(String.join(", ", names));
+      } else {
+        lines
+            .append(group.prefix())
+            .append('{')
+            .append(
+                String.join(
+                    ", ",
+                    names.stream().map(name -> name.substring(group.prefix().length())).toList()))
+            .append('}');
       }
       lines.append(System.lineSeparator());
+    }
+    if (!loose.isEmpty()) {
+      lines.append("- ").append(String.join(", ", loose)).append(System.lineSeparator());
     }
     return lines.toString();
   }
 
-  private static String summary(final String description) {
-    if (description == null) {
+  /**
+   * The groups {@link ToolGroupsAdvisor} left in the context, or none where no such advisor ran.
+   */
+  @SuppressWarnings("unchecked")
+  private static Map<String, ToolGroupsAdvisor.ToolGroup> groupsOf(
+      final ChatClientRequest request) {
+    final var groups = request.context().get(ToolGroupsAdvisor.CONTEXT_KEY);
+    return groups instanceof Map<?, ?> map
+        ? (Map<String, ToolGroupsAdvisor.ToolGroup>) map
+        : Map.of();
+  }
+
+  /** The first line of {@code text}, cut short where it runs on. */
+  private static String oneLine(final String text) {
+    if (text == null) {
       return "";
     }
-    final var first =
-        description.lines().map(String::strip).filter(line -> !line.isEmpty()).findFirst();
+    final var first = text.lines().map(String::strip).filter(line -> !line.isEmpty()).findFirst();
     if (first.isEmpty()) {
       return "";
     }
     final var line = first.get();
-    return line.length() <= SUMMARY_CHARS ? line : line.substring(0, SUMMARY_CHARS) + "…";
+    return line.length() <= PURPOSE_CHARS ? line : line.substring(0, PURPOSE_CHARS) + "…";
   }
 
   /**

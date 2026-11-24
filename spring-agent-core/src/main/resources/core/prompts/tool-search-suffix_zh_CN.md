@@ -16,4 +16,5 @@
 
 用你即将作答的语言来思考。
 
-通过 `CallTool` 调用的工具：
+通过 `CallTool` 调用的工具，一组一行：组名、用途，然后是它的工具。`github_{get_issue, search_issues}`
+表示 `github_get_issue` 和 `github_search_issues` 两个工具：调用时一定要写完整的名称。

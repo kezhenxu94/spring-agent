@@ -20,4 +20,6 @@ section. They all exist and they all work; they are simply not attached, and not
 
 Think in the language you are going to reply in.
 
-Tools you call through `CallTool`:
+Tools you call through `CallTool`, a group to a line — the group, what it is for, then its tools.
+`github_{get_issue, search_issues}` stands for `github_get_issue` and `github_search_issues`:
+always call a tool by its whole name.

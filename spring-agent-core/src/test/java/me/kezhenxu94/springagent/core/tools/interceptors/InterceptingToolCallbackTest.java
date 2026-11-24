@@ -295,6 +295,49 @@ class InterceptingToolCallbackTest {
         .contains("Bash");
   }
 
+  @Test
+  @DisplayName(
+      "CallTool calls a catalogued tool by the form the catalogue shows it in, and refuses a short"
+          + " name two tools share")
+  void callsByTheCatalogueForm() {
+    final var group =
+        new me.kezhenxu94.springagent.core.advisors.toolsearch.ToolGroupsAdvisor.ToolGroup(
+            "git", "git_", "repositories");
+    final var catalogue =
+        me.kezhenxu94.springagent.core.advisors.toolsearch.ToolSearchToolCallingAdvisor.catalogue(
+            List.of(definition("git_search"), definition("git_close"), definition("db_search")),
+            Map.of("git_search", group, "git_close", group));
+    // What the model reads, copied the way a model copies it.
+    assertThat(catalogue).contains("git_{close, search}");
+    final var shown = catalogue.substring(catalogue.indexOf("git_{"), catalogue.indexOf('}') + 1);
+    final var close = shown.substring(shown.indexOf('{') + 1, shown.indexOf(','));
+
+    final var gitClose = new RecordingCallback(ToolMetadata.builder().build());
+    final var dispatcher =
+        new DispatchingToolCallback(
+            Map.of(
+                "git_search", new RecordingCallback(ToolMetadata.builder().build()),
+                "git_close", gitClose,
+                "db_search", new RecordingCallback(ToolMetadata.builder().build())),
+            List.of(),
+            refs(),
+            messages());
+
+    dispatcher.call("{\"name\":\"git_{" + close + "}\",\"arguments\":{\"n\":1}}", CONTEXT);
+    assertThat(gitClose.received).isEqualTo("{\"n\":1}");
+    dispatcher.call("{\"name\":\"" + close + "\",\"arguments\":{\"n\":2}}", CONTEXT);
+    assertThat(gitClose.received).isEqualTo("{\"n\":2}");
+    dispatcher.call("{\"name\":\"git_close\",\"arguments\":{\"n\":3}}", CONTEXT);
+    assertThat(gitClose.received).isEqualTo("{\"n\":3}");
+
+    assertThat(dispatcher.call("{\"name\":\"search\",\"arguments\":{}}", CONTEXT))
+        .contains("db_search, git_search");
+  }
+
+  private static ToolDefinition definition(final String name) {
+    return ToolDefinition.builder().name(name).description("").inputSchema("{}").build();
+  }
+
   private static ToolCallInterceptor watching(final List<String> seen) {
     return new ToolCallInterceptor() {
       @Override

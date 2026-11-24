@@ -363,7 +363,10 @@ few tools nearly every run needs, `toolSearchTool` and `CallTool`, the same on e
 conversation so that a prefix cache holds. Every other tool is listed by name in the system prompt,
 and the model reaches it by searching for its schema and calling it through `CallTool`.
 `app.ai.tools.always-loaded` adds tools to that fixed few, for the ones an application's own system
-prompt tells the model to call by name; it only chooses among the tools a run was composed with. The
+prompt tells the model to call by name; it only chooses among the tools a run was composed with.
+The list in the system prompt names tools only, a group to a line — each MCP server's tools under
+the description its registration gives, `app.ai.tools.mcp-descriptions` for an app-wide connection,
+or else what the server says of itself — and `CallTool` accepts a tool in the form that list shows. The
 right bargain for an open-ended run reaching a few hundred MCP tools, and the
 wrong one for a run composed of four, which pays a mandatory round trip to discover what would have
 fitted in the prompt. `KNOWLEDGE_BASE` and `ONE_OFF` decline it. There is no per-request switch on

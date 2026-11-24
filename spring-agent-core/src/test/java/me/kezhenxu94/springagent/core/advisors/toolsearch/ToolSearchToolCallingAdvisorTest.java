@@ -98,8 +98,7 @@ class ToolSearchToolCallingAdvisorTest {
         .getToolCallbacks().stream().map(tool -> tool.getToolDefinition().name()).toList();
   }
 
-  private static final String CATALOGUE =
-      "- Alpha: Does alpha things.\n- Zeta: Does zeta things.\n";
+  private static final String CATALOGUE = "- Alpha, Zeta" + System.lineSeparator();
 
   @Test
   @DisplayName(
@@ -138,7 +137,7 @@ class ToolSearchToolCallingAdvisorTest {
         .containsExactly("CallTool", "Grep", "Read", "Zeta", "toolSearchTool");
     assertThat(systemMessagesOf(request).get(0).getText())
         .contains("- Alpha")
-        .doesNotContain("- Zeta");
+        .doesNotContain("Zeta");
   }
 
   @Test
@@ -240,6 +239,121 @@ class ToolSearchToolCallingAdvisorTest {
 
     assertThat(offeredNames(request)).containsExactly("Read");
     assertThat(systemMessagesOf(request).get(0).getText()).isEqualTo("You are an agent.");
+  }
+
+  private static ToolDefinition definition(final String name, final String description) {
+    return ToolDefinition.builder()
+        .name(name)
+        .description(description)
+        .inputSchema("{\"type\":\"object\"}")
+        .build();
+  }
+
+  @Test
+  @DisplayName(
+      "the catalogue lists names only, a group to a line: its name, its purpose, its tools after"
+          + " their shared prefix")
+  void catalogueShape() {
+    final var git = new ToolGroupsAdvisor.ToolGroup("git", "git_", "Repositories and issues");
+    final var app = new ToolGroupsAdvisor.ToolGroup("weather", "", "");
+    final var skills = new ToolGroupsAdvisor.ToolGroup("skills", "skill_", "your skills");
+    final var catalogue =
+        ToolSearchToolCallingAdvisor.catalogue(
+            List.of(
+                definition("git_search", "Searches.\nMore."),
+                definition("Remind", "Sets a reminder."),
+                definition("skill_triage", "Triage."),
+                definition("forecast", "Forecasts."),
+                definition("git_close", "Closes."),
+                definition("alerts", "Alerts.")),
+            Map.of(
+                "git_search", git,
+                "git_close", git,
+                "forecast", app,
+                "alerts", app,
+                "skill_triage", skills));
+
+    assertThat(catalogue.lines().toList())
+        .containsExactly(
+            "- git — Repositories and issues: git_{close, search}",
+            "- skills — your skills: skill_{triage}",
+            "- weather: alerts, forecast",
+            "- Remind");
+  }
+
+  /**
+   * A few hundred tools, as a deployment with several MCP servers and skills reaches: eight servers
+   * of fifty tools, thirty skills, ten tools of no group, each described at the length real ones
+   * are.
+   */
+  private static List<ToolDefinition> manyTools() {
+    final var definitions = new ArrayList<ToolDefinition>();
+    final var description =
+        "Does one particular thing to one particular kind of record, with enough words to read"
+            + " like a real description of a real tool that somebody wrote.\nAnd more.";
+    for (var server = 0; server < 8; server++) {
+      for (var tool = 0; tool < 50; tool++) {
+        definitions.add(definition("srv" + server + "_get_record_kind_" + tool, description));
+      }
+    }
+    for (var skill = 0; skill < 30; skill++) {
+      definitions.add(definition("skill_some-saved-method-" + skill, description));
+    }
+    for (var tool = 0; tool < 10; tool++) {
+      definitions.add(definition("ManageSomething" + tool, description));
+    }
+    return definitions;
+  }
+
+  private static Map<String, ToolGroupsAdvisor.ToolGroup> groupsOf(
+      final List<ToolDefinition> definitions) {
+    final var groups = new java.util.HashMap<String, ToolGroupsAdvisor.ToolGroup>();
+    for (final var definition : definitions) {
+      final var name = definition.name();
+      if (name.startsWith("skill_")) {
+        groups.put(name, new ToolGroupsAdvisor.ToolGroup("skills", "skill_", "your skills"));
+      } else if (name.startsWith("srv")) {
+        final var prefix = name.substring(0, name.indexOf('_') + 1);
+        groups.put(
+            name,
+            new ToolGroupsAdvisor.ToolGroup(
+                prefix.substring(0, prefix.length() - 1), prefix, "records of one system"));
+      }
+    }
+    return groups;
+  }
+
+  @Test
+  @DisplayName("four hundred and forty tools make a catalogue of a few thousand tokens at most")
+  void catalogueSizeBound() {
+    final var tools = manyTools();
+    final var catalogue = ToolSearchToolCallingAdvisor.catalogue(tools, groupsOf(tools));
+    // What the one-line-per-tool catalogue it replaced came to for the same tools.
+    final var before =
+        tools.stream()
+            .mapToInt(
+                d ->
+                    ("- " + d.name() + ": " + d.description().lines().findFirst().orElse("") + "\n")
+                        .length())
+            .sum();
+    System.out.printf(
+        "CATALOGUE %d tools: before %d chars, after %d chars%n",
+        tools.size(), before, catalogue.length());
+
+    assertThat(tools).hasSize(440);
+    // About four characters a token for identifiers, so under four thousand tokens.
+    assertThat(catalogue.length()).isLessThan(12_000);
+  }
+
+  @Test
+  @DisplayName("the same tools in any order make the same catalogue, byte for byte")
+  void catalogueIsDeterministic() {
+    final var tools = manyTools();
+    final var shuffled = new ArrayList<>(tools);
+    java.util.Collections.shuffle(shuffled, new java.util.Random(7));
+
+    assertThat(ToolSearchToolCallingAdvisor.catalogue(shuffled, groupsOf(shuffled)))
+        .isEqualTo(ToolSearchToolCallingAdvisor.catalogue(tools, groupsOf(tools)));
   }
 
   /** Finds Zeta, and a tool this run does not carry, which the search must leave out. */

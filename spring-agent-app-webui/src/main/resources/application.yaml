@@ -1325,6 +1325,14 @@ app:
       # adds its schema to every request, so keep it to what is actually used. A name matching no
       # tool this application declares is logged at startup and otherwise ignored.
       always-loaded: ${TOOLS_ALWAYS_LOADED:}
+      # What each app-wide MCP server (spring.ai.mcp.client.*.connections) is for, by connection
+      # name, for the line the tool search's catalogue gives its tools: Spring AI's connection
+      # settings have nowhere to say it. Optional — without it the line uses what the server says
+      # of itself when it connects, and without that the server's name alone. A user's own MCP
+      # servers use the description they registered. For example:
+      #   mcp-descriptions:
+      #     weather: forecasts and alerts by city
+      mcp-descriptions: {}
 
       # How much of such a saved file may be read back into a tool argument given as an @file:
       # reference — the other half of the same idea. Where a tool result exists only to become the

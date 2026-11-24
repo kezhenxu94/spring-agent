@@ -1,12 +1,15 @@
 package me.kezhenxu94.springagent.core.tools;
 
+import com.google.common.base.Strings;
 import io.modelcontextprotocol.client.McpSyncClient;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.advisors.AutoSkillToolsAdvisor;
 import me.kezhenxu94.springagent.core.advisors.MemoryToolsAdvisor;
 import me.kezhenxu94.springagent.core.advisors.TurnContextAdvisor;
+import me.kezhenxu94.springagent.core.advisors.toolsearch.ToolGroupsAdvisor;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.config.Admins;
@@ -51,6 +55,7 @@ import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.mcp.SyncMcpToolCallback;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.rag.Query;
 import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
@@ -62,11 +67,14 @@ import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.core.task.support.ContextPropagatingTaskDecorator;
 import org.springframework.stereotype.Component;
+import org.springframework.util.ReflectionUtils;
 
 @Slf4j
 @Component
@@ -311,11 +319,16 @@ public class AgentToolsProvider {
     // out of the way of this repository's own tools; what a prefix cannot rule out is an MCP server
     // whose own toolPrefix is "skill" landing on the same name. There the skill loses and is left
     // out, rather than the composition failing — see withoutTakenNames.
-    tools.addAll(
+    final var skills =
         withoutTakenNames(
-            agentTools.skillTools().stream().filter(scenario::offers).toList(), callbacks));
+            agentTools.skillTools().stream().filter(scenario::offers).toList(), callbacks);
+    tools.addAll(skills);
 
     final var advisors = new ArrayList<Advisor>();
+    final var groups = toolGroups(callbacks, skills);
+    if (!groups.isEmpty()) {
+      advisors.add(new ToolGroupsAdvisor(groups));
+    }
     knowledgeRetrieval(request, knowledgeHandler).ifPresent(advisors::add);
     // Only where the run has a memory to describe; which memories those are is the turn context's
     // to say — see MemoryScopesPromptVariables.
@@ -338,6 +351,103 @@ public class AgentToolsProvider {
     skillOffer(tools).ifPresent(advisors::add);
 
     return new AgentComposition(tools.toArray(), List.copyOf(advisors), agentTools.mcpTools());
+  }
+
+  /**
+   * Where an app-wide MCP server's catalogue line takes its purpose from, by connection name, ahead
+   * of whatever the server says about itself: Spring AI's connection settings have no description.
+   */
+  static final String MCP_DESCRIPTIONS_PROPERTY = "app.ai.tools.mcp-descriptions";
+
+  /** The client behind an MCP tool, which Spring AI holds in a private field and nowhere else. */
+  private static final Field MCP_CLIENT =
+      ReflectionUtils.findField(SyncMcpToolCallback.class, "mcpClient");
+
+  static {
+    if (MCP_CLIENT != null) {
+      ReflectionUtils.makeAccessible(MCP_CLIENT);
+    }
+  }
+
+  /**
+   * Which group each tool belongs to in the tool search's catalogue: the skills together, and each
+   * MCP server's tools together, under the server's name and what it is for — the description
+   * configured for it (a user's registered one, or {@value #MCP_DESCRIPTIONS_PROPERTY} for an
+   * app-wide connection), else what the server said of itself when it was initialized, else
+   * nothing. A tool whose server cannot be told is left ungrouped, which only costs it a line.
+   */
+  private Map<String, ToolGroupsAdvisor.ToolGroup> toolGroups(
+      final List<ToolCallback> callbacks, final List<ToolCallback> skills) {
+    final var groups = new HashMap<String, ToolGroupsAdvisor.ToolGroup>();
+    if (!skills.isEmpty()) {
+      final var group =
+          new ToolGroupsAdvisor.ToolGroup(
+              "skills", SkillsTool.TOOL_NAME_PREFIX, messages.get("tool-group-skills"));
+      skills.forEach(skill -> groups.put(skill.getToolDefinition().name(), group));
+    }
+    final var byClient = new IdentityHashMap<McpSyncClient, List<String>>();
+    for (final var callback : callbacks) {
+      final var client = mcpClientOf(callback);
+      if (client != null) {
+        byClient
+            .computeIfAbsent(client, c -> new ArrayList<>())
+            .add(callback.getToolDefinition().name());
+      }
+    }
+    if (byClient.isEmpty()) {
+      return groups;
+    }
+    final var configured =
+        Binder.get(applicationContext.getEnvironment())
+            .bind(MCP_DESCRIPTIONS_PROPERTY, Bindable.mapOf(String.class, String.class))
+            .orElse(Map.of());
+    byClient.forEach(
+        (client, names) -> {
+          final var group = groupOf(client, names, configured);
+          names.forEach(name -> groups.put(name, group));
+        });
+    return groups;
+  }
+
+  private static ToolGroupsAdvisor.ToolGroup groupOf(
+      final McpSyncClient client, final List<String> names, final Map<String, String> configured) {
+    final var info = client.getClientInfo();
+    final var label = info == null ? "mcp" : firstNonBlank(info.title(), info.name(), "mcp");
+    // Our own clients are named after their tool prefix; an app-wide one's tools carry none.
+    final var prefix =
+        info != null
+                && !Strings.isNullOrEmpty(info.name())
+                && names.stream().allMatch(name -> name.startsWith(info.name() + "_"))
+            ? info.name() + "_"
+            : "";
+    final var server = client.getServerInfo();
+    final var purpose =
+        firstNonBlank(
+            configured.get(label),
+            info == null ? null : info.description(),
+            server == null ? null : server.description(),
+            server == null ? null : server.title(),
+            client.getServerInstructions(),
+            "");
+    return new ToolGroupsAdvisor.ToolGroup(label, prefix, purpose);
+  }
+
+  private static McpSyncClient mcpClientOf(final ToolCallback callback) {
+    if (MCP_CLIENT == null || !(callback instanceof SyncMcpToolCallback)) {
+      return null;
+    }
+    return ReflectionUtils.getField(MCP_CLIENT, callback) instanceof McpSyncClient client
+        ? client
+        : null;
+  }
+
+  private static String firstNonBlank(final String... candidates) {
+    for (final var candidate : candidates) {
+      if (candidate != null && !candidate.isBlank()) {
+        return candidate.strip();
+      }
+    }
+    return "";
   }
 
   /**
