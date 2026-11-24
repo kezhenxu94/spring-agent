@@ -141,6 +141,17 @@ class LargeResponseInterceptorTest {
   }
 
   @Test
+  @DisplayName("the tool search's result is never spilled: the model calls from it next")
+  void searchResultIsNeverSpilled() {
+    final var schemas = "[" + "{\"name\":\"t\",\"input_schema\":{}},".repeat(50) + "{}]";
+
+    final var result = interceptor(20).afterCall("toolSearchTool", "{}", schemas, CONTEXT);
+
+    assertThat(result).isEqualTo(schemas);
+    assertThat(spilled()).isEmpty();
+  }
+
+  @Test
   @DisplayName("a read of a memory index is never spilled, whatever its size")
   void memoryIndexIsNeverSpilled() {
     final var index = "\"" + "- [a](a.md)\\n".repeat(100) + "\"";

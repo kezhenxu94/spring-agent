@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import me.kezhenxu94.springagent.core.advisors.toolsearch.ToolSearchToolCallingAdvisor;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.tools.ToolContexts;
@@ -71,7 +72,7 @@ public class LargeResponseInterceptor implements ToolCallInterceptor {
       String toolName, String toolInput, String toolResult, ToolContext toolContext) {
     if (toolResult == null
         || toolResult.length() <= appConfiguration.ai().tools().maxResultChars()
-        || readsMemoryIndex(toolName, toolInput)) {
+        || neverSpilled(toolName, toolInput)) {
       return toolResult;
     }
 
@@ -131,11 +132,16 @@ public class LargeResponseInterceptor implements ToolCallInterceptor {
   }
 
   /**
-   * Whether this call reads a memory index. Never spilled: the index is what tells the model which
-   * memory to open, and a pointer to a file in its place costs a round trip at best — at worst, as
-   * happened, a model that never finds the line it needed.
+   * Whether this call's result goes to the model however large it is, because the model needs all
+   * of it on its very next call and a pointer to a file in its place only costs a round trip to
+   * read it back — at worst, as happened, a model that never finds the line it needed. Two: the
+   * tool search's own result, the schemas of the tools the model is about to call; and a read of a
+   * memory index, which tells it which memory to open.
    */
-  private static boolean readsMemoryIndex(final String toolName, final String toolInput) {
+  private static boolean neverSpilled(final String toolName, final String toolInput) {
+    if (ToolSearchToolCallingAdvisor.SEARCH_TOOL_NAME.equals(toolName)) {
+      return true;
+    }
     if (!"MemoryView".equals(toolName) || toolInput == null) {
       return false;
     }
