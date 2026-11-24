@@ -221,8 +221,10 @@ with, since that punctuation belongs to the interjected word rather than to the 
 `ScenarioMemos` before changing the rule.
 
 **`toolSearch()` says how a run's tools reach the model.** The tool-search advisor replaces the
-tool set rather than indexing it alongside — the model gets `toolSearchTool` and a paragraph about
-looking, and sees nothing else until it searches. Worth it for a run reaching a few hundred MCP
+tool set rather than indexing it alongside — the model gets a fixed few tools, `toolSearchTool` and
+`CallTool`, plus a list of every other tool by name, and reaches those by searching for their schema
+and calling them through `CallTool`. The tools array never changes during a conversation, which is
+what a prefix cache needs; `app.ai.tools.always-loaded` adds to the fixed few. Worth it for a run reaching a few hundred MCP
 tools; a wasted round trip for one composed of four, which is why `KNOWLEDGE_BASE` and `ONE_OFF`
 decline it. `ONE_OFF` is the one that was actually wrong: `tools()` empties the composition, but the
 advisor puts its own tool into the options and its own suffix into the system message, so a run

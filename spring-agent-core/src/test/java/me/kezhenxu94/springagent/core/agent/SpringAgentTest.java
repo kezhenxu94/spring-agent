@@ -939,7 +939,7 @@ class SpringAgentTest {
 
     final var history = executeAsk(manager, new ToolCallback[0]);
 
-    assertThat(history).singleElement(as(STRING)).contains("was not offered to this call");
+    assertThat(history).singleElement(as(STRING)).contains("is not attached to you");
   }
 
   /**

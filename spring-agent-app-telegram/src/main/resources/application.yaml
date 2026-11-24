@@ -100,8 +100,12 @@ spring:
               - name: messageType
                 type: tag
       client:
-        # Only `toolSearchTool` and whatever a search has already named reach the model on any one
-        # iteration, so the suffix appended to the system prompt is what teaches it the protocol.
+        # The model is offered the same tools on every request of a conversation: a few it nearly
+        # always needs, `toolSearchTool` and `CallTool`. Every other tool is listed by name in the
+        # suffix appended to the system prompt, found with `toolSearchTool` (which answers with its
+        # schema) and called through `CallTool` — a prefix cache misses everything after a tools
+        # array that changes. See ToolSearchToolCallingAdvisor. `reference-tool-name-accumulation`
+        # means nothing here, since no tool is ever attached.
         # `system-message-suffix` is not set here on purpose: core defaults it (see
         # ToolSearchAdvisorDefaults) to its own prompt in the app.locale language, since upstream's
         # is a single English sentence. Set it here to say something else.
@@ -1159,6 +1163,18 @@ app:
       # costs by roughly two and a half times. A deployment whose tools answer in Chinese wants
       # about 12000 here to be where it was.
       max-result-chars: ${TOOLS_MAX_RESULT_CHARS:30000}
+      # Tools offered to the model on every request rather than found through the tool search,
+      # in addition to core's own few (ToolSearchToolCallingAdvisor.ALWAYS_LOADED: the file,
+      # memory, todo, question, subagent and knowledge-search tools). Name here the tools this
+      # deployment's own system prompt tells the model to call by name; each one left to the search
+      # costs a search round before every first use. Comma-separated tool names, exactly as offered.
+      #
+      # This only chooses among the tools a run was already given: a tool the scenario refuses, an
+      # administrator's tool for somebody who is not one, or an MCP server the user has not added
+      # stays out, and a named tool passes through the same interceptors as any other. Every name
+      # adds its schema to every request, so keep it to what is actually used. A name matching no
+      # tool this application declares is logged at startup and otherwise ignored.
+      always-loaded: ${TOOLS_ALWAYS_LOADED:}
 
       # How much of such a saved file may be read back into a tool argument given as an @file:
       # reference — the other half of the same idea. Where a tool result exists only to become the

@@ -250,6 +250,51 @@ class InterceptingToolCallbackTest {
     };
   }
 
+  @Test
+  @DisplayName(
+      "CallTool runs the named tool through the interceptors, under its own arguments, with the"
+          + " display description carried over and taken off")
+  void dispatchesThroughTheInterceptors() {
+    final var seen = new ArrayList<String>();
+    final var delegate = new RecordingCallback(ToolMetadata.builder().build());
+    final var dispatcher =
+        new DispatchingToolCallback(
+            Map.of("Write", delegate), List.of(watching(seen)), refs(), messages());
+
+    final var result =
+        dispatcher.call(
+            "{\"name\":\"Write\",\"arguments\":{\"path\":\"/tmp/x\"},\""
+                + DisplayDescription.FIELD
+                + "\":\"Write the file\"}",
+            CONTEXT);
+
+    assertThat(delegate.received).isEqualTo("{\"path\":\"/tmp/x\"}");
+    assertThat(seen)
+        .hasSize(2)
+        .allSatisfy(
+            input ->
+                assertThat(input)
+                    .contains("/tmp/x")
+                    .contains("Write the file")
+                    .doesNotContain("\"name\""));
+    assertThat(result).isEqualTo("\"ok\"");
+  }
+
+  @Test
+  @DisplayName("CallTool accepts arguments written as a string, and refuses a name it cannot call")
+  void dispatcherEdges() {
+    final var delegate = new RecordingCallback(ToolMetadata.builder().build());
+    final var dispatcher =
+        new DispatchingToolCallback(Map.of("Write", delegate), List.of(), refs(), messages());
+
+    dispatcher.call("{\"name\":\"Write\",\"arguments\":\"{\\\"path\\\":\\\"/a\\\"}\"}", CONTEXT);
+    assertThat(delegate.received).isEqualTo("{\"path\":\"/a\"}");
+
+    assertThat(dispatcher.call("{\"name\":\"Bash\",\"arguments\":{}}", CONTEXT))
+        .contains("no tool called")
+        .contains("Bash");
+  }
+
   private static ToolCallInterceptor watching(final List<String> seen) {
     return new ToolCallInterceptor() {
       @Override

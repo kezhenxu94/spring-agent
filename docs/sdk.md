@@ -358,9 +358,13 @@ server the user can reach before the model is asked anything. A scenario refusin
 callbacks away.
 
 `toolSearch()` decides how a run's tools reach the model where the deployment configured a tool
-search. That advisor does not index the tools *as well* — it replaces them: the model is handed
-`toolSearchTool` plus whatever the conversation has already named, and has to search before it can
-see the rest. The right bargain for an open-ended run reaching a few hundred MCP tools, and the
+search. That advisor does not index the tools *as well* — it replaces them: the model is handed a
+few tools nearly every run needs, `toolSearchTool` and `CallTool`, the same on every request of a
+conversation so that a prefix cache holds. Every other tool is listed by name in the system prompt,
+and the model reaches it by searching for its schema and calling it through `CallTool`.
+`app.ai.tools.always-loaded` adds tools to that fixed few, for the ones an application's own system
+prompt tells the model to call by name; it only chooses among the tools a run was composed with. The
+right bargain for an open-ended run reaching a few hundred MCP tools, and the
 wrong one for a run composed of four, which pays a mandatory round trip to discover what would have
 fitted in the prompt. `KNOWLEDGE_BASE` and `ONE_OFF` decline it. There is no per-request switch on
 the advisor itself, so declining means `SpringAgent` hands the run a plain `ToolCallingAdvisor`

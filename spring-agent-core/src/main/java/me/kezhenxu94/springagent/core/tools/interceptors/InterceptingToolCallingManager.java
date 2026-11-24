@@ -45,7 +45,10 @@ public class InterceptingToolCallingManager implements ToolCallingManager {
           options.getToolCallbacks().stream()
               .<ToolCallback>map(
                   cb ->
+                      // The dispatcher wraps the tool it calls; wrapped itself, every interceptor
+                      // would see that call twice.
                       cb instanceof InterceptingToolCallback
+                              || cb instanceof DispatchingToolCallback
                           ? cb
                           : new InterceptingToolCallback(cb, interceptors, fileRefs, messages))
               .toList();
@@ -157,11 +160,10 @@ public class InterceptingToolCallingManager implements ToolCallingManager {
   }
 
   /**
-   * The tool-search advisor rebuilds the callbacks before every iteration, keeping only {@code
-   * toolSearchTool} and whatever a surviving search result named, so a tool the run does carry can
-   * still be missing from the call the model is making. Whatever is missing here falls through to
-   * the resolver, and a per-request tool is lost there — so the names on both sides are logged
-   * while they are still known.
+   * The tool-search advisor offers only a fixed set of tools directly and the rest through {@code
+   * CallTool}, so a model that calls one of the rest by its own name is calling a tool the request
+   * does not carry. Whatever is missing here falls through to the resolver, and a per-request tool
+   * is lost there — so the names on both sides are logged while they are still known.
    */
   private static void logMissingTools(
       final ToolCallingChatOptions options, final ChatResponse chatResponse) {

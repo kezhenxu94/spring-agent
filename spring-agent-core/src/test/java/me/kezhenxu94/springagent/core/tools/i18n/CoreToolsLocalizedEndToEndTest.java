@@ -80,9 +80,8 @@ class CoreToolsLocalizedEndToEndTest {
   /**
    * The tool the model is actually offered on every iteration once the tool search is on.
    *
-   * <p>{@code ToolSearchToolCallingAdvisor.prepareIteration} replaces the request's callbacks with
-   * just its own tool plus whatever a search has already named, so this one description is most of
-   * what the model ever reads about its tools — and it belongs to neither this project nor
+   * <p>{@code ToolSearchToolCallingAdvisor} offers it on every request of a conversation, so this
+   * one description is read on every call — and it belongs to neither this project nor
    * spring-ai-agent-utils. Left untranslated it makes a fully translated deployment look untouched,
    * which is exactly how this was found.
    */
@@ -95,7 +94,7 @@ class CoreToolsLocalizedEndToEndTest {
             Locale.of("zh", "CN"));
 
     assertThat(definition.name()).isEqualTo("toolSearchTool");
-    assertThat(definition.description()).startsWith("在工具库里搜索工具");
+    assertThat(definition.description()).startsWith("在\"通过 CallTool 调用的工具\"清单里");
     assertThat(definition.inputSchema())
         .as("its parameters travel in the schema, and are read as closely as the description")
         .contains("用自然语言描述你需要的工具能力");

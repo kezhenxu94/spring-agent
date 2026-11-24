@@ -58,8 +58,12 @@ spring:
             # SPRING_AI_CHAT_MEMORY tables would never be created.
             initialize-schema: always
       client:
-        # Only `toolSearchTool` and whatever a search has already named reach the model on any one
-        # iteration, so the suffix appended to the system prompt is what teaches it the protocol.
+        # The model is offered the same tools on every request of a conversation: a few it nearly
+        # always needs, `toolSearchTool` and `CallTool`. Every other tool is listed by name in the
+        # suffix appended to the system prompt, found with `toolSearchTool` (which answers with its
+        # schema) and called through `CallTool` — a prefix cache misses everything after a tools
+        # array that changes. See ToolSearchToolCallingAdvisor. `reference-tool-name-accumulation`
+        # means nothing here, since no tool is ever attached.
         # `system-message-suffix` is not set here on purpose: core defaults it (see
         # ToolSearchAdvisorDefaults) to its own prompt in the app.locale language, since upstream's
         # is a single English sentence. Set it here to say something else.

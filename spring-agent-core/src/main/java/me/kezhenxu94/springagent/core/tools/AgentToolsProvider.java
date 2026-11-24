@@ -10,6 +10,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -721,6 +722,45 @@ public class AgentToolsProvider {
       }
     }
     return List.copyOf(tools);
+  }
+
+  /**
+   * The tools built for every run rather than declared as beans — the filesystem, search, todo and
+   * question tools in {@link #build} and {@code composeWith} — by the names they are offered under.
+   */
+  private static final Set<String> PER_REQUEST_TOOL_NAMES =
+      Set.of(
+          "AskUserQuestionTool",
+          "Edit",
+          "Glob",
+          "Grep",
+          "ListDirectory",
+          "Read",
+          "TodoWrite",
+          "Write");
+
+  /**
+   * The name of every tool this deployment declares: the {@code @AgentTool} beans, admin ones
+   * included, and the ones built per run. Not the tools of a user's MCP servers or skills, which
+   * exist only once a run for that user is composed.
+   */
+  public Set<String> declaredToolNames() {
+    final var names = new HashSet<>(PER_REQUEST_TOOL_NAMES);
+    for (final var name : applicationContext.getBeanNamesForAnnotation(AgentTool.class)) {
+      final var tool = applicationContext.getBean(name);
+      try {
+        final var callbacks =
+            tool instanceof ToolCallback callback
+                ? new ToolCallback[] {callback}
+                : ToolCallbacks.from(tool);
+        for (final var callback : callbacks) {
+          names.add(callback.getToolDefinition().name());
+        }
+      } catch (RuntimeException e) {
+        log.debug("Could not list the tools of bean {}: {}", name, e.getMessage());
+      }
+    }
+    return Set.copyOf(names);
   }
 
   /**

@@ -62,4 +62,20 @@ class SpringAgentToolSearchAdvisorConfigurationTest {
                     .hasNotFailed()
                     .doesNotHaveBean(ToolCallingAdvisor.Builder.class));
   }
+
+  @Test
+  @DisplayName("app.ai.tools.always-loaded binds as a list, and an unset variable adds nothing")
+  void alwaysLoadedBinds() {
+    assertThat(
+            SpringAgentToolSearchAdvisorConfiguration.alwaysLoaded(
+                new org.springframework.mock.env.MockEnvironment()
+                    .withProperty(
+                        "app.ai.tools.always-loaded", "FeishuReadMessage, FeishuReadMessageHistory")))
+        .containsExactly("FeishuReadMessage", "FeishuReadMessageHistory");
+    assertThat(
+            SpringAgentToolSearchAdvisorConfiguration.alwaysLoaded(
+                new org.springframework.mock.env.MockEnvironment()
+                    .withProperty("app.ai.tools.always-loaded", "")))
+        .isEmpty();
+  }
 }

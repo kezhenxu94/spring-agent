@@ -10,6 +10,7 @@ import java.util.Set;
 import me.kezhenxu94.springagent.core.aot.AgentToolsRuntimeHints;
 import me.kezhenxu94.springagent.core.config.LocalizedPrompt;
 import me.kezhenxu94.springagent.core.i18n.ToolTextsInventory;
+import me.kezhenxu94.springagent.core.tools.interceptors.DispatchingToolCallback;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -53,6 +54,19 @@ class CoreToolTextsParityTest {
     // so no name a translation could carry is knowable here, and a key or a file naming one is a
     // key that would never be applied. Leaving them out of the inventory is what makes the
     // assertions below reject such a key rather than accept it.
+    // CallTool is built by hand rather than from an @Tool method, so no scan finds it; its
+    // parameters are read off the schema it is offered with.
+    found.put(
+        DispatchingToolCallback.NAME,
+        new tools.jackson.databind.json.JsonMapper()
+                .readTree(
+                    new DispatchingToolCallback(java.util.Map.of(), java.util.List.of(), null, null)
+                        .getToolDefinition()
+                        .inputSchema())
+                .get("properties")
+                .propertyNames()
+                .stream()
+                .collect(java.util.stream.Collectors.toSet()));
     tools = java.util.Map.copyOf(found);
   }
 

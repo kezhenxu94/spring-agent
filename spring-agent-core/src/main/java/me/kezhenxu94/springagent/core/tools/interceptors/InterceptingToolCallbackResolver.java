@@ -22,9 +22,8 @@ public class InterceptingToolCallbackResolver implements ToolCallbackResolver {
 
   /**
    * What the model reads in place of the dropped call, in the workspace's language. This fires
-   * whenever the tool search did not offer a tool the model went on to call, which is a normal part
-   * of a long turn rather than an error — so it is a sentence the model reads several times in a
-   * conversation, and one worth not being English.
+   * whenever the model calls by its own name a tool the tool search offers only through {@code
+   * CallTool} — a slip rather than an error, so it is a sentence worth not being English.
    */
   private final CoreMessages messages;
 
@@ -87,9 +86,9 @@ public class InterceptingToolCallbackResolver implements ToolCallbackResolver {
 
   /**
    * What the model reads instead of the tool's result. A tool reaches this path because the
-   * tool-search advisor did not offer it to the current iteration, and a search naming it is what
-   * puts it back, so the way out is worth spelling out: told only that the tool is unavailable, the
-   * model abandons the step it was in the middle of.
+   * tool-search advisor offers it only through {@code CallTool}, so the way out is worth spelling
+   * out: told only that the tool is unavailable, the model abandons the step it was in the middle
+   * of.
    */
   private static String recoveryMessage(final String toolName, final CoreMessages messages) {
     return messages.get("tool-not-offered", toolName);

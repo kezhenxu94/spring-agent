@@ -74,13 +74,16 @@ class ScenarioToolSearchTest {
       };
 
   @Test
-  @DisplayName("a run that wants the tool search is given one tool and told to go looking")
+  @DisplayName(
+      "a run that wants the tool search is handed the search and CallTool in place of its tools,"
+          + " and told what they are")
   void aSearchingRunSeesOnlyTheSearchTool() throws Exception {
     fire(BuiltInScenarios.CHAT);
 
-    // What the tool search does is replace the tools, not index them as well: the model is handed
-    // toolSearchTool and nothing else until it searches.
-    assertThat(offeredToolNames()).containsExactly("toolSearchTool");
+    // What the tool search does is replace the tools, not index them as well: a tool that is not
+    // always loaded is listed in the system prompt and called through CallTool, never attached.
+    assertThat(offeredToolNames()).containsExactly("CallTool", "toolSearchTool");
+    assertThat(systemText()).contains("- IndexKnowledge");
     assertThat(systemText()).contains("SEARCH FOR TOOLS");
     assertThat(toolIndex.indexed).isTrue();
   }
@@ -90,7 +93,7 @@ class ScenarioToolSearchTest {
   void aDecliningRunSeesItsOwnTools() throws Exception {
     fire(NO_SEARCH);
 
-    assertThat(offeredToolNames()).containsExactly("SearchKnowledge");
+    assertThat(offeredToolNames()).containsExactly("IndexKnowledge");
     assertThat(systemText()).doesNotContain("SEARCH FOR TOOLS");
     // Nothing was embedded either, which is the other half of what declining buys.
     assertThat(toolIndex.indexed).isFalse();
@@ -111,7 +114,7 @@ class ScenarioToolSearchTest {
   }
 
   private void fire(final AgentScenario scenario) throws Exception {
-    final var tool = stubCallback("SearchKnowledge");
+    final var tool = stubCallback("IndexKnowledge");
     when(agentToolsProvider.compose(any(), any(), any(), any(), anyBoolean(), any()))
         .thenReturn(
             new AgentComposition(
@@ -141,6 +144,10 @@ class ScenarioToolSearchTest {
                     .toolIndex(toolIndex)
                     .systemMessageSuffix("\n\nSEARCH FOR TOOLS")
                     .sessionIdKeyName(SpringAgent.TOOL_INDEX_KEY)
+                    .dispatcher(
+                        targets ->
+                            new me.kezhenxu94.springagent.core.tools.interceptors
+                                .DispatchingToolCallback(targets, List.of(), null, null))
                     .toolCallingManager(manager)),
             manager,
             providerOf((ToolExecutionEligibilityChecker) null),

@@ -20,14 +20,17 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import me.kezhenxu94.springagent.core.advisors.MemoryToolCallingAdvisor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.ai.chat.client.ChatClientRequest;
@@ -35,16 +38,14 @@ import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.client.advisor.api.CallAdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.StreamAdvisorChain;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.messages.Message;
-import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.messages.SystemMessage;
-import org.springframework.ai.chat.messages.ToolResponseMessage;
-import org.springframework.ai.chat.messages.ToolResponseMessage.ToolResponse;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionEligibilityChecker;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.ai.tool.toolsearch.ToolIndex;
 import org.springframework.ai.tool.toolsearch.ToolReference;
@@ -53,74 +54,113 @@ import org.springframework.ai.tool.toolsearch.eviction.CompositeEvictionStrategy
 import org.springframework.ai.tool.toolsearch.eviction.LruEvictionStrategy;
 import org.springframework.ai.tool.toolsearch.eviction.ToolIndexEvictionStrategy;
 import org.springframework.ai.tool.toolsearch.eviction.TtlEvictionStrategy;
-import org.springframework.ai.util.JsonHelper;
-import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.util.Assert;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
 
 /**
  * Forked from {@code
- * org.springframework.ai.chat.client.advisor.toolsearch.ToolSearchToolCallingAdvisor}, changed in
- * exactly one place: {@link #initializeSession} no longer calls {@link
- * Prompt#augmentSystemMessage}, which mutates the <em>first</em> {@code SystemMessage} it finds in
- * the request and stops there. That was indistinguishable from correct while a run ever carried
- * exactly one system message; it stopped being correct the moment {@code
- * me.kezhenxu94.springagent.core.config.SystemPromptParts} let one carry several, one per
- * configured {@code system-prompt} part — the suffix landed on whichever piece an operator happened
- * to write first, which is arbitrary and usually not what a cache boundary or a persona block wants
- * sitting next to it. {@link #appendToLastSystemMessage} does the same append, on the last system
- * message instead, matching {@code MemoryToolsAdvisor} and {@code AutoSkillToolsAdvisor} in this
- * same package, which carry the identical fix and the identical reason for it.
+ * org.springframework.ai.chat.client.advisor.toolsearch.ToolSearchToolCallingAdvisor}, and by now
+ * different from it in what a search does, not only in where its suffix lands.
  *
- * <p>A fork rather than a subclass because the method that needed changing, {@code
- * initializeSession}, is {@code private} upstream — nothing here could have overridden it. Forking
- * the whole file is therefore the honest cost of this fix, not a choice: {@code private} means
- * upstream never intended a caller to reach in here, and every method below this comment is
- * upstream's own, copied rather than rewritten, so that a future diff against the real class stays
- * legible. Read that class's own javadoc before touching anything past {@link #initializeSession}.
+ * <p><b>The {@code tools} array is the same on every request of a conversation.</b> Upstream
+ * attaches each tool a search names to the next request, so the array grows during a turn and
+ * starts over at the next one. On a provider that caches by prefix — DeepSeek and the
+ * OpenAI-compatible gateways in front of it — the tool definitions are rendered ahead of the system
+ * prompt, so every attachment missed the cache for the whole conversation behind it. Here the array
+ * is {@link #ALWAYS_LOADED} plus {@code toolSearchTool} and {@code CallTool}, sorted by name, and
+ * nothing is ever attached: a search answers with the schemas of what it found, which then sit in
+ * the message history, and the model calls them through {@code CallTool} — see {@code
+ * DispatchingToolCallback}. Sorted because the composition's order is not stable from one turn to
+ * the next — an MCP server's tools arrive when its handshake does.
  *
- * <p>Everything else — the builder, the properties it takes, the eviction and fingerprinting logic
- * — is unchanged, which is what keeps this a small, auditable diff rather than a reimplementation:
- * {@code SpringAgentToolSearchAdvisorConfiguration} builds this exactly where {@code
- * ToolSearchAdvisorAutoConfiguration} would have built the original, from the same {@code
- * ToolSearchAdvisorProperties}.
+ * <p><b>The model is told what exists.</b> Every tool not in the array is listed by name with the
+ * first line of its description at the end of the system prompt, after the suffix, so the model can
+ * call one it recognizes without searching and knows what to search for otherwise. The list holds a
+ * user's MCP servers and skills, so it is the last thing in the system prompt: everything before it
+ * is the same for every user. It changes only when somebody adds or removes a tool, which costs one
+ * cache miss rather than one per tool found.
  *
- * <p>The one other difference is the class it extends: {@link MemoryToolCallingAdvisor} rather than
- * {@link ToolCallingAdvisor}, so that a run taking the tool search keeps its conversation's memory
- * the way every other run does. That class only adds to the loop around hooks this one does not
- * override, and a run that names no conversation is the upstream loop unchanged.
+ * <p><b>The suffix goes on the last system message</b> rather than the first, which is what
+ * upstream's {@link Prompt#augmentSystemMessage} does — with several {@code system-prompt} parts,
+ * that put it on whichever piece an operator happened to write first.
+ *
+ * <p>A fork rather than a subclass because what had to change, {@code initializeSession} and {@code
+ * prepareIteration}, is {@code private} upstream. The index, the fingerprinting, the eviction and
+ * the builder's configuration are upstream's and read the same {@code ToolSearchAdvisorProperties},
+ * except {@code reference-tool-name-accumulation}, which no longer means anything: nothing is
+ * attached, so there are no references to accumulate.
+ *
+ * <p>It extends {@link MemoryToolCallingAdvisor} rather than {@link ToolCallingAdvisor}, so that a
+ * run taking the tool search keeps its conversation's memory the way every other run does.
  */
 public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
 
-  private static final JsonHelper jsonHelper = new JsonHelper();
-
-  private static final String CACHED_TOOL_CALLBACKS_KEY =
-      ToolSearchToolCallingAdvisor.class.getName() + ".cachedToolCallbacks";
-
   /**
-   * Internal Tool implementing the tool search functionality. It is registered, automatically,
-   * under the name "toolSearchTool".
+   * The tools offered directly on every request rather than through the search: the ones nearly
+   * every run needs, whose absence cost the model several searches before it could even read a file
+   * or its own memory, and the ones core's own system prompt tells the model to call by name. A
+   * name this run does not carry — {@code Bash} without a shell — is simply absent. An application
+   * adds to these with {@code app.ai.tools.always-loaded}.
    */
+  public static final Set<String> ALWAYS_LOADED =
+      Set.of(
+          "AskUserQuestionTool",
+          "Bash",
+          "CancelSubagent",
+          "CurrentDateTime",
+          "Edit",
+          "Glob",
+          "Grep",
+          "MemoryCreate",
+          "MemoryDelete",
+          "MemoryInsert",
+          "MemoryRename",
+          "MemoryStrReplace",
+          "MemoryView",
+          "Read",
+          "SearchKnowledge",
+          "StartSubagent",
+          "TodoWrite",
+          "WaitForSubagent",
+          "Write");
+
+  /** How much of a tool's description its catalogue line keeps. */
+  private static final int SUMMARY_CHARS = 160;
+
+  private static final JsonMapper MAPPER = JsonMapper.builder().build();
+
+  private static final String OFFERED_TOOL_CALLBACKS_KEY =
+      ToolSearchToolCallingAdvisor.class.getName() + ".offeredToolCallbacks";
+
+  /** What {@code toolSearchTool} is told it does, now that it answers with schemas. */
+  private static final String SEARCH_DESCRIPTION =
+      """
+      Search the tools listed under "Tools you call through CallTool" for the ones that can do \
+      what the current task needs. The query is matched against each tool's name and description.
+      Returns each match's name, description and input_schema; call it through CallTool with \
+      arguments matching that schema. Nothing is attached to you, so there is nothing to wait for.\
+      """;
+
+  /** Upstream's search tool, whose index query and parameters are used as they are. */
   private final ToolCallback toolSearchToolCallback;
 
   /** The ToolIndex used to find tools based on search queries. */
   private final ToolIndex toolIndex;
 
-  /**
-   * The Tool Search system message suffix augment to be added to the prompt during initialization.
-   */
+  /** Appended to the last system message, ahead of the catalogue. */
   private final String systemMessageSuffix;
 
-  /**
-   * If enabled, accumulates all tool search tool responses to find tool references.
-   *
-   * <p>If disabled, only the last tool search tool response is used to find tool references.
-   */
-  private final boolean referenceToolNameAccumulation;
-
   private final String sessionIdKeyName;
+
+  /** {@link #ALWAYS_LOADED} and whatever the application added to it. */
+  private final Set<String> alwaysLoaded;
+
+  /** Builds this run's {@code CallTool} over the tools it may call through it. */
+  private final Function<Map<String, ToolCallback>, ToolCallback> dispatcher;
 
   /**
    * Tracks the fingerprint (sorted name+description hash) of the tool set last indexed for each
@@ -138,11 +178,12 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
       final ToolExecutionEligibilityChecker toolExecutionEligibilityChecker,
       final ToolIndex toolIndex,
       final String systemMessageSuffix,
-      final boolean referenceToolNameAccumulation,
       @Nullable final Integer maxResults,
       final boolean conversationHistoryEnabled,
       final String sessionIdKeyName,
-      final ToolIndexEvictionStrategy evictionStrategy) {
+      final ToolIndexEvictionStrategy evictionStrategy,
+      final Function<Map<String, ToolCallback>, ToolCallback> dispatcher,
+      final Set<String> alwaysLoaded) {
 
     super(
         toolCallingManager,
@@ -151,9 +192,10 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
         conversationHistoryEnabled);
     this.toolIndex = toolIndex;
     this.systemMessageSuffix = systemMessageSuffix;
-    this.referenceToolNameAccumulation = referenceToolNameAccumulation;
     this.sessionIdKeyName = sessionIdKeyName;
     this.evictionStrategy = evictionStrategy;
+    this.dispatcher = dispatcher;
+    this.alwaysLoaded = alwaysLoaded;
     this.toolSearchToolCallback =
         MethodToolCallbackProvider.builder()
             .toolObjects(new ToolSearchTool(toolIndex, maxResults))
@@ -216,8 +258,9 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
   // -------------------------------------------------------------------------
 
   /**
-   * Indexes tools for the session (skipping re-indexing when the tool set is unchanged), runs
-   * eviction, and augments the system message.
+   * Splits the run's tools into the ones offered directly and the ones called through {@code
+   * CallTool}, indexes the latter (skipping it when that set is unchanged), and appends the suffix
+   * and the catalogue to the system message.
    */
   @SuppressWarnings("null")
   private ChatClientRequest initializeSession(final ChatClientRequest chatClientRequest) {
@@ -229,58 +272,147 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
     // Evict stale sessions before touching the current one.
     this.evictionStrategy.onAccess(sessionId).forEach(this::doEvict);
 
-    // validation of tool options happens in the tool calling advisor, so we can
-    // assume that if tool options are present, they are valid and contain either tool
-    // callbacks or tool names to search for.
-    final List<ToolReference> toolReferences =
-        this.toolCallingManager.resolveToolDefinitions(Objects.requireNonNull(toolOptions)).stream()
-            .map(
-                toolDef ->
-                    ToolReference.builder()
-                        .toolName(toolDef.name())
-                        .summary(toolDef.description())
-                        .build())
-            .toList();
-
-    // Re-index only when the tool set has changed for this session.
-    // compute() serializes concurrent requests for the same session so that only one
-    // thread performs clear+reindex when the fingerprint changes.
-    final String fingerprint = computeFingerprint(toolReferences);
-    this.indexedSessionFingerprints.compute(
-        sessionId,
-        (id, current) -> {
-          if (!fingerprint.equals(current)) {
-            this.toolIndex.clearIndex(id);
-            this.toolIndex.indexTools(id, toolReferences);
-          }
-          return fingerprint;
-        });
-
-    final ConcurrentHashMap<String, ToolCallback> cachedResolvedToolCallbacks =
-        new ConcurrentHashMap<>();
+    final var callbacks = new LinkedHashMap<String, ToolCallback>();
     if (!CollectionUtils.isEmpty(toolOptions.getToolCallbacks())) {
       toolOptions
           .getToolCallbacks()
-          .forEach(
-              tc -> cachedResolvedToolCallbacks.putIfAbsent(tc.getToolDefinition().name(), tc));
+          .forEach(tc -> callbacks.putIfAbsent(tc.getToolDefinition().name(), tc));
     }
 
-    chatClientRequest.context().put(CACHED_TOOL_CALLBACKS_KEY, cachedResolvedToolCallbacks);
-    chatClientRequest.context().put(ToolSearchTool.TOOL_SEARCH_TOOL_SESSION_ID_KEY, sessionId);
+    // Resolved through the manager rather than read off the callbacks, so the schemas a search
+    // returns are the ones the model would have been sent: translated, and with the display
+    // description the surfaces show.
+    final var deferred =
+        this.toolCallingManager.resolveToolDefinitions(Objects.requireNonNull(toolOptions)).stream()
+            .filter(definition -> !this.alwaysLoaded.contains(definition.name()))
+            .filter(definition -> callbacks.containsKey(definition.name()))
+            .sorted(Comparator.comparing(ToolDefinition::name))
+            .toList();
 
-    // Was chatClientRequest.prompt().copy().augmentSystemMessage(...) upstream — see the class
-    // comment for why that mutated whichever SystemMessage happened to be first instead of the one
-    // that should carry this suffix: the last.
-    final var augmented =
-        appendToLastSystemMessage(chatClientRequest.prompt().copy(), this.systemMessageSuffix);
-    return chatClientRequest.mutate().prompt(augmented).build();
+    final var offered = new ArrayList<ToolCallback>();
+    callbacks.values().stream()
+        .filter(callback -> this.alwaysLoaded.contains(callback.getToolDefinition().name()))
+        .forEach(offered::add);
+
+    var prompt = chatClientRequest.prompt().copy();
+    if (!deferred.isEmpty()) {
+      final List<ToolReference> toolReferences =
+          deferred.stream()
+              .map(
+                  definition ->
+                      ToolReference.builder()
+                          .toolName(definition.name())
+                          .summary(definition.description())
+                          .build())
+              .toList();
+      // Re-index only when the tool set has changed for this session. compute() serializes
+      // concurrent requests for the same session so that only one thread performs clear+reindex
+      // when the fingerprint changes.
+      final String fingerprint = computeFingerprint(toolReferences);
+      this.indexedSessionFingerprints.compute(
+          sessionId,
+          (id, current) -> {
+            if (!fingerprint.equals(current)) {
+              this.toolIndex.clearIndex(id);
+              this.toolIndex.indexTools(id, toolReferences);
+            }
+            return fingerprint;
+          });
+
+      final var targets = new LinkedHashMap<String, ToolCallback>();
+      deferred.forEach(
+          definition -> targets.put(definition.name(), callbacks.get(definition.name())));
+      offered.add(searchCallback(deferred));
+      offered.add(this.dispatcher.apply(targets));
+      prompt =
+          appendToLastSystemMessage(
+              prompt, this.systemMessageSuffix + System.lineSeparator() + catalogue(deferred));
+    }
+    offered.sort(Comparator.comparing(callback -> callback.getToolDefinition().name()));
+
+    chatClientRequest.context().put(OFFERED_TOOL_CALLBACKS_KEY, List.copyOf(offered));
+    chatClientRequest.context().put(ToolSearchTool.TOOL_SEARCH_TOOL_SESSION_ID_KEY, sessionId);
+    return chatClientRequest.mutate().prompt(prompt).build();
+  }
+
+  /**
+   * One line per tool: its name, and the first line of its description. A line rather than the
+   * whole description, since this is read on every request and a schema is a search away.
+   */
+  static String catalogue(final List<ToolDefinition> definitions) {
+    final var lines = new StringBuilder();
+    for (final var definition : definitions) {
+      lines.append("- ").append(definition.name());
+      final var summary = summary(definition.description());
+      if (!summary.isEmpty()) {
+        lines.append(": ").append(summary);
+      }
+      lines.append(System.lineSeparator());
+    }
+    return lines.toString();
+  }
+
+  private static String summary(final String description) {
+    if (description == null) {
+      return "";
+    }
+    final var first =
+        description.lines().map(String::strip).filter(line -> !line.isEmpty()).findFirst();
+    if (first.isEmpty()) {
+      return "";
+    }
+    final var line = first.get();
+    return line.length() <= SUMMARY_CHARS ? line : line.substring(0, SUMMARY_CHARS) + "…";
+  }
+
+  /**
+   * {@code toolSearchTool} for this run: upstream's query against the index, answered with the
+   * schemas of the matches rather than their names. A name the index holds but this run does not —
+   * the index is per user, and a group chat composes other skills than a private one — is left out.
+   */
+  private ToolCallback searchCallback(final List<ToolDefinition> deferred) {
+    final var byName = new LinkedHashMap<String, ToolDefinition>();
+    deferred.forEach(definition -> byName.put(definition.name(), definition));
+    final var upstream = this.toolSearchToolCallback;
+    final var definition =
+        ToolDefinition.builder()
+            .name(upstream.getToolDefinition().name())
+            .description(SEARCH_DESCRIPTION)
+            .inputSchema(upstream.getToolDefinition().inputSchema())
+            .build();
+    return new ToolCallback() {
+      @Override
+      public ToolDefinition getToolDefinition() {
+        return definition;
+      }
+
+      @Override
+      public String call(final String toolInput) {
+        return call(toolInput, null);
+      }
+
+      @Override
+      public String call(final String toolInput, final @Nullable ToolContext toolContext) {
+        final var names = MAPPER.readTree(upstream.call(toolInput, toolContext));
+        final ArrayNode found = MAPPER.createArrayNode();
+        for (final var name : names) {
+          final var match = byName.get(name.stringValue());
+          if (match != null) {
+            final var entry = found.addObject();
+            entry.put("name", match.name());
+            entry.put("description", match.description());
+            entry.set("input_schema", MAPPER.readTree(match.inputSchema()));
+          }
+        }
+        return MAPPER.writeValueAsString(found);
+      }
+    };
   }
 
   /**
    * {@code suffix} appended to the last {@link SystemMessage} in {@code prompt}, or a new one at
    * the front where the prompt carries none. See the class comment for why this replaces {@link
-   * Prompt#augmentSystemMessage}, and {@code MemoryToolsAdvisor}/{@code AutoSkillToolsAdvisor} for
-   * the identical helper on the two advisors that had the same upstream problem.
+   * Prompt#augmentSystemMessage}.
    */
   private static Prompt appendToLastSystemMessage(final Prompt prompt, final String suffix) {
     final var messages = new ArrayList<>(prompt.getInstructions());
@@ -295,32 +427,18 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
     return new Prompt(messages, prompt.getOptions());
   }
 
-  // Selects tools discovered via previous toolSearchTool calls and injects them into
-  // options.
+  /** The same tools on every iteration: the ones {@link #initializeSession} chose. */
   @SuppressWarnings({"null", "unchecked"})
   private ChatClientRequest prepareIteration(final ChatClientRequest chatClientRequest) {
     final ToolCallingChatOptions toolOptions =
         Objects.requireNonNull((ToolCallingChatOptions) chatClientRequest.prompt().getOptions());
 
-    final Set<ToolCallback> selectedToolCallbacks =
-        new HashSet<>(List.of(this.toolSearchToolCallback));
-
-    final var cachedToolCallbacks =
-        (Map<String, ToolCallback>) chatClientRequest.context().get(CACHED_TOOL_CALLBACKS_KEY);
-
-    if (cachedToolCallbacks != null) {
-      this.extractToolNameReferences(chatClientRequest.prompt().getInstructions())
-          .forEach(
-              toolName -> {
-                if (cachedToolCallbacks.containsKey(toolName)) {
-                  selectedToolCallbacks.add(cachedToolCallbacks.get(toolName));
-                }
-              });
-    }
+    final var offered =
+        (List<ToolCallback>) chatClientRequest.context().get(OFFERED_TOOL_CALLBACKS_KEY);
 
     final ToolCallingChatOptions toolOptionsCopy =
         ((ToolCallingChatOptions.Builder<?>) toolOptions.mutate())
-            .toolCallbacks(new ArrayList<>(selectedToolCallbacks))
+            .toolCallbacks(offered == null ? toolOptions.getToolCallbacks() : offered)
             .toolContext(
                 ToolSearchTool.TOOL_SEARCH_TOOL_SESSION_ID_KEY,
                 Objects.requireNonNull(
@@ -351,49 +469,6 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
     this.toolIndex.clearIndex(sessionId);
     this.indexedSessionFingerprints.remove(sessionId);
     this.evictionStrategy.onRemoved(sessionId);
-  }
-
-  private List<String> extractToolNameReferences(final List<Message> messages) {
-
-    // Group toolSearchTool responses per tool-response message, i.e. per assistant
-    // turn. A single turn may contain several parallel toolSearchTool calls, all of
-    // which arrive within one ToolResponseMessage.
-    final List<List<ToolResponse>> toolSearchResponsesPerTurn =
-        messages.stream()
-            .filter(m -> m.getMessageType() == MessageType.TOOL)
-            .map(
-                m ->
-                    ((ToolResponseMessage) m)
-                        .getResponses().stream()
-                            .filter(
-                                r ->
-                                    r.name()
-                                        .equalsIgnoreCase(
-                                            this.toolSearchToolCallback.getToolDefinition().name()))
-                            .toList())
-            .filter(responses -> !responses.isEmpty())
-            .toList();
-
-    if (toolSearchResponsesPerTurn.isEmpty()) {
-      return List.of();
-    }
-
-    // When accumulation is disabled only the most recent search turn is honored, but
-    // that turn may contain multiple parallel toolSearchTool calls that must all be
-    // kept.
-    final List<List<ToolResponse>> selectedTurns =
-        this.referenceToolNameAccumulation
-            ? toolSearchResponsesPerTurn
-            : List.of(toolSearchResponsesPerTurn.get(toolSearchResponsesPerTurn.size() - 1));
-
-    return selectedTurns.stream()
-        .flatMap(List::stream)
-        .map(
-            r ->
-                jsonHelper.fromJson(
-                    r.responseData(), new ParameterizedTypeReference<List<String>>() {}))
-        .flatMap(List::stream)
-        .toList();
   }
 
   private String getSessionId(final Map<String, @Nullable Object> context) {
@@ -458,18 +533,28 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
 
     @Nullable private String systemMessageSuffix;
 
-    private boolean referenceToolNameAccumulation = true;
-
     @Nullable private Integer maxResults;
 
     private String sessionIdKeyName = ChatMemory.CONVERSATION_ID;
 
     private ToolIndexEvictionStrategy evictionStrategy = new LruEvictionStrategy(1000);
 
+    @Nullable private Function<Map<String, ToolCallback>, ToolCallback> dispatcher;
+
+    private Set<String> alwaysLoaded = ALWAYS_LOADED;
+
     protected Builder() {}
 
-    public T referenceToolNameAccumulation(final boolean referenceToolNameAccumulation) {
-      this.referenceToolNameAccumulation = referenceToolNameAccumulation;
+    /**
+     * Tools to offer directly on every request in addition to {@link #ALWAYS_LOADED}. They are
+     * chosen from the tools a run was composed with, so naming one never offers a tool the run was
+     * not given.
+     */
+    public T alwaysLoaded(final Collection<String> extra) {
+      Assert.notNull(extra, "extra must not be null");
+      final var names = new HashSet<>(ALWAYS_LOADED);
+      extra.stream().filter(StringUtils::hasText).map(String::strip).forEach(names::add);
+      this.alwaysLoaded = Set.copyOf(names);
       return self();
     }
 
@@ -523,22 +608,25 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
      *
      * <p>Defaults to {@code new LruEvictionStrategy(1000)}, which retains indexes for at most 1 000
      * concurrently active sessions and silently evicts the least-recently-used one when the cap is
-     * exceeded. Adjust the cap to match the expected peak concurrency of your deployment — lower
-     * values reduce memory pressure, higher values reduce unnecessary re-indexing for services with
-     * many parallel conversations.
-     *
-     * <p>Combine with {@link TtlEvictionStrategy} via {@link CompositeEvictionStrategy} to also
-     * release indexes for sessions that have been idle longer than a fixed duration.
+     * exceeded. Combine with {@link TtlEvictionStrategy} via {@link CompositeEvictionStrategy} to
+     * also release indexes for sessions that have been idle longer than a fixed duration.
      *
      * @param evictionStrategy the eviction strategy to use; must not be {@code null}
      * @return this Builder instance for method chaining
-     * @see LruEvictionStrategy
-     * @see TtlEvictionStrategy
-     * @see CompositeEvictionStrategy
      */
     public T evictionStrategy(final ToolIndexEvictionStrategy evictionStrategy) {
       Assert.notNull(evictionStrategy, "evictionStrategy must not be null");
       this.evictionStrategy = evictionStrategy;
+      return self();
+    }
+
+    /**
+     * How a run's {@code CallTool} is built over the tools it may call through it, by name — see
+     * {@code DispatchingToolCallback}.
+     */
+    public T dispatcher(final Function<Map<String, ToolCallback>, ToolCallback> dispatcher) {
+      Assert.notNull(dispatcher, "dispatcher must not be null");
+      this.dispatcher = dispatcher;
       return self();
     }
 
@@ -565,17 +653,19 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
       }
 
       Assert.notNull(this.toolIndex, "toolIndex is required");
+      Assert.notNull(this.dispatcher, "dispatcher is required");
       return new ToolSearchToolCallingAdvisor(
           getToolCallingManager(),
           getAdvisorOrder(),
           getToolExecutionEligibilityChecker(),
           this.toolIndex,
           Objects.requireNonNull(this.systemMessageSuffix),
-          this.referenceToolNameAccumulation,
           this.maxResults,
           this.isConversationHistoryEnabled(),
           this.sessionIdKeyName,
-          this.evictionStrategy);
+          this.evictionStrategy,
+          this.dispatcher,
+          this.alwaysLoaded);
     }
 
     @Override
@@ -588,10 +678,11 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
       final Builder<?> copy = (Builder<?>) super.copy();
       copy.toolIndex = this.toolIndex;
       copy.systemMessageSuffix = this.systemMessageSuffix;
-      copy.referenceToolNameAccumulation = this.referenceToolNameAccumulation;
       copy.maxResults = this.maxResults;
       copy.sessionIdKeyName = this.sessionIdKeyName;
       copy.evictionStrategy = this.evictionStrategy;
+      copy.dispatcher = this.dispatcher;
+      copy.alwaysLoaded = this.alwaysLoaded;
       return copy;
     }
   }
