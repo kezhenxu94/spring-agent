@@ -26,19 +26,12 @@ import org.springframework.core.io.ByteArrayResource;
  */
 class MemoryToolsAdvisorTest {
 
-  private static final String PROMPT = "You have a memory. It is here:\n{MEMORY_SCOPES}\n";
-
-  private static final String SCOPES =
-      """
-      - own — /data/ou_1/memories — yours alone; you may write here
-      - group — /data/groups/oc_9/memories — shared with this chat; you may write here\
-      """;
+  private static final String PROMPT = "You have a memory. Use {MemoryView} to read it.\n";
 
   private final AdvisorChain chain = mock(AdvisorChain.class);
 
   private MemoryToolsAdvisor advisor() {
     return MemoryToolsAdvisor.builder()
-        .memoryScopes(SCOPES)
         .memorySystemPrompt(new ByteArrayResource(PROMPT.getBytes()))
         .build();
   }
@@ -62,13 +55,10 @@ class MemoryToolsAdvisorTest {
   class Appended {
 
     @Test
-    @DisplayName("the scopes block is rendered into the system message")
-    void scopesReachTheSystemMessage() {
+    @DisplayName("the prompt reaches the system message as it was written, braces and all")
+    void promptReachesTheSystemMessage() {
       final var text = systemTextOf(advisor().before(turn(), chain));
-      assertThat(text).startsWith("You are an agent.");
-      assertThat(text).contains("You have a memory.").contains(SCOPES);
-      // The placeholder itself must not survive, or the model reads the literal template.
-      assertThat(text).doesNotContain("MEMORY_SCOPES");
+      assertThat(text).startsWith("You are an agent.").endsWith(PROMPT);
     }
 
     @Test
@@ -113,8 +103,7 @@ class MemoryToolsAdvisorTest {
           .isEqualTo("Static house rules.");
       assertThat(((SystemMessage) systemMessages.get(1)).getText())
           .startsWith("You are an agent.")
-          .contains("You have a memory.")
-          .contains(SCOPES);
+          .contains("You have a memory.");
     }
   }
 
@@ -142,7 +131,7 @@ class MemoryToolsAdvisorTest {
                       ToolCallingChatOptions.builder().build()))
               .build();
       final var text = systemTextOf(advisor().before(request, chain));
-      assertThat(text).contains(SCOPES);
+      assertThat(text).contains(PROMPT);
     }
   }
 
@@ -165,15 +154,9 @@ class MemoryToolsAdvisorTest {
     }
 
     @Test
-    @DisplayName("it refuses to be built without a prompt or without scopes")
+    @DisplayName("it refuses to be built without a prompt")
     void refusesIncomplete() {
-      assertThatThrownBy(
-              () ->
-                  MemoryToolsAdvisor.builder()
-                      .memorySystemPrompt(new ByteArrayResource(PROMPT.getBytes()))
-                      .build())
-          .isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> MemoryToolsAdvisor.builder().memoryScopes(SCOPES).build())
+      assertThatThrownBy(() -> MemoryToolsAdvisor.builder().build())
           .isInstanceOf(IllegalArgumentException.class);
     }
   }

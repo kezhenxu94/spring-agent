@@ -44,6 +44,7 @@ class PromptDefaultsTest {
           "mentions",
           "replyFormat",
           "homeDirs",
+          "memoryScopes",
           "taskText");
 
   private static Map<String, Object> promptsIn(final String locale) {
@@ -195,6 +196,7 @@ class PromptDefaultsTest {
             "<threadId>",
             "<parentId>",
             "<mentions>",
-            "<homeDirs>");
+            "<homeDirs>",
+            "<memoryScopes>");
   }
 }

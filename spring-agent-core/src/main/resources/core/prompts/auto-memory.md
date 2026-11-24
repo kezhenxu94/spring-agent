@@ -5,10 +5,9 @@ who this user is, how they want to work with you, and the context behind what th
 
 ## Your memories
 
-You reach these, and every path you pass to a memory tool is relative to the root of the one you
-name:
-
-{MEMORY_SCOPES}
+Which memories you reach, where each one is and whether you may write there is listed under "Your
+memories" in the system-reminder at the top of the user's message. Every path you pass to a memory
+tool is relative to the root of the one you name.
 
 Leave the scope out of a **read** and every one of them is read at once, each section labelled — so
 you almost never have to name one. Leave it out of a **write** and it goes into your own. Name a

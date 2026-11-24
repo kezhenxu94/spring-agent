@@ -465,8 +465,9 @@ a later turn if the user agrees. It is only added to runs that were given the sk
 while `app.ai.tools.skills.offer-after-expensive-runs` is on. Both are ordinary advisors with
 builders, so an application assembling its own `ChatClient` can use either directly; the skill one
 takes only a prompt `Resource` (a template over `TOOL_CALL_COUNT`), a threshold and an order, and
-holds no type of this project's own. The memory one is the same shape — a prompt `Resource` over
-`MEMORY_SCOPES` and the rendered block to fill it with — and registers no tools of its own: the six
+holds no type of this project's own. The memory one is the same shape — a prompt `Resource` and an
+order; which memories the run reaches travels in the turn context instead, filled by
+`MemoryScopesPromptVariables` as `{memoryScopes}` — and registers no tools of its own: the six
 memory tools are an `@AgentTool` bean (`core.memory.MemoryTools`), so a scenario's `offers` rules on
 them like any other. The advisor travels with the tools and is therefore false without them: a run
 offered no memory tools must not be told it has a memory. This is a fork of the library's `AutoMemoryToolsAdvisor`/`AutoMemoryTools`,

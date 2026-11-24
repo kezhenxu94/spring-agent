@@ -87,7 +87,19 @@ public class SpringAgent {
    * a surface that has nothing to say about how a reply looks.
    */
   private static final Map<String, Object> OPTIONAL_PROMPT_VARIABLES =
-      Map.of("threadId", "", "parentId", "", "mentions", "none", "replyFormat", "", "homeDirs", "");
+      Map.of(
+          "threadId",
+          "",
+          "parentId",
+          "",
+          "mentions",
+          "none",
+          "replyFormat",
+          "",
+          "homeDirs",
+          "",
+          "memoryScopes",
+          "none");
 
   /**
    * Where the tool search looks for the index to use. Has to agree with {@code
@@ -209,7 +221,8 @@ public class SpringAgent {
 
   /** What turn-context.md renders, and so what a system prompt has no need to name. */
   private static final Pattern TURN_CONTEXT_VARIABLE =
-      Pattern.compile("\\{(userId|chatId|chatType|messageId|threadId|parentId|mentions|homeDirs)}");
+      Pattern.compile(
+          "\\{(userId|chatId|chatType|messageId|threadId|parentId|mentions|homeDirs|memoryScopes)}");
 
   /**
    * Says so where a deployment's own system prompt still names what the turn context carries. It

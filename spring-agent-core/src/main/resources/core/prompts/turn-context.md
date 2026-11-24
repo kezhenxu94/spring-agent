@@ -7,3 +7,5 @@
 - Mentioned users: {mentions}
 - Your homes:
 {homeDirs}
+- Your memories:
+{memoryScopes}

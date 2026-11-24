@@ -7,3 +7,5 @@
 - 被提及的用户：{mentions}
 - 你的目录：
 {homeDirs}
+- 你的记忆：
+{memoryScopes}

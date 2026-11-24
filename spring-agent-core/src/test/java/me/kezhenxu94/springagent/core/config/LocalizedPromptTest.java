@@ -41,27 +41,22 @@ class LocalizedPromptTest {
   }
 
   /**
-   * The advisor renders the prompt as it is built, through a template whose delimiters are braces.
-   * A stray brace in a translation — an example written as a placeholder, say — fails there, on
-   * every request, rather than in whatever wrote it.
+   * The memory prompt no longer carries the scopes, which travel in the turn context; a translation
+   * still naming the old placeholder would show the model a literal template.
    */
   @ParameterizedTest
   @ValueSource(strings = {"en", "zh_CN"})
-  @DisplayName("every translation of the memory prompt renders as the advisor builds it")
-  void memoryPromptRenders(final String tag) throws Exception {
-    final var scopes = "- own — /tmp/memories — yours alone; you may write here";
+  @DisplayName("every translation of the memory prompt points at the turn context for its scopes")
+  void memoryPromptPointsAtTheTurnContext(final String tag) throws Exception {
     final var advisor =
         MemoryToolsAdvisor.builder()
-            .memoryScopes(scopes)
             .memorySystemPrompt(
                 LocalizedPrompt.resource(
                     MEMORY_PROMPT, Locale.forLanguageTag(tag.replace('_', '-'))))
             .build();
-    // Asserting on the rendered text, not only that building did not throw: a translation that
-    // lost the placeholder altogether renders perfectly well and would leave the model with a
-    // paragraph about memories it was never told the location of.
-    assertThat(advisor).isNotNull();
-    assertThat(renderedPromptOf(advisor)).contains(scopes);
+    assertThat(renderedPromptOf(advisor))
+        .contains("system-reminder")
+        .doesNotContain("MEMORY_SCOPES");
   }
 
   /**

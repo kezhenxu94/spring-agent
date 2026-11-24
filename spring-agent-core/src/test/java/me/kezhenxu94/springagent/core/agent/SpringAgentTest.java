@@ -16,7 +16,6 @@ import static org.mockito.Mockito.when;
 
 import io.modelcontextprotocol.client.McpSyncClient;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -54,7 +53,6 @@ import me.kezhenxu94.springagent.core.usermodels.UserChatClients;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.springaicommunity.agent.tools.AskUserQuestionTool;
 import org.springaicommunity.agent.tools.AskUserQuestionTool.Question;
@@ -94,8 +92,6 @@ import reactor.core.publisher.Flux;
  * ends.
  */
 class SpringAgentTest {
-
-  @TempDir Path memoriesDirectory;
 
   private final McpSyncClient mcpClient = mock(McpSyncClient.class);
   private final AgentToolsProvider agentToolsProvider = mock(AgentToolsProvider.class);
@@ -1145,7 +1141,6 @@ class SpringAgentTest {
   private List<Advisor> autoMemoryAdvisors() {
     return List.of(
         MemoryToolsAdvisor.builder()
-            .memoryScopes("- own — " + memoriesDirectory + " — yours alone; you may write here")
             .memorySystemPrompt(LocalizedPrompt.resource(AgentToolsProvider.MEMORY_PROMPT, null))
             .build());
   }

@@ -313,24 +313,23 @@ public class AgentToolsProvider {
 
     final var advisors = new ArrayList<Advisor>();
     knowledgeRetrieval(request, knowledgeHandler).ifPresent(advisors::add);
-    memoryScopes(request)
-        .ifPresent(
-            block ->
-                advisors.add(
-                    MemoryToolsAdvisor.builder()
-                        .memoryScopes(block)
-                        // Core's own prompt, in the workspace's language, rather than the
-                        // library's: the advisor appends whatever this is to the end of the system
-                        // message on every request, and the default is two thousand words of
-                        // English. A workspace whose prompt is not English gets that English tail
-                        // last and closest to the model, which is enough to make it reason in
-                        // English about a conversation it answers in another language. The text
-                        // also has to be true of this deployment — the default says MEMORY.md is
-                        // always loaded into context, and here nothing loads it, nor does it know
-                        // that a memory has a scope.
-                        .memorySystemPrompt(
-                            LocalizedPrompt.resource(MEMORY_PROMPT, appConfiguration.locale()))
-                        .build()));
+    // Only where the run has a memory to describe; which memories those are is the turn context's
+    // to say — see MemoryScopesPromptVariables.
+    if (memoryScopes(request).isPresent()) {
+      advisors.add(
+          MemoryToolsAdvisor.builder()
+              // Core's own prompt, in the workspace's language, rather than the library's: the
+              // advisor appends whatever this is to the end of the system message on every
+              // request, and the default is two thousand words of English. A workspace whose prompt
+              // is not English gets that English tail last and closest to the model, which is
+              // enough to make it reason in English about a conversation it answers in another
+              // language. The text also has to be true of this deployment — the default says
+              // MEMORY.md is always loaded into context, and here nothing loads it, nor does it
+              // know that a memory has a scope.
+              .memorySystemPrompt(
+                  LocalizedPrompt.resource(MEMORY_PROMPT, appConfiguration.locale()))
+              .build());
+    }
 
     skillOffer(tools).ifPresent(advisors::add);
 

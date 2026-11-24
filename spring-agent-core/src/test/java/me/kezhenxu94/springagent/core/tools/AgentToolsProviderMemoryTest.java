@@ -15,6 +15,7 @@ import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.config.SpringAgentProperties.Ai;
 import me.kezhenxu94.springagent.core.config.TenantWrites;
 import me.kezhenxu94.springagent.core.dao.repo.McpServerConfigRepo;
+import me.kezhenxu94.springagent.core.memory.MemoryScopesPromptVariables;
 import me.kezhenxu94.springagent.core.memory.MemoryTools;
 import me.kezhenxu94.springagent.core.storage.FileSystemStorageProperties;
 import me.kezhenxu94.springagent.core.support.TestI18n;
@@ -26,9 +27,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 /**
- * What a run is told about its memories, which is decided at composition and cannot be corrected
- * afterwards: the paragraph is rendered once, so a request whose scopes it describes wrongly
- * describes them wrongly for the whole turn.
+ * What a run is told about its memories: the paragraph on how memory works, from the composition,
+ * and which memories this run reaches, from the turn context.
  */
 class AgentToolsProviderMemoryTest {
 
@@ -76,6 +76,10 @@ class AgentToolsProviderMemoryTest {
   void oneOffGetsNeither() throws Exception {
     final var composition = compose(BuiltInScenarios.ONE_OFF, "oc_9", "t_3");
     assertThat(composition.advisors()).noneMatch(MemoryToolsAdvisor.class::isInstance);
+    assertThat(
+            new MemoryScopesPromptVariables(null, null, null, null)
+                .variables(request(BuiltInScenarios.ONE_OFF, "oc_9", "t_3")))
+        .isEmpty();
     assertThat(composition.tools()).noneMatch(MemoryTools.class::isInstance);
   }
 
@@ -87,25 +91,31 @@ class AgentToolsProviderMemoryTest {
     assertThat(composition.advisors()).anyMatch(MemoryToolsAdvisor.class::isInstance);
   }
 
-  /** The rendered block the advisor was built with, read back the way the advisor holds it. */
-  private String memoryBlock(final String groupId, final String tenantId) throws Exception {
-    final var advisor =
-        compose(BuiltInScenarios.CHAT, groupId, tenantId).advisors().stream()
-            .filter(MemoryToolsAdvisor.class::isInstance)
-            .map(MemoryToolsAdvisor.class::cast)
-            .findFirst()
-            .orElseThrow();
-    final var field = MemoryToolsAdvisor.class.getDeclaredField("memoryPrompt");
-    field.setAccessible(true);
-    return ((String) field.get(advisor))
-        .lines()
-        .filter(
-            line ->
-                line.startsWith("- own")
-                    || line.startsWith("- group")
-                    || line.startsWith("- tenant"))
-        .reduce((a, b) -> a + "\n" + b)
-        .orElse("");
+  /** The block the turn context carries, as the contributor renders it for such a request. */
+  private String memoryBlock(final String groupId, final String tenantId) {
+    final var workspaces =
+        new UserWorkspaceFactory(
+            FileSystemStorageProperties.builder().location(location.toString()).build());
+    final var variables =
+        new MemoryScopesPromptVariables(
+                workspaces,
+                new Admins(properties()),
+                new TenantWrites(properties(), new Admins(properties())),
+                TestI18n.english())
+            .variables(request(BuiltInScenarios.CHAT, groupId, tenantId));
+    return String.valueOf(variables.getOrDefault(MemoryScopesPromptVariables.VARIABLE, ""));
+  }
+
+  private static AgentRequest request(
+      final BuiltInScenarios scenario, final String groupId, final String tenantId) {
+    return AgentRequest.builder()
+        .scenario(scenario)
+        .userId("ou_1")
+        .chatId("oc_1")
+        .groupId(groupId)
+        .tenantId(tenantId)
+        .userMessage(user -> user.text("remember this"))
+        .build();
   }
 
   private AgentToolsProvider.AgentComposition compose(
@@ -138,14 +148,7 @@ class AgentToolsProviderMemoryTest {
               TestI18n.english(),
               mock(ObjectProvider.class));
       return provider.compose(
-          AgentRequest.builder()
-              .scenario(scenario)
-              .userId("ou_1")
-              .chatId("oc_1")
-              .groupId(groupId)
-              .tenantId(tenantId)
-              .userMessage(user -> user.text("remember this"))
-              .build(),
+          request(scenario, groupId, tenantId),
           Map.of(),
           todos -> {},
           null,

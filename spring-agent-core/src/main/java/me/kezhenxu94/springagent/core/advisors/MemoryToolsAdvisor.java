@@ -1,7 +1,9 @@
 package me.kezhenxu94.springagent.core.advisors;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Map;
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
@@ -9,14 +11,12 @@ import org.springframework.ai.chat.client.advisor.api.AdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.BaseAdvisor;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.core.io.Resource;
 import org.springframework.util.Assert;
 
 /**
- * Tells the model that it has a memory, which memories this run reaches, and which of them it may
- * write to.
+ * Tells the model that it has a memory and how to use it.
  *
  * <p>Forked from {@code org.springaicommunity.agent.advisors.AutoMemoryToolsAdvisor}, and narrower
  * than it: that one also merges the memory tools' callbacks into the request, whereas here the
@@ -25,11 +25,9 @@ import org.springframework.util.Assert;
  * add to, and it still travels with the tools in the composition because it is false without them:
  * a run offered no tools must not be told it has a memory it can save to.
  *
- * <p>What it appends is a rendered block rather than a path, {@link #SCOPES_VARIABLE} — one line
- * per scope, naming the word that addresses it, where it is, who else reads it and whether this run
- * may write there. One variable rather than one per scope because the number of scopes varies per
- * request while the prompt is rendered once: a slot per scope would put a blank into whatever prose
- * surrounded it, and a one-to-one chat would read a sentence about a group that does not exist.
+ * <p>Which memories the run reaches is not here: those name the user's and the group's own
+ * directories, and the system prompt has to be the same for every chat to be served from a prompt
+ * cache. They travel in the turn context instead — see {@code MemoryScopesPromptVariables}.
  *
  * <p>Deliberately free of any type of this project's own, so that it could move to {@code
  * spring-ai-agent-utils} beside the advisor it was forked from — this fork is a candidate to be
@@ -37,9 +35,6 @@ import org.springframework.util.Assert;
  * builder.
  */
 public final class MemoryToolsAdvisor implements BaseAdvisor {
-
-  /** The one placeholder the memory prompt is rendered with. */
-  public static final String SCOPES_VARIABLE = "MEMORY_SCOPES";
 
   /**
    * Before {@link ToolCallingAdvisor}, so this is called once per turn rather than once per
@@ -130,8 +125,6 @@ public final class MemoryToolsAdvisor implements BaseAdvisor {
 
     private int order = DEFAULT_ORDER;
 
-    private String memoryScopes;
-
     private Resource memorySystemPrompt;
 
     private Builder() {}
@@ -141,19 +134,7 @@ public final class MemoryToolsAdvisor implements BaseAdvisor {
       return this;
     }
 
-    /**
-     * The block describing this request's memories, filling {@link #SCOPES_VARIABLE}.
-     *
-     * <p>A rendered string rather than the scopes themselves, so that this class stays free of this
-     * project's types and so that whoever assembles it decides its language.
-     */
-    public Builder memoryScopes(final String memoryScopes) {
-      Assert.hasText(memoryScopes, "Memory scopes block must not be empty");
-      this.memoryScopes = memoryScopes;
-      return this;
-    }
-
-    /** What is appended, as a template over {@link #SCOPES_VARIABLE}. */
+    /** What is appended. */
     public Builder memorySystemPrompt(final Resource memorySystemPrompt) {
       Assert.notNull(memorySystemPrompt, "Memory system prompt must not be null");
       this.memorySystemPrompt = memorySystemPrompt;
@@ -162,16 +143,13 @@ public final class MemoryToolsAdvisor implements BaseAdvisor {
 
     public MemoryToolsAdvisor build() {
       Assert.notNull(this.memorySystemPrompt, "Memory system prompt must not be null");
-      Assert.hasText(this.memoryScopes, "Memory scopes block must not be empty");
-      // Rendered once, here, because the block is fixed for the request this advisor belongs to and
-      // before() runs on a Reactor worker.
-      final var rendered =
-          PromptTemplate.builder()
-              .resource(this.memorySystemPrompt)
-              .variables(Map.of(SCOPES_VARIABLE, this.memoryScopes))
-              .build()
-              .render();
-      return new MemoryToolsAdvisor(this.order, rendered);
+      // Read once, here, because before() runs on a Reactor worker.
+      try {
+        return new MemoryToolsAdvisor(
+            this.order, this.memorySystemPrompt.getContentAsString(StandardCharsets.UTF_8));
+      } catch (IOException e) {
+        throw new UncheckedIOException(e);
+      }
     }
   }
 }
