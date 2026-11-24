@@ -2,6 +2,10 @@ package me.kezhenxu94.springagent.core.tools.interceptors;
 
 import com.google.common.base.Strings;
 import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +48,13 @@ public class LargeResponseInterceptor implements ToolCallInterceptor {
    */
   private static final ObjectWriter PRETTY = MAPPER.writerWithDefaultPrettyPrinter();
 
+  /**
+   * Every field an MCP text content item may carry. An item with any other field is a tool's own
+   * data that happens to have a {@code text} in it — a search hit with its score — and is kept.
+   */
+  private static final Set<String> MCP_TEXT_CONTENT_FIELDS =
+      Set.of("type", "text", "annotations", "meta", "_meta");
+
   /** How deep {@link #describe} goes before it stops naming what it found. */
   private static final int MAX_SHAPE_DEPTH = 2;
 
@@ -85,11 +96,25 @@ public class LargeResponseInterceptor implements ToolCallInterceptor {
         userWorkspaceFactory.forRequest(toolContext).artifacts().resolve("tool-results");
     Files.createDirectories(artifactsDir);
 
-    final var json = parseOrNull(toolResult);
+    var json = parseOrNull(toolResult);
     // A tool returning a String arrives encoded as a JSON string: one line, quoted, its newlines
     // escaped. Written as it came, Grep skips the line once it passes its length limit and Read
     // truncates it, so the text itself is what goes to disk.
-    final var text = json == null ? textOf(toolResult) : null;
+    var text = json == null ? textOf(toolResult) : null;
+    // An MCP tool's result arrives as its content items, [{"text": "..."}], each text usually a
+    // JSON document of its own as a string. Pretty-printing the wrapper leaves that document on one
+    // escaped line, the same failure as above, so what is written is the texts themselves.
+    final var contents = textContents(json);
+    if (contents != null) {
+      final var only = contents.size() == 1 ? parseOrNull(contents.getFirst()) : null;
+      json = only;
+      text =
+          only != null
+              ? null
+              : contents.stream()
+                  .map(LargeResponseInterceptor::prettyIfJson)
+                  .collect(Collectors.joining("\n\n"));
+    }
 
     // In the artifacts directory rather than the system one: createTempFile puts the file in the
     // directory it is given, and only the workspace is a place the Read tool is allowed to look.
@@ -120,6 +145,34 @@ public class LargeResponseInterceptor implements ToolCallInterceptor {
     } catch (Exception e) {
       return false;
     }
+  }
+
+  /**
+   * The texts of an MCP result whose every item is text content, or null for any other shape. An
+   * item of another type — an image, a resource — means the wrapper is the result and is kept.
+   */
+  private static List<String> textContents(final JsonNode json) {
+    if (json == null || !json.isArray() || json.isEmpty()) {
+      return null;
+    }
+    final var texts = new ArrayList<String>(json.size());
+    for (final var item : json) {
+      final var type = item.get("type");
+      if (!item.isObject()
+          || !item.path("text").isString()
+          || (type != null && !"text".equals(type.asString("")))
+          || !MCP_TEXT_CONTENT_FIELDS.containsAll(item.propertyNames())) {
+        return null;
+      }
+      texts.add(item.get("text").stringValue());
+    }
+    return texts;
+  }
+
+  /** {@code text} indented where it is a JSON object or array, and as it is otherwise. */
+  private static String prettyIfJson(final String text) {
+    final var json = parseOrNull(text);
+    return json == null ? text : PRETTY.writeValueAsString(json);
   }
 
   /** {@code raw} decoded where it is a JSON string, and as it is otherwise. */

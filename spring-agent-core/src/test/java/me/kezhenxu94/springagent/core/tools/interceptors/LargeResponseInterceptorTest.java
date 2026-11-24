@@ -91,6 +91,56 @@ class LargeResponseInterceptorTest {
   }
 
   @Test
+  @DisplayName(
+      "an MCP result is saved as its content's text, a JSON document indented, not as the wrapper")
+  void mcpTextContentIsUnwrapped() throws Exception {
+    final var mapper = new tools.jackson.databind.json.JsonMapper();
+    final var document = "[" + "{\"category\":\"a\",\"count\":1},".repeat(400) + "{}]";
+    final var result = mapper.writeValueAsString(List.of(Map.of("type", "text", "text", document)));
+
+    final var guide = interceptor(20).afterCall("mcp_list", "{}", result, CONTEXT);
+
+    final var file = spilled().get(0);
+    final var written = Files.readString(file);
+    assertThat(file.getFileName().toString()).endsWith(".json");
+    assertThat(written).doesNotContain("\\\"").contains("\"category\" : \"a\"");
+    assertThat(written.lines().mapToInt(String::length).max().orElse(0)).isLessThan(200);
+    assertThat(guide).contains("[401 items, each {category: text, count: number}]");
+  }
+
+  @Test
+  @DisplayName("several MCP text items are saved one after another, each as its own text")
+  void severalTextItems() throws Exception {
+    final var result =
+        new tools.jackson.databind.json.JsonMapper()
+            .writeValueAsString(
+                List.of(
+                    Map.of("text", "first line\n".repeat(20)),
+                    Map.of("text", "{\"k\":\"" + "v".repeat(50) + "\"}")));
+
+    interceptor(20).afterCall("mcp_read", "{}", result, CONTEXT);
+
+    final var written = Files.readString(spilled().get(0));
+    assertThat(spilled().get(0).getFileName().toString()).endsWith(".txt");
+    assertThat(written).startsWith("first line\n").contains("\"k\" : \"vvv");
+  }
+
+  @Test
+  @DisplayName("a tool's own list of objects with a text field is kept as the list it is")
+  void notMcpContentIsKept() throws Exception {
+    final var result =
+        new tools.jackson.databind.json.JsonMapper()
+            .writeValueAsString(
+                List.of(
+                    Map.of("text", "x".repeat(50), "score", 0.9),
+                    Map.of("text", "y", "score", 0.1)));
+
+    interceptor(20).afterCall("SearchKnowledge", "{}", result, CONTEXT);
+
+    assertThat(Files.readString(spilled().get(0))).contains("\"score\"");
+  }
+
+  @Test
   @DisplayName("a read of a memory index is never spilled, whatever its size")
   void memoryIndexIsNeverSpilled() {
     final var index = "\"" + "- [a](a.md)\\n".repeat(100) + "\"";
