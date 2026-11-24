@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import me.kezhenxu94.springagent.core.advisors.AutoSkillToolsAdvisor;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.config.Admins;
@@ -25,6 +26,7 @@ import me.kezhenxu94.springagent.core.tools.mcp.McpClientFactory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
@@ -54,8 +56,26 @@ class AgentToolsProviderKnowledgeRetrievalTest {
     assertThat(advisorPoolThreads()).isEqualTo(before);
   }
 
+  @Test
+  @DisplayName("retrieval runs inside the tool loop, ahead of the auto-skill reminder message")
+  void retrievalPrecedesTheAutoSkillReminder() throws Exception {
+    // Ordered after it, retrieval took the reminder for the user's message, stripped it to nothing,
+    // and Query refused it: every run that crossed the threshold failed.
+    assertThat(retrievalAdvisorOf(provider()).getOrder())
+        .isGreaterThan(ToolCallingAdvisor.DEFAULT_ORDER)
+        .isLessThan(AutoSkillToolsAdvisor.DEFAULT_ORDER);
+  }
+
   private TaskExecutor executorOf(final AgentToolsProvider provider) throws Exception {
-    final var advisor =
+    final var advisor = retrievalAdvisorOf(provider);
+    final var field = RetrievalAugmentationAdvisor.class.getDeclaredField("taskExecutor");
+    field.setAccessible(true);
+    return (TaskExecutor) field.get(advisor);
+  }
+
+  private static RetrievalAugmentationAdvisor retrievalAdvisorOf(final AgentToolsProvider provider)
+      throws Exception {
+    return (RetrievalAugmentationAdvisor)
         provider
             .compose(
                 AgentRequest.builder()
@@ -74,9 +94,6 @@ class AgentToolsProviderKnowledgeRetrievalTest {
             .filter(RetrievalAugmentationAdvisor.class::isInstance)
             .findFirst()
             .orElseThrow();
-    final var field = RetrievalAugmentationAdvisor.class.getDeclaredField("taskExecutor");
-    field.setAccessible(true);
-    return (TaskExecutor) field.get(advisor);
   }
 
   private static long advisorPoolThreads() {

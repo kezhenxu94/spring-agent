@@ -44,7 +44,6 @@ import org.springaicommunity.agent.tools.GrepTool;
 import org.springaicommunity.agent.tools.ListDirectoryTool;
 import org.springaicommunity.agent.tools.TodoWriteTool;
 import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
-import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.chat.prompt.PromptTemplate;
@@ -78,6 +77,9 @@ public class AgentToolsProvider {
 
   /** The knowledge-retrieval augmentation prompt's file, without its locale suffix or extension. */
   public static final String KNOWLEDGE_RETRIEVAL_PROMPT = "knowledge-retrieval";
+
+  /** Inside the tool loop, and ahead of the auto-skill reminder; see {@code knowledgeRetrieval}. */
+  static final int KNOWLEDGE_RETRIEVAL_ORDER = AutoSkillToolsAdvisor.DEFAULT_ORDER - 10;
 
   /**
    * The skill tools' description template, without its locale suffix or extension.
@@ -496,7 +498,13 @@ public class AgentToolsProvider {
                     // everything ordered after it once per tool round, so a turn with several tool
                     // calls searches more than once. That is wasted embedding calls, and it is the
                     // cheaper of the two failures by a wide margin — the other one corrupts data.
-                    .order(ToolCallingAdvisor.DEFAULT_ORDER + 200)
+                    //
+                    // And ahead of AutoSkillToolsAdvisor, which past its threshold appends its
+                    // reminder as a user message of its own. Retrieval reads the last user message,
+                    // so ordered after it, it would search on that reminder and rewrite it — and
+                    // stripped of its system-reminder tags the reminder is empty, which Query
+                    // refuses, failing every long run once it crosses the threshold.
+                    .order(KNOWLEDGE_RETRIEVAL_ORDER)
                     .build());
   }
 
