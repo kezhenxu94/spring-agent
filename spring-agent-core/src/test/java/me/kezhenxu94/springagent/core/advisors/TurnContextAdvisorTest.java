@@ -73,6 +73,21 @@ class TurnContextAdvisorTest {
   }
 
   @Test
+  @DisplayName("what is added to the block is inside it, so strip takes it off with the block")
+  void addToLeading() {
+    final var text = advised(List.of(new UserMessage("hello"))).get(0).getText();
+
+    final var added = TurnContextAdvisor.addToLeading(text, "PASSAGES");
+
+    assertThat(TurnContextAdvisor.leading(added))
+        .contains("PASSAGES")
+        .endsWith("</system-reminder>");
+    assertThat(TurnContextAdvisor.strip(added)).isEqualTo("hello");
+    assertThat(TurnContextAdvisor.strip(TurnContextAdvisor.addToLeading("hi", "PASSAGES")))
+        .isEqualTo("hi");
+  }
+
+  @Test
   @DisplayName("ahead of the tool loop, whose memory saves the message as this advisor left it")
   void runsAheadOfTheToolLoop() {
     assertThat(new TurnContextAdvisor("x").getOrder()).isLessThan(ToolCallingAdvisor.DEFAULT_ORDER);

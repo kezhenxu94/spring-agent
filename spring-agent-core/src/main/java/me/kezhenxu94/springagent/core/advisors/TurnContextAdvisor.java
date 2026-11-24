@@ -101,6 +101,20 @@ public final class TurnContextAdvisor implements BaseAdvisor {
     return end < 0 ? "" : text.substring(0, end + CLOSE.length());
   }
 
+  /**
+   * {@code text} with {@code addition} at the end of the block it opens with, or in a block of its
+   * own ahead of it where it opens with none. What goes here is remembered with the turn and taken
+   * off again by {@link #strip} wherever a person is shown the message.
+   */
+  public static String addToLeading(final String text, final String addition) {
+    final var block = leading(text);
+    if (block.isEmpty()) {
+      return OPEN + "\n" + addition.strip() + "\n" + CLOSE + "\n\n" + (text == null ? "" : text);
+    }
+    final var body = block.substring(0, block.length() - CLOSE.length()).stripTrailing();
+    return body + "\n\n" + addition.strip() + "\n" + CLOSE + text.substring(block.length());
+  }
+
   /** {@code text} without the block it opens with: what the person actually said. */
   public static String strip(final String text) {
     final var block = leading(text);

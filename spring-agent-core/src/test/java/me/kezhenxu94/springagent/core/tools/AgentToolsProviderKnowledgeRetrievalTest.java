@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import me.kezhenxu94.springagent.core.advisors.AutoSkillToolsAdvisor;
+import me.kezhenxu94.springagent.core.advisors.TurnContextAdvisor;
 import me.kezhenxu94.springagent.core.agent.AgentRequest;
 import me.kezhenxu94.springagent.core.agent.BuiltInScenarios;
 import me.kezhenxu94.springagent.core.config.Admins;
@@ -57,13 +57,14 @@ class AgentToolsProviderKnowledgeRetrievalTest {
   }
 
   @Test
-  @DisplayName("retrieval runs inside the tool loop, ahead of the auto-skill reminder message")
-  void retrievalPrecedesTheAutoSkillReminder() throws Exception {
-    // Ordered after it, retrieval took the reminder for the user's message, stripped it to nothing,
-    // and Query refused it: every run that crossed the threshold failed.
+  @DisplayName("retrieval runs once per message, after the turn context and before the tool loop")
+  void retrievalPrecedesTheToolLoop() throws Exception {
+    // Inside the loop it searched once per tool round, and the message the loop saved lacked what
+    // it had added, so the next turn's request no longer matched this one's for the prompt cache.
+    // After the turn context because the passages go into its block.
     assertThat(retrievalAdvisorOf(provider()).getOrder())
-        .isGreaterThan(ToolCallingAdvisor.DEFAULT_ORDER)
-        .isLessThan(AutoSkillToolsAdvisor.DEFAULT_ORDER);
+        .isGreaterThan(TurnContextAdvisor.ORDER)
+        .isLessThan(ToolCallingAdvisor.DEFAULT_ORDER);
   }
 
   private TaskExecutor executorOf(final AgentToolsProvider provider) throws Exception {

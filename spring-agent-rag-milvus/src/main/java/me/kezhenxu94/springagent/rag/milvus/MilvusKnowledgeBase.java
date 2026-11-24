@@ -344,7 +344,12 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
     return VectorStoreDocumentRetriever.builder()
         .vectorStore(store)
         .filterExpression(KnowledgeScopeFilter.readableBy(scope, extra))
-        .similarityThreshold(rag.similarityThreshold())
+        // No threshold under a filter: the filter is the deployment choosing which documents answer
+        // — event triage naming its playbooks — and the threshold is tuned for a person's message
+        // against everything they may read. A fixed English query scores low against a runbook in
+        // another language, so a threshold raised to keep unrelated passages out of a chat would
+        // drop the very runbook the filter picked.
+        .similarityThreshold(extra == null ? rag.similarityThreshold() : 0d)
         .topK(rag.topK())
         .build();
   }

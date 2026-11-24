@@ -15,6 +15,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.advisors.AutoSkillToolsAdvisor;
@@ -47,9 +48,9 @@ import org.springaicommunity.agent.tools.TodoWriteTool.TodoEventHandler;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.chat.prompt.PromptTemplate;
+import org.springframework.ai.document.Document;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
-import org.springframework.ai.rag.generation.augmentation.ContextualQueryAugmenter;
 import org.springframework.ai.rag.preretrieval.query.transformation.QueryTransformer;
 import org.springframework.ai.rag.retrieval.search.DocumentRetriever;
 import org.springframework.ai.support.ToolCallbacks;
@@ -78,8 +79,8 @@ public class AgentToolsProvider {
   /** The knowledge-retrieval augmentation prompt's file, without its locale suffix or extension. */
   public static final String KNOWLEDGE_RETRIEVAL_PROMPT = "knowledge-retrieval";
 
-  /** Inside the tool loop, and ahead of the auto-skill reminder; see {@code knowledgeRetrieval}. */
-  static final int KNOWLEDGE_RETRIEVAL_ORDER = AutoSkillToolsAdvisor.DEFAULT_ORDER - 10;
+  /** After the turn context and before the tool loop; see {@code knowledgeRetrieval}. */
+  static final int KNOWLEDGE_RETRIEVAL_ORDER = TurnContextAdvisor.ORDER + 10;
 
   /**
    * The skill tools' description template, without its locale suffix or extension.
@@ -451,14 +452,9 @@ public class AgentToolsProvider {
         stated != null && stated.hasQuery()
             ? List.of(query -> query.mutate().text(stated.query()).build())
             : List.of(query -> query.mutate().text(TurnContextAdvisor.strip(query.text())).build());
-    final var augmenter =
-        ContextualQueryAugmenter.builder()
-            .allowEmptyContext(true)
-            .promptTemplate(
-                new PromptTemplate(
-                    LocalizedPrompt.resource(
-                        KNOWLEDGE_RETRIEVAL_PROMPT, appConfiguration.locale())))
-            .build();
+    final var background =
+        new PromptTemplate(
+            LocalizedPrompt.resource(KNOWLEDGE_RETRIEVAL_PROMPT, appConfiguration.locale()));
     return Optional.ofNullable(knowledgeBase.getIfAvailable())
         .map(
             base ->
@@ -466,43 +462,37 @@ public class AgentToolsProvider {
                     .documentRetriever(reporting(base.retrieverFor(scope, extra), knowledgeHandler))
                     .queryTransformers(transformers)
                     .taskExecutor(knowledgeRetrievalExecutor)
-                    // The block stays where every other turn has it, at the very top, rather than
-                    // under the retrieved passages as part of "Query:".
+                    // Into the turn-context block at the top of the message rather than around
+                    // what the person said: the block is remembered with the turn and taken off
+                    // wherever a person is shown it, so the passages are replayed to the model on
+                    // later turns — exactly as they were sent, which a prompt cache requires — and
+                    // never shown to anybody. Nothing found leaves the message as it was.
                     .queryAugmenter(
-                        (query, documents) -> {
-                          final var block = TurnContextAdvisor.leading(query.text());
-                          final var augmented =
-                              augmenter.augment(
-                                  query
-                                      .mutate()
-                                      .text(TurnContextAdvisor.strip(query.text()))
-                                      .build(),
-                                  documents);
-                          return block.isEmpty()
-                              ? augmented
-                              : augmented.mutate().text(block + "\n\n" + augmented.text()).build();
-                        })
-                    // After the tool advisor, inside its loop, and this is the constraint that
-                    // decides the number — not tidiness.
+                        (query, documents) ->
+                            documents.isEmpty()
+                                ? query
+                                : query
+                                    .mutate()
+                                    .text(
+                                        TurnContextAdvisor.addToLeading(
+                                            query.text(),
+                                            background.render(
+                                                Map.of(
+                                                    "context",
+                                                    documents.stream()
+                                                        .map(Document::getText)
+                                                        .collect(
+                                                            Collectors.joining(
+                                                                System.lineSeparator()))))))
+                                    .build())
+                    // Before the tool advisor, so it runs once per message rather than once per
+                    // tool round — each of which was an embedding call — and so that the message
+                    // MemoryToolCallingAdvisor saves is the one the model was sent. Searched inside
+                    // the loop instead, the saved message lacked the passages, so the next turn's
+                    // request stopped matching the last one from that message on and every round
+                    // of the previous turn missed the prompt cache.
                     //
-                    // Augmentation rewrites the user message to carry the retrieved passages, and
-                    // MemoryToolCallingAdvisor writes the turn into the conversation history from
-                    // the loop's own copy of it. Order this ahead of the loop and the augmented
-                    // message is what that copy holds and so what gets persisted: the passages
-                    // become a permanent part of the history, replayed on every later turn whether
-                    // or not they are relevant, and no change of threshold or scope can dislodge
-                    // them afterwards.
-                    //
-                    // The cost of sitting here instead is that ToolCallingAdvisor re-invokes
-                    // everything ordered after it once per tool round, so a turn with several tool
-                    // calls searches more than once. That is wasted embedding calls, and it is the
-                    // cheaper of the two failures by a wide margin — the other one corrupts data.
-                    //
-                    // And ahead of AutoSkillToolsAdvisor, which past its threshold appends its
-                    // reminder as a user message of its own. Retrieval reads the last user message,
-                    // so ordered after it, it would search on that reminder and rewrite it — and
-                    // stripped of its system-reminder tags the reminder is empty, which Query
-                    // refuses, failing every long run once it crosses the threshold.
+                    // After TurnContextAdvisor, whose block the passages go into.
                     .order(KNOWLEDGE_RETRIEVAL_ORDER)
                     .build());
   }

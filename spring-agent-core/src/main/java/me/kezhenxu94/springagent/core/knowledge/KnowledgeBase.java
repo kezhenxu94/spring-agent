@@ -118,6 +118,10 @@ public interface KnowledgeBase {
    *
    * <p>{@code extra} can only ever narrow — {@link KnowledgeScopeFilter#readableBy(KnowledgeScope,
    * Filter.Expression)} composes it, and it is the only thing allowed to.
+   *
+   * <p>A non-null {@code extra} also lifts the similarity threshold: the filter has already chosen
+   * the documents, and a threshold tuned for a person's message would drop them for scoring low
+   * against a query written for them.
    */
   DocumentRetriever retrieverFor(KnowledgeScope scope, Filter.Expression extra);
 

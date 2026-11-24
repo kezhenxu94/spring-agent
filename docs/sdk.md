@@ -892,8 +892,14 @@ narrow and never widen, and both sides are parenthesised because a converter ren
 `left && right` and adds parentheses for nothing but a `Filter.Group`. This is what `spring-agent-
 events` uses to read a source's playbook: `AgentRequest.knowledgeRetrieval` names the owning scope,
 the filter and a fixed query, and `AgentToolsProvider` builds the run's `RetrievalAugmentationAdvisor`
-from them. The query steers retrieval only — the advisor augments the *original* user message with
-what it found — so pinning it does not replace what the model is asked.
+from them. The query steers retrieval only — what it found goes into the `<system-reminder>` block
+at the top of the *original* user message — so pinning it does not replace what the model is asked.
+A non-null filter also lifts `app.ai.rag.similarity-threshold`: the filter has chosen the documents,
+and a threshold tuned for chats would drop a runbook for scoring low against a fixed query.
+
+Retrieval runs once per user message, before the tool loop, and the passages are saved with the turn
+inside that block. Replaying them on later turns is deliberate: a prefix cache only serves a request
+whose history matches what was sent, and every surface strips the block before showing a message.
 
 ## Identities of the agent's own
 
