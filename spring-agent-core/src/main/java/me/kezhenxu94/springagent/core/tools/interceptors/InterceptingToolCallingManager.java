@@ -40,18 +40,19 @@ public class InterceptingToolCallingManager implements ToolCallingManager {
   @Override
   public ToolExecutionResult executeToolCalls(Prompt prompt, ChatResponse chatResponse) {
     if (prompt.getOptions() instanceof ToolCallingChatOptions options) {
-      logMissingTools(options, chatResponse);
       final var wrapped =
-          options.getToolCallbacks().stream()
-              .<ToolCallback>map(
-                  cb ->
-                      // The dispatcher wraps the tool it calls; wrapped itself, every interceptor
-                      // would see that call twice.
-                      cb instanceof InterceptingToolCallback
-                              || cb instanceof DispatchingToolCallback
-                          ? cb
-                          : new InterceptingToolCallback(cb, interceptors, fileRefs, messages))
-              .toList();
+          new ArrayList<ToolCallback>(
+              options.getToolCallbacks().stream()
+                  .<ToolCallback>map(
+                      cb ->
+                          // The dispatcher wraps the tool it calls; wrapped itself, every
+                          // interceptor would see that call twice.
+                          cb instanceof InterceptingToolCallback
+                                  || cb instanceof DispatchingToolCallback
+                              ? cb
+                              : new InterceptingToolCallback(cb, interceptors, fileRefs, messages))
+                  .toList());
+      wrapped.addAll(directCalls(options, chatResponse));
       prompt = prompt.mutate().chatOptions(options.mutate().toolCallbacks(wrapped).build()).build();
     }
     return withQueuedMessages(prompt, asJson(delegate.executeToolCalls(prompt, chatResponse)));
@@ -160,24 +161,20 @@ public class InterceptingToolCallingManager implements ToolCallingManager {
   }
 
   /**
-   * The tool-search advisor offers only a fixed set of tools directly and the rest through {@code
-   * CallTool}, so a model that calls one of the rest by its own name is calling a tool the request
-   * does not carry. Whatever is missing here falls through to the resolver, and a per-request tool
-   * is lost there — so the names on both sides are logged while they are still known.
+   * A callback for each tool the model called by its own name though the iteration did not offer
+   * it, where it is one the run's {@code CallTool} reaches — run exactly as {@code CallTool} would
+   * run it. The tool search offers a fixed set directly and lists the rest in the system prompt,
+   * and a model that read a name there sometimes calls it as it would any tool. Answered with the
+   * stub instead, the work was dropped and cost a retry; offering these to the model is not what
+   * happens here, so the {@code tools} array a prompt cache depends on is untouched.
+   *
+   * <p>Whatever is called and is not one of those falls through to the resolver, and a per-request
+   * tool is lost there — so those names are logged while they are still known.
    */
-  private static void logMissingTools(
+  private static List<ToolCallback> directCalls(
       final ToolCallingChatOptions options, final ChatResponse chatResponse) {
     if (chatResponse == null || chatResponse.getResults() == null) {
-      return;
-    }
-    final var requested =
-        chatResponse.getResults().stream()
-            .filter(result -> result.getOutput() != null)
-            .flatMap(result -> result.getOutput().getToolCalls().stream())
-            .map(AssistantMessage.ToolCall::name)
-            .toList();
-    if (requested.isEmpty()) {
-      return;
+      return List.of();
     }
     final var callbacks =
         options.getToolCallbacks() == null ? List.<ToolCallback>of() : options.getToolCallbacks();
@@ -185,10 +182,42 @@ public class InterceptingToolCallingManager implements ToolCallingManager {
         callbacks.stream()
             .map(callback -> callback.getToolDefinition().name())
             .collect(Collectors.toSet());
-    final var missing = requested.stream().filter(name -> !offered.contains(name)).toList();
-    if (!missing.isEmpty()) {
-      log.warn(
-          "Tools {} were called but not offered to that iteration; offered={}", missing, offered);
+    final var missing =
+        chatResponse.getResults().stream()
+            .filter(result -> result.getOutput() != null)
+            .flatMap(result -> result.getOutput().getToolCalls().stream())
+            .map(AssistantMessage.ToolCall::name)
+            .filter(name -> !offered.contains(name))
+            .distinct()
+            .toList();
+    if (missing.isEmpty()) {
+      return List.of();
     }
+    final var dispatcher =
+        callbacks.stream()
+            .filter(DispatchingToolCallback.class::isInstance)
+            .map(DispatchingToolCallback.class::cast)
+            .findFirst()
+            .orElse(null);
+    final var direct = new ArrayList<ToolCallback>();
+    final var unknown = new ArrayList<String>();
+    for (final var name : missing) {
+      final var call = dispatcher == null ? null : dispatcher.direct(name);
+      if (call == null) {
+        unknown.add(name);
+      } else {
+        direct.add(call);
+      }
+    }
+    if (!direct.isEmpty()) {
+      log.info(
+          "Tools {} were called directly rather than through CallTool; running them as it would",
+          direct.stream().map(call -> call.getToolDefinition().name()).toList());
+    }
+    if (!unknown.isEmpty()) {
+      log.warn(
+          "Tools {} were called but not offered to that iteration; offered={}", unknown, offered);
+    }
+    return direct;
   }
 }

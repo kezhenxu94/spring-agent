@@ -105,17 +105,25 @@ public final class DispatchingToolCallback implements ToolCallback {
               ? messages.get("call-tool-unknown", name)
               : messages.get("call-tool-ambiguous", name, String.join(", ", candidates)));
     }
-    final var target = targets.get(candidates.getFirst());
-    final var arguments = argumentsOf(root);
+    return dispatch(candidates.getFirst(), argumentsOf(root), toolContext);
+  }
+
+  /**
+   * The target, run with {@code arguments} as every call through here is: checked against its
+   * schema, then through the interceptors under its own name.
+   */
+  private String dispatch(
+      final String targetName, final Arguments arguments, final ToolContext toolContext) {
+    final var target = targets.get(targetName);
     if (arguments.object() != null) {
       final var schema = target.getToolDefinition().inputSchema();
       final var problems = mismatches(arguments.object(), schema);
       if (!problems.isEmpty()) {
-        log.info("CallTool refused '{}': {}", candidates.getFirst(), problems);
+        log.info("CallTool refused '{}': {}", targetName, problems);
         return ToolResultJson.asJson(
             messages.get(
                 "call-tool-arguments-mismatch",
-                candidates.getFirst(),
+                targetName,
                 String.join("; ", problems),
                 compact(schema)));
       }
@@ -124,6 +132,65 @@ public final class DispatchingToolCallback implements ToolCallback {
     return toolContext == null
         ? call.call(arguments.json())
         : call.call(arguments.json(), toolContext);
+  }
+
+  /**
+   * A callback answering to {@code name} as the model called it — directly, not through {@code
+   * CallTool} — that runs the tool it names exactly as {@code CallTool} would; or null where it
+   * names none of them. See {@code InterceptingToolCallingManager}, which is what asks.
+   */
+  public ToolCallback direct(final String name) {
+    final var candidates = resolve(name == null ? "" : name.strip());
+    if (candidates.size() != 1) {
+      return null;
+    }
+    final var targetName = candidates.getFirst();
+    final var target = targets.get(targetName).getToolDefinition();
+    return new Direct(
+        ToolDefinition.builder()
+            .name(name)
+            .description(target.description())
+            .inputSchema(target.inputSchema())
+            .build(),
+        (input, context) -> dispatch(targetName, directArguments(input), context));
+  }
+
+  /** A tool's own arguments, as a direct call carries them: the object itself, unwrapped. */
+  private static Arguments directArguments(final String input) {
+    try {
+      if (MAPPER.readTree(input == null || input.isBlank() ? "{}" : input)
+          instanceof ObjectNode object) {
+        return new Arguments(object, MAPPER.writeValueAsString(object));
+      }
+    } catch (JacksonException e) {
+      // Handed on as written, for the tool's own call to report the way any call's is reported.
+    }
+    return new Arguments(null, input);
+  }
+
+  /**
+   * What {@link #direct} returns. Its own type so that {@code InterceptingToolCallingManager}
+   * leaves it unwrapped: what it runs is already wrapped, and wrapped twice every interceptor would
+   * see the call twice.
+   */
+  public record Direct(
+      ToolDefinition definition, java.util.function.BiFunction<String, ToolContext, String> run)
+      implements ToolCallback {
+
+    @Override
+    public ToolDefinition getToolDefinition() {
+      return definition;
+    }
+
+    @Override
+    public String call(final String toolInput) {
+      return run.apply(toolInput, null);
+    }
+
+    @Override
+    public String call(final String toolInput, final ToolContext toolContext) {
+      return run.apply(toolInput, toolContext);
+    }
   }
 
   /** What {@code CallTool}'s own input holds besides the target's arguments. */
