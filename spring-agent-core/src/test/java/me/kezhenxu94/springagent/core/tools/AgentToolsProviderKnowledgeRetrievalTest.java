@@ -103,10 +103,65 @@ class AgentToolsProviderKnowledgeRetrievalTest {
         .count();
   }
 
-  @SuppressWarnings("unchecked")
+  @Test
+  @DisplayName(
+      "a playbook's chunks reach the model in document order, the same bytes on every run, though"
+          + " they carry no scores")
+  void playbookChunksKeepTheirOrder() throws Exception {
+    // Shaped like a filtered retrieval: no score, and a fresh random id per run, which is what the
+    // default joiner hashed on — so it shuffled the chunks, differently each time.
+    final var provider =
+        provider(
+            query ->
+                java.util.stream.IntStream.range(0, 16)
+                    .mapToObj(
+                        i ->
+                            org.springframework.ai.document.Document.builder()
+                                .text("step " + i + " of the playbook")
+                                .metadata(Map.of("docId", "pb", "chunk", i))
+                                .build())
+                    .toList());
+
+    final var first = augmentedTextOf(retrievalAdvisorOf(provider));
+    final var second = augmentedTextOf(retrievalAdvisorOf(provider));
+
+    var previous = -1;
+    for (var i = 0; i < 16; i++) {
+      final var at = first.indexOf("step " + i + " of the playbook");
+      assertThat(at).as("step %d", i).isGreaterThan(previous);
+      previous = at;
+    }
+    assertThat(second).isEqualTo(first);
+  }
+
+  /** The user message the advisor hands on, with what it retrieved added. */
+  private static String augmentedTextOf(final RetrievalAugmentationAdvisor advisor) {
+    final var request =
+        org.springframework.ai.chat.client.ChatClientRequest.builder()
+            .prompt(
+                new org.springframework.ai.chat.prompt.Prompt(
+                    new org.springframework.ai.chat.messages.UserMessage("what do we do?")))
+            .context(Map.of())
+            .build();
+    return advisor
+        .before(
+            request,
+            org.mockito.Mockito.mock(
+                org.springframework.ai.chat.client.advisor.api.AdvisorChain.class))
+        .prompt()
+        .getUserMessage()
+        .getText();
+  }
+
   private AgentToolsProvider provider() {
+    return provider(query -> List.of());
+  }
+
+  @SuppressWarnings("unchecked")
+  private AgentToolsProvider provider(
+      final org.springframework.ai.rag.retrieval.search.DocumentRetriever retriever) {
     final var base = mock(KnowledgeBase.class);
-    when(base.retrieverFor(any(), any())).thenReturn(query -> List.of());
+    when(base.retrieverFor(any(), any())).thenReturn(retriever);
     final ObjectProvider<KnowledgeBase> bases = mock(ObjectProvider.class);
     when(bases.getIfAvailable()).thenReturn(base);
     final var context = new AnnotationConfigApplicationContext();

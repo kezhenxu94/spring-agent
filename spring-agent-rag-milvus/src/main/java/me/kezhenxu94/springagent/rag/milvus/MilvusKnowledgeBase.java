@@ -374,6 +374,13 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
             .map(
                 chunk ->
                     Document.builder()
+                        // Stable rather than the random id a builder assigns, so the same chunk is
+                        // the same document on every run, and the joiner's dedup by id means what
+                        // it says.
+                        .id(
+                            string(chunk.metadata(), KnowledgeMetadata.DOC_ID)
+                                + "#"
+                                + integer(chunk.metadata(), KnowledgeMetadata.CHUNK))
                         .text(chunk.text())
                         .metadata(new LinkedHashMap<String, Object>(chunk.metadata()))
                         .build())

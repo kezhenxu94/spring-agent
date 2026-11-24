@@ -166,6 +166,8 @@ class MilvusKnowledgeBaseTest {
                 .distinct()
                 .toList();
         assertThat(ids).containsExactly("pb-a", "pb-b");
+        // The same chunk is the same document on every run, so a join by id keeps it once.
+        assertThat(documents.getFirst().getId()).isEqualTo("pb-a#0");
         final var text =
             documents.stream().map(Document::getText).reduce("", (a, b) -> a + "\n" + b);
         assertThat(documents.size()).isGreaterThan(2);

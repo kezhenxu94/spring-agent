@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -51,6 +52,7 @@ import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
+import org.springframework.ai.rag.Query;
 import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
 import org.springframework.ai.rag.preretrieval.query.transformation.QueryTransformer;
 import org.springframework.ai.rag.retrieval.search.DocumentRetriever;
@@ -397,6 +399,24 @@ public class AgentToolsProvider {
   }
 
   /**
+   * What the retriever returned, in the order it returned it, each document once.
+   *
+   * <p>In place of Spring AI's default joiner, which dedups through a {@code HashMap} and then
+   * sorts by score: a filtered retrieval — a playbook — carries no scores, so its chunks came out
+   * in hash order, shuffled and differently on every run, which is unreadable and changes the bytes
+   * of the turn so no run reuses the last one's prompt cache. A similarity search already arrives
+   * best-first, so keeping the order changes nothing there.
+   */
+  static List<Document> joinInOrder(final Map<Query, List<List<Document>>> documentsForQuery) {
+    final var unique = new LinkedHashMap<String, Document>();
+    documentsForQuery.values().stream()
+        .flatMap(List::stream)
+        .flatMap(List::stream)
+        .forEach(document -> unique.putIfAbsent(document.getId(), document));
+    return List.copyOf(unique.values());
+  }
+
+  /**
    * The advisor that consults the knowledge base before the model answers, scoped to what this
    * request may read.
    *
@@ -462,6 +482,7 @@ public class AgentToolsProvider {
                 RetrievalAugmentationAdvisor.builder()
                     .documentRetriever(reporting(base.retrieverFor(scope, extra), knowledgeHandler))
                     .queryTransformers(transformers)
+                    .documentJoiner(AgentToolsProvider::joinInOrder)
                     .taskExecutor(knowledgeRetrievalExecutor)
                     // Into the turn-context block at the top of the message rather than around
                     // what the person said: the block is remembered with the turn and taken off
