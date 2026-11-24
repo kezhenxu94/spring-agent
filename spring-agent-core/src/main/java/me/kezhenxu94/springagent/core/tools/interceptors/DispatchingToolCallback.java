@@ -1,7 +1,9 @@
 package me.kezhenxu94.springagent.core.tools.interceptors;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.tools.DisplayDescription;
@@ -104,10 +106,125 @@ public final class DispatchingToolCallback implements ToolCallback {
               : messages.get("call-tool-ambiguous", name, String.join(", ", candidates)));
     }
     final var target = targets.get(candidates.getFirst());
+    final var arguments = argumentsOf(root);
+    if (arguments.object() != null) {
+      final var schema = target.getToolDefinition().inputSchema();
+      final var problems = mismatches(arguments.object(), schema);
+      if (!problems.isEmpty()) {
+        log.info("CallTool refused '{}': {}", candidates.getFirst(), problems);
+        return ToolResultJson.asJson(
+            messages.get(
+                "call-tool-arguments-mismatch",
+                candidates.getFirst(),
+                String.join("; ", problems),
+                compact(schema)));
+      }
+    }
     final var call = new InterceptingToolCallback(target, interceptors, fileRefs, messages);
     return toolContext == null
-        ? call.call(arguments(root))
-        : call.call(arguments(root), toolContext);
+        ? call.call(arguments.json())
+        : call.call(arguments.json(), toolContext);
+  }
+
+  /** What {@code CallTool}'s own input holds besides the target's arguments. */
+  private static final Set<String> RESERVED =
+      Set.of("name", "arguments", "_arguments", DisplayDescription.FIELD);
+
+  /**
+   * The target's arguments: an object, or — where the model wrote them as a string that will not
+   * parse — that string as it is, for the target's own call to report.
+   */
+  private record Arguments(ObjectNode object, String json) {}
+
+  /**
+   * The target's arguments, wherever the model put them.
+   *
+   * <p>{@code arguments} is the schema's; {@code _arguments} is the same thing in the style of the
+   * {@code _display_description} beside it, which models copy; and with neither, the model wrote
+   * the arguments where {@code CallTool}'s own are, so whatever is not one of those is taken as
+   * them. A model writing the object as a string has it unwrapped rather than refused. The display
+   * description is moved onto the target's arguments, since the target's call is the one a surface
+   * shows.
+   */
+  private static Arguments argumentsOf(final JsonNode root) {
+    final var given = root.has("arguments") ? root.get("arguments") : root.get("_arguments");
+    ObjectNode object;
+    if (given != null && given.isString()) {
+      try {
+        object =
+            MAPPER.readTree(given.stringValue()) instanceof ObjectNode parsed
+                ? parsed
+                : MAPPER.createObjectNode();
+      } catch (JacksonException e) {
+        return new Arguments(null, given.stringValue());
+      }
+    } else if (given instanceof ObjectNode provided) {
+      object = provided;
+    } else {
+      object = MAPPER.createObjectNode();
+      if (given == null) {
+        for (final var field : root.properties()) {
+          if (!RESERVED.contains(field.getKey())) {
+            object.set(field.getKey(), field.getValue());
+          }
+        }
+      }
+    }
+    final var described = root.get(DisplayDescription.FIELD);
+    if (described != null && !object.has(DisplayDescription.FIELD)) {
+      object.set(DisplayDescription.FIELD, described);
+    }
+    return new Arguments(object, MAPPER.writeValueAsString(object));
+  }
+
+  /**
+   * What is wrong with {@code arguments} for a tool of {@code schema}: each required property left
+   * out, and each one the schema does not have — unless it allows others. A model that has not seen
+   * the schema guesses at names, and a call made anyway reaches the tool with what it needs missing
+   * and the guess ignored: a refusal that does not say why, or, worse, an empty query answered as
+   * if it were one. The display description is the runtime's and never counts.
+   */
+  static List<String> mismatches(final ObjectNode arguments, final String schema) {
+    final JsonNode root;
+    try {
+      root = MAPPER.readTree(schema == null ? "{}" : schema);
+    } catch (JacksonException e) {
+      return List.of();
+    }
+    final var problems = new ArrayList<String>();
+    for (final var required : root.path("required")) {
+      final var property = required.asString("");
+      final var value = arguments.get(property);
+      if (!property.isEmpty()
+          && !DisplayDescription.FIELD.equals(property)
+          && (value == null || value.isNull())) {
+        problems.add("missing required \"" + property + "\"");
+      }
+    }
+    final var properties = root.get("properties");
+    final var additional = root.get("additionalProperties");
+    final var open = additional != null && (additional.isObject() || additional.asBoolean(false));
+    if (properties instanceof ObjectNode declared && !open) {
+      for (final var name : arguments.propertyNames()) {
+        if (!DisplayDescription.FIELD.equals(name) && !declared.has(name)) {
+          problems.add("unknown \"" + name + "\"");
+        }
+      }
+    }
+    return problems;
+  }
+
+  /** {@code schema} on one line and without its {@code $schema}, as the model is shown it. */
+  private static String compact(final String schema) {
+    try {
+      final var root = MAPPER.readTree(schema);
+      if (root instanceof ObjectNode object) {
+        object.remove("$schema");
+      }
+      return MAPPER.writeValueAsString(root);
+    } catch (JacksonException e) {
+      return schema;
+    }
   }
 
   /**
@@ -134,25 +251,4 @@ public final class DispatchingToolCallback implements ToolCallback {
   /** {@code git_{search}}: a prefix, then one short name in braces. */
   private static final java.util.regex.Pattern BRACED =
       java.util.regex.Pattern.compile("([^{}]*)\\{([^{},]+)}");
-
-  /**
-   * The target's arguments as JSON. A model sometimes writes the object as a string, which is
-   * unwrapped rather than refused. The display description is moved onto the target's arguments
-   * where the model wrote it beside them instead, since the target's call is the one a surface
-   * shows.
-   */
-  private static String arguments(final JsonNode root) {
-    final var arguments = root.get("arguments");
-    if (arguments != null && arguments.isString()) {
-      return arguments.stringValue();
-    }
-    if (!(arguments instanceof ObjectNode object)) {
-      return "{}";
-    }
-    final var described = root.get(DisplayDescription.FIELD);
-    if (described != null && !object.has(DisplayDescription.FIELD)) {
-      object.set(DisplayDescription.FIELD, described);
-    }
-    return MAPPER.writeValueAsString(object);
-  }
 }

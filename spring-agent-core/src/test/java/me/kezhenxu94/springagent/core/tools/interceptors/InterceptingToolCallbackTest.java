@@ -338,6 +338,85 @@ class InterceptingToolCallbackTest {
     return ToolDefinition.builder().name(name).description("").inputSchema("{}").build();
   }
 
+  /** A tool that takes one required {@code expr}, as a metrics server's query tool does. */
+  private static final class QueryTool implements ToolCallback {
+    private final String schema;
+    private String received;
+
+    private QueryTool(final String schema) {
+      this.schema = schema;
+    }
+
+    @Override
+    public ToolDefinition getToolDefinition() {
+      return ToolDefinition.builder().name("query").description("").inputSchema(schema).build();
+    }
+
+    @Override
+    public String call(final String toolInput) {
+      received = toolInput;
+      return "\"ok\"";
+    }
+  }
+
+  private static final String EXPR_SCHEMA =
+      "{\"type\":\"object\",\"properties\":{\"expr\":{\"type\":\"string\"}},\"required\":[\"expr\"]}";
+
+  @Test
+  @DisplayName(
+      "CallTool takes the arguments from _arguments too, or from beside its own when neither key"
+          + " is there")
+  void argumentsWhereverTheModelPutThem() {
+    final var tool = new QueryTool(EXPR_SCHEMA);
+    final var dispatcher =
+        new DispatchingToolCallback(Map.of("query", tool), List.of(), refs(), messages());
+
+    dispatcher.call("{\"name\":\"query\",\"_arguments\":{\"expr\":\"up\"}}", CONTEXT);
+    assertThat(tool.received).isEqualTo("{\"expr\":\"up\"}");
+
+    dispatcher.call(
+        "{\"name\":\"query\",\"expr\":\"down\",\""
+            + DisplayDescription.FIELD
+            + "\":\"Checking it\"}",
+        CONTEXT);
+    assertThat(tool.received).isEqualTo("{\"expr\":\"down\"}");
+  }
+
+  @Test
+  @DisplayName(
+      "CallTool does not call a tool with guessed arguments, and answers with what is wrong and"
+          + " the schema to get it right")
+  void refusesArgumentsTheSchemaDoesNotTake() {
+    final var tool = new QueryTool(EXPR_SCHEMA);
+    final var dispatcher =
+        new DispatchingToolCallback(Map.of("query", tool), List.of(), refs(), messages());
+
+    final var result =
+        dispatcher.call("{\"name\":\"query\",\"arguments\":{\"query\":\"up\"}}", CONTEXT);
+
+    assertThat(tool.received).isNull();
+    assertThat(result)
+        .contains("missing required \\\"expr\\\"")
+        .contains("unknown \\\"query\\\"")
+        .contains("\\\"required\\\":[\\\"expr\\\"]");
+  }
+
+  @Test
+  @DisplayName("a schema that allows other properties takes them")
+  void openSchemasTakeOtherProperties() {
+    final var tool =
+        new QueryTool(
+            "{\"type\":\"object\",\"properties\":{\"expr\":{\"type\":\"string\"}},"
+                + "\"additionalProperties\":true}");
+    final var dispatcher =
+        new DispatchingToolCallback(Map.of("query", tool), List.of(), refs(), messages());
+
+    dispatcher.call(
+        "{\"name\":\"query\",\"arguments\":{\"expr\":\"up\",\"step\":\"1m\"}}", CONTEXT);
+
+    assertThat(tool.received).isEqualTo("{\"expr\":\"up\",\"step\":\"1m\"}");
+  }
+
   private static ToolCallInterceptor watching(final List<String> seen) {
     return new ToolCallInterceptor() {
       @Override
