@@ -154,11 +154,14 @@ public class SlackConfigHandler {
       // Nothing to register, so this is a switch, a change of effort or of protocol, or several —
       // and the last two are applied after the switch so that they land on the model the
       // submission leaves the user on.
-      final var before = registry.active(userId).map(UserModelConfig::name).orElse(null);
+      // The row the form was drawn for, which is what its selects were preselected with — the one
+      // thing that tells a select the user changed from one they left alone on a submission that
+      // also switched model.
+      final var previous = registry.active(userId).orElse(null);
       final var switched =
           submission.active() == null ? null : switchTo(userId, submission.active());
-      final var efforted = effortFor(userId, submission);
-      final var reprotocoled = protocolFor(userId, before, submission);
+      final var efforted = effortFor(userId, previous, submission);
+      final var reprotocoled = protocolFor(userId, previous, submission);
       final var said = join(join(switched, efforted), reprotocoled);
       return said == null ? messages.get("config-nothing") : said;
     }
@@ -166,10 +169,11 @@ public class SlackConfigHandler {
     // directly — the way to reach a model the dropdown was too small to list. Nothing to probe: it
     // is the endpoint this application is already talking to.
     if (submission.builtinByName()) {
+      final var previous = registry.active(userId).orElse(null);
       registry.activateBuiltin(userId, submission.model());
       return join(
           messages.get("config-switched-builtin", submission.model()),
-          effortFor(userId, submission));
+          effortFor(userId, previous, submission));
     }
     // A model of their own already registered, and only a new effort for it: no endpoint to test,
     // and the token it was saved with is kept. One repository write, so it stays on this thread.
@@ -191,11 +195,20 @@ public class SlackConfigHandler {
    *
    * @return what happened, or null if the select was left alone
    */
-  private String effortFor(final String userId, final SlackConfigForm.Submission submission) {
+  private String effortFor(
+      final String userId,
+      final UserModelConfig previous,
+      final SlackConfigForm.Submission submission) {
     if (submission.effort() == null) {
       return null;
     }
     final var effort = submission.storedEffort();
+    // On a submission that also switched model, the select still shows the previous model's
+    // effort: left as it was, it is not a choice for the model switched to, which keeps its own.
+    if (switchedFrom(previous, registry.active(userId).orElse(null))
+        && Objects.equals(effort, SlackConfigForm.shownEffort(previous))) {
+      return null;
+    }
     // What the form was showing is not a change: with the select preselected, an untouched
     // submission
     // carries the effort already in force, and rewriting the row for it would report a change that
@@ -219,21 +232,26 @@ public class SlackConfigHandler {
    * which an effort it dislikes does not. The probe runs off this thread for the reason {@link
    * #add} does, and its outcome arrives as a direct message of its own.
    *
-   * <p>Ignored on a submission that also switched model: the select was preselected with the
-   * protocol of the model the user was on, so left untouched it would carry that row's protocol
-   * onto the one switched to.
+   * <p>On a submission that also switched model, applied only if it differs from what the select
+   * was preselected with — the protocol of the model the user was on. Left untouched it would carry
+   * that row's protocol onto the one switched to; changed, it is what the user chose for the model
+   * they chose, and dropping it left them on a protocol every call to that model fails in.
    *
    * @return what happened so far, or null if there is nothing to change
    */
   private String protocolFor(
-      final String userId, final String before, final SlackConfigForm.Submission submission) {
+      final String userId,
+      final UserModelConfig previous,
+      final SlackConfigForm.Submission submission) {
     if (submission.provider() == null) {
       return null;
     }
     final var active = registry.active(userId).orElse(null);
     final var provider = submission.storedProvider();
     if (active == null
-        || !Objects.equals(before, active.name())
+        || (switchedFrom(previous, active)
+            && Objects.equals(
+                provider, SlackConfigForm.shownProvider(previous, chatClients.providers())))
         || Objects.equals(provider, active.provider())) {
       return null;
     }
@@ -316,6 +334,12 @@ public class SlackConfigHandler {
   }
 
   /** Applies the dropdown, and says what it did. */
+  /** Whether the submission left the user on another row than the one the form was drawn for. */
+  private static boolean switchedFrom(final UserModelConfig previous, final UserModelConfig now) {
+    return !Objects.equals(
+        previous == null ? null : previous.name(), now == null ? null : now.name());
+  }
+
   private String switchTo(final String userId, final String active) {
     if (active == null) {
       return messages.get("config-nothing");

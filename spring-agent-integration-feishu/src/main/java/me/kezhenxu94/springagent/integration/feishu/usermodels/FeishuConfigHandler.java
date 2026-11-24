@@ -107,13 +107,14 @@ public class FeishuConfigHandler {
       // directly — the way to reach a model the dropdown was too small to list. Nothing to probe:
       // it is the endpoint this application is already talking to.
       if (submission.builtinByName()) {
+        final var previous = registry.active(userId).orElse(null);
         registry.activateBuiltin(userId, submission.model());
         return respond(
             userId,
             "success",
             join(
                 messages.get("config-switched-builtin", submission.model()),
-                effortFor(userId, submission)));
+                effortFor(userId, previous, submission)));
       }
       if (!submission.complete()) {
         return respond(userId, "warning", messages.get("config-incomplete"));
@@ -131,10 +132,13 @@ public class FeishuConfigHandler {
     // Nothing to register, so this is a switch, a change of effort or of protocol, or several —
     // and the last two are applied after the switch so that they land on the model the press
     // leaves the user on.
-    final var before = registry.active(userId).map(UserModelConfig::name).orElse(null);
+    // The row the card was drawn for, which is what its selects were preselected with — the one
+    // thing that tells a select the user changed from one they left alone on a press that also
+    // switched model.
+    final var previous = registry.active(userId).orElse(null);
     final var switched = submission.active() == null ? null : switchTo(userId, submission.active());
-    final var efforted = effortFor(userId, submission);
-    final var reprotocoled = protocolFor(chatId, userId, before, submission);
+    final var efforted = effortFor(userId, previous, submission);
+    final var reprotocoled = protocolFor(chatId, userId, previous, submission);
     final var said = join(join(switched, efforted), reprotocoled);
     return respond(userId, "success", said == null ? messages.get("config-nothing") : said);
   }
@@ -145,16 +149,17 @@ public class FeishuConfigHandler {
    * effort it dislikes does not. The probe runs off the callback thread for the reason {@link #add}
    * does, and its outcome arrives as a message of its own.
    *
-   * <p>Ignored on a press that also switched model: the select was preselected with the protocol of
-   * the model the user was on, so left untouched it would carry that row's protocol onto the one
-   * switched to.
+   * <p>On a press that also switched model, applied only if it differs from what the select was
+   * preselected with — the protocol of the model the user was on. Left untouched it would carry
+   * that row's protocol onto the one switched to; changed, it is what the user chose for the model
+   * they chose, and dropping it left them on a protocol every call to that model fails in.
    *
    * @return what happened so far, or null if there is nothing to change
    */
   private String protocolFor(
       final String chatId,
       final String userId,
-      final String before,
+      final UserModelConfig previous,
       final FeishuConfigForm.Submission submission) {
     if (submission.provider() == null) {
       return null;
@@ -162,7 +167,9 @@ public class FeishuConfigHandler {
     final var active = registry.active(userId).orElse(null);
     final var provider = submission.storedProvider();
     if (active == null
-        || !Objects.equals(before, active.name())
+        || (switchedFrom(previous, active)
+            && Objects.equals(
+                provider, FeishuConfigForm.shownProvider(previous, chatClients.providers())))
         || Objects.equals(provider, active.provider())) {
       return null;
     }
@@ -231,11 +238,20 @@ public class FeishuConfigHandler {
    *
    * @return what happened, or null if the dropdown was left alone
    */
-  private String effortFor(final String userId, final FeishuConfigForm.Submission submission) {
+  private String effortFor(
+      final String userId,
+      final UserModelConfig previous,
+      final FeishuConfigForm.Submission submission) {
     if (submission.effort() == null) {
       return null;
     }
     final var effort = submission.storedEffort();
+    // On a press that also switched model, the select still shows the previous model's effort:
+    // left as it was, it is not a choice for the model switched to, which keeps its own.
+    if (switchedFrom(previous, registry.active(userId).orElse(null))
+        && Objects.equals(effort, FeishuConfigForm.shownEffort(previous))) {
+      return null;
+    }
     // What the form was showing is not a change: with the select preselected, an untouched press
     // carries the effort already in force, and rewriting the row for it would report a change that
     // did not happen.
@@ -250,6 +266,12 @@ public class FeishuConfigHandler {
     return effort == null
         ? messages.get("config-effort-inherited", name)
         : messages.get("config-effort-set", name, effort);
+  }
+
+  /** Whether the press left the user on another row than the one the card was drawn for. */
+  private static boolean switchedFrom(final UserModelConfig previous, final UserModelConfig now) {
+    return !Objects.equals(
+        previous == null ? null : previous.name(), now == null ? null : now.name());
   }
 
   /** Two sentences about one press, or whichever of them there is. */

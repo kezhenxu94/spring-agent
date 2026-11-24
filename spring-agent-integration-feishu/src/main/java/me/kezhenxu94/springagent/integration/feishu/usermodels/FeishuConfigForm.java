@@ -150,7 +150,7 @@ public class FeishuConfigForm {
     }
     formElements.add(root.path("modelInput").deepCopy());
     formElements.add(root.path("effortLabel").deepCopy());
-    formElements.add(effortSelect(root, active == null ? null : active.reasoningEffort()));
+    formElements.add(effortSelect(root, shownEffort(active)));
     // Registration only, beside the endpoint it belongs to, unlike the effort above: it is set
     // when a model is added and has no form of its own to change it afterwards.
     formElements.add(root.path("temperatureInput").deepCopy());
@@ -251,11 +251,10 @@ public class FeishuConfigForm {
    * message rather than a validation error.
    *
    * <p>Preselected with what the model in use is actually set to, so the card reads as a statement
-   * of the configuration rather than as a question. That has a consequence worth knowing: a press
-   * applies the effort shown to whatever model it leaves the user on, so switching model and
-   * leaving this alone carries the shown effort over to the model switched to. The handler treats a
-   * value that is already in force as nothing to do, which is what keeps an untouched card from
-   * rewriting anything.
+   * of the configuration rather than as a question. A press applies a changed effort to whatever
+   * model it leaves the user on; the handler treats a value already in force, or on a press that
+   * switched model the value the select was preselected with, as nothing to do, which is what keeps
+   * an untouched select from rewriting a row.
    *
    * @param current what the model in use is set to, or null for the application's own setting
    */
@@ -307,15 +306,33 @@ public class FeishuConfigForm {
       options.add(option(root, provider, provider));
     }
     // initial_index is 1-based, and the first option is the deployment's own.
-    var selected = 1;
-    if (active != null && active.provider() != null) {
-      final var found = providers.indexOf(active.provider());
-      if (found >= 0) {
-        selected = found + 2;
-      }
-    }
-    select.put("initial_index", selected);
+    final var shown = shownProvider(active, providers);
+    select.put("initial_index", shown == null ? 1 : providers.indexOf(shown) + 2);
     return select;
+  }
+
+  /**
+   * The protocol the select shows for {@code active}: its own where this deployment serves it, the
+   * deployment's own (null) otherwise. One rule for drawing the card and for reading a press of it,
+   * since the handler can only tell a deliberate choice from an untouched select by comparing with
+   * what was shown.
+   */
+  public static String shownProvider(final UserModelConfig active, final List<String> providers) {
+    if (active == null || active.provider() == null || providers == null) {
+      return null;
+    }
+    return providers.contains(active.provider()) ? active.provider() : null;
+  }
+
+  /** The effort the select shows for {@code active}, by the same reasoning as above. */
+  public static String shownEffort(final UserModelConfig active) {
+    if (active == null || active.reasoningEffort() == null) {
+      return null;
+    }
+    final var effort = active.reasoningEffort();
+    return ReasoningEfforts.VALUES.contains(effort) || ReasoningEfforts.NOT_SENT.equals(effort)
+        ? effort
+        : null;
   }
 
   /**

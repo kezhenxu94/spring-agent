@@ -192,7 +192,7 @@ public class SlackConfigForm {
       blocks.add(providerInput(providers, defaultProvider, active));
     }
     blocks.add(input(MODEL_BLOCK, "config-model-label", "config-model-placeholder", false));
-    blocks.add(effortInput(active == null ? null : active.reasoningEffort()));
+    blocks.add(effortInput(shownEffort(active)));
     // Registration only, unlike the effort above: it is set when a model is added and has no form
     // of its own to change it afterwards.
     blocks.add(
@@ -248,10 +248,10 @@ public class SlackConfigForm {
    * message rather than a validation error.
    *
    * <p>Preselected with what the model in use is set to, so the form reads as a statement of the
-   * configuration rather than a question. The consequence is worth knowing: a submission applies
-   * the effort shown to whatever model it leaves the user on, so switching model and leaving this
-   * alone carries the shown effort across. A value already in force is treated as nothing to do,
-   * which is what keeps an untouched form from rewriting anything.
+   * configuration rather than a question. A submission applies a changed effort to whatever model
+   * it leaves the user on; a value already in force, or on a submission that switched model the
+   * value the select was preselected with, is treated as nothing to do, which is what keeps an
+   * untouched select from rewriting a row.
    *
    * @param current what the model in use is set to, or null for the application's own setting
    */
@@ -264,7 +264,7 @@ public class SlackConfigForm {
             messages.get("config-provider-inherit", String.valueOf(defaultProvider)),
             PROVIDER_INHERIT_OPTION));
     providers.forEach(provider -> options.add(option(provider, provider)));
-    final var current = active == null ? null : active.provider();
+    final var current = shownProvider(active, providers);
     final var initial =
         options.stream()
             .filter(
@@ -305,6 +305,30 @@ public class SlackConfigForm {
                 .initialOption(off)
                 .build())
         .build();
+  }
+
+  /**
+   * The protocol the select shows for {@code active}: its own where this deployment serves it, the
+   * deployment's own (null) otherwise. One rule for drawing the form and for reading a submission
+   * of it, since the handler can only tell a deliberate choice from an untouched select by
+   * comparing with what was shown.
+   */
+  public static String shownProvider(final UserModelConfig active, final List<String> providers) {
+    if (active == null || active.provider() == null || providers == null) {
+      return null;
+    }
+    return providers.contains(active.provider()) ? active.provider() : null;
+  }
+
+  /** The effort the select shows for {@code active}, by the same reasoning as above. */
+  public static String shownEffort(final UserModelConfig active) {
+    if (active == null || active.reasoningEffort() == null) {
+      return null;
+    }
+    final var effort = active.reasoningEffort();
+    return ReasoningEfforts.VALUES.contains(effort) || ReasoningEfforts.NOT_SENT.equals(effort)
+        ? effort
+        : null;
   }
 
   private InputBlock effortInput(final String current) {

@@ -16,6 +16,7 @@ import com.lark.oapi.event.cardcallback.model.CallBackOperator;
 import com.lark.oapi.event.cardcallback.model.P2CardActionTrigger;
 import com.lark.oapi.event.cardcallback.model.P2CardActionTriggerData;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -62,6 +63,7 @@ class FeishuConfigHandlerTest {
     final var om = JsonMapper.builder().build();
     final var chatClients = mock(UserChatClients.class);
     when(chatClients.defaultProvider()).thenReturn("openai");
+    when(chatClients.providers()).thenReturn(List.of("openai", "openai-responses", "anthropic"));
     when(registry.activate(any(), any())).thenReturn(true);
     when(registry.tokenOf(LUNA)).thenReturn("sk-secret");
     when(registry.headersOf(LUNA)).thenReturn(Map.of());
@@ -123,7 +125,9 @@ class FeishuConfigHandlerTest {
   }
 
   @Test
-  @DisplayName("a press that switched model does not carry the old one's protocol onto the new one")
+  @DisplayName(
+      "a press that switched model and left the protocol as shown does not carry the old one's"
+          + " protocol onto the new one")
   void switchingIgnoresTheProtocol() {
     final var kimi = LUNA.toBuilder().name("kimi").provider("openai-responses").build();
     // Before the press the user is on kimi, whose protocol the select was preselected with; the
@@ -133,6 +137,87 @@ class FeishuConfigHandlerTest {
     handler.handle(press("luna", "openai-responses"));
 
     verify(registry, never()).setProvider(any(), any(), any());
+  }
+
+  /** The endpoint the user is on when the form is drawn. */
+  private static final UserModelConfig FIRST =
+      UserModelConfig.builder()
+          .ownerId(USER)
+          .name("first")
+          .provider("openai")
+          .baseUrl("https://first/v1")
+          .model("first-model")
+          .reasoningEffort("high")
+          .activated(true)
+          .build();
+
+  /** A second endpoint of the user's, which the press switches to from {@link #FIRST}. */
+  private static final UserModelConfig OTHER =
+      UserModelConfig.builder()
+          .ownerId(USER)
+          .name("other")
+          .provider("openai")
+          .baseUrl("https://other/v1")
+          .model("other-model")
+          .reasoningEffort("low")
+          .activated(true)
+          .build();
+
+  @Test
+  @DisplayName(
+      "a press that switched model and changed the protocol moves the model switched to, once it"
+          + " answers there")
+  void switchingWithAChangedProtocol() {
+    when(registry.tokenOf(OTHER)).thenReturn("sk-other");
+    when(registry.headersOf(OTHER)).thenReturn(Map.of());
+    // Drawn for first, whose openai the select showed; the press picks other and anthropic.
+    when(registry.active(USER)).thenReturn(Optional.of(FIRST), Optional.of(OTHER));
+
+    handler.handle(press("other", "anthropic"));
+
+    verify(probe)
+        .check(
+            "anthropic",
+            "https://other/v1",
+            "other-model",
+            "sk-other",
+            "low",
+            null,
+            false,
+            Map.of());
+    verify(registry).setProvider(USER, "other", "anthropic");
+  }
+
+  @Test
+  @DisplayName(
+      "a press that switched model with the protocol left as shown keeps the new model's own,"
+          + " though it differs")
+  void switchingKeepsTheNewModelsProtocol() {
+    final var responses = OTHER.toBuilder().provider("openai-responses").build();
+    // The select showed first's openai and was left alone; other speaks openai-responses.
+    when(registry.active(USER)).thenReturn(Optional.of(FIRST), Optional.of(responses));
+
+    handler.handle(press("other", "openai"));
+
+    verify(probe, never()).check(any(), any(), any(), any(), any(), any(), anyBoolean(), any());
+    verify(registry, never()).setProvider(any(), any(), any());
+  }
+
+  @Test
+  @DisplayName(
+      "the effort works the same way: left as shown on a switch it keeps the new model's, changed"
+          + " it is applied")
+  void switchingAndTheEffort() {
+    when(registry.active(USER)).thenReturn(Optional.of(FIRST), Optional.of(OTHER));
+
+    handler.handle(press("other", "openai", "high"));
+    verify(registry, never()).setActiveEffort(any(), any());
+
+    when(registry.active(USER)).thenReturn(Optional.of(FIRST), Optional.of(OTHER));
+    when(registry.setActiveEffort(USER, "medium")).thenReturn(OTHER);
+
+    handler.handle(press("other", "openai", "medium"));
+    verify(registry).setActiveEffort(USER, "medium");
   }
 
   @Test
@@ -154,9 +239,17 @@ class FeishuConfigHandlerTest {
   }
 
   private static P2CardActionTrigger press(final String active, final String provider) {
+    return press(active, provider, null);
+  }
+
+  private static P2CardActionTrigger press(
+      final String active, final String provider, final String effort) {
     final var formValue = new HashMap<String, Object>();
     formValue.put(FeishuConfigForm.ACTIVE, active);
     formValue.put(FeishuConfigForm.PROVIDER, provider);
+    if (effort != null) {
+      formValue.put(FeishuConfigForm.EFFORT, effort);
+    }
     final var action = new CallBackAction();
     action.setFormValue(formValue);
     final var operator = new CallBackOperator();
