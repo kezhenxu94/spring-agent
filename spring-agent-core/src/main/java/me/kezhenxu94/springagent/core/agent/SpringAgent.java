@@ -29,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.advisors.MemoryToolCallingAdvisor;
 import me.kezhenxu94.springagent.core.advisors.TurnContextAdvisor;
+import me.kezhenxu94.springagent.core.advisors.toolsearch.ToolSearchToolCallingAdvisor;
 import me.kezhenxu94.springagent.core.config.Admins;
 import me.kezhenxu94.springagent.core.config.CoreMessages;
 import me.kezhenxu94.springagent.core.config.LocalizedPrompt;
@@ -1257,6 +1258,11 @@ public class SpringAgent {
               }
             })
         .advisors(a -> a.param(TOOL_INDEX_KEY, toolIndexKeyFor(request)))
+        .advisors(
+            a ->
+                a.param(
+                    ToolSearchToolCallingAdvisor.RUN_ALWAYS_LOADED_KEY,
+                    request.scenario().alwaysLoadedTools()))
         .advisors(advisors.toArray(new Advisor[0]))
         .stream()
         .chatResponse();

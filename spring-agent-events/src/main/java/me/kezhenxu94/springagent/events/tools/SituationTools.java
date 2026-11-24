@@ -39,6 +39,14 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class SituationTools {
 
+  /** Every tool this class declares, by name — what a triage run is offered directly. */
+  public static final java.util.Set<String> NAMES =
+      java.util.Set.of(
+          "GetSituationEvents",
+          "ListOpenSituations",
+          "RecordSituationAssessment",
+          "ResolveSituation");
+
   /** The situation a triage run is about, put into the tool context by the sweeper. */
   public static final String KEY_SITUATION_ID = "situationId";
 

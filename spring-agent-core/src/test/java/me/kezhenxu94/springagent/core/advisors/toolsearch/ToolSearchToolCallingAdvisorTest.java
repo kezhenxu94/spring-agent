@@ -141,6 +141,26 @@ class ToolSearchToolCallingAdvisorTest {
   }
 
   @Test
+  @DisplayName("a run's own always-loaded tools join the fixed array for that run only")
+  void runsOwnAlwaysLoadedTools() {
+    final var advisor = advisor();
+    final var request =
+        turnWith(List.of(new SystemMessage("x")))
+            .mutate()
+            .context(ToolSearchToolCallingAdvisor.RUN_ALWAYS_LOADED_KEY, java.util.Set.of("Alpha"))
+            .build();
+
+    final var own = advisor.doBeforeCall(advisor.doInitializeLoop(request, chain), chain);
+    final var plain =
+        advisor.doBeforeCall(
+            advisor.doInitializeLoop(turnWith(List.of(new SystemMessage("x"))), chain), chain);
+
+    assertThat(offeredNames(own))
+        .containsExactly("Alpha", "CallTool", "Grep", "Read", "toolSearchTool");
+    assertThat(offeredNames(plain)).containsExactly("CallTool", "Grep", "Read", "toolSearchTool");
+  }
+
+  @Test
   @DisplayName("CallTool can reach exactly the tools that are not offered directly")
   void dispatcherTargets() {
     final var advisor = advisor();

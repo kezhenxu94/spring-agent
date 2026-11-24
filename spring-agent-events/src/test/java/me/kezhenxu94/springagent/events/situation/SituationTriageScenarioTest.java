@@ -80,4 +80,20 @@ class SituationTriageScenarioTest {
     assertThat(scenario.offers(mock(SituationTools.class))).isTrue();
     assertThat(scenario.offers(mock(DateTimeTool.class))).isTrue();
   }
+
+  @Test
+  @DisplayName(
+      "the situation tools are offered directly on every triage run, by the names they are"
+          + " declared with, and not to chats")
+  void situationToolsAreAlwaysLoaded() {
+    final var declared =
+        java.util.Arrays.stream(SituationTools.class.getDeclaredMethods())
+            .filter(m -> m.isAnnotationPresent(org.springframework.ai.tool.annotation.Tool.class))
+            .map(m -> org.springframework.ai.tool.support.ToolDefinitions.from(m).name())
+            .collect(java.util.stream.Collectors.toSet());
+
+    assertThat(new SituationTriageScenario().alwaysLoadedTools()).isEqualTo(declared);
+    assertThat(me.kezhenxu94.springagent.core.agent.BuiltInScenarios.CHAT.alwaysLoadedTools())
+        .isEmpty();
+  }
 }

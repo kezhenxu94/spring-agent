@@ -362,7 +362,8 @@ search. That advisor does not index the tools *as well* — it replaces them: th
 few tools nearly every run needs, `toolSearchTool` and `CallTool`, the same on every request of a
 conversation so that a prefix cache holds. Every other tool is listed by name in the system prompt,
 and the model reaches it by searching for its schema and calling it through `CallTool`.
-`app.ai.tools.always-loaded` adds tools to that fixed few, for the ones an application's own system
+`AgentScenario.alwaysLoadedTools()` adds a scenario's own — event triage's situation tools —
+and `app.ai.tools.always-loaded` adds tools to that fixed few, for the ones an application's own system
 prompt tells the model to call by name; it only chooses among the tools a run was composed with.
 The list in the system prompt names tools only, a group to a line — each MCP server's tools under
 the description its registration gives, `app.ai.tools.mcp-descriptions` for an app-wide connection,

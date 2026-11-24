@@ -1,8 +1,10 @@
 package me.kezhenxu94.springagent.events.situation;
 
+import java.util.Set;
 import me.kezhenxu94.springagent.core.agent.AgentScenario;
 import me.kezhenxu94.springagent.core.tools.FiringScheduledTaskTool;
 import me.kezhenxu94.springagent.core.tools.ScheduledTaskTool;
+import me.kezhenxu94.springagent.events.tools.SituationTools;
 
 /**
  * A run the system started about something it noticed, rather than one a person asked for.
@@ -114,6 +116,17 @@ public final class SituationTriageScenario implements AgentScenario {
    * answer for it. A situation that keeps recurring would otherwise be able to leave a scheduled
    * task behind on every look, which is how one alert becomes a growing pile of them.
    */
+  /**
+   * The situation tools, which nearly every triage run calls — to read the events, to record what
+   * it made of them, to resolve or list — and which the tool search would otherwise list by name
+   * only, so that each was a search or a guess at its arguments. Not for chats, where they are
+   * rare.
+   */
+  @Override
+  public Set<String> alwaysLoadedTools() {
+    return SituationTools.NAMES;
+  }
+
   @Override
   public boolean offers(final Object tool) {
     // The firing tools go with it: a triage run is not a firing of any task, so they would find

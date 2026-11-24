@@ -127,6 +127,13 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
           "WaitForSubagent",
           "Write");
 
+  /**
+   * Where a run's own additions to {@link #ALWAYS_LOADED} wait in the request context — a {@code
+   * Set<String>}, from {@code AgentScenario#alwaysLoadedTools}.
+   */
+  public static final String RUN_ALWAYS_LOADED_KEY =
+      ToolSearchToolCallingAdvisor.class.getName() + ".runAlwaysLoaded";
+
   /** The search tool's name, which is upstream's and which every run taking the search carries. */
   public static final String SEARCH_TOOL_NAME = "toolSearchTool";
 
@@ -274,6 +281,7 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
     // Evict stale sessions before touching the current one.
     this.evictionStrategy.onAccess(sessionId).forEach(this::doEvict);
 
+    final var loaded = alwaysLoadedFor(chatClientRequest);
     final var callbacks = new LinkedHashMap<String, ToolCallback>();
     if (!CollectionUtils.isEmpty(toolOptions.getToolCallbacks())) {
       toolOptions
@@ -286,14 +294,14 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
     // description the surfaces show.
     final var deferred =
         this.toolCallingManager.resolveToolDefinitions(Objects.requireNonNull(toolOptions)).stream()
-            .filter(definition -> !this.alwaysLoaded.contains(definition.name()))
+            .filter(definition -> !loaded.contains(definition.name()))
             .filter(definition -> callbacks.containsKey(definition.name()))
             .sorted(Comparator.comparing(ToolDefinition::name))
             .toList();
 
     final var offered = new ArrayList<ToolCallback>();
     callbacks.values().stream()
-        .filter(callback -> this.alwaysLoaded.contains(callback.getToolDefinition().name()))
+        .filter(callback -> loaded.contains(callback.getToolDefinition().name()))
         .forEach(offered::add);
 
     var prompt = chatClientRequest.prompt().copy();
@@ -394,6 +402,16 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
       lines.append("- ").append(String.join(", ", loose)).append(System.lineSeparator());
     }
     return lines.toString();
+  }
+
+  /** The tools offered directly to this run: every run's, and the run's own additions. */
+  private Set<String> alwaysLoadedFor(final ChatClientRequest request) {
+    if (!(request.context().get(RUN_ALWAYS_LOADED_KEY) instanceof Set<?> own) || own.isEmpty()) {
+      return this.alwaysLoaded;
+    }
+    final var loaded = new HashSet<>(this.alwaysLoaded);
+    own.forEach(name -> loaded.add(String.valueOf(name)));
+    return loaded;
   }
 
   /**

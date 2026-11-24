@@ -138,4 +138,17 @@ public interface AgentScenario {
   default Set<String> memoNames() {
     return Set.of();
   }
+
+  /**
+   * Tools this kind of run is offered directly on every request, beside the ones every run is,
+   * where a tool search would otherwise list them only by name — the tools a scenario's own prompt
+   * has it call on nearly every run, each of which would otherwise cost a search, or a guess at its
+   * arguments. Names of tools the run was composed with; one it was not is absent.
+   *
+   * <p>Empty by default: what every run needs is the advisor's to say, and {@code
+   * app.ai.tools.always-loaded} is the deployment's.
+   */
+  default Set<String> alwaysLoadedTools() {
+    return Set.of();
+  }
 }
