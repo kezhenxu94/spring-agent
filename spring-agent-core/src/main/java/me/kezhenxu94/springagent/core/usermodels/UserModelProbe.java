@@ -14,6 +14,7 @@ import me.kezhenxu94.springagent.core.config.SpringAgentProperties;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
+import reactor.core.Exceptions;
 
 /**
  * Asks an endpoint one very small question, to find out whether it works before anything is stored
@@ -89,6 +90,9 @@ public class UserModelProbe {
     // mistyped a URL.
     final var systemMessages = systemMessagesFor(properties);
     try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      // Streamed, because every run is: some gateways serve only streaming requests and refuse
+      // the rest ("Stream must be set to true"), and a probe that does not stream would turn away
+      // an endpoint every real message would have worked on.
       final Callable<String> ask =
           () ->
               chatClients
@@ -96,8 +100,9 @@ public class UserModelProbe {
                   .prompt()
                   .messages(systemMessages)
                   .user("Hi")
-                  .call()
-                  .content();
+                  .stream()
+                  .content()
+                  .blockLast();
       final var future = executor.submit(ask);
       try {
         future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
@@ -106,7 +111,7 @@ public class UserModelProbe {
         future.cancel(true);
         return messages.get("user-model-probe-timeout", timeout.toSeconds());
       } catch (Exception e) {
-        final var cause = e.getCause() == null ? e : e.getCause();
+        final var cause = Exceptions.unwrap(e.getCause() == null ? e : e.getCause());
         log.info("Chat model probe of {} at {} failed", model, baseUrl, cause);
         return cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
       }
