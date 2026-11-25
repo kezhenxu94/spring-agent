@@ -58,6 +58,9 @@ class FeishuConfigHandlerTest {
 
   @BeforeEach
   void setUp() {
+    // Answering, unless a test says otherwise: what a protocol change is probed with.
+    when(probe.probe(any(), any(), any(), any(), any(), any(), anyBoolean(), any()))
+        .thenReturn(new UserModelProbe.Result(null, false));
     final var messages =
         new FeishuMessages(
             new FeishuProperties(
@@ -91,7 +94,7 @@ class FeishuConfigHandlerTest {
 
     // Probed with what is stored, since nothing was retyped: the token, the effort and all.
     verify(probe)
-        .check(
+        .probe(
             "openai-responses",
             "https://gw/v1",
             "gpt-5.6-luna",
@@ -107,8 +110,8 @@ class FeishuConfigHandlerTest {
   @DisplayName("and leaves it where it was when the endpoint does not answer in the new one")
   void keepsTheProtocolWhenTheProbeFails() {
     when(registry.active(USER)).thenReturn(Optional.of(LUNA));
-    when(probe.check(any(), any(), any(), any(), any(), any(), anyBoolean(), any()))
-        .thenReturn("404 Not Found");
+    when(probe.probe(any(), any(), any(), any(), any(), any(), anyBoolean(), any()))
+        .thenReturn(new UserModelProbe.Result("404 Not Found", false));
 
     handler.handle(press("luna", "openai-responses"));
 
@@ -122,7 +125,7 @@ class FeishuConfigHandlerTest {
 
     handler.handle(press("luna", "openai"));
 
-    verify(probe, never()).check(any(), any(), any(), any(), any(), any(), anyBoolean(), any());
+    verify(probe, never()).probe(any(), any(), any(), any(), any(), any(), anyBoolean(), any());
     verify(registry, never()).setProvider(any(), any(), any());
   }
 
@@ -178,7 +181,7 @@ class FeishuConfigHandlerTest {
     handler.handle(press("other", "anthropic"));
 
     verify(probe)
-        .check(
+        .probe(
             "anthropic",
             "https://other/v1",
             "other-model",
@@ -201,7 +204,7 @@ class FeishuConfigHandlerTest {
 
     handler.handle(press("other", "openai"));
 
-    verify(probe, never()).check(any(), any(), any(), any(), any(), any(), anyBoolean(), any());
+    verify(probe, never()).probe(any(), any(), any(), any(), any(), any(), anyBoolean(), any());
     verify(registry, never()).setProvider(any(), any(), any());
   }
 
@@ -244,7 +247,7 @@ class FeishuConfigHandlerTest {
 
     // No base URL and no token: the client borrows the deployment's, as every run on it does.
     verify(probe)
-        .check("openai-responses", null, "listed-model", null, null, null, false, Map.of());
+        .probe("openai-responses", null, "listed-model", null, null, null, false, Map.of());
     verify(registry).setProvider(USER, builtin.name(), "openai-responses");
     assertThat(
             FeishuConfigForm.shownProvider(
@@ -262,7 +265,7 @@ class FeishuConfigHandlerTest {
 
     handler.handle(press(builtin.name(), "anthropic"));
 
-    verify(probe, never()).check(any(), any(), any(), any(), any(), any(), anyBoolean(), any());
+    verify(probe, never()).probe(any(), any(), any(), any(), any(), any(), anyBoolean(), any());
     verify(registry, never()).setProvider(any(), any(), any());
   }
 
@@ -280,7 +283,7 @@ class FeishuConfigHandlerTest {
 
     handler.handle(press(builtin.name(), "openai-responses"));
 
-    verify(probe, never()).check(any(), any(), any(), any(), any(), any(), anyBoolean(), any());
+    verify(probe, never()).probe(any(), any(), any(), any(), any(), any(), anyBoolean(), any());
     verify(registry, never()).setProvider(any(), any(), eq("openai-responses"));
   }
 

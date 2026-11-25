@@ -61,7 +61,10 @@ Four things, each because Spring AI has no way to know it:
   (`ProviderChatClients#alternativeWhenNotFound`). One of the deployment's own models can be moved
   the same way, since both APIs reach the deployment's endpoint with its credential — the two
   providers declare one `family()` — but never to another provider, which would need an endpoint of
-  the user's own.
+  the user's own. A change of protocol is probed the way a run asks (`UserModelProbe#probe`): once
+  more without a temperature where the model refuses the deployment's default, storing "send none"
+  with the protocol where that is what it took — a model served only over `/responses` may refuse
+  the parameter there too, and a probe that did not ask that way could never move it.
   That customizer is built per endpoint rather than shared, or two rows with different headers would
   send each other's.
 - **`OpenAiStreamIdleTimeout`** — abandons a streamed answer that has gone silent for

@@ -132,6 +132,58 @@ public class UserModelProbe {
   }
 
   /**
+   * What {@link #probe} found.
+   *
+   * @param failure what the endpoint said, or null where it answered
+   * @param withoutTemperature whether it answered only once asked without a temperature — which
+   *     whoever stores the row has to record as {@link Temperatures#NOT_SENT}, or every run on it
+   *     pays for the refusal first
+   */
+  public record Result(String failure, boolean withoutTemperature) {
+
+    public boolean answered() {
+      return failure == null;
+    }
+  }
+
+  /**
+   * {@link #check}, asked the way a run is: where the endpoint refuses the temperature parameter
+   * itself — which the deployment's default puts on every request to a row that set none — once
+   * more without one, as {@code TemperatureRetryAdvisor} does for a run. For a change to a row that
+   * already exists, whose answering is what matters; registering an endpoint keeps the stricter
+   * {@link #check}, whose failure tells the person what to set.
+   */
+  public Result probe(
+      final String provider,
+      final String baseUrl,
+      final String model,
+      final String token,
+      final String reasoningEffort,
+      final Double temperature,
+      final boolean strictTools,
+      final Map<String, String> headers) {
+    final var failure =
+        check(provider, baseUrl, model, token, reasoningEffort, temperature, strictTools, headers);
+    if (failure == null) {
+      return new Result(null, false);
+    }
+    if (Temperatures.omitted(temperature) || !Temperatures.rejected(failure)) {
+      return new Result(failure, false);
+    }
+    final var without =
+        check(
+            provider,
+            baseUrl,
+            model,
+            token,
+            reasoningEffort,
+            Temperatures.NOT_SENT,
+            strictTools,
+            headers);
+    return without == null ? new Result(null, true) : new Result(without, false);
+  }
+
+  /**
    * Checks one of the deployment's own models the user has just switched to, the way an endpoint of
    * theirs is checked before it is saved — and where it refuses the temperature parameter the
    * deployment sends every model, which nothing else would ever stop, asks again without one and
@@ -148,29 +200,25 @@ public class UserModelProbe {
       return null;
     }
     final var model = UserModelRegistry.displayName(active);
-    final var failure = checkBuiltin(active, active.temperature());
-    if (failure == null) {
-      return null;
+    final var result =
+        probe(
+            active.provider(),
+            null,
+            active.model(),
+            null,
+            active.reasoningEffort(),
+            active.temperature(),
+            Boolean.TRUE.equals(active.strictTools()),
+            Map.of());
+    if (!result.answered()) {
+      return messages.get("user-model-builtin-failed", model, result.failure());
     }
-    if (Temperatures.rejected(failure)
-        && checkBuiltin(active, Temperatures.NOT_SENT) == null
+    if (result.withoutTemperature()
         && registry.setTemperature(userId, active.name(), Temperatures.NOT_SENT)) {
       log.info("Built-in model {} refuses a temperature; {} will send it none", model, userId);
       return messages.get("user-model-temperature-omitted", model);
     }
-    return messages.get("user-model-builtin-failed", model, failure);
-  }
-
-  private String checkBuiltin(final UserModelConfig row, final Double temperature) {
-    return check(
-        row.provider(),
-        null,
-        row.model(),
-        null,
-        row.reasoningEffort(),
-        temperature,
-        Boolean.TRUE.equals(row.strictTools()),
-        Map.of());
+    return null;
   }
 
   /**
@@ -190,9 +238,12 @@ public class UserModelProbe {
       final boolean strictTools,
       final Map<String, String> headers) {
     final var alternative = chatClients.alternativeWhenNotFound(provider);
+    // Asked the way a run would ask it — once more without a temperature where it refuses one —
+    // or a model served only over the other API, and refusing the temperature there, would never
+    // be pointed at it.
     if (alternative == null
         || alternative.equals(provider)
-        || check(
+        || !probe(
                 alternative,
                 baseUrl,
                 model,
@@ -201,7 +252,7 @@ public class UserModelProbe {
                 temperature,
                 strictTools,
                 headers)
-            != null) {
+            .answered()) {
       return failure;
     }
     final var spoken = provider == null ? chatClients.defaultProvider() : provider;

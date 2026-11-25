@@ -170,7 +170,7 @@ class OpenAiResponsesStreamingTest {
 
     assertThat(probe.check("openai", url, "own-model", "own-token", null, null, false, Map.of()))
         .contains("404")
-        .contains("Register it with the protocol openai-responses");
+        .contains("Use the protocol openai-responses for it");
     assertThat(
             probe.check(
                 "openai-responses", url, "own-model", "own-token", null, null, false, Map.of()))

@@ -95,6 +95,8 @@ class TemperatureRetryAdvisorTest {
   void whatIsARefusal() {
     assertThat(Temperatures.rejected(REFUSED)).isTrue();
     assertThat(Temperatures.rejected("400: Unsupported parameter: 'temperature'")).isTrue();
+    assertThat(Temperatures.rejected("400: {\"detail\":\"Unsupported parameter: temperature\"}"))
+        .isTrue();
     assertThat(Temperatures.rejected("400: temperature must be between 0 and 2")).isFalse();
     assertThat(Temperatures.rejected("500: temperature is deprecated")).isFalse();
     assertThat(Temperatures.rejected((String) null)).isFalse();

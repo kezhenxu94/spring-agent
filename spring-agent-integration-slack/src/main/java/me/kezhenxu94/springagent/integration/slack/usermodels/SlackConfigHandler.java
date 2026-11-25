@@ -277,8 +277,11 @@ public class SlackConfigHandler {
     final var spoken = provider == null ? chatClients.defaultProvider() : provider;
     taskExecutor.execute(
         () -> {
-          final var failure =
-              probe.check(
+          // Asked as a run would ask it: once more without a temperature where the model refuses
+          // the one the deployment sends by default, or a model served only over the protocol
+          // being chosen, and refusing the temperature there, could never be moved to it.
+          final var result =
+              probe.probe(
                   provider,
                   active.baseUrl(),
                   active.model(),
@@ -287,13 +290,20 @@ public class SlackConfigHandler {
                   active.temperature(),
                   Boolean.TRUE.equals(active.strictTools()),
                   registry.headersOf(active));
-          if (failure != null) {
+          if (!result.answered()) {
             final var current =
                 active.provider() == null ? chatClients.defaultProvider() : active.provider();
-            say(userId, messages.get("config-provider-failed", name, spoken, current, failure));
+            say(
+                userId,
+                messages.get("config-provider-failed", name, spoken, current, result.failure()));
             return;
           }
           registry.setProvider(userId, name, provider);
+          if (result.withoutTemperature()) {
+            registry.setTemperature(userId, name, Temperatures.NOT_SENT);
+            say(userId, messages.get("config-provider-set-without-temperature", name, spoken));
+            return;
+          }
           say(userId, messages.get("config-provider-set", name, spoken));
         });
     return messages.get("config-provider-testing", name, spoken);

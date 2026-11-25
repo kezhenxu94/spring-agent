@@ -44,6 +44,9 @@ class TelegramConfigHandlerTest {
 
   @BeforeEach
   void setUp() {
+    // Answering, unless a test says otherwise: what a protocol change is probed with.
+    when(probe.probe(any(), any(), any(), any(), any(), any(), anyBoolean(), any()))
+        .thenReturn(new UserModelProbe.Result(null, false));
     final var messages =
         new TelegramMessages(
             new TelegramProperties(
@@ -77,7 +80,7 @@ class TelegramConfigHandlerTest {
     handler.apply(USER, USER, provider("openai-responses"));
 
     verify(probe)
-        .check("openai-responses", null, "listed-model", null, null, null, false, Map.of());
+        .probe("openai-responses", null, "listed-model", null, null, null, false, Map.of());
     verify(registry).setProvider(USER, BUILTIN.name(), "openai-responses");
   }
 
@@ -87,7 +90,7 @@ class TelegramConfigHandlerTest {
     final var said = handler.apply(USER, USER, provider("anthropic"));
 
     assertThat(said).contains("an endpoint of your own");
-    verify(probe, never()).check(any(), any(), any(), any(), any(), any(), anyBoolean(), any());
+    verify(probe, never()).probe(any(), any(), any(), any(), any(), any(), anyBoolean(), any());
     verify(registry, never()).setProvider(any(), any(), any());
   }
 }
