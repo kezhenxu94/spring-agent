@@ -86,6 +86,16 @@ public interface ProviderChatClients {
   }
 
   /**
+   * Which providers speak to the same endpoint with the same credential as this one, over another
+   * API — the same word for all of them. The deployment's own models are reached with its own
+   * endpoint and credential, so one of them can be moved between the providers of the deployment's
+   * family and no further. Its own name by default: most protocols have one API.
+   */
+  default String family() {
+    return provider();
+  }
+
+  /**
    * How hard this provider's own configured model is asked to think, in {@link ReasoningEfforts}'
    * vocabulary, or null where nothing is configured or this provider built no model here.
    *

@@ -50,6 +50,78 @@ class UserModelProbeTest {
     assertThat(probeAgainst(refused)).isEqualTo("401: invalid token");
   }
 
+  @Test
+  @DisplayName(
+      "switching to a built-in model that refuses the temperature stores that it is sent none, and"
+          + " says so")
+  void builtinThatRefusesTheTemperature() {
+    final var builtin =
+        me.kezhenxu94.springagent.core.dao.models.UserModelConfig.builder()
+            .ownerId("u1")
+            .name(UserModelRegistry.BUILTIN_PREFIX + "listed-model")
+            .model("listed-model")
+            .activated(true)
+            .build();
+    final var registry = mock(UserModelRegistry.class);
+    when(registry.active("u1")).thenReturn(java.util.Optional.of(builtin));
+    when(registry.setTemperature("u1", builtin.name(), Temperatures.NOT_SENT)).thenReturn(true);
+    final var clients = mock(UserChatClients.class);
+    final var refusing =
+        ChatClient.builder(
+                new StreamingOnlyModel(
+                    Flux.error(
+                        new IllegalStateException(
+                            "400 invalid_request_error: \"temperature\" is deprecated for this"
+                                + " model"))))
+            .build();
+    final var answering =
+        ChatClient.builder(new StreamingOnlyModel(Flux.just(answer("Hello")))).build();
+    when(clients.probeClient(any(), any(), any()))
+        .thenAnswer(
+            call ->
+                Temperatures.omitted(
+                        ((me.kezhenxu94.springagent.core.dao.models.UserModelConfig)
+                                call.getArgument(0))
+                            .temperature())
+                    ? answering
+                    : refusing);
+
+    final var said = probeWith(clients).builtinSwitched(registry, "u1");
+
+    assertThat(said).contains("listed-model").contains("does not take a temperature");
+    org.mockito.Mockito.verify(registry)
+        .setTemperature("u1", builtin.name(), Temperatures.NOT_SENT);
+  }
+
+  @Test
+  @DisplayName("a built-in model that answers is switched to without a word")
+  void builtinThatAnswers() {
+    final var builtin =
+        me.kezhenxu94.springagent.core.dao.models.UserModelConfig.builder()
+            .ownerId("u1")
+            .name(UserModelRegistry.BUILTIN_PREFIX + "listed-model")
+            .model("listed-model")
+            .activated(true)
+            .build();
+    final var registry = mock(UserModelRegistry.class);
+    when(registry.active("u1")).thenReturn(java.util.Optional.of(builtin));
+    final var clients = mock(UserChatClients.class);
+    when(clients.probeClient(any(), any(), any()))
+        .thenReturn(ChatClient.builder(new StreamingOnlyModel(Flux.just(answer("Hi")))).build());
+
+    assertThat(probeWith(clients).builtinSwitched(registry, "u1")).isNull();
+    org.mockito.Mockito.verify(registry, org.mockito.Mockito.never())
+        .setTemperature(any(), any(), any());
+  }
+
+  private UserModelProbe probeWith(final UserChatClients clients) {
+    final var source = new ResourceBundleMessageSource();
+    source.setBasename(CoreMessages.BASENAME);
+    source.setDefaultEncoding("UTF-8");
+    return new UserModelProbe(
+        clients, new CoreMessages(source, properties), Duration.ofSeconds(10), properties);
+  }
+
   private String probeAgainst(final ChatModel model) {
     final var clients = mock(UserChatClients.class);
     when(clients.probeClient(any(), any(), any())).thenReturn(ChatClient.builder(model).build());

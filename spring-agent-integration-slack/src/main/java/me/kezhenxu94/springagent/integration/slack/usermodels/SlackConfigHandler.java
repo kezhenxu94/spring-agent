@@ -162,6 +162,10 @@ public class SlackConfigHandler {
           submission.active() == null ? null : switchTo(userId, submission.active());
       final var efforted = effortFor(userId, previous, submission);
       final var reprotocoled = protocolFor(userId, previous, submission);
+      // Not while a change of protocol is being tried: that probe answers for the model already.
+      if (reprotocoled == null) {
+        checkBuiltin(userId, previous);
+      }
       final var said = join(join(switched, efforted), reprotocoled);
       return said == null ? messages.get("config-nothing") : said;
     }
@@ -171,6 +175,7 @@ public class SlackConfigHandler {
     if (submission.builtinByName()) {
       final var previous = registry.active(userId).orElse(null);
       registry.activateBuiltin(userId, submission.model());
+      checkBuiltin(userId, previous);
       return join(
           messages.get("config-switched-builtin", submission.model()),
           effortFor(userId, previous, submission));
@@ -256,9 +261,14 @@ public class SlackConfigHandler {
       return null;
     }
     final var name = active.name();
-    if (Strings.isNullOrEmpty(active.baseUrl())) {
-      // One of the deployment's own models, reached with the deployment's own credential: there is
-      // no endpoint of the user's to move, and nothing of theirs to probe it with.
+    if (Strings.isNullOrEmpty(active.baseUrl())
+        && (UserModelRegistry.displayName(active) == null
+            || !chatClients.servesBuiltin(provider))) {
+      // One of the deployment's own models, reached with the deployment's own endpoint and
+      // credential: it may be moved between the APIs onto that endpoint — a model served only over
+      // one of them — and is probed there like any endpoint, but not to another provider, which
+      // would need an endpoint of the user's own. Nor the application's own model, whose protocol
+      // is the deployment's configuration.
       return messages.get(
           "config-provider-builtin",
           Optional.ofNullable(UserModelRegistry.displayName(active))
@@ -334,6 +344,25 @@ public class SlackConfigHandler {
   }
 
   /** Applies the dropdown, and says what it did. */
+  /**
+   * Where the submission left the user on another of the deployment's own models, checks it answers
+   * — off this thread, with what it found arriving as a direct message. See {@code
+   * UserModelProbe#builtinSwitched}, which also stops sending a temperature to one that refuses it.
+   */
+  private void checkBuiltin(final String userId, final UserModelConfig previous) {
+    final var now = registry.active(userId).orElse(null);
+    if (now == null || !UserModelRegistry.isBuiltin(now) || !switchedFrom(previous, now)) {
+      return;
+    }
+    taskExecutor.execute(
+        () -> {
+          final var said = probe.builtinSwitched(registry, userId);
+          if (said != null) {
+            say(userId, said);
+          }
+        });
+  }
+
   /** Whether the submission left the user on another row than the one the form was drawn for. */
   private static boolean switchedFrom(final UserModelConfig previous, final UserModelConfig now) {
     return !Objects.equals(

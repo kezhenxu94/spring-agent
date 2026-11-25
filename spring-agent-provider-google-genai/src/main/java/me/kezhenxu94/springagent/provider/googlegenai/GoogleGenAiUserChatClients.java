@@ -10,6 +10,7 @@ import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import me.kezhenxu94.springagent.core.usermodels.ProviderChatClients;
+import me.kezhenxu94.springagent.core.usermodels.Temperatures;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.google.genai.GoogleGenAiChatModel;
@@ -238,7 +239,11 @@ public class GoogleGenAiUserChatClients implements ProviderChatClients {
     final var builder = defaults.mutate().model(endpoint.model());
     GoogleGenAiThinking.apply(builder, endpoint.reasoningEffort());
     // Left alone where the user chose nothing, so the application's own survives the copy.
-    if (endpoint.temperature() != null) {
+    // Cleared for the sentinel, the only way to stop the application's own being sent to a model
+    // that refuses the parameter whatever its value — see Temperatures.NOT_SENT.
+    if (Temperatures.omitted(endpoint.temperature())) {
+      builder.temperature(null);
+    } else if (endpoint.temperature() != null) {
       builder.temperature(endpoint.temperature());
     }
     return builder.build();

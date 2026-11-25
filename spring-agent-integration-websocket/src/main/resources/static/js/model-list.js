@@ -44,7 +44,16 @@ export function renderModelList(host, models, open, actionsFor) {
     if (model.activated) facts.append(fact(t('model.active')));
     if (model.provider) facts.append(fact(model.provider));
     if (model.reasoningEffort) facts.append(fact(t('model.thinking', model.reasoningEffort)));
-    if (model.temperature != null) facts.append(fact(t('model.temperature', model.temperature)));
+    // -1 is the stored "send none", for a model that refuses the parameter (Temperatures.NOT_SENT).
+    if (model.temperature != null) {
+      facts.append(
+        fact(
+          model.temperature === -1
+            ? t('model.temperature.notsent')
+            : t('model.temperature', model.temperature),
+        ),
+      );
+    }
     if (model.strictTools) facts.append(fact(t('model.stricttools')));
     if (model.headerNames && model.headerNames.length) {
       // That it sends extra headers, never their values.

@@ -177,6 +177,90 @@ class OpenAiResponsesStreamingTest {
         .isNull();
   }
 
+  @Test
+  @DisplayName(
+      "one of the deployment's own models on the Responses API is probed and spoken to at the"
+          + " deployment's endpoint, with its credential")
+  void builtinOverTheResponsesApi() {
+    final var appUrl = this.server.url("/v1").toString();
+    final var registry =
+        new UserModelRegistry(mock(UserModelConfigRepo.class), new AesGcmSealer(KEY, "t"), 3);
+    final var dispatching =
+        new me.kezhenxu94.springagent.core.usermodels.DispatchingUserChatClients(
+            mock(org.springframework.ai.chat.client.ChatClient.class),
+            registry,
+            List.of(
+                clients(OpenAiUserChatClients.Api.CHAT_COMPLETIONS, appUrl),
+                clients(OpenAiUserChatClients.Api.RESPONSES, appUrl)),
+            "openai");
+    final var builtin =
+        UserModelConfig.builder()
+            .ownerId("u1")
+            .name(UserModelRegistry.BUILTIN_PREFIX + "listed-model")
+            .model("listed-model")
+            .provider("openai-responses")
+            .activated(true)
+            .build();
+
+    assertThat(dispatching.servesBuiltin("openai-responses")).isTrue();
+    // The probe a surface runs before storing the choice: no base URL, no token of the user's.
+    assertThat(
+            dispatching.probeClient(builtin, null, Map.of()).prompt().user("hi").stream()
+                .content()
+                .collectList()
+                .block())
+        .contains("Sunny");
+    // And every run after it.
+    assertThat(
+            dispatching.clientFor(builtin).prompt().user("hi").stream()
+                .content()
+                .collectList()
+                .block())
+        .contains("Sunny");
+
+    assertThat(requests)
+        .hasSize(2)
+        .allSatisfy(
+            r -> {
+              assertThat(r.getPath()).isEqualTo("/v1/responses");
+              assertThat(r.getHeader("Authorization")).isEqualTo("Bearer app-key");
+            });
+    assertThat(bodies).allSatisfy(body -> assertThat(body).contains("\"model\":\"listed-model\""));
+  }
+
+  @Test
+  @DisplayName(
+      "a built-in model told to send no temperature is sent none, and one told nothing is sent the"
+          + " deployment's as before")
+  void builtinWithoutATemperature() {
+    final var appUrl = this.server.url("/v1").toString();
+    final var responses = clients(OpenAiUserChatClients.Api.RESPONSES, appUrl);
+    final var builtin =
+        UserModelConfig.builder()
+            .ownerId("u1")
+            .name(UserModelRegistry.BUILTIN_PREFIX + "listed-model")
+            .model("listed-model")
+            .provider("openai-responses")
+            .activated(true)
+            .build();
+
+    responses
+        .clientFor(
+            builtin.toBuilder()
+                .temperature(me.kezhenxu94.springagent.core.usermodels.Temperatures.NOT_SENT)
+                .build())
+        .prompt()
+        .user("hi")
+        .stream()
+        .content()
+        .blockLast();
+    responses.clientFor(builtin).prompt().user("hi").stream().content().blockLast();
+
+    final var mapper = JsonMapper.builder().build();
+    assertThat(mapper.readTree(bodies.get(0)).has("temperature")).isFalse();
+    assertThat(mapper.readTree(bodies.get(1)).path("temperature").asDouble()).isEqualTo(0.0);
+  }
+
   private static MockResponse json(final int status, final String body) {
     return new MockResponse()
         .setResponseCode(status)
@@ -264,10 +348,18 @@ class OpenAiResponsesStreamingTest {
   }
 
   private static OpenAiUserChatClients clients(final OpenAiUserChatClients.Api api) {
+    return clients(api, "https://app/v1");
+  }
+
+  /** As the deployment would build them, its own endpoint at {@code appUrl}. */
+  private static OpenAiUserChatClients clients(
+      final OpenAiUserChatClients.Api api, final String appUrl) {
     final var appOptions =
         OpenAiChatOptions.builder()
-            .baseUrl("https://app/v1")
+            .baseUrl(appUrl)
             .apiKey("app-key")
+            // A deployment-wide default, which is what reaches a model that set none of its own.
+            .temperature(0.0)
             .model("app-model")
             .maxRetries(0)
             .build();

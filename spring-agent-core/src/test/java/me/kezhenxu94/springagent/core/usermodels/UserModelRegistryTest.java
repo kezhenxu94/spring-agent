@@ -334,6 +334,26 @@ class UserModelRegistryTest {
   }
 
   @Test
+  @DisplayName("a protocol chosen for a built-in model stays with it across a switch")
+  void builtinKeepsItsProtocol() {
+    registry.activateBuiltin("u1", "gpt-5");
+    registry.setProvider("u1", "@gpt-5", "openai-responses");
+
+    registry.useDefault("u1");
+    registry.activateBuiltin("u1", "gpt-5");
+
+    assertThat(registry.active("u1")).map(UserModelConfig::provider).contains("openai-responses");
+  }
+
+  @Test
+  @DisplayName("a built-in model with no protocol stored is spoken to as before")
+  void builtinWithNoProtocolStaysOnTheDeployments() {
+    registry.activateBuiltin("u1", "gpt-5");
+
+    assertThat(registry.active("u1").orElseThrow().provider()).isNull();
+  }
+
+  @Test
   @DisplayName("models picked off the application's list do not fill the endpoint allowance")
   void builtinRowsDoNotCountTowardsTheCeiling() {
     registry.activateBuiltin("u1", "one");

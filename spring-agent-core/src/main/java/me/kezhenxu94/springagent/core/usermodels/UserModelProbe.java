@@ -132,6 +132,48 @@ public class UserModelProbe {
   }
 
   /**
+   * Checks one of the deployment's own models the user has just switched to, the way an endpoint of
+   * theirs is checked before it is saved — and where it refuses the temperature parameter the
+   * deployment sends every model, which nothing else would ever stop, asks again without one and
+   * records that it is to be sent none.
+   *
+   * @return what to tell the user, or null where the model answered and there is nothing to say
+   */
+  public String builtinSwitched(final UserModelRegistry registry, final String userId) {
+    final var active = registry.active(userId).orElse(null);
+    if (active == null
+        || !UserModelRegistry.isBuiltin(active)
+        || UserModelRegistry.displayName(active) == null
+        || Temperatures.omitted(active.temperature())) {
+      return null;
+    }
+    final var model = UserModelRegistry.displayName(active);
+    final var failure = checkBuiltin(active, active.temperature());
+    if (failure == null) {
+      return null;
+    }
+    if (Temperatures.rejected(failure)
+        && checkBuiltin(active, Temperatures.NOT_SENT) == null
+        && registry.setTemperature(userId, active.name(), Temperatures.NOT_SENT)) {
+      log.info("Built-in model {} refuses a temperature; {} will send it none", model, userId);
+      return messages.get("user-model-temperature-omitted", model);
+    }
+    return messages.get("user-model-builtin-failed", model, failure);
+  }
+
+  private String checkBuiltin(final UserModelConfig row, final Double temperature) {
+    return check(
+        row.provider(),
+        null,
+        row.model(),
+        null,
+        row.reasoningEffort(),
+        temperature,
+        Boolean.TRUE.equals(row.strictTools()),
+        Map.of());
+  }
+
+  /**
    * Where the endpoint answered "not found" and the provider names another API to the same
    * endpoint, whether that one answers: an endpoint can serve a model over one API and not the
    * other, and a bare "not found" sends somebody checking a URL that is right. Said rather than

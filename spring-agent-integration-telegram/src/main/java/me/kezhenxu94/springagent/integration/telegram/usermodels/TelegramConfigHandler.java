@@ -96,7 +96,12 @@ public class TelegramConfigHandler {
     final var chatId = String.valueOf(shown.chat().id());
     final var said =
         switch (press.kind()) {
-          case 'm' -> switchTo(userId, press.value());
+          case 'm' -> {
+            final var previous = registry.active(userId).orElse(null);
+            final var switched = switchTo(userId, press.value());
+            checkBuiltin(chatId, userId, previous);
+            yield switched;
+          }
           case 'e' -> effortFor(userId, press.value());
           case 'p' -> protocolFor(userId, chatId, press.value());
           default -> null;
@@ -160,7 +165,9 @@ public class TelegramConfigHandler {
     }
     if (!submission.adding()) {
       if (submission.builtinByName()) {
+        final var previous = registry.active(userId).orElse(null);
         registry.activateBuiltin(userId, submission.model());
+        checkBuiltin(chatId, userId, previous);
         return join(
             messages.get("config-switched-builtin", submission.model()),
             effortFor(userId, submission.effort()));
@@ -182,6 +189,28 @@ public class TelegramConfigHandler {
   }
 
   /** Applies the button or option naming a model, and says what it did. */
+  /**
+   * Where the user is now on another of the deployment's own models than before, checks it answers
+   * — off this thread, with what it found arriving as a message of its own. See {@code
+   * UserModelProbe#builtinSwitched}, which also stops sending a temperature to one that refuses it.
+   */
+  private void checkBuiltin(
+      final String chatId, final String userId, final UserModelConfig previous) {
+    final var now = registry.active(userId).orElse(null);
+    if (now == null
+        || !UserModelRegistry.isBuiltin(now)
+        || (previous != null && Objects.equals(previous.name(), now.name()))) {
+      return;
+    }
+    taskExecutor.execute(
+        () -> {
+          final var said = probe.builtinSwitched(registry, userId);
+          if (said != null) {
+            say(chatId, said);
+          }
+        });
+  }
+
   private String switchTo(final String userId, final String value) {
     if (TelegramConfigForm.DEFAULT_OPTION.equals(value)) {
       registry.useDefault(userId);
@@ -235,7 +264,12 @@ public class TelegramConfigHandler {
       return null;
     }
     final var name = active.name();
-    if (Strings.isNullOrEmpty(active.baseUrl())) {
+    if (Strings.isNullOrEmpty(active.baseUrl())
+        && (UserModelRegistry.displayName(active) == null
+            || !chatClients.servesBuiltin(provider))) {
+      // One of the deployment's own models may be moved between the APIs onto the deployment's own
+      // endpoint and credential, and is probed there like any endpoint; not to another provider,
+      // which would need an endpoint of the user's own, nor the application's own model.
       return messages.get(
           "config-provider-builtin",
           Optional.ofNullable(UserModelRegistry.displayName(active))

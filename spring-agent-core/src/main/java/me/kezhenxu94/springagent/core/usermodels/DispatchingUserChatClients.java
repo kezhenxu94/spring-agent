@@ -102,6 +102,15 @@ public class DispatchingUserChatClients implements UserChatClients {
   }
 
   @Override
+  public boolean servesBuiltin(final String provider) {
+    if (Strings.isNullOrEmpty(provider)) {
+      return true;
+    }
+    final var serving = byProvider.get(provider);
+    return serving != null && fallback != null && serving.family().equals(fallback.family());
+  }
+
+  @Override
   public String alternativeWhenNotFound(final String provider) {
     final var serving = Strings.isNullOrEmpty(provider) ? fallback : byProvider.get(provider);
     final var alternative = serving == null ? null : serving.alternativeWhenNotFound();

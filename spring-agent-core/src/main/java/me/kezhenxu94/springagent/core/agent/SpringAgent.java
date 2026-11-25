@@ -28,6 +28,7 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.advisors.MemoryToolCallingAdvisor;
+import me.kezhenxu94.springagent.core.advisors.TemperatureRetryAdvisor;
 import me.kezhenxu94.springagent.core.advisors.TurnContextAdvisor;
 import me.kezhenxu94.springagent.core.advisors.toolsearch.ToolSearchToolCallingAdvisor;
 import me.kezhenxu94.springagent.core.config.Admins;
@@ -1235,6 +1236,9 @@ public class SpringAgent {
     // prompt, which is exactly what has to stop. ChatClient skips its own registration once a tool
     // advisor is in the list.
     advisors.add(toolCallingAdvisor(request.scenario()));
+    // Last before the model, so it is one model call that is asked again without a temperature —
+    // see that class for the one refusal it answers.
+    advisors.add(new TemperatureRetryAdvisor());
     advisors.add(SimpleLoggerAdvisor.builder().build());
 
     return clientFor(request)

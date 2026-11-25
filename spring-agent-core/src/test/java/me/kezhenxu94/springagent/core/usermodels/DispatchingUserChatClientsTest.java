@@ -83,6 +83,46 @@ class DispatchingUserChatClientsTest {
         applicationClient, registry, List.of(openai, gemini), configured);
   }
 
+  /** One API of a provider whose several APIs reach the same endpoint with the same credential. */
+  private record FamilyStub(String provider, String family) implements ProviderChatClients {
+    @Override
+    public ChatClient clientFor(final UserModelConfig config) {
+      return null;
+    }
+
+    @Override
+    public ChatClient probeClient(
+        final UserModelConfig config, final String token, final Map<String, String> headers) {
+      return null;
+    }
+
+    @Override
+    public String configuredEffort() {
+      return null;
+    }
+  }
+
+  @Test
+  @DisplayName(
+      "a built-in model may be spoken to over another API of the deployment's own provider, and"
+          + " not over another provider")
+  void builtinsStayInTheDeploymentsFamily() {
+    final var clients =
+        new DispatchingUserChatClients(
+            applicationClient,
+            registryWith(),
+            List.of(
+                new FamilyStub("openai", "openai"),
+                new FamilyStub("openai-responses", "openai"),
+                new FamilyStub("anthropic", "anthropic")),
+            "openai");
+
+    assertThat(clients.servesBuiltin(null)).isTrue();
+    assertThat(clients.servesBuiltin("openai-responses")).isTrue();
+    assertThat(clients.servesBuiltin("anthropic")).isFalse();
+    assertThat(clients.servesBuiltin("nobody-serves-this")).isFalse();
+  }
+
   @Test
   @DisplayName("a row naming a provider is spoken in that provider's protocol")
   void aRowChoosesItsProtocol() {

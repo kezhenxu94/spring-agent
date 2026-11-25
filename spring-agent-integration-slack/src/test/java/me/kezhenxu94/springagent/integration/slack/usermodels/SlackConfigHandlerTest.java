@@ -1,5 +1,6 @@
 package me.kezhenxu94.springagent.integration.slack.usermodels;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.mock;
@@ -42,6 +43,7 @@ class SlackConfigHandlerTest {
 
   private final UserModelRegistry registry = mock(UserModelRegistry.class);
   private final UserModelProbe probe = mock(UserModelProbe.class);
+  private UserChatClients chatClients;
   private SlackConfigHandler handler;
 
   @BeforeEach
@@ -49,7 +51,7 @@ class SlackConfigHandlerTest {
     final var messages =
         new SlackMessages(
             new SlackProperties("xoxb", "xapp", "U0BOT", "T0TEAM", Locale.ENGLISH, null, null));
-    final var chatClients = mock(UserChatClients.class);
+    chatClients = mock(UserChatClients.class);
     when(chatClients.defaultProvider()).thenReturn("openai");
     when(chatClients.providers()).thenReturn(List.of("openai", "openai-responses", "anthropic"));
     when(registry.activate(any(), any())).thenReturn(true);
@@ -203,6 +205,50 @@ class SlackConfigHandlerTest {
 
     handler.apply(USER, submission("other", "openai", "medium"));
     verify(registry).setActiveEffort(USER, "medium");
+  }
+
+  /** One of the deployment's own models, chosen off its list, with no protocol stored yet. */
+  private static final UserModelConfig BUILTIN =
+      UserModelConfig.builder()
+          .ownerId(USER)
+          .name(UserModelRegistry.BUILTIN_PREFIX + "listed-model")
+          .model("listed-model")
+          .activated(true)
+          .build();
+
+  @Test
+  @DisplayName(
+      "a built-in model moved to another API of the deployment's own provider is probed with the"
+          + " deployment's endpoint and credential, then stored, and shown next time")
+  void builtinMovesWithinTheDeploymentsProvider() {
+    final var builtin = BUILTIN;
+    when(chatClients.servesBuiltin("openai-responses")).thenReturn(true);
+    when(registry.active(USER)).thenReturn(Optional.of(builtin));
+
+    handler.apply(USER, submission(builtin.name(), "openai-responses"));
+
+    // No base URL and no token: the client borrows the deployment's, as every run on it does.
+    verify(probe)
+        .check("openai-responses", null, "listed-model", null, null, null, false, Map.of());
+    verify(registry).setProvider(USER, builtin.name(), "openai-responses");
+    assertThat(
+            SlackConfigForm.shownProvider(
+                builtin.toBuilder().provider("openai-responses").build(),
+                List.of("openai", "openai-responses", "anthropic")))
+        .isEqualTo("openai-responses");
+  }
+
+  @Test
+  @DisplayName(
+      "a built-in model is not moved to another provider, which needs an endpoint of one's own")
+  void builtinStaysWithTheDeploymentsProvider() {
+    final var builtin = BUILTIN;
+    when(registry.active(USER)).thenReturn(Optional.of(builtin));
+
+    handler.apply(USER, submission(builtin.name(), "anthropic"));
+
+    verify(probe, never()).check(any(), any(), any(), any(), any(), any(), anyBoolean(), any());
+    verify(registry, never()).setProvider(any(), any(), any());
   }
 
   @Test

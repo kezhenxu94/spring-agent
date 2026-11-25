@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.dao.models.UserModelConfig;
 import me.kezhenxu94.springagent.core.usermodels.ProviderChatClients;
 import me.kezhenxu94.springagent.core.usermodels.ReasoningEfforts;
+import me.kezhenxu94.springagent.core.usermodels.Temperatures;
 import me.kezhenxu94.springagent.core.usermodels.UserModelRegistry;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.model.tool.ToolCallingManager;
@@ -143,6 +144,12 @@ public class OpenAiUserChatClients implements ProviderChatClients {
    * The Responses API for a row on chat completions: an OpenAI-compatible endpoint may serve some
    * models only over {@code /responses}, and answers the other with a bare 404.
    */
+  /** Both APIs reach the same endpoint with the same credential: one family. */
+  @Override
+  public String family() {
+    return "openai";
+  }
+
   @Override
   public String alternativeWhenNotFound() {
     return api == Api.CHAT_COMPLETIONS ? RESPONSES_PROVIDER : null;
@@ -202,10 +209,15 @@ public class OpenAiUserChatClients implements ProviderChatClients {
   @Override
   public ChatClient probeClient(
       final UserModelConfig config, final String token, final Map<String, String> headers) {
+    // One of the deployment's own models, being tried in another API before it is moved there:
+    // reached as clientFor reaches it, with the deployment's endpoint and credential. The
+    // credential only alongside the endpoint — a URL somebody typed is never sent the deployment's
+    // key.
+    final var builtin = Strings.isNullOrEmpty(config.baseUrl());
     return clientFor(
         new Endpoint(
-            config.baseUrl(),
-            token,
+            builtin ? defaults.getBaseUrl() : config.baseUrl(),
+            builtin && Strings.isNullOrEmpty(token) ? defaults.getApiKey() : token,
             config.model(),
             config.reasoningEffort(),
             config.temperature(),
@@ -322,7 +334,11 @@ public class OpenAiUserChatClients implements ProviderChatClients {
     }
     // Left alone where the user chose nothing, the same as the effort: the application's own
     // temperature survives the copy.
-    if (endpoint.temperature() != null) {
+    // Cleared for the sentinel, the only way to stop the application's own being sent to a model
+    // that refuses the parameter whatever its value — see Temperatures.NOT_SENT.
+    if (Temperatures.omitted(endpoint.temperature())) {
+      builder.temperature(null);
+    } else if (endpoint.temperature() != null) {
       builder.temperature(endpoint.temperature());
     }
     // Only ever switched on, never off: off is what Spring AI sends by default, and a deployment

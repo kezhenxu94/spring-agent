@@ -154,9 +154,9 @@ public class UserModelRegistry {
    * it: no base URL, so the client is built on the application's endpoint, and no token, so the
    * application's key is not copied per user into a table.
    *
-   * <p>Keeps the reasoning effort already recorded against that model. Switching onto something is
-   * not a statement about how hard it should think, and a user who set an effort on a built-in
-   * model and then switched away and back would otherwise find it silently gone.
+   * <p>Keeps the reasoning effort and the protocol already recorded against that model. Switching
+   * onto something is not a statement about how hard it should think, and a user who set an effort
+   * on a built-in model and then switched away and back would otherwise find it silently gone.
    */
   public void activateBuiltin(final String userId, final String model) {
     final var name = BUILTIN_PREFIX + model;
@@ -169,6 +169,11 @@ public class UserModelRegistry {
             .name(name)
             .model(model)
             .reasoningEffort(existing.map(UserModelConfig::reasoningEffort).orElse(null))
+            // And the protocol, for the same reason: a model the deployment serves over another API
+            // than its default is spoken to in the one chosen for it, every time it is chosen.
+            .provider(existing.map(UserModelConfig::provider).orElse(null))
+            // And the temperature, which is how one that refuses the parameter is told none.
+            .temperature(existing.map(UserModelConfig::temperature).orElse(null))
             .activated(true)
             .updatedAt(Instant.now())
             .build());
@@ -300,6 +305,23 @@ public class UserModelRegistry {
             .reasoningEffort(ReasoningEfforts.normalize(reasoningEffort))
             .updatedAt(Instant.now())
             .build());
+    return true;
+  }
+
+  /**
+   * Changes the temperature one row is spoken to with, and nothing else about it — the way one of
+   * the deployment's own models that refuses the parameter is told to be sent none.
+   *
+   * @param temperature a value {@link Temperatures#valid} accepts: null for the deployment's own,
+   *     {@link Temperatures#NOT_SENT} for none
+   * @return whether the user has a row by that name
+   */
+  public boolean setTemperature(final String userId, final String name, final Double temperature) {
+    final var target = repo.findByOwnerIdAndName(userId, name);
+    if (target.isEmpty()) {
+      return false;
+    }
+    repo.save(target.get().toBuilder().temperature(temperature).updatedAt(Instant.now()).build());
     return true;
   }
 

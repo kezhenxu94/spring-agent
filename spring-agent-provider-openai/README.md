@@ -58,7 +58,10 @@ Four things, each because Spring AI has no way to know it:
   (`OpenAiResponsesStreamingTest` holds a stub endpoint that serves nothing else). Where a row on
   `openai` is answered 404, the probe tries `openai-responses` on the same endpoint and, where that
   answers, says to register with it rather than leaving a bare "not found"
-  (`ProviderChatClients#alternativeWhenNotFound`).
+  (`ProviderChatClients#alternativeWhenNotFound`). One of the deployment's own models can be moved
+  the same way, since both APIs reach the deployment's endpoint with its credential — the two
+  providers declare one `family()` — but never to another provider, which would need an endpoint of
+  the user's own.
   That customizer is built per endpoint rather than shared, or two rows with different headers would
   send each other's.
 - **`OpenAiErrorBodyLoggingInterceptor`** — the only place a rejected request's body still exists.

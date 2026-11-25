@@ -109,6 +109,7 @@ public class FeishuConfigHandler {
       if (submission.builtinByName()) {
         final var previous = registry.active(userId).orElse(null);
         registry.activateBuiltin(userId, submission.model());
+        checkBuiltin(chatId, userId, previous);
         return respond(
             userId,
             "success",
@@ -139,6 +140,10 @@ public class FeishuConfigHandler {
     final var switched = submission.active() == null ? null : switchTo(userId, submission.active());
     final var efforted = effortFor(userId, previous, submission);
     final var reprotocoled = protocolFor(chatId, userId, previous, submission);
+    // Not while a change of protocol is being tried: that probe answers for the model already.
+    if (reprotocoled == null) {
+      checkBuiltin(chatId, userId, previous);
+    }
     final var said = join(join(switched, efforted), reprotocoled);
     return respond(userId, "success", said == null ? messages.get("config-nothing") : said);
   }
@@ -174,9 +179,14 @@ public class FeishuConfigHandler {
       return null;
     }
     final var name = active.name();
-    if (Strings.isNullOrEmpty(active.baseUrl())) {
-      // One of the deployment's own models, reached with the deployment's own credential: there is
-      // no endpoint of the user's to move, and nothing of theirs to probe it with.
+    if (Strings.isNullOrEmpty(active.baseUrl())
+        && (UserModelRegistry.displayName(active) == null
+            || !chatClients.servesBuiltin(provider))) {
+      // One of the deployment's own models, reached with the deployment's own endpoint and
+      // credential: it may be moved between the APIs onto that endpoint — a model served only over
+      // one of them — and is probed there like any endpoint, but not to another provider, which
+      // would need an endpoint of the user's own. Nor the application's own model, whose protocol
+      // is the deployment's configuration.
       return messages.get(
           "config-provider-builtin",
           Optional.ofNullable(UserModelRegistry.displayName(active))
@@ -266,6 +276,26 @@ public class FeishuConfigHandler {
     return effort == null
         ? messages.get("config-effort-inherited", name)
         : messages.get("config-effort-set", name, effort);
+  }
+
+  /**
+   * Where the press left the user on another of the deployment's own models, checks it answers —
+   * off the callback thread, with what it found arriving as a message of its own. See {@code
+   * UserModelProbe#builtinSwitched}, which also stops sending a temperature to one that refuses it.
+   */
+  private void checkBuiltin(
+      final String chatId, final String userId, final UserModelConfig previous) {
+    final var now = registry.active(userId).orElse(null);
+    if (now == null || !UserModelRegistry.isBuiltin(now) || !switchedFrom(previous, now)) {
+      return;
+    }
+    taskExecutor.execute(
+        () -> {
+          final var said = probe.builtinSwitched(registry, userId);
+          if (said != null) {
+            sendText(chatId, said);
+          }
+        });
   }
 
   /** Whether the press left the user on another row than the one the card was drawn for. */

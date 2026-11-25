@@ -90,4 +90,13 @@ public interface UserChatClients {
   default String alternativeWhenNotFound(final String provider) {
     return null;
   }
+
+  /**
+   * Whether one of the deployment's own models may be spoken to in {@code provider}: the
+   * deployment's own protocol (null), or another API onto its own endpoint and credential — see
+   * {@link ProviderChatClients#family}. Another provider would need an endpoint of the user's own.
+   */
+  default boolean servesBuiltin(final String provider) {
+    return provider == null || provider.isBlank();
+  }
 }
