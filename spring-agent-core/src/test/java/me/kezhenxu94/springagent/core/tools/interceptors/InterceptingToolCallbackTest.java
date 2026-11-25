@@ -339,7 +339,7 @@ class InterceptingToolCallbackTest {
   }
 
   /** A tool that takes one required {@code expr}, as a metrics server's query tool does. */
-  private static final class QueryTool implements ToolCallback {
+  private static class QueryTool implements ToolCallback {
     private final String schema;
     private String received;
 
@@ -465,6 +465,47 @@ class InterceptingToolCallbackTest {
         .call("{\"_id\":\"a\"}", CONTEXT);
 
     assertThat(tool.received).isEqualTo("{\"_id\":\"a\"}");
+  }
+
+  @Test
+  @DisplayName(
+      "only a call that ran and returned is reported as completed — not one refused, answered for"
+          + " its arguments, or thrown")
+  void completedOnlyWhenTheToolRan() {
+    final var completed = new ArrayList<String>();
+    final var recording =
+        new ToolCallInterceptor() {
+          @Override
+          public void onCompleted(
+              final String toolName,
+              final String toolInput,
+              final String toolResult,
+              final ToolContext toolContext) {
+            completed.add(toolName + " " + toolInput + " " + toolResult);
+          }
+        };
+    final var tool = new QueryTool(EXPR_SCHEMA);
+
+    new InterceptingToolCallback(tool, List.of(recording), refs(), messages())
+        .call("{\"expr\":\"up\"}", CONTEXT);
+    new InterceptingToolCallback(tool, List.of(recording), refs(), messages())
+        .call("{\"query\":\"up\"}", CONTEXT);
+    new InterceptingToolCallback(
+            tool, List.of(refusingWith("not here"), recording), refs(), messages())
+        .call("{\"expr\":\"up\"}", CONTEXT);
+    final var throwing =
+        new QueryTool(EXPR_SCHEMA) {
+          @Override
+          public String call(final String toolInput) {
+            throw new IllegalStateException("down");
+          }
+        };
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+        () ->
+            new InterceptingToolCallback(throwing, List.of(recording), refs(), messages())
+                .call("{\"expr\":\"up\"}", CONTEXT));
+
+    assertThat(completed).containsExactly("query {\"expr\":\"up\"} \"ok\"");
   }
 
   private static ToolCallInterceptor watching(final List<String> seen) {

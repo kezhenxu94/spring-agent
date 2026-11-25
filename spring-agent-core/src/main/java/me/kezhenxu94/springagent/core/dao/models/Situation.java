@@ -130,6 +130,22 @@ public class Situation {
   private String lastError;
 
   /**
+   * How many evaluations in a row have failed for a reason that may pass — an endpoint down, a
+   * connection dropped — and so been retried on a timer rather than left for the next observation.
+   * Reset by any evaluation that is not one of those. Boxed and null for zero, like {@code
+   * generation}, for the rows written before it existed.
+   */
+  private Integer failedAttempts;
+
+  /**
+   * What the failed attempts being retried had already done — one tool call that ran and returned
+   * per line — so that a retry, which starts the whole run again, finishes what is left rather than
+   * sending the same message or writing the same record twice. Null outside a run of retries.
+   */
+  @Column(length = 8192)
+  private String completedActions;
+
+  /**
    * The identity a triage run assumes, resolved when the situation was created and kept so that a
    * restart fires the same run rather than one scoped to nothing.
    *

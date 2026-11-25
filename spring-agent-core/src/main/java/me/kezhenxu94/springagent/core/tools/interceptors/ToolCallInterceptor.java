@@ -31,4 +31,19 @@ public interface ToolCallInterceptor {
       super(message);
     }
   }
+
+  /**
+   * A call that ran and returned: the tool was reached and did not throw, which is the one thing
+   * {@link #afterCall} cannot tell — it is also called for a call that was refused, or answered for
+   * its arguments without the tool ever running. For whoever needs to know what a run actually did,
+   * such as a retry that must not do it twice.
+   *
+   * @param toolInput the arguments the model wrote
+   * @param toolResult what the call was answered with
+   */
+  default void onCompleted(
+      final String toolName,
+      final String toolInput,
+      final String toolResult,
+      final ToolContext toolContext) {}
 }

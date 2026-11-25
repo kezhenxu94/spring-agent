@@ -56,6 +56,7 @@ class SituationSweeperTest {
   private static final Instant START = Instant.parse("2026-08-29T10:00:00Z");
 
   private final InMemoryRepos repos = new InMemoryRepos();
+  private final SituationActions actions = new SituationActions();
   private final MutableClock clock = new MutableClock(START);
   private final SpringAgent springAgent = mock(SpringAgent.class);
   private final ThreadPoolTaskScheduler scheduler = mock(ThreadPoolTaskScheduler.class);
@@ -130,6 +131,7 @@ class SituationSweeperTest {
         filters,
         notifiers,
         TestI18n.english(),
+        actions,
         clock);
   }
 
@@ -518,6 +520,182 @@ class SituationSweeperTest {
     final var updated = repos.situations.only();
     assertThat(updated.status()).isEqualTo(Situation.Status.RESOLVED);
     assertThat(updated.resolvedAt()).isEqualTo(clock.instant());
+  }
+
+  private static final String UNAVAILABLE =
+      "503 {\"error\":{\"code\":\"service_unavailable\",\"message\":\"Service temporarily"
+          + " unavailable\"}}";
+
+  /** Every run the agent was asked for so far, oldest first. */
+  private List<AgentRequest> allFired(final int times) {
+    final var captor = ArgumentCaptor.forClass(AgentRequest.class);
+    verify(springAgent, times(times)).fire(captor.capture());
+    return captor.getAllValues();
+  }
+
+  @Test
+  @DisplayName(
+      "a one-shot situation whose run fails while the endpoint is down is retried after the"
+          + " backoff, and succeeds")
+  void retriesAFailureThatMayPass() {
+    final var properties = properties(true, 2);
+    observed(properties, "d1");
+    clock.advance(Duration.ofSeconds(31));
+    final var sweeper = sweeper(properties);
+    sweeper.sweep();
+
+    final var first = allFired(1).getLast().listeners().getFirst();
+    first.onError(new RuntimeException(UNAVAILABLE));
+    first.onFinished(AgentOutcome.FAILED);
+
+    final var waiting = repos.situations.only();
+    assertThat(waiting.phase()).isEqualTo(Situation.Phase.AWAITING_EVALUATION);
+    assertThat(waiting.evaluateAfter()).isEqualTo(clock.instant().plus(Duration.ofMinutes(1)));
+    assertThat(waiting.failedAttempts()).isEqualTo(1);
+    // Nobody is told about a failure that is about to be tried again.
+    verify(notifier, never()).send(any(), any());
+
+    // Not before the backoff, though no observation will ever come to make it due.
+    clock.advance(Duration.ofSeconds(30));
+    sweeper.sweep();
+    verify(springAgent, times(1)).fire(any());
+
+    clock.advance(Duration.ofSeconds(31));
+    sweeper.sweep();
+    final var second = allFired(2).getLast().listeners().getFirst();
+    second.onFinished(AgentOutcome.COMPLETED);
+
+    final var done = repos.situations.only();
+    assertThat(done.status()).isEqualTo(Situation.Status.RESOLVED);
+    assertThat(done.failedAttempts()).isNull();
+    verify(notifier, never()).send(any(), any());
+  }
+
+  @Test
+  @DisplayName(
+      "a retry is told what the failed attempt had already done, and not to do any of it again")
+  void aRetryKnowsWhatWasDone() {
+    final var properties = properties(true, 2);
+    final var situationId = observed(properties, "d1").id();
+    clock.advance(Duration.ofSeconds(31));
+    final var sweeper = sweeper(properties);
+    sweeper.sweep();
+
+    // The attempt tells the chat it is looking, and then the endpoint goes down.
+    final var first = allFired(1).getLast();
+    actions.onCompleted(
+        "SendChatMessage",
+        "{\"chatId\":\"oc_alerts\",\"text\":\"looking into it\","
+            + "\"_display_description\":\"Telling the chat\"}",
+        "\"sent\"",
+        new org.springframework.ai.chat.model.ToolContext(
+            Map.of(
+                me.kezhenxu94.springagent.events.tools.SituationTools.KEY_SITUATION_ID,
+                situationId,
+                me.kezhenxu94.springagent.core.tools.ToolContexts.KEY_REQUEST_ID,
+                first.requestId())));
+    first.listeners().getFirst().onError(new RuntimeException(UNAVAILABLE));
+    first.listeners().getFirst().onFinished(AgentOutcome.FAILED);
+
+    clock.advance(Duration.ofSeconds(61));
+    sweeper.sweep();
+    final var retry = allFired(2).getLast();
+
+    assertThat(promptOf(retry))
+        .startsWith("This is a retry.")
+        .contains(
+            "- SendChatMessage({\"chatId\":\"oc_alerts\",\"text\":\"looking into it\"})"
+                + " → \"sent\"")
+        .contains("Do not repeat any of them")
+        .doesNotContain("Telling the chat");
+
+    retry.listeners().getFirst().onFinished(AgentOutcome.COMPLETED);
+    assertThat(repos.situations.only().completedActions()).isNull();
+  }
+
+  @Test
+  @DisplayName("a retry of an attempt that did nothing reads what any attempt does")
+  void aRetryOfNothingIsAnOrdinaryRun() {
+    final var properties = properties(true, 2);
+    observed(properties, "d1");
+    clock.advance(Duration.ofSeconds(31));
+    final var sweeper = sweeper(properties);
+    sweeper.sweep();
+
+    final var first = allFired(1).getLast();
+    first.listeners().getFirst().onError(new RuntimeException(UNAVAILABLE));
+    first.listeners().getFirst().onFinished(AgentOutcome.FAILED);
+    clock.advance(Duration.ofSeconds(61));
+    sweeper.sweep();
+
+    assertThat(repos.situations.only().completedActions()).isNull();
+    assertThat(promptOf(allFired(2).getLast())).doesNotContain("This is a retry");
+  }
+
+  @Test
+  @DisplayName("a request the endpoint refused as wrong is not retried, and is reported as before")
+  void doesNotRetryABadRequest() {
+    final var properties = properties(true, 2);
+    observed(properties, "d1");
+    clock.advance(Duration.ofSeconds(31));
+    sweeper(properties).sweep();
+
+    final var listener = fired().listeners().getFirst();
+    listener.onError(new RuntimeException("400 {\"error\":\"bad request\"}"));
+    listener.onFinished(AgentOutcome.FAILED);
+
+    final var updated = repos.situations.only();
+    assertThat(updated.phase()).isEqualTo(Situation.Phase.MONITORING);
+    assertThat(updated.failedAttempts()).isNull();
+    verify(notifier).send(any(), any());
+  }
+
+  @Test
+  @DisplayName("retries stop after the last one, which is reported and left as any failure is")
+  void stopsAfterTheLastRetry() {
+    final var properties = properties(true, 2);
+    observed(properties, "d1");
+    clock.advance(Duration.ofSeconds(31));
+    final var sweeper = sweeper(properties);
+    sweeper.sweep();
+
+    // The first run and the three retries, each failing while the endpoint stays down.
+    for (var run = 1; run <= 4; run++) {
+      final var listener = allFired(run).getLast().listeners().getFirst();
+      listener.onError(new RuntimeException(UNAVAILABLE));
+      listener.onFinished(AgentOutcome.FAILED);
+      clock.advance(Duration.ofMinutes(16));
+      sweeper.sweep();
+    }
+
+    final var given = repos.situations.only();
+    assertThat(given.phase()).isEqualTo(Situation.Phase.MONITORING);
+    assertThat(given.failedAttempts()).isEqualTo(3);
+    verify(notifier, times(1)).send(any(), any());
+    // And nothing more is tried on a timer.
+    clock.advance(Duration.ofHours(1));
+    sweeper.sweep();
+    verify(springAgent, times(4)).fire(any());
+  }
+
+  @Test
+  @DisplayName("what is a failure that may pass, and what is not")
+  void whatMayPass() {
+    assertThat(TransientFailures.isTransient(new RuntimeException(UNAVAILABLE))).isTrue();
+    assertThat(TransientFailures.isTransient(new RuntimeException("429 slow down"))).isTrue();
+    assertThat(
+            TransientFailures.isTransient(
+                new IllegalStateException(
+                    "wrapped", new java.net.SocketTimeoutException("Read timed out"))))
+        .isTrue();
+    assertThat(
+            TransientFailures.isTransient(
+                new RuntimeException("MCP session with server terminated")))
+        .isTrue();
+    assertThat(TransientFailures.isTransient(new RuntimeException("400 bad request"))).isFalse();
+    assertThat(TransientFailures.isTransient(new RuntimeException("404 not found"))).isFalse();
+    assertThat(TransientFailures.isTransient(new IllegalStateException("the model refused")))
+        .isFalse();
   }
 
   @Test
@@ -943,6 +1121,7 @@ class SituationSweeperTest {
             new PlaybookFilters(properties),
             notifiers,
             TestI18n.messages(chinese),
+            actions,
             clock);
 
     sweeper.sweep();

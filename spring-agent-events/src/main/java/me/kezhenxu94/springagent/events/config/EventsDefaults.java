@@ -50,6 +50,9 @@ public class EventsDefaults implements EnvironmentPostProcessor, Ordered {
   static final String STUCK_INVESTIGATION_TIMEOUT =
       EventsProperties.PREFIX + ".stuck-investigation-timeout";
   static final String RETENTION = EventsProperties.PREFIX + ".retention";
+  static final String TRANSIENT_RETRIES = EventsProperties.PREFIX + ".transient-retries";
+  static final String TRANSIENT_RETRY_BACKOFF =
+      EventsProperties.PREFIX + ".transient-retry-backoff";
 
   @Override
   public void postProcessEnvironment(
@@ -88,6 +91,16 @@ public class EventsDefaults implements EnvironmentPostProcessor, Ordered {
                     Map.entry(
                         STUCK_INVESTIGATION_TIMEOUT,
                         EventsProperties.DEFAULT_STUCK_INVESTIGATION_TIMEOUT.toString()),
+                    Map.entry(
+                        TRANSIENT_RETRIES,
+                        String.valueOf(EventsProperties.DEFAULT_TRANSIENT_RETRIES)),
+                    Map.entry(
+                        TRANSIENT_RETRY_BACKOFF,
+                        String.join(
+                            ",",
+                            EventsProperties.DEFAULT_TRANSIENT_RETRY_BACKOFF.stream()
+                                .map(Object::toString)
+                                .toList())),
                     Map.entry(RETENTION, EventsProperties.DEFAULT_RETENTION.toString()))));
   }
 

@@ -1512,6 +1512,17 @@ app:
     # comfortably longer than a triage run takes — too short only means paying the model twice for
     # a run that was merely slow.
     stuck-investigation-timeout: ${EVENTS_STUCK_INVESTIGATION_TIMEOUT:PT20M}
+    # How many times an evaluation that failed for a reason that may pass is retried on a timer,
+    # and how long to wait before each. "May pass" is the model endpoint answering 5xx, 429 or 408,
+    # a timeout, a dropped connection, an MCP server going away; any other 4xx, and anything the run
+    # itself decided, is not retried. Without this a failed evaluation waits for the next
+    # observation, which a one-shot source — a single message, resolved once evaluated — never has,
+    # so an outage of a few minutes leaves it never triaged. Nobody is told about a retry; the last
+    # one that fails is reported like any failure. 0 turns retrying off. The last delay repeats
+    # where there are more retries than delays. The model client's own retries (three, with
+    # backoff) cover seconds; these cover minutes.
+    transient-retries: ${EVENTS_TRANSIENT_RETRIES:3}
+    transient-retry-backoff: ${EVENTS_TRANSIENT_RETRY_BACKOFF:PT1M,PT5M,PT15M}
 
     # How long a closed situation, and the observations behind it, are kept before being deleted.
     # Measured from the moment it was closed, which resolve-after-quiet does hours after the last

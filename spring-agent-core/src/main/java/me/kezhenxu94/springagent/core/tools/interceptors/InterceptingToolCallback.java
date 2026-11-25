@@ -101,7 +101,31 @@ public class InterceptingToolCallback implements ToolCallback {
           e.getMessage());
       return applyAfter(toolInput, e.getMessage(), toolContext);
     }
-    return applyAfter(input, invoke(input, toolContext), toolContext);
+    final var ran = new boolean[1];
+    final var result = applyAfter(input, invoke(input, toolContext, ran), toolContext);
+    if (ran[0]) {
+      completed(input, result, toolContext);
+    }
+    return result;
+  }
+
+  /**
+   * Tells every interceptor a call ran and returned — not one that was refused, answered for its
+   * arguments, or thrown by the tool. See {@link ToolCallInterceptor#onCompleted}. One that fails
+   * is logged and never fails the call it is being told about.
+   */
+  private void completed(final String input, final String result, final ToolContext toolContext) {
+    for (final var interceptor : interceptors) {
+      try {
+        interceptor.onCompleted(getToolDefinition().name(), input, result, toolContext);
+      } catch (RuntimeException e) {
+        log.warn(
+            "{} failed on the completed call to '{}'",
+            interceptor.getClass().getSimpleName(),
+            getToolDefinition().name(),
+            e);
+      }
+    }
   }
 
   /** The arguments as the tool will get them, or what the model is told instead of a call. */
@@ -159,7 +183,7 @@ public class InterceptingToolCallback implements ToolCallback {
    * it hears everything else about a tool call. Arguments that will not parse are answered the same
    * way, and for the same reason.
    */
-  private String invoke(final String input, final ToolContext toolContext) {
+  private String invoke(final String input, final ToolContext toolContext, final boolean[] ran) {
     final var unreadable = unreadable(input);
     if (unreadable != null) {
       log.warn(
@@ -186,7 +210,10 @@ public class InterceptingToolCallback implements ToolCallback {
           e.getMessage());
       return e.getMessage();
     }
-    return toolContext == null ? delegate.call(expanded) : delegate.call(expanded, toolContext);
+    final var answer =
+        toolContext == null ? delegate.call(expanded) : delegate.call(expanded, toolContext);
+    ran[0] = true;
+    return answer;
   }
 
   /**

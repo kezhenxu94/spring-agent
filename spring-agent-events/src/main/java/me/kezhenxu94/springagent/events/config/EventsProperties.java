@@ -64,6 +64,13 @@ import org.springframework.util.unit.DataSize;
  *     reclaimed underneath itself, which is what the number is really about; the late write-back is
  *     harmless either way, since reclaiming bumps the generation and {@code
  *     SituationSweeper.Evaluation} already declines to write over a generation that moved on.
+ * @param transientRetries how many times an evaluation that failed for a reason that may pass — the
+ *     model endpoint answering 5xx or 429, a timeout, a dropped connection, an MCP server going
+ *     away — is retried on a timer, without waiting for another observation. A one-shot source, a
+ *     single message resolved after its evaluation, has no next observation, so without this an
+ *     outage of minutes leaves it never triaged. {@code 0} turns it off; null is the default.
+ * @param transientRetryBackoff how long to wait before each of those retries, in order; the last is
+ *     repeated where there are more retries than steps.
  * @param retention how long a closed situation, and the observations behind it, are kept before
  *     being deleted. Measured from the moment the situation was closed, so a long-lived one is
  *     never taken away underneath a run. Global rather than per-source, unlike every timing above
@@ -96,6 +103,8 @@ public record EventsProperties(
     Duration resolveAfterQuiet,
     boolean resolveAfterEvaluation,
     Duration stuckInvestigationTimeout,
+    Integer transientRetries,
+    java.util.List<Duration> transientRetryBackoff,
     Duration retention,
     Playbook playbook,
     String triagePrompt,
@@ -108,6 +117,9 @@ public record EventsProperties(
   public static final int DEFAULT_MAX_CONCURRENT_EVALUATIONS = 2;
   public static final int DEFAULT_MAX_EVENTS_PER_SITUATION = 200;
   public static final int DEFAULT_MAX_EVIDENCE = 20;
+  public static final int DEFAULT_TRANSIENT_RETRIES = 3;
+  public static final java.util.List<Duration> DEFAULT_TRANSIENT_RETRY_BACKOFF =
+      java.util.List.of(Duration.ofMinutes(1), Duration.ofMinutes(5), Duration.ofMinutes(15));
   public static final DataSize DEFAULT_MAX_BODY_SIZE = DataSize.ofMegabytes(1);
   public static final Duration DEFAULT_DEBOUNCE = Duration.ofSeconds(30);
   public static final Duration DEFAULT_MAX_DEBOUNCE = Duration.ofMinutes(5);
@@ -221,6 +233,12 @@ public record EventsProperties(
         stuckInvestigationTimeout == null
             ? DEFAULT_STUCK_INVESTIGATION_TIMEOUT
             : stuckInvestigationTimeout;
+    transientRetries =
+        transientRetries == null ? DEFAULT_TRANSIENT_RETRIES : Math.max(0, transientRetries);
+    transientRetryBackoff =
+        transientRetryBackoff == null || transientRetryBackoff.isEmpty()
+            ? DEFAULT_TRANSIENT_RETRY_BACKOFF
+            : java.util.List.copyOf(transientRetryBackoff);
     // Negative is read as zero rather than rejected: both mean "do not delete anything", and a
     // deployment that wrote -1 to say so should get what it meant.
     retention =
@@ -230,6 +248,12 @@ public record EventsProperties(
     playbook = playbook == null ? Playbook.NONE : playbook;
     triagePrompt = blankToNull(triagePrompt);
     sources = sources == null ? Map.of() : Map.copyOf(sources);
+  }
+
+  /** How long to wait before retry {@code attempt}, counted from one. */
+  public Duration transientRetryDelay(final int attempt) {
+    return transientRetryBackoff.get(
+        Math.min(Math.max(attempt, 1), transientRetryBackoff.size()) - 1);
   }
 
   /**

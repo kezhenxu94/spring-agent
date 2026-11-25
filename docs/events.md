@@ -142,6 +142,17 @@ Writing them is what the admin-only `ListPlaybooks` and `WritePlaybook` tools ar
 as, and `DeleteOwnerKnowledge`, which is the only way a playbook there is retired rather than only
 overwritten — a source that is gone leaves a document nobody who can log in owns.
 
+## When an evaluation fails
+
+A triage run that fails for a reason that may pass — the model endpoint answering 5xx, 429 or 408, a
+timeout, a dropped connection, an MCP server going away — is retried on a timer, after 1, 5 and 15
+minutes by default (`app.events.transient-retries`, `app.events.transient-retry-backoff`), without
+waiting for another observation. That matters most for a one-shot source, a single message resolved
+once it is evaluated, which never gets another observation. The situation counts its retries, nobody
+is told about one, and the last one to fail is reported through the source's route like any failure.
+Any other failure — another 4xx, anything the run itself decided — is recorded and reported at once,
+and the situation is looked at again when the next observation arrives.
+
 ## What this does and does not buy you
 
 Everything an event carries was written by whoever caused it. The triage prompts say so at length —

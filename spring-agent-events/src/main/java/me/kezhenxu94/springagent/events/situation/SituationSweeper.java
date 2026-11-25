@@ -5,6 +5,7 @@ import jakarta.annotation.PreDestroy;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ScheduledFuture;
@@ -89,6 +90,9 @@ public class SituationSweeper {
    * log, which stays in English here as it does everywhere else in this codebase.
    */
   private final EventsMessages messages;
+
+  /** What each attempt has done so far, for the retry of one that fails partway. */
+  private final SituationActions actions;
 
   private final Clock clock;
 
@@ -420,6 +424,18 @@ public class SituationSweeper {
    * brief goes to the model unwrapped rather than the run failing.
    */
   private String triagePrompt(final EventsProperties.Policy policy, final Situation situation) {
+    final var prompt = triagePromptAlone(policy, situation);
+    // A retry is told first what the attempts before it already did, so that it finishes what is
+    // left rather than doing it twice. A first attempt, or a retry of one that did nothing, reads
+    // exactly what it always did.
+    final var done = situation.completedActions();
+    return done == null || done.isBlank()
+        ? prompt
+        : messages.get("retry-completed-actions", done.strip()) + "\n\n" + prompt;
+  }
+
+  private String triagePromptAlone(
+      final EventsProperties.Policy policy, final Situation situation) {
     final var rendered = brief.render(situation);
     // Configuration first, and the source's own file where it said nothing — which is the usual
     // case, and the only one that can be in the workspace's language.
@@ -513,6 +529,21 @@ public class SituationSweeper {
     }
   }
 
+  /** What every attempt in this run of retries has done, the earliest first; null for nothing. */
+  private static String completedSoFar(final String before, final List<String> now) {
+    final var lines = new java.util.ArrayList<String>();
+    if (before != null && !before.isBlank()) {
+      lines.add(before.strip());
+    }
+    lines.addAll(now);
+    if (lines.isEmpty()) {
+      return null;
+    }
+    final var joined = String.join("\n", lines);
+    // The column's width, keeping the most recent, which says what is left to do.
+    return joined.length() <= 8000 ? joined : joined.substring(joined.length() - 8000);
+  }
+
   /** How many runs this sweeper believes are in flight. For tests and for logging. */
   public int inFlight() {
     return inFlight.get();
@@ -588,12 +619,51 @@ public class SituationSweeper {
       final var next =
           observedDuringTheRun ? Situation.Phase.AWAITING_EVALUATION : Situation.Phase.MONITORING;
 
+      // Taken whatever happens, so nothing is kept for an attempt that is over.
+      final var doneThisTime = actions.take("situation:" + situationId + "#" + generation);
+      final var failedBefore = current.failedAttempts() == null ? 0 : current.failedAttempts();
+      final var transientFailure = error != null && TransientFailures.isTransient(error);
+      if (transientFailure
+          && !observedDuringTheRun
+          && failedBefore < properties.transientRetries()) {
+        // Asked again on a timer rather than left for the next observation, which a one-shot
+        // source — a single message, resolved once evaluated — never has: an outage of minutes
+        // would otherwise leave it never triaged. Nobody is told yet; the retry may well succeed,
+        // and the last one that does not goes through the path below like any failure.
+        final var retry = failedBefore + 1;
+        final var delay = properties.transientRetryDelay(retry);
+        log.warn(
+            "Situation {} failed for a reason that may pass ({}); retry {} of {} in {}",
+            situationId,
+            describe(error),
+            retry,
+            properties.transientRetries(),
+            delay);
+        situations.save(
+            current.toBuilder()
+                .phase(Situation.Phase.AWAITING_EVALUATION)
+                .awaitingSince(now)
+                .evaluateAfter(now.plus(delay))
+                .failedAttempts(retry)
+                .completedActions(completedSoFar(current.completedActions(), doneThisTime))
+                .lastError(describe(error))
+                .build());
+        return;
+      }
+
       if (error != null) {
         report(policy, current, error, next);
       }
 
       final var updated =
-          current.toBuilder().phase(next).lastError(error == null ? null : describe(error));
+          current.toBuilder()
+              .phase(next)
+              .lastError(error == null ? null : describe(error))
+              // Kept where the retries ran out, so the row says how many there were; cleared by
+              // anything else, so the next outage starts counting from nothing.
+              .failedAttempts(transientFailure && failedBefore > 0 ? failedBefore : null)
+              // Only a retry reads these, and there is no retry after this.
+              .completedActions(null);
 
       if (observedDuringTheRun) {
         // More arrived while we were thinking, so what we just concluded is already out of date.
@@ -608,9 +678,10 @@ public class SituationSweeper {
           updated.status(Situation.Status.RESOLVED).resolvedAt(now);
         }
       }
-      // A failed evaluation is not retried on a timer. The error is recorded, and the next
-      // observation makes the situation due again — which is the difference between a transient
-      // failure being retried and a permanent one being retried for ever.
+      // Past the transient retries above, a failed evaluation is not retried on a timer. The error
+      // is recorded, and the next observation makes the situation due again — which is the
+      // difference between a failure that may pass being retried and a permanent one being
+      // retried for ever.
       //
       // And this is deliberately the last thing, after the notice has gone out. A write that fails
       // is among the failures most worth reporting, so nothing a person is told may depend on this
