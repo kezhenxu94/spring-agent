@@ -139,6 +139,15 @@ public class OpenAiUserChatClients implements ProviderChatClients {
     return api.provider;
   }
 
+  /**
+   * The Responses API for a row on chat completions: an OpenAI-compatible endpoint may serve some
+   * models only over {@code /responses}, and answers the other with a bare 404.
+   */
+  @Override
+  public String alternativeWhenNotFound() {
+    return api == Api.CHAT_COMPLETIONS ? RESPONSES_PROVIDER : null;
+  }
+
   @Override
   public String configuredEffort() {
     return defaults.getReasoningEffort();

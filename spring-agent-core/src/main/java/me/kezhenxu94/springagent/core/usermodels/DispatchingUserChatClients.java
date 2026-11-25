@@ -102,6 +102,13 @@ public class DispatchingUserChatClients implements UserChatClients {
   }
 
   @Override
+  public String alternativeWhenNotFound(final String provider) {
+    final var serving = Strings.isNullOrEmpty(provider) ? fallback : byProvider.get(provider);
+    final var alternative = serving == null ? null : serving.alternativeWhenNotFound();
+    return alternative != null && byProvider.containsKey(alternative) ? alternative : null;
+  }
+
+  @Override
   public boolean requiresBaseUrl(final String provider) {
     final var serving = Strings.isNullOrEmpty(provider) ? fallback : byProvider.get(provider);
     return serving == null || serving.requiresBaseUrl();

@@ -51,7 +51,14 @@ Four things, each because Spring AI has no way to know it:
   `OpenAiUserChatClients` is published twice, as the providers `openai` (`/chat/completions`) and
   `openai-responses` (`/responses`), so a row picks the API with the provider select every surface
   already draws. The second exists because OpenAI's GPT-5.4 and later refuse function tools beside
-  a reasoning effort on `/chat/completions`; most gateways serve only the first.
+  a reasoning effort on `/chat/completions`; most gateways serve only the first. Some
+  OpenAI-compatible endpoints are the other way round for some models — `/responses` only, and only
+  streaming — which works because every run streams, and so does the registration probe. Tool
+  calls, reasoning effort and usage all come back over the streaming `/responses` path
+  (`OpenAiResponsesStreamingTest` holds a stub endpoint that serves nothing else). Where a row on
+  `openai` is answered 404, the probe tries `openai-responses` on the same endpoint and, where that
+  answers, says to register with it rather than leaving a bare "not found"
+  (`ProviderChatClients#alternativeWhenNotFound`).
   That customizer is built per endpoint rather than shared, or two rows with different headers would
   send each other's.
 - **`OpenAiErrorBodyLoggingInterceptor`** — the only place a rejected request's body still exists.

@@ -77,6 +77,15 @@ public interface ProviderChatClients {
   }
 
   /**
+   * Another provider speaking to the same endpoint over a different API, worth trying where this
+   * one is answered "not found" — an endpoint that serves a model over one API and not the other.
+   * Null by default: most protocols have no second API to suggest.
+   */
+  default String alternativeWhenNotFound() {
+    return null;
+  }
+
+  /**
    * How hard this provider's own configured model is asked to think, in {@link ReasoningEfforts}'
    * vocabulary, or null where nothing is configured or this provider built no model here.
    *

@@ -82,4 +82,12 @@ public interface UserChatClients {
    *     empty for none
    */
   ChatClient probeClient(UserModelConfig config, String token, Map<String, String> headers);
+
+  /**
+   * The provider to try where {@code provider} — or the default, for null — is answered "not
+   * found", if this deployment serves one: see {@link ProviderChatClients#alternativeWhenNotFound}.
+   */
+  default String alternativeWhenNotFound(final String provider) {
+    return null;
+  }
 }

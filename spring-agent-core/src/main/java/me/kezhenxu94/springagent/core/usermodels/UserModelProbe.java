@@ -113,9 +113,69 @@ public class UserModelProbe {
       } catch (Exception e) {
         final var cause = Exceptions.unwrap(e.getCause() == null ? e : e.getCause());
         log.info("Chat model probe of {} at {} failed", model, baseUrl, cause);
-        return cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
+        final var failure =
+            cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
+        return notFound(cause)
+            ? alternativeOr(
+                failure,
+                config.provider(),
+                baseUrl,
+                model,
+                token,
+                reasoningEffort,
+                temperature,
+                strictTools,
+                headers)
+            : failure;
       }
     }
+  }
+
+  /**
+   * Where the endpoint answered "not found" and the provider names another API to the same
+   * endpoint, whether that one answers: an endpoint can serve a model over one API and not the
+   * other, and a bare "not found" sends somebody checking a URL that is right. Said rather than
+   * chosen for them, since what is registered is theirs to decide.
+   */
+  private String alternativeOr(
+      final String failure,
+      final String provider,
+      final String baseUrl,
+      final String model,
+      final String token,
+      final String reasoningEffort,
+      final Double temperature,
+      final boolean strictTools,
+      final Map<String, String> headers) {
+    final var alternative = chatClients.alternativeWhenNotFound(provider);
+    if (alternative == null
+        || alternative.equals(provider)
+        || check(
+                alternative,
+                baseUrl,
+                model,
+                token,
+                reasoningEffort,
+                temperature,
+                strictTools,
+                headers)
+            != null) {
+      return failure;
+    }
+    final var spoken = provider == null ? chatClients.defaultProvider() : provider;
+    return messages.get("user-model-probe-alternative", spoken, failure, alternative);
+  }
+
+  /** Whether {@code cause} is the endpoint saying it has no such thing: an HTTP 404. */
+  private static boolean notFound(final Throwable cause) {
+    for (var link = cause; link != null; link = link.getCause()) {
+      final var message = link.getMessage();
+      if (link.getClass().getSimpleName().contains("NotFound")
+          || (message != null && message.strip().startsWith("404"))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
