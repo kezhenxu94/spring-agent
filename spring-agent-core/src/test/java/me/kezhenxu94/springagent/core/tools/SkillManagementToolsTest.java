@@ -208,6 +208,10 @@ class SkillManagementToolsTest {
     assertThat(tools.listSkills(CONTEXT))
         .contains("skill_generate-ad-report: Daily ad report")
         .contains(location.resolve("ou_1/skills/ad-report").toString())
-        .contains("(not callable: the SKILL.md in \"nameless\"");
+        .contains("(not callable: the SKILL.md in \"nameless\"")
+        // How to use one is the same here as in the tool search's catalogue: through the tool,
+        // which answers with the skill's directory, and never by searching for its files.
+        .contains("call its skill_ tool")
+        .contains("Do not search the filesystem for skill files");
   }
 }

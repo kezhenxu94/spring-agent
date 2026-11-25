@@ -107,6 +107,31 @@ class SkillsToolTest {
   }
 
   @Test
+  @DisplayName(
+      "the directory it answers with is absolute, though the skills were configured by a relative"
+          + " path, so a script the skill names runs from it without searching")
+  void answersWithAnAbsoluteDirectory(@TempDir final Path skills) throws IOException {
+    final var dir =
+        writeSkill(
+            skills,
+            "one",
+            """
+            ---
+            name: fill-a-pdf
+            description: fills in a PDF form
+            ---
+            Run scripts/fill.sh.
+            """);
+    final var relative = Path.of("").toAbsolutePath().relativize(skills);
+
+    final var provider = SkillsTool.builder().addSkillsDirectory(relative.toString()).build();
+
+    assertThat(toolNamed(provider, "skill_fill-a-pdf").call("{}"))
+        .contains("Base directory for this skill: " + dir.toAbsolutePath().normalize() + "\\n")
+        .doesNotContain("Base directory for this skill: " + relative);
+  }
+
+  @Test
   @DisplayName("extra front-matter fields reach the description, since nothing else carries them")
   void extraFrontMatterFields(@TempDir final Path skills) throws IOException {
     writeSkill(

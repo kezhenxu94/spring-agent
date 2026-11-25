@@ -331,7 +331,7 @@ class ToolSearchToolCallingAdvisorTest {
     for (final var definition : definitions) {
       final var name = definition.name();
       if (name.startsWith("skill_")) {
-        groups.put(name, new ToolGroupsAdvisor.ToolGroup("skills", "skill_", "your skills"));
+        groups.put(name, new ToolGroupsAdvisor.ToolGroup("skills", "skill_", "your skills", true));
       } else if (name.startsWith("srv")) {
         final var prefix = name.substring(0, name.indexOf('_') + 1);
         groups.put(
@@ -362,6 +362,53 @@ class ToolSearchToolCallingAdvisorTest {
 
     assertThat(tools).hasSize(440);
     // About four characters a token for identifiers, so under four thousand tokens.
+    assertThat(catalogue.length()).isLessThan(12_000);
+  }
+
+  @Test
+  @DisplayName(
+      "skills are listed one to a line with the first sentence of what each is for, under how to"
+          + " load one")
+  void skillsSection() {
+    final var skills =
+        new ToolGroupsAdvisor.ToolGroup("skills", "skill_", "Load one with its skill_ tool.", true);
+    final var catalogue =
+        ToolSearchToolCallingAdvisor.catalogue(
+            List.of(
+                definition(
+                    "skill_rotate-keys",
+                    "Rotates the signing keys of a service. Then restarts it.\n\nReturns the"
+                        + " instructions."),
+                definition("skill_check-cluster", "Checks a cluster's health end to end.")),
+            Map.of("skill_rotate-keys", skills, "skill_check-cluster", skills));
+
+    assertThat(catalogue.lines().toList())
+        .containsExactly(
+            "- skills — Load one with its skill_ tool.:",
+            "  - skill_check-cluster: Checks a cluster's health end to end.",
+            "  - skill_rotate-keys: Rotates the signing keys of a service.");
+  }
+
+  @Test
+  @DisplayName("a hundred skills with long descriptions stay within a few thousand tokens")
+  void skillsSectionSizeBound() {
+    final var skills = new ToolGroupsAdvisor.ToolGroup("skills", "skill_", "how to load one", true);
+    final var definitions = new ArrayList<ToolDefinition>();
+    final var groups = new java.util.HashMap<String, ToolGroupsAdvisor.ToolGroup>();
+    for (var i = 0; i < 100; i++) {
+      final var name = "skill_some-saved-method-" + i;
+      definitions.add(
+          definition(
+              name,
+              "Walks through one long and particular procedure that somebody saved after doing it"
+                  + " the hard way once, with every caveat they ran into along the way."));
+      groups.put(name, skills);
+    }
+
+    final var catalogue = ToolSearchToolCallingAdvisor.catalogue(definitions, groups);
+    System.out.printf("SKILLS 100 skills: %d chars%n", catalogue.length());
+
+    assertThat(catalogue.lines()).hasSize(101);
     assertThat(catalogue.length()).isLessThan(12_000);
   }
 

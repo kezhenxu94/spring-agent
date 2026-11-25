@@ -374,9 +374,28 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
       byKey.put(key, group);
       grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(definition.name());
     }
+    final var descriptions = new java.util.HashMap<String, String>();
+    definitions.forEach(
+        definition -> descriptions.put(definition.name(), definition.description()));
     final var lines = new StringBuilder();
     for (final var entry : grouped.entrySet()) {
       final var group = byKey.get(entry.getKey());
+      if (group.describeEach()) {
+        lines.append("- ").append(group.label());
+        if (group.purpose() != null && !group.purpose().isBlank()) {
+          lines.append(" — ").append(group.purpose().strip());
+        }
+        lines.append(':').append(System.lineSeparator());
+        for (final var name : entry.getValue().stream().sorted().toList()) {
+          lines.append("  - ").append(name);
+          final var sentence = firstSentence(descriptions.get(name));
+          if (!sentence.isEmpty()) {
+            lines.append(": ").append(sentence);
+          }
+          lines.append(System.lineSeparator());
+        }
+        continue;
+      }
       lines.append("- ").append(group.label());
       final var purpose = oneLine(group.purpose());
       if (!purpose.isEmpty()) {
@@ -424,6 +443,28 @@ public class ToolSearchToolCallingAdvisor extends MemoryToolCallingAdvisor {
     return groups instanceof Map<?, ?> map
         ? (Map<String, ToolGroupsAdvisor.ToolGroup>) map
         : Map.of();
+  }
+
+  /** How much of a tool's description a group listing each tool keeps. */
+  private static final int SENTENCE_CHARS = 80;
+
+  /**
+   * The first sentence of {@code description}, cut short where it runs on: what a skill says it is
+   * for, which is what one is chosen by.
+   */
+  private static String firstSentence(final String description) {
+    final var line = oneLine(description);
+    var end = line.length();
+    for (final var stop : List.of(". ", "。", "! ", "? ", "！", "？")) {
+      final var at = line.indexOf(stop);
+      if (at >= 0 && at + 1 < end) {
+        end = at + 1;
+      }
+    }
+    final var sentence = line.substring(0, end).strip();
+    return sentence.length() <= SENTENCE_CHARS
+        ? sentence
+        : sentence.substring(0, SENTENCE_CHARS) + "…";
   }
 
   /** The first line of {@code text}, cut short where it runs on. */

@@ -29,9 +29,18 @@ public record ToolGroupsAdvisor(Map<String, ToolGroup> groups) implements BaseAd
    *
    * @param label what the group is called: an MCP server's name, or "skills"
    * @param prefix what every tool name in it starts with, listed once; empty where they share none
-   * @param purpose one line saying what the group is for; empty where nothing says
+   * @param purpose what the group is for; empty where nothing says
+   * @param describeEach whether each tool is listed on a line of its own with the first sentence of
+   *     its description, and the purpose in full as how to use them — for skills, which are chosen
+   *     by what they say they are for rather than by their names
    */
-  public record ToolGroup(String label, String prefix, String purpose) {}
+  public record ToolGroup(String label, String prefix, String purpose, boolean describeEach) {
+
+    /** A group listed by name only, its purpose on one line. */
+    public ToolGroup(final String label, final String prefix, final String purpose) {
+      this(label, prefix, purpose, false);
+    }
+  }
 
   public ToolGroupsAdvisor {
     groups = Map.copyOf(groups);

@@ -382,7 +382,7 @@ public class AgentToolsProvider {
     if (!skills.isEmpty()) {
       final var group =
           new ToolGroupsAdvisor.ToolGroup(
-              "skills", SkillsTool.TOOL_NAME_PREFIX, messages.get("tool-group-skills"));
+              "skills", SkillsTool.TOOL_NAME_PREFIX, messages.get("tool-group-skills"), true);
       skills.forEach(skill -> groups.put(skill.getToolDefinition().name(), group));
     }
     final var byClient = new IdentityHashMap<McpSyncClient, List<String>>();

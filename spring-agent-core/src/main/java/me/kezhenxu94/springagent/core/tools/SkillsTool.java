@@ -124,8 +124,12 @@ public class SkillsTool {
 
     @Override
     public String get() {
+      // Absolute whatever the storage location was configured as, so a script the instructions
+      // name can be run from the path given, with no searching for where the skill lives.
       return "Base directory for this skill: %s\n\n%s"
-          .formatted(this.skill.basePath(), this.skill.content());
+          .formatted(
+              java.nio.file.Path.of(this.skill.basePath()).toAbsolutePath().normalize(),
+              this.skill.content());
     }
   }
 
