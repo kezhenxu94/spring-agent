@@ -2,6 +2,7 @@ package me.kezhenxu94.springagent.provider.openai;
 
 import com.google.common.base.Strings;
 import io.micrometer.observation.ObservationRegistry;
+import java.time.Duration;
 import java.util.List;
 import me.kezhenxu94.springagent.core.config.ConditionalOnNonBlankProperty;
 import me.kezhenxu94.springagent.core.config.ConditionalOnUserModels;
@@ -68,6 +69,35 @@ public class OpenAiProviderAutoConfiguration {
   @ConditionalOnMissingBean(name = "openAiErrorBodyLoggingCustomizer")
   OpenAiHttpClientBuilderCustomizer openAiErrorBodyLoggingCustomizer() {
     final var interceptor = new OpenAiErrorBodyLoggingInterceptor();
+    return builder -> builder.interceptor(interceptor);
+  }
+
+  /**
+   * How long a streamed chat answer may go without a byte before it is abandoned — see {@link
+   * OpenAiStreamIdleTimeout}. Under the chat options because it is one, though Spring AI has no
+   * such key: the request timeout there is the total, and has to stay long. {@code 0} turns it off.
+   */
+  static final String STREAM_IDLE_TIMEOUT = "spring.ai.openai.chat.stream-idle-timeout";
+
+  static final Duration DEFAULT_STREAM_IDLE_TIMEOUT = Duration.ofSeconds(90);
+
+  /**
+   * Abandons a streamed chat answer that has gone silent, on the application's endpoint and every
+   * user's, since Spring AI applies every customizer of this type to each OpenAI model's client and
+   * {@code OpenAiUserChatClients} hands the context's on to the ones it builds.
+   */
+  @Bean
+  @ConditionalOnMissingBean(name = "openAiStreamIdleTimeoutCustomizer")
+  OpenAiHttpClientBuilderCustomizer openAiStreamIdleTimeoutCustomizer(
+      final org.springframework.core.env.Environment environment) {
+    final var idle =
+        org.springframework.boot.context.properties.bind.Binder.get(environment)
+            .bind(STREAM_IDLE_TIMEOUT, Duration.class)
+            .orElse(DEFAULT_STREAM_IDLE_TIMEOUT);
+    if (idle.isZero() || idle.isNegative()) {
+      return builder -> {};
+    }
+    final var interceptor = new OpenAiStreamIdleTimeout(idle);
     return builder -> builder.interceptor(interceptor);
   }
 

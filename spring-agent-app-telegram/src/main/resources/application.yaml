@@ -468,12 +468,20 @@ spring:
         # turn, not longer than a plausible gap between two chunks: a slow gateway or a long
         # reasoning answer reaches five minutes without anything being wrong.
         #
-        # The two cannot be separated with what Spring AI exposes. It only ever sets the SDK's
-        # `request` timeout, and the SDK's `read` timeout defaults to it, so raising the ceiling
-        # also means a stream that goes silent is held this long before it fails — one stuck run
-        # keeps its MCP clients open and delays graceful shutdown for that whole time. Setting it
-        # to 0 (the SDK's "no timeout") would remove both bounds; don't.
+        # Spring AI only ever sets the SDK's `request` timeout, and the SDK's `read` timeout
+        # defaults to it, so on its own this would also be how long a stream that went silent is
+        # held. stream-idle-timeout below is what bounds the silence instead. Setting this to 0
+        # (the SDK's "no timeout") would remove the ceiling; don't.
         timeout: 30m
+        # How long a streamed answer may go without a byte before it is abandoned, and asked for
+        # once more where nothing of it had arrived yet. Not a Spring AI key: this project reads it
+        # (OpenAiStreamIdleTimeout) and sets the read timeout of streaming chat requests to it, on
+        # the application's endpoint and every user's, over chat completions and the Responses API.
+        # A live stream is never quiet for long — reasoning arrives as deltas, as text does — so a
+        # minute and a half of silence is a stall, where without this one upstream that stopped
+        # sending mid-stream held its run, and the messages queued behind it, for the full timeout
+        # above. Non-streamed requests are untouched. 0 turns it off.
+        stream-idle-timeout: ${OPENAI_STREAM_IDLE_TIMEOUT:90s}
         # `stream-options.include-usage` is deliberately *not* set here, even though every run's
         # cost is read from the usage a streaming turn reports. Spring AI already asks for it:
         # OpenAiChatModel sends `stream_options: {include_usage: true}` on a streaming request that

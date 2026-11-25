@@ -28,6 +28,7 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.kezhenxu94.springagent.core.advisors.MemoryToolCallingAdvisor;
+import me.kezhenxu94.springagent.core.advisors.StreamStallRetryAdvisor;
 import me.kezhenxu94.springagent.core.advisors.TemperatureRetryAdvisor;
 import me.kezhenxu94.springagent.core.advisors.TurnContextAdvisor;
 import me.kezhenxu94.springagent.core.advisors.toolsearch.ToolSearchToolCallingAdvisor;
@@ -1239,6 +1240,8 @@ public class SpringAgent {
     // Last before the model, so it is one model call that is asked again without a temperature —
     // see that class for the one refusal it answers.
     advisors.add(new TemperatureRetryAdvisor());
+    // And once more where the stream stalled before any of the answer arrived — see that class.
+    advisors.add(new StreamStallRetryAdvisor());
     advisors.add(SimpleLoggerAdvisor.builder().build());
 
     return clientFor(request)

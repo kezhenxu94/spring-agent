@@ -692,6 +692,13 @@ class SituationSweeperTest {
             TransientFailures.isTransient(
                 new RuntimeException("MCP session with server terminated")))
         .isTrue();
+    assertThat(
+            TransientFailures.isTransient(
+                new RuntimeException(
+                    "stream failed",
+                    new me.kezhenxu94.springagent.core.agent.StreamIdleTimeoutException(
+                        Duration.ofSeconds(90), null))))
+        .isTrue();
     assertThat(TransientFailures.isTransient(new RuntimeException("400 bad request"))).isFalse();
     assertThat(TransientFailures.isTransient(new RuntimeException("404 not found"))).isFalse();
     assertThat(TransientFailures.isTransient(new IllegalStateException("the model refused")))

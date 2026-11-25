@@ -305,9 +305,11 @@ spring:
         # field at all.
         reasoning-effort: ${OPENAI_REASONING_EFFORT:xhigh}
         # OkHttp's callTimeout, not a read timeout — it bounds the entire streaming call, so it has
-        # to outlast the longest single model turn. See the app's application.yaml for why the two
-        # cannot be told apart here.
+        # to outlast the longest single model turn. stream-idle-timeout below bounds the silence.
         timeout: 30m
+        # How long a streamed answer may go without a byte before it is abandoned, and asked for
+        # once more where nothing had arrived yet. See the server's application.yaml. 0 turns it off.
+        stream-idle-timeout: ${OPENAI_STREAM_IDLE_TIMEOUT:90s}
         # `stream-options` is deliberately unset: Spring AI asks for streaming usage on its own,
         # and naming the options here adds `include_obfuscation` to the request, which endpoints
         # other than OpenAI's reject. See the app's application.yaml.
