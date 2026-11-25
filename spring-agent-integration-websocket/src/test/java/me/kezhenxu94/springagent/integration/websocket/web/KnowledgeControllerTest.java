@@ -637,7 +637,11 @@ class KnowledgeControllerTest {
     }
 
     @Override
-    public List<Document> search(final KnowledgeScope scope, final String query, final int topK) {
+    public List<Document> search(
+        final KnowledgeScope scope,
+        final Filter.Expression extra,
+        final String query,
+        final int topK) {
       return List.of();
     }
   }

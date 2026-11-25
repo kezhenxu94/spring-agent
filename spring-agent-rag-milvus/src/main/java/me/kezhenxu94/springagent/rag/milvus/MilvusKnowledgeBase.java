@@ -325,13 +325,17 @@ public class MilvusKnowledgeBase implements KnowledgeBase, InitializingBean, Dis
   }
 
   @Override
-  public List<Document> search(final KnowledgeScope scope, final String query, final int topK) {
+  public List<Document> search(
+      final KnowledgeScope scope,
+      final Filter.Expression extra,
+      final String query,
+      final int topK) {
     // The same scope filter as retrieval, and deliberately not the same similarity threshold: an
     // explicit search exists to show what is in there and what it scored, including when the
     // automatic threshold is set too high to let any of it through. Scoping is not relaxed with it.
     return VectorStoreDocumentRetriever.builder()
         .vectorStore(store)
-        .filterExpression(KnowledgeScopeFilter.readableBy(scope))
+        .filterExpression(KnowledgeScopeFilter.readableBy(scope, extra))
         .similarityThreshold(0d)
         .topK(Math.max(1, topK))
         .build()

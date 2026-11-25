@@ -17,6 +17,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.rag.retrieval.search.DocumentRetriever;
+import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.context.support.ResourceBundleMessageSource;
 
 /**
@@ -100,7 +101,10 @@ class KnowledgeAdminToolsTest {
 
         @Override
         public List<Document> search(
-            final KnowledgeScope scope, final String query, final int topK) {
+            final KnowledgeScope scope,
+            final Filter.Expression extra,
+            final String query,
+            final int topK) {
           searched.set(scope);
           return List.of(
               Document.builder()

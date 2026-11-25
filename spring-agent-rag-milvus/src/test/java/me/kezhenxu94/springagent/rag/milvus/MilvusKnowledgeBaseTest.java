@@ -180,6 +180,29 @@ class MilvusKnowledgeBaseTest {
       }
     }
 
+    @Test
+    @DisplayName("a filtered search is still a top-k similarity search, within the filter")
+    void filteredSearchIsTopK() {
+      final var owner = scope("search-owner", "", "");
+      for (var i = 0; i < 5; i++) {
+        knowledgeBase.index(
+            KnowledgeSource.ofText(
+                owner, ScopeTarget.OWN, "note " + i, "note " + i, "source-a", "sa-" + i));
+      }
+      store(owner, ScopeTarget.OWN, "sb-0", "note from another source");
+
+      final var filter =
+          new org.springframework.ai.vectorstore.filter.FilterExpressionBuilder()
+              .eq(KnowledgeMetadata.SOURCE, "source-a")
+              .build();
+      final var found = knowledgeBase.search(owner, filter, "note", 2);
+
+      assertThat(found).hasSize(2);
+      assertThat(found)
+          .allSatisfy(
+              d -> assertThat(d.getMetadata().get(KnowledgeMetadata.SOURCE)).isEqualTo("source-a"));
+    }
+
     private static String numbered(final String word, final int count) {
       return java.util.stream.IntStream.range(0, count)
           .mapToObj(i -> word + " " + i + " of the playbook. ")

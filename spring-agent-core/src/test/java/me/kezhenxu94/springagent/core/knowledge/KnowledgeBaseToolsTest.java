@@ -25,6 +25,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.rag.retrieval.search.DocumentRetriever;
+import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.context.support.ResourceBundleMessageSource;
 
 /** What the knowledge tools record about a document, beyond the content itself. */
@@ -82,7 +83,10 @@ class KnowledgeBaseToolsTest {
 
         @Override
         public List<Document> search(
-            final KnowledgeScope scope, final String query, final int topK) {
+            final KnowledgeScope scope,
+            final Filter.Expression extra,
+            final String query,
+            final int topK) {
           return List.of();
         }
       };

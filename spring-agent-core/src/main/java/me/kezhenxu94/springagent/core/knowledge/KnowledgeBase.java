@@ -139,5 +139,15 @@ public interface KnowledgeBase {
    *
    * <p>The returned documents carry their similarity in {@link Document#getScore()}.
    */
-  List<Document> search(KnowledgeScope scope, String query, int topK);
+  default List<Document> search(KnowledgeScope scope, String query, int topK) {
+    return search(scope, null, query, topK);
+  }
+
+  /**
+   * The same search, narrowed to the documents {@code extra} also matches — for a caller that wants
+   * the best matches among more documents than one query can read whole, rather than {@link
+   * #retrieverFor(KnowledgeScope, Filter.Expression)}'s every chunk of a few. {@code extra} only
+   * narrows, as it does there.
+   */
+  List<Document> search(KnowledgeScope scope, Filter.Expression extra, String query, int topK);
 }
