@@ -32,6 +32,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.context.annotation.Primary;
+import org.springframework.util.unit.DataSize;
 
 /**
  * The OpenAI-compatible model provider.
@@ -73,31 +74,41 @@ public class OpenAiProviderAutoConfiguration {
   }
 
   /**
-   * How long a streamed chat answer may go without a byte before it is abandoned — see {@link
-   * OpenAiStreamIdleTimeout}. Under the chat options because it is one, though Spring AI has no
-   * such key: the request timeout there is the total, and has to stay long. {@code 0} turns it off.
+   * How long a streamed chat answer may go without a byte, once it has started, before it is
+   * abandoned — see {@link OpenAiStreamLimits}. Under the chat options because it is one, though
+   * Spring AI has no such key: the request timeout there is the total, and has to stay long. {@code
+   * 0} turns it off.
    */
   static final String STREAM_IDLE_TIMEOUT = "spring.ai.openai.chat.stream-idle-timeout";
 
   static final Duration DEFAULT_STREAM_IDLE_TIMEOUT = Duration.ofSeconds(90);
 
   /**
-   * Abandons a streamed chat answer that has gone silent, on the application's endpoint and every
-   * user's, since Spring AI applies every customizer of this type to each OpenAI model's client and
-   * {@code OpenAiUserChatClients} hands the context's on to the ones it builds.
+   * How much of one streamed chat answer may arrive before it is abandoned as a generation that
+   * will not end — see {@link OpenAiStreamLimits}. {@code 0} turns it off.
+   */
+  static final String STREAM_MAX_SIZE = "spring.ai.openai.chat.stream-max-size";
+
+  static final DataSize DEFAULT_STREAM_MAX_SIZE = DataSize.ofMegabytes(8);
+
+  /**
+   * Bounds a streamed chat answer, on the application's endpoint and every user's, since Spring AI
+   * applies every customizer of this type to each OpenAI model's client and {@code
+   * OpenAiUserChatClients} hands the context's on to the ones it builds.
    */
   @Bean
-  @ConditionalOnMissingBean(name = "openAiStreamIdleTimeoutCustomizer")
-  OpenAiHttpClientBuilderCustomizer openAiStreamIdleTimeoutCustomizer(
+  @ConditionalOnMissingBean(name = "openAiStreamLimitsCustomizer")
+  OpenAiHttpClientBuilderCustomizer openAiStreamLimitsCustomizer(
       final org.springframework.core.env.Environment environment) {
+    final var binder = org.springframework.boot.context.properties.bind.Binder.get(environment);
     final var idle =
-        org.springframework.boot.context.properties.bind.Binder.get(environment)
-            .bind(STREAM_IDLE_TIMEOUT, Duration.class)
-            .orElse(DEFAULT_STREAM_IDLE_TIMEOUT);
-    if (idle.isZero() || idle.isNegative()) {
-      return builder -> {};
-    }
-    final var interceptor = new OpenAiStreamIdleTimeout(idle);
+        binder.bind(STREAM_IDLE_TIMEOUT, Duration.class).orElse(DEFAULT_STREAM_IDLE_TIMEOUT);
+    final var maxSize =
+        binder.bind(STREAM_MAX_SIZE, DataSize.class).orElse(DEFAULT_STREAM_MAX_SIZE);
+    final var interceptor =
+        new OpenAiStreamLimits(
+            idle.isZero() || idle.isNegative() ? null : idle,
+            maxSize.toBytes() <= 0 ? null : maxSize);
     return builder -> builder.interceptor(interceptor);
   }
 

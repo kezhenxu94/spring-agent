@@ -501,15 +501,30 @@ spring:
         # held. stream-idle-timeout below is what bounds the silence instead. Setting this to 0
         # (the SDK's "no timeout") would remove the ceiling; don't.
         timeout: 30m
-        # How long a streamed answer may go without a byte before it is abandoned, and asked for
-        # once more where nothing of it had arrived yet. Not a Spring AI key: this project reads it
-        # (OpenAiStreamIdleTimeout) and sets the read timeout of streaming chat requests to it, on
-        # the application's endpoint and every user's, over chat completions and the Responses API.
-        # A live stream is never quiet for long — reasoning arrives as deltas, as text does — so a
-        # minute and a half of silence is a stall, where without this one upstream that stopped
-        # sending mid-stream held its run, and the messages queued behind it, for the full timeout
-        # above. Non-streamed requests are untouched. 0 turns it off.
+        # How long a streamed answer may go without a byte, once it has started, before it is
+        # abandoned and asked for once more where nothing of it had arrived yet — once in all, not
+        # once per SDK retry. Not a Spring AI key: this project reads it (OpenAiStreamLimits) and
+        # sets the read timeout of a streaming chat response's body to it, on the application's
+        # endpoint and every user's, over chat completions and the Responses API. A live stream is
+        # never quiet for long — reasoning arrives as deltas, as text does — so a minute and a half
+        # of silence is a stall, where without this one upstream that stopped sending mid-stream
+        # held its run, and the messages queued behind it, for the full timeout above.
+        #
+        # The wait for the response headers is deliberately not bounded by it: that is the model
+        # reading the prompt, which on a large context and a self-hosted model takes minutes, and
+        # cutting it only repeats the same prefill from scratch. That wait is bounded by the timeout
+        # above alone. Non-streamed requests are untouched. 0 turns it off.
         stream-idle-timeout: ${OPENAI_STREAM_IDLE_TIMEOUT:90s}
+        # How much of one streamed answer may arrive before it is abandoned as a generation that
+        # will not end — bytes keep flowing from one of those, so the idle timeout above never
+        # fires and it held its run for the whole timeout. Read by the same interceptor and on the
+        # same requests. Measured in bytes of the stream rather than sent as max-tokens, which some
+        # endpoints refuse (OpenAI's reasoning models take only max-completion-tokens) and which
+        # would end a runaway answer as a truncated, successful one rather than fail it. A streamed
+        # token costs roughly 200–250 bytes of server-sent events, so 8MB is some 35k tokens of
+        # reasoning and answer together in one model call; raise it for a model that legitimately
+        # writes more. Not retried. 0 turns it off.
+        stream-max-size: ${OPENAI_STREAM_MAX_SIZE:8MB}
         # `stream-options.include-usage` is deliberately *not* set here, even though every run's
         # cost is read from the usage a streaming turn reports. Spring AI already asks for it:
         # OpenAiChatModel sends `stream_options: {include_usage: true}` on a streaming request that

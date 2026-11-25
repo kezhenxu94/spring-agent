@@ -67,12 +67,16 @@ Four things, each because Spring AI has no way to know it:
   the parameter there too, and a probe that did not ask that way could never move it.
   That customizer is built per endpoint rather than shared, or two rows with different headers would
   send each other's.
-- **`OpenAiStreamIdleTimeout`** — abandons a streamed answer that has gone silent for
-  `spring.ai.openai.chat.stream-idle-timeout` (90s by default, a key of this project's), which
-  core's `StreamStallRetryAdvisor` asks for once more where nothing of it had arrived. Per call,
-  through the interceptor chain, because the SDK replaces the client's read timeout on every
-  request with the request timeout — which has to stay long, and so held a stalled stream for the
-  whole of it.
+- **`OpenAiStreamLimits`** — bounds a streamed answer two ways the request timeout cannot. It
+  abandons one whose body has gone silent for `spring.ai.openai.chat.stream-idle-timeout` (90s by
+  default), which core's `StreamStallRetryAdvisor` asks for once more where nothing of it had
+  arrived; and one past `spring.ai.openai.chat.stream-max-size` (8MB by default), a generation that
+  will not end and so never goes silent. Both keys are this project's. The idle timeout is set on the
+  response body after the headers arrive, never on the wait for them: that wait is a long prompt's
+  prefill, and it is also the part of a call the SDK retries on any `IOException`, so a timeout
+  there would be retried `max-retries` times on every attempt core makes. The size is counted in
+  bytes rather than sent as a default `max_tokens`, which some endpoints refuse and which would end
+  a runaway answer as a truncated, successful one.
 - **`OpenAiErrorBodyLoggingInterceptor`** — the only place a rejected request's body still exists.
   openai-java renders a non-JSON error envelope as the words `400: Unknown`, so without this a run
   fails for literally unknowable reasons.
