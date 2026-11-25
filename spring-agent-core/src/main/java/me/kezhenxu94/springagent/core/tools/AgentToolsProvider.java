@@ -989,6 +989,7 @@ public class AgentToolsProvider {
             .toList();
     rejectDuplicateToolPrefixes(configs);
     final var clients = new ArrayList<McpSyncClient>(configs.size());
+    final var names = new IdentityHashMap<McpSyncClient, String>();
     if (!configs.isEmpty()) {
       try (final var executor = Executors.newVirtualThreadPerTaskExecutor()) {
         final var pending =
@@ -1006,7 +1007,9 @@ public class AgentToolsProvider {
             // join rather than get: every task has to be collected, because one already past its
             // handshake holds an open connection that nothing else will ever close, and join is the
             // one that keeps waiting through an interrupt instead of abandoning it.
-            clients.add(entry.getValue().join());
+            final var client = entry.getValue().join();
+            clients.add(client);
+            names.put(client, entry.getKey().name());
           } catch (CompletionException | CancellationException e) {
             // A server that is down, misconfigured or slow costs the run its tools, never the run
             // itself.
@@ -1020,26 +1023,36 @@ public class AgentToolsProvider {
         }
       }
     }
-    if (clients.isEmpty()) {
-      return new McpTools(clients, new ToolCallback[0]);
+    // Listed one server at a time, with the bargain the handshakes above strike: a server that
+    // initialized and then dropped its session — it was redeployed in between, say — or that will
+    // not list its tools in time costs the run that server's tools and nothing else. Listed all at
+    // once, the first such failure closed every client and failed the run.
+    //
+    // What this does not swallow is two servers whose assembled tool names collide: each server
+    // is listed apart here, so the collision surfaces where every tool the run is offered is
+    // checked against every other — rejectDuplicateToolNames, which refuses the run loudly.
+    final var listed = new ArrayList<McpSyncClient>(clients.size());
+    final var callbacks = new ArrayList<ToolCallback>();
+    for (final var client : clients) {
+      try {
+        Collections.addAll(
+            callbacks,
+            SyncMcpToolCallbackProvider.builder()
+                .mcpClients(client)
+                .toolNamePrefixGenerator(new ServerNameToolPrefixGenerator())
+                .build()
+                .getToolCallbacks());
+        listed.add(client);
+      } catch (RuntimeException e) {
+        log.warn(
+            "Skipping MCP server '{}' for user {}: listing its tools failed: {}",
+            names.get(client),
+            userId,
+            e.getMessage());
+        new McpTools(List.of(client), new ToolCallback[0]).close();
+      }
     }
-    try {
-      final var callbacks =
-          SyncMcpToolCallbackProvider.builder()
-              .mcpClients(clients)
-              .toolNamePrefixGenerator(new ServerNameToolPrefixGenerator())
-              .build()
-              .getToolCallbacks();
-      return new McpTools(clients, callbacks);
-    } catch (RuntimeException e) {
-      // Every client is connected by now and the caller learns of them only through the McpTools
-      // this returns, so anything thrown here has to close them itself. Listing tools is where
-      // Spring AI validates the assembled names, and it throws on a duplicate — which is exactly
-      // the case rejectDuplicateToolPrefixes above cannot see, two servers with different prefixes
-      // whose tool names collide anyway.
-      new McpTools(clients, new ToolCallback[0]).close();
-      throw e;
-    }
+    return new McpTools(listed, callbacks.toArray(new ToolCallback[0]));
   }
 
   /**

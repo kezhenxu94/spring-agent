@@ -90,6 +90,29 @@ class AgentToolsProviderDuplicateToolNamesTest {
   }
 
   @Test
+  @DisplayName(
+      "a server whose session ends while its tools are listed costs the run its tools, not the"
+          + " run, and is closed")
+  void aServerThatDropsWhileListingIsSkipped() {
+    final var healthy = mockClient("ok", "search");
+    final var dropped = mockClient("gone", "search");
+    when(dropped.listTools()).thenThrow(new RuntimeException("MCP session with server terminated"));
+    final var factory = mock(McpClientFactory.class);
+    when(factory.createAndInitialize(any(), any())).thenReturn(healthy, dropped);
+
+    // One client's worth of tools reaches the run: the healthy one's.
+    assertThatCode(
+            () ->
+                compose(
+                    factory,
+                    List.of(server("healthy", "ok"), server("dropped", "gone")),
+                    List.of(healthy)))
+        .doesNotThrowAnyException();
+
+    verify(dropped).close();
+  }
+
+  @Test
   @DisplayName("two servers offering the same tool under distinct prefixes compose")
   void distinctPrefixesCompose() {
     final var staging = mockClient("ops_staging", "search");
