@@ -59,7 +59,10 @@ public class VisionTools {
 
     final var home = userWorkspaceFactory.forRequest(context);
     final var mediaList =
-        images.stream().map(src -> mediaSources.resolve(src, userId, home)).toList();
+        images.stream()
+            .map(src -> mediaSources.resolve(src, userId, home))
+            .map(m -> m == null ? null : VisionImages.shrink(m))
+            .toList();
     if (mediaList.stream().anyMatch(Objects::isNull)) {
       final var failed =
           IntStream.range(0, mediaList.size())
