@@ -425,13 +425,20 @@ public class SituationSweeper {
    */
   private String triagePrompt(final EventsProperties.Policy policy, final Situation situation) {
     final var prompt = triagePromptAlone(policy, situation);
-    // A retry is told first what the attempts before it already did, so that it finishes what is
-    // left rather than doing it twice. A first attempt, or a retry of one that did nothing, reads
-    // exactly what it always did.
+    // A retry is told what the attempts before it already did, so that it finishes what is left
+    // rather than doing it twice. A first attempt, or a retry of one that did nothing, reads
+    // exactly
+    // what it always did.
+    //
+    // After the prompt and not before it, for the same reason the shipped prompts put {situation}
+    // last: a provider caches a prompt by its prefix, and the instructions are the part that is the
+    // same in every triage run of a source. Anything that varies, put ahead of them, makes every
+    // run
+    // pay for them again.
     final var done = situation.completedActions();
     return done == null || done.isBlank()
         ? prompt
-        : messages.get("retry-completed-actions", done.strip()) + "\n\n" + prompt;
+        : prompt + "\n\n" + messages.get("retry-completed-actions", done.strip());
   }
 
   private String triagePromptAlone(

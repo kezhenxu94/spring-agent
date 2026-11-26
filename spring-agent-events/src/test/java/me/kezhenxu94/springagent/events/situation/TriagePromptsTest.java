@@ -52,10 +52,12 @@ class TriagePromptsTest {
   @DisplayName("the general prompt carries the placeholder the sweeper renders it over")
   void shouldCarryTheSituationPlaceholder() {
     // Without it the run is given instructions about nothing at all, and the render still succeeds.
+    // And last: a provider caches a prompt by its prefix, so everything ahead of the one part that
+    // differs between runs is what a later run of the same source is served from the cache.
     for (final var locale : List.of(Locale.ENGLISH, CHINESE)) {
-      assertThat(TestI18n.prompts(locale).forSource("anything"))
+      assertThat(TestI18n.prompts(locale).forSource("anything").strip())
           .as("general prompt in %s", locale)
-          .contains("{situation}");
+          .endsWith("{situation}");
     }
   }
 

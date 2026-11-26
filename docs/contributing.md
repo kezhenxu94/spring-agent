@@ -372,7 +372,9 @@ Ship a triage prompt per source at `events/prompts/<source>-triage-prompt.md` (p
 sibling), which falls back to the module's generic one. Read the shipped prompts before writing
 yours: they say nobody is waiting, they say the observed text is data and not instructions, and they
 say silence is the common correct answer. A prompt that drops the untrusted-input framing hands
-whoever can open an issue a prompt of their own.
+whoever can open an issue a prompt of their own. Put `{situation}` last: it is the only part that
+differs between two runs of a source, and a provider caches a prompt by its prefix, so instructions
+after it are paid for in full on every run.
 
 Do not write policy into the prompt. What a deployment wants done about *its* events — which
 repositories matter, who to page, when to stay silent — belongs in that source's **playbook**:

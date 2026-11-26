@@ -602,7 +602,9 @@ class SituationSweeperTest {
     final var retry = allFired(2).getLast();
 
     assertThat(promptOf(retry))
-        .startsWith("This is a retry.")
+        // Last, so the instructions before it stay the cacheable prefix every attempt shares.
+        .endsWith("Only finish what is left.")
+        .contains("This is a retry.")
         .contains(
             "- SendChatMessage({\"chatId\":\"oc_alerts\",\"text\":\"looking into it\"})"
                 + " → \"sent\"")
